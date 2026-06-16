@@ -110,6 +110,40 @@ async function setClientSignatureDocument(
   await repository.updateIntakeTemplate({ ...template, definition });
 }
 
+async function addSyntheticQaScenarios(repository: OpenPracticeRepository): Promise<void> {
+  const template = (await repository.listIntakeTemplates("firm-west-legal")).find(
+    (candidate) => candidate.id === "intake-template-001",
+  );
+  if (!template || template.definition.schemaVersion !== 2) {
+    throw new Error("Seeded V2 intake template is required for this test");
+  }
+  const definition = JSON.parse(JSON.stringify(template.definition)) as typeof template.definition;
+  if (definition.schemaVersion !== 2) throw new Error("Seeded V2 intake template is required");
+  definition.qaScenarios = [
+    {
+      id: "repair-staff-qa",
+      name: "Repair staff QA",
+      answers: {
+        issue_type: "repair",
+        urgent: false,
+        repair_details: "Synthetic staff QA repair answer.",
+      },
+      selectedPackageIds: ["repair_notice_package"],
+    },
+    {
+      id: "urgent-repair-staff-qa",
+      name: "Urgent repair staff QA",
+      answers: {
+        issue_type: "repair",
+        urgent: true,
+        repair_details: "Synthetic staff QA urgent answer.",
+      },
+      selectedPackageIds: ["repair_notice_package", "urgent_review_package"],
+    },
+  ];
+  await repository.updateIntakeTemplate({ ...template, definition });
+}
+
 afterEach(async () => {
   await Promise.all(servers.splice(0).map((server) => server.close()));
 });
@@ -225,6 +259,19 @@ describe("intake form builder routes", () => {
     const definition = JSON.parse(
       JSON.stringify(seedTemplate.definition),
     ) as typeof seedTemplate.definition;
+    if (definition.schemaVersion !== 2) throw new Error("Seeded V2 intake template is required");
+    definition.qaScenarios = [
+      {
+        id: "builder-scenario",
+        name: "Builder scenario",
+        answers: {
+          issue_type: "repair",
+          urgent: true,
+          repair_details: "Synthetic builder scenario answer.",
+        },
+        selectedPackageIds: ["repair_notice_package", "urgent_review_package"],
+      },
+    ];
 
     const created = await server.inject({
       method: "POST",
@@ -258,7 +305,12 @@ describe("intake form builder routes", () => {
       externalTemplateId: "embedded-form:intake-template-builder-test",
       active: true,
       definitionVersion: 3,
-      definition: expect.objectContaining({ schemaVersion: 2 }),
+      definition: expect.objectContaining({
+        schemaVersion: 2,
+        qaScenarios: expect.arrayContaining([
+          expect.objectContaining({ id: "builder-scenario", name: "Builder scenario" }),
+        ]),
+      }),
       createdAt: expect.any(String),
       updatedAt: expect.any(String),
       metadata: {
@@ -276,7 +328,12 @@ describe("intake form builder routes", () => {
       externalTemplateId: "embedded-form:intake-template-builder-test",
       active: false,
       definitionVersion: 4,
-      definition: expect.objectContaining({ schemaVersion: 2 }),
+      definition: expect.objectContaining({
+        schemaVersion: 2,
+        qaScenarios: expect.arrayContaining([
+          expect.objectContaining({ id: "builder-scenario", name: "Builder scenario" }),
+        ]),
+      }),
       metadata: {
         source: "open-practice-form-builder",
         editable: true,
@@ -289,7 +346,12 @@ describe("intake form builder routes", () => {
         templateId: "intake-template-builder-test",
         version: 3,
         definitionVersion: 3,
-        definition: expect.objectContaining({ schemaVersion: 2 }),
+        definition: expect.objectContaining({
+          schemaVersion: 2,
+          qaScenarios: expect.arrayContaining([
+            expect.objectContaining({ id: "builder-scenario" }),
+          ]),
+        }),
         publishedByUserId: "user-admin",
         metadata: { source: "open-practice-form-builder", reason: "initial-create" },
       },
@@ -304,7 +366,12 @@ describe("intake form builder routes", () => {
         templateId: "intake-template-builder-test",
         version: 4,
         definitionVersion: 4,
-        definition: expect.objectContaining({ schemaVersion: 2 }),
+        definition: expect.objectContaining({
+          schemaVersion: 2,
+          qaScenarios: expect.arrayContaining([
+            expect.objectContaining({ id: "builder-scenario" }),
+          ]),
+        }),
         publishedByUserId: "user-admin",
         metadata: { source: "open-practice-form-builder", reason: "staff-publish" },
       },
@@ -392,7 +459,8 @@ describe("intake form builder routes", () => {
   });
 
   it("returns staff-only intake template QA previews without public tokens or answers", async () => {
-    const { server } = testServer();
+    const { repository, server } = testServer();
+    await addSyntheticQaScenarios(repository);
 
     const response = await server.inject({
       method: "GET",
@@ -410,7 +478,7 @@ describe("intake form builder routes", () => {
         summary: {
           schemaVersion: 2,
           branchRuleCount: 2,
-          previewCount: 3,
+          previewCount: 5,
           blockingIssueCount: 0,
         },
         previews: expect.arrayContaining([
@@ -419,10 +487,17 @@ describe("intake form builder routes", () => {
             matchedBranchRuleIds: ["repair-package"],
             visibleQuestionIds: expect.arrayContaining(["repair_details"]),
           }),
+          expect.objectContaining({
+            id: "scenario:urgent-repair-staff-qa",
+            label: "Urgent repair staff QA",
+            matchedBranchRuleIds: ["repair-package", "urgent-review-package"],
+            selectedPackageIds: ["repair_notice_package", "urgent_review_package"],
+          }),
         ]),
       },
     });
     expect(JSON.stringify(response.json())).not.toContain("tokenHash");
+    expect(JSON.stringify(response.json())).not.toContain("Synthetic staff QA urgent answer");
     for (const preview of response.json<{ qa: { previews: Array<Record<string, unknown>> } }>().qa
       .previews) {
       expect(preview).not.toHaveProperty("answers");
@@ -1308,6 +1383,7 @@ describe("intake form builder routes", () => {
   it("returns stable public link states and logs granted and denied access", async () => {
     const { repository, server } = testServer({ s3: s3Config() });
     await restrictEvidenceUpload(repository);
+    await addSyntheticQaScenarios(repository);
     const active = await server.inject({
       method: "POST",
       url: "/api/intake-form-links",
@@ -1346,6 +1422,9 @@ describe("intake form builder routes", () => {
     expect(loadedBody).not.toContain("classification");
     expect(loadedBody).not.toContain("legalHold");
     expect(loadedBody).not.toContain("documentId");
+    expect(loadedBody).not.toContain("qaScenarios");
+    expect(loadedBody).not.toContain("Urgent repair staff QA");
+    expect(loadedBody).not.toContain("Synthetic staff QA urgent answer");
     expect(JSON.stringify(loaded.json())).not.toContain(activeLinkId);
     const draft = await server.inject({
       method: "POST",

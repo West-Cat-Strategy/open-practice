@@ -7,6 +7,7 @@ import type {
   EmbeddedIntakeBranchRule,
   EmbeddedIntakeFormItem,
   EmbeddedIntakeQuestion,
+  EmbeddedIntakeQaScenario,
   EmbeddedIntakeTemplateDefinitionV2,
   IntakeVariableTargetScope,
 } from "@open-practice/domain";
@@ -17,9 +18,11 @@ import {
   itemKinds,
   makeIntakeBranchRule,
   makeIntakeItem,
+  makeIntakeQaScenario,
   questionTypes,
   summarizeIntakeBranchRulePath,
   summarizeIntakeBranchRuleTrigger,
+  summarizeIntakeQaScenarioPath,
   variableTargetFields,
 } from "../intake-forms-dashboard";
 import { structuredIntakeDiagnostics } from "./structured-builder-diagnostics";
@@ -192,6 +195,30 @@ export default function StructuredIntakeBuilder({
     updateDefinition((draft) => {
       const rule = draft.branchRules[ruleIndex];
       if (rule) updater(rule);
+    });
+  }
+
+  function addQaScenario(): void {
+    updateDefinition((draft) => {
+      draft.qaScenarios = [...(draft.qaScenarios ?? []), makeIntakeQaScenario(draft)];
+    });
+  }
+
+  function removeQaScenario(scenarioIndex: number): void {
+    updateDefinition((draft) => {
+      const next = [...(draft.qaScenarios ?? [])];
+      next.splice(scenarioIndex, 1);
+      draft.qaScenarios = next.length > 0 ? next : undefined;
+    });
+  }
+
+  function updateQaScenario(
+    scenarioIndex: number,
+    updater: (scenario: EmbeddedIntakeQaScenario) => void,
+  ): void {
+    updateDefinition((draft) => {
+      const scenario = draft.qaScenarios?.[scenarioIndex];
+      if (scenario) updater(scenario);
     });
   }
 
@@ -375,6 +402,37 @@ export default function StructuredIntakeBuilder({
         ) : null}
       </div>
 
+      <div className="section-title">
+        <h3>QA scenarios</h3>
+        <button
+          className="secondary-button compact-button"
+          disabled={definition.questions.length === 0}
+          onClick={addQaScenario}
+          type="button"
+        >
+          <Plus size={16} />
+          Add scenario
+        </button>
+      </div>
+
+      <div className="intake-qa-scenario-list">
+        {(definition.qaScenarios ?? []).map((scenario, scenarioIndex) => (
+          <QaScenarioEditor
+            definition={definition}
+            key={scenario.id}
+            removeScenario={() => removeQaScenario(scenarioIndex)}
+            scenario={scenario}
+            updateScenario={(updater) => updateQaScenario(scenarioIndex, updater)}
+          />
+        ))}
+        {(definition.qaScenarios ?? []).length === 0 ? (
+          <p className="inline-empty">
+            No saved QA scenarios yet. Add named staff checks for branch paths and package
+            combinations before publishing a client form.
+          </p>
+        ) : null}
+      </div>
+
       <details
         className="advanced-json-editor"
         open={jsonOpen}
@@ -457,6 +515,155 @@ export default function StructuredIntakeBuilder({
         ) : (
           <p className="inline-empty">No local authoring diagnostics found.</p>
         )}
+      </div>
+    </div>
+  );
+}
+
+function QaScenarioEditor({
+  definition,
+  scenario,
+  removeScenario,
+  updateScenario,
+}: {
+  definition: EmbeddedIntakeTemplateDefinitionV2;
+  scenario: EmbeddedIntakeQaScenario;
+  removeScenario: () => void;
+  updateScenario: (updater: (scenario: EmbeddedIntakeQaScenario) => void) => void;
+}) {
+  const pathSummary = summarizeIntakeQaScenarioPath(scenario, definition);
+  const selectedPackageIds = new Set(scenario.selectedPackageIds ?? []);
+
+  function setScenarioAnswer(question: EmbeddedIntakeQuestion, value: string | boolean): void {
+    updateScenario((draft) => {
+      draft.answers = { ...draft.answers };
+      if (value === "") {
+        delete draft.answers[question.id];
+      } else {
+        draft.answers[question.id] = value;
+      }
+    });
+  }
+
+  function toggleScenarioPackage(packageId: string, checked: boolean): void {
+    updateScenario((draft) => {
+      const next = new Set(draft.selectedPackageIds ?? []);
+      if (checked) next.add(packageId);
+      else next.delete(packageId);
+      draft.selectedPackageIds = [...next];
+    });
+  }
+
+  return (
+    <div className="intake-qa-scenario-editor">
+      <div className="intake-item-editor-header">
+        <strong>{scenario.name || scenario.id}</strong>
+        <button
+          aria-label={`Remove QA scenario ${scenario.name || scenario.id}`}
+          className="icon-button"
+          onClick={removeScenario}
+          title="Remove QA scenario"
+          type="button"
+        >
+          <Trash2 size={16} />
+        </button>
+      </div>
+      <div className="intake-question-grid">
+        <label className="form-field">
+          <span>Scenario ID</span>
+          <input
+            onChange={(event) =>
+              updateScenario((draft) => {
+                draft.id = event.target.value;
+              })
+            }
+            value={scenario.id}
+          />
+        </label>
+        <label className="form-field">
+          <span>Name</span>
+          <input
+            onChange={(event) =>
+              updateScenario((draft) => {
+                draft.name = event.target.value;
+              })
+            }
+            value={scenario.name}
+          />
+        </label>
+      </div>
+
+      <div className="intake-qa-answer-grid">
+        {definition.questions.map((question) => (
+          <label className="form-field" key={question.id}>
+            <span>{question.label}</span>
+            {question.type === "boolean" ? (
+              <input
+                checked={Boolean(scenario.answers[question.id])}
+                onChange={(event) => setScenarioAnswer(question, event.target.checked)}
+                type="checkbox"
+              />
+            ) : question.type === "select" ? (
+              <select
+                onChange={(event) => setScenarioAnswer(question, event.target.value)}
+                value={String(scenario.answers[question.id] ?? "")}
+              >
+                <option value="">No scenario answer</option>
+                {(question.options ?? []).map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            ) : question.type === "textarea" ? (
+              <textarea
+                onChange={(event) => setScenarioAnswer(question, event.target.value)}
+                value={String(scenario.answers[question.id] ?? "")}
+              />
+            ) : (
+              <input
+                onChange={(event) => setScenarioAnswer(question, event.target.value)}
+                type={question.type === "date" ? "date" : "text"}
+                value={String(scenario.answers[question.id] ?? "")}
+              />
+            )}
+          </label>
+        ))}
+      </div>
+
+      <div className="intake-branch-target-grid">
+        <fieldset>
+          <legend>Selected packages</legend>
+          {definition.packages.map((intakePackage) => (
+            <label className="check-row share-check-row" key={intakePackage.id}>
+              <input
+                checked={selectedPackageIds.has(intakePackage.id)}
+                onChange={(event) => toggleScenarioPackage(intakePackage.id, event.target.checked)}
+                type="checkbox"
+              />
+              <span>{intakePackage.title}</span>
+            </label>
+          ))}
+          {definition.packages.length === 0 ? (
+            <p className="inline-empty">No packages are defined.</p>
+          ) : null}
+        </fieldset>
+        <div className="intake-branch-path-summary">
+          <strong>{pathSummary.name || pathSummary.scenarioId}</strong>
+          <span>{pathSummary.path}</span>
+          <small>
+            Matched rules:{" "}
+            {pathSummary.matchedBranchRuleIds.length
+              ? pathSummary.matchedBranchRuleIds.join(", ")
+              : "none"}
+          </small>
+          <small>
+            Selected packages:{" "}
+            {pathSummary.selectedPackageIds.length
+              ? pathSummary.selectedPackageIds.join(", ")
+              : "none"}
+          </small>
+        </div>
       </div>
     </div>
   );

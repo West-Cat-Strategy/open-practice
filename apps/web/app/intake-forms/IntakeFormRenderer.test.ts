@@ -116,6 +116,13 @@ describe("shared intake renderer inputs", () => {
           showQuestionIds: ["deadline"],
         },
       ],
+      qaScenarios: [
+        {
+          id: "urgent-deadline-staff-qa",
+          name: "Urgent deadline staff QA",
+          answers: { client_name: "Ada M.", urgent: true, deadline: "2099-01-01" },
+        },
+      ],
       sections: [
         {
           ...definition.sections[0]!,

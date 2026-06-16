@@ -49,9 +49,10 @@ central reference corpus at `/Users/bryan/projects/reference-repos`. OP-T108 thr
 treated as shipped work and are not re-proposed here. No third-party code, schemas, UI, tests,
 assets, or distinctive prose are copied into this repo by this catalogue.
 
-OP-T155 shipped the first intake widget registry and validator adapter slice, and OP-T157 shipped
-the first staff visual branch-rule authoring slice, so those former intake candidates are no longer
-re-proposed here.
+OP-T155 shipped the first intake widget registry and validator adapter slice, OP-T157 shipped the
+first staff visual branch-rule authoring slice, and the 2026-06-16 staff intake QA scenario matrix
+follow-up shipped named staff QA scenarios for multi-path/package checks. Those former
+intake candidates are no longer re-proposed here.
 
 OP-T157 shipped the first staff-only intake submissions operations surface, so the former
 staff-only intake submissions operations queue candidate is no longer re-proposed here.
@@ -64,15 +65,12 @@ signature request metadata proof before proposing another envelope slice.
 
 #### Intake, Documents, And Signing
 
-- **Advanced intake rule simulation matrix**
-  - **First slice:** Add saved staff QA scenarios across multiple branch paths and package
-    combinations without changing public form semantics.
-  - **Local gap / shipped boundary:** OP-T157 gives staff a visual rule editor and per-rule draft
-    preview summaries, but it does not persist named scenario matrices or approval history for
-    multi-path QA.
-  - **References:** `surveyjs__survey-creator`, `surveyjs__survey-library`, and `formio__formio.js`.
-  - **Reuse and snippets:** Survey Creator and Form.io remain reference-only; SurveyJS runtime
-    snippets would need attribution and a documented reuse decision.
+The advanced intake rule simulation matrix first slice shipped on 2026-06-16. Saved staff QA
+scenarios now persist across multiple branch paths and package combinations inside existing V2
+template definitions, staff QA previews summarize them without answer bodies, and public intake
+payloads omit scenario metadata. Future intake QA work should only add explicit reviewed approval
+history or broader matrix reporting after comparing against this shipped staff-only scenario
+surface.
 
 - **Immutable intake template draft/publish versions**
   - **Status:** Shipped first slice on 2026-06-16; keep future work focused on staff UI affordances

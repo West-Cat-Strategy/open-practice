@@ -22,6 +22,15 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 ## Current Handoff Notes
 
+The 2026-06-16 staff intake QA scenario matrix branch extends OP-T157's visual branch-rule
+authoring surface with staff-only saved QA scenarios inside existing embedded V2 intake template
+definitions. Staff can name scenario paths, provide synthetic answers, choose package combinations,
+and review resolved branch/package summaries through the existing staff-only builder and QA preview
+route. Public intake payloads explicitly omit saved scenarios, scenario answers stay out of staff
+QA responses, and the slice adds no approval automation, public scenario UI, schema, migration,
+worker, provider, dependency, or public runner behavior change. Proof is recorded in
+[Staff intake QA scenario matrix proof](validation/OP_INTAKE_QA_SCENARIO_MATRIX_PROOF_2026-06-16.md).
+
 The 2026-06-16 single-contact CRM contact-history export runtime adds
 `POST /api/contacts/:contactId/history-export` for authenticated staff/admin users with the
 existing `contact:export` permission. It returns a transient `staff_review` JSON export for one
@@ -550,6 +559,12 @@ OP-T157 staff visual branch-rule authoring is done in
 The slice adds staff-only structured branch-rule editing and local preview path summaries while
 keeping public form runner behavior, API contracts, persistence, schema versions, dependencies, and
 item kinds unchanged.
+
+The staff intake QA scenario matrix follow-up is done in
+[Staff intake QA scenario matrix proof](validation/OP_INTAKE_QA_SCENARIO_MATRIX_PROOF_2026-06-16.md).
+The slice persists named staff QA scenarios for branch paths and package combinations inside the
+existing template definition JSON, returns staff-only summary previews without answer bodies, and
+keeps public intake payloads free of scenario metadata.
 
 The 2026-06-16 matter lifecycle transition journal is done in
 [Matter lifecycle transition journal proof](validation/OP_MATTER_LIFECYCLE_TRANSITION_JOURNAL_PROOF_2026-06-16.md).

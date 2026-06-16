@@ -5,9 +5,11 @@ import {
   itemKinds,
   makeIntakeBranchRule,
   makeIntakeItem,
+  makeIntakeQaScenario,
   summarizeIntakeBranchPathCounts,
   summarizeIntakeBranchRulePath,
   summarizeIntakeBranchRuleTrigger,
+  summarizeIntakeQaScenarioPath,
 } from "../intake-forms-dashboard";
 import { structuredIntakeDiagnostics } from "./structured-builder-diagnostics";
 
@@ -211,6 +213,70 @@ describe("structured intake builder diagnostics", () => {
     );
   });
 
+  it("creates and summarizes named QA scenario paths with package selections", () => {
+    expect(makeIntakeQaScenario(validDefinition)).toEqual({
+      id: "scenario-1",
+      name: "New QA scenario",
+      answers: {},
+      selectedPackageIds: [],
+    });
+    expect(
+      makeIntakeQaScenario({
+        ...validDefinition,
+        qaScenarios: [{ id: "scenario-1", name: "Existing", answers: {} }],
+      }).id,
+    ).toBe("scenario-2");
+
+    const definition: EmbeddedIntakeTemplateDefinitionV2 = {
+      ...validDefinition,
+      branchRules: [
+        {
+          id: "tenancy-path",
+          questionId: "matter_type",
+          operator: "equals",
+          value: "tenancy",
+          showQuestionIds: ["urgent"],
+          eligiblePackageIds: ["residential-tenancy"],
+        },
+        {
+          id: "urgent-package",
+          questionId: "urgent",
+          operator: "equals",
+          value: true,
+          eligiblePackageIds: ["urgent-review"],
+        },
+      ],
+      packages: [
+        ...validDefinition.packages,
+        {
+          id: "urgent-review",
+          title: "Urgent review",
+          documents: [{ id: "urgent-memo", title: "Urgent memo" }],
+        },
+      ],
+    };
+    const summary = summarizeIntakeQaScenarioPath(
+      {
+        id: "urgent-tenancy",
+        name: "Urgent tenancy",
+        answers: { matter_type: "tenancy", urgent: true },
+        selectedPackageIds: ["residential-tenancy", "urgent-review"],
+      },
+      definition,
+    );
+
+    expect(summary).toEqual(
+      expect.objectContaining({
+        scenarioId: "urgent-tenancy",
+        name: "Urgent tenancy",
+        matchedBranchRuleIds: ["tenancy-path", "urgent-package"],
+        eligiblePackageIds: ["residential-tenancy", "urgent-review"],
+        selectedPackageIds: ["residential-tenancy", "urgent-review"],
+        packageDocumentCount: 2,
+      }),
+    );
+  });
+
   it("blocks unsupported variable mappings before staff save", () => {
     const diagnostics = structuredIntakeDiagnostics({
       ...validDefinition,
@@ -241,6 +307,41 @@ describe("structured intake builder diagnostics", () => {
           severity: "blocking",
           message: "Question invalid_scope has an unsupported variable mapping target.",
           questionId: "invalid_scope",
+        }),
+      ]),
+    );
+  });
+
+  it("blocks invalid saved QA scenario references before staff save", () => {
+    const diagnostics = structuredIntakeDiagnostics({
+      ...validDefinition,
+      qaScenarios: [
+        {
+          id: "bad-scenario",
+          name: "",
+          answers: { missing_question: "synthetic" },
+          selectedPackageIds: ["missing-package"],
+        },
+      ],
+    });
+
+    expect(diagnostics.blocking).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "invalid_definition",
+          severity: "blocking",
+          message: "QA scenario bad-scenario must define a name",
+        }),
+        expect.objectContaining({
+          code: "invalid_definition",
+          severity: "blocking",
+          message: "QA scenario bad-scenario answers unknown question missing_question",
+          questionId: "missing_question",
+        }),
+        expect.objectContaining({
+          code: "invalid_definition",
+          severity: "blocking",
+          message: "QA scenario bad-scenario selects unknown package missing-package",
         }),
       ]),
     );

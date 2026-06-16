@@ -221,6 +221,129 @@ describe("embedded intake templates", () => {
     );
   });
 
+  it("persists named QA scenario previews across branch paths and package combinations", () => {
+    if (sampleResidentialTenancyIntakeDefinition.schemaVersion !== 2) {
+      throw new Error("Seeded V2 intake template is required");
+    }
+    const definition: Extract<EmbeddedIntakeTemplateDefinition, { schemaVersion: 2 }> = {
+      ...sampleResidentialTenancyIntakeDefinition,
+      qaScenarios: [
+        {
+          id: "deposit-base-path",
+          name: "Deposit base path",
+          answers: { issue_type: "deposit", urgent: false },
+          selectedPackageIds: ["repair_notice_package"],
+        },
+        {
+          id: "repair-branch-path",
+          name: "Repair branch path",
+          answers: {
+            issue_type: "repair",
+            urgent: false,
+            repair_details: "Synthetic repair details for staff QA.",
+          },
+          selectedPackageIds: ["repair_notice_package"],
+        },
+        {
+          id: "urgent-repair-package-combo",
+          name: "Urgent repair package combo",
+          answers: {
+            issue_type: "repair",
+            urgent: true,
+            repair_details: "Synthetic urgent repair details.",
+          },
+          selectedPackageIds: ["repair_notice_package", "urgent_review_package"],
+        },
+      ],
+    };
+    const before = JSON.stringify(definition);
+
+    expect(validateEmbeddedIntakeTemplateDefinition(definition)).toBe(definition);
+    const report = buildEmbeddedIntakeTemplateQaReport({
+      templateId: "intake-template-001",
+      templateVersion: 2,
+      definition,
+    });
+
+    expect(JSON.stringify(definition)).toBe(before);
+    expect(report.summary).toMatchObject({
+      branchRuleCount: 2,
+      previewCount: 6,
+      blockingIssueCount: 0,
+    });
+    expect(report.previews).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "scenario:deposit-base-path",
+          label: "Deposit base path",
+          matchedBranchRuleIds: [],
+          selectedPackageIds: ["repair_notice_package"],
+        }),
+        expect.objectContaining({
+          id: "scenario:repair-branch-path",
+          matchedBranchRuleIds: ["repair-package"],
+          visibleQuestionIds: expect.arrayContaining(["repair_details"]),
+          packageDocuments: expect.arrayContaining([
+            expect.objectContaining({ packageDocumentId: "repair_notice_letter" }),
+          ]),
+        }),
+        expect.objectContaining({
+          id: "scenario:urgent-repair-package-combo",
+          matchedBranchRuleIds: ["repair-package", "urgent-review-package"],
+          selectedPackageIds: ["repair_notice_package", "urgent_review_package"],
+          packageDocuments: expect.arrayContaining([
+            expect.objectContaining({ packageDocumentId: "repair_notice_letter" }),
+            expect.objectContaining({ packageDocumentId: "urgent_review_memo" }),
+          ]),
+        }),
+      ]),
+    );
+  });
+
+  it("rejects QA scenarios with duplicate ids or unknown references", () => {
+    if (sampleResidentialTenancyIntakeDefinition.schemaVersion !== 2) {
+      throw new Error("Seeded V2 intake template is required");
+    }
+    const baseDefinition = sampleResidentialTenancyIntakeDefinition;
+
+    expect(() =>
+      validateEmbeddedIntakeTemplateDefinition({
+        ...baseDefinition,
+        qaScenarios: [
+          { id: "duplicate", name: "First", answers: {} },
+          { id: "duplicate", name: "Second", answers: {} },
+        ],
+      }),
+    ).toThrow("Duplicate embedded intake QA scenario id duplicate");
+
+    expect(() =>
+      validateEmbeddedIntakeTemplateDefinition({
+        ...baseDefinition,
+        qaScenarios: [
+          {
+            id: "unknown-question",
+            name: "Unknown question",
+            answers: { missing_question: "synthetic" },
+          },
+        ],
+      }),
+    ).toThrow("QA scenario unknown-question answers unknown question missing_question");
+
+    expect(() =>
+      validateEmbeddedIntakeTemplateDefinition({
+        ...baseDefinition,
+        qaScenarios: [
+          {
+            id: "unknown-package",
+            name: "Unknown package",
+            answers: {},
+            selectedPackageIds: ["missing-package"],
+          },
+        ],
+      }),
+    ).toThrow("QA scenario unknown-package selects unknown package missing-package");
+  });
+
   it("gates only visible required V2 items and preserves upload file type metadata", () => {
     const definition: EmbeddedIntakeTemplateDefinition = {
       schemaVersion: 2,
