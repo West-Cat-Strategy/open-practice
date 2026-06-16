@@ -318,6 +318,7 @@ import {
   type ContactDataQualityResolutionRecord,
   type ContactDataQualityResolutionsResponse,
   type ContactDossiersResponse,
+  type ContactHistoryExportRequestResponse,
   type ContactHistoryExportResponse,
   type ContactTimelineResponse,
   type ContactReviewQueueResponse,
@@ -953,7 +954,7 @@ export default function DashboardClient({
   const [contactTimelineStatus, setContactTimelineStatus] = useState("No contact timeline loaded.");
   const [contactHistoryExportReason, setContactHistoryExportReason] = useState("");
   const [contactHistoryExportStatus, setContactHistoryExportStatus] = useState(
-    "No contact-history export generated in this session.",
+    "No contact-history export requested in this session.",
   );
   const [contactHistoryExportSummary, setContactHistoryExportSummary] = useState("");
   const [exportingContactHistory, setExportingContactHistory] = useState(false);
@@ -2666,17 +2667,37 @@ export default function DashboardClient({
     const reason = contactHistoryExportReason.trim();
     if (!activeContactDossier || !canExportSelectedContactHistory || reason.length < 8) return;
     setExportingContactHistory(true);
-    setContactHistoryExportStatus("Generating contact-history export...");
+    setContactHistoryExportStatus("Queuing contact-history export...");
     setContactHistoryExportSummary("");
     try {
-      const payload = await requestDashboardJson<ContactHistoryExportResponse>(
+      const requestPayload = await requestDashboardJson<ContactHistoryExportRequestResponse>(
         apiBaseUrl,
-        `/api/contacts/${encodeURIComponent(activeContactDossier.contact.id)}/history-export`,
+        `/api/contacts/${encodeURIComponent(
+          activeContactDossier.contact.id,
+        )}/history-export-requests`,
         {
           method: "POST",
           headers: devHeaders,
           payload: { purpose: "staff_review", reviewReason: reason },
         },
+      );
+      const request = requestPayload.exportRequest;
+      if (request.status !== "completed") {
+        setContactHistoryExportStatus(
+          `Export request ${request.status}; download link expires ${compactDate(
+            request.downloadExpiresAt,
+          )}.`,
+        );
+        setContactHistoryExportSummary(
+          "Queued request stores status, counts, and posture metadata only. No server-side export body is stored.",
+        );
+        return;
+      }
+
+      const payload = await requestDashboardJson<ContactHistoryExportResponse>(
+        apiBaseUrl,
+        request.downloadUrl,
+        { headers: devHeaders },
       );
       downloadContactHistoryExport(payload);
       const categoryCount = Object.keys(payload.export.categories).length;
@@ -2684,10 +2705,12 @@ export default function DashboardClient({
       const matterCount = payload.export.categories.matterPartyPosture.length;
       const portalGrantCount = payload.export.categories.portalAccessPosture.grants?.length ?? 0;
       setContactHistoryExportStatus(
-        `Export generated ${payload.exportRequest.generatedAt}; JSON download prepared.`,
+        `Export request completed; JSON download prepared from regenerated data.`,
       );
       setContactHistoryExportSummary(
-        `${categoryCount} categories, ${timelineCount} timeline cues, ${matterCount} matter links, ${portalGrantCount} portal grants. Transient export; no server-side export body stored.`,
+        `${categoryCount} categories, ${timelineCount} timeline cues, ${matterCount} matter links, ${portalGrantCount} portal grants. Download link expires ${compactDate(
+          request.downloadExpiresAt,
+        )}; no server-side export body stored.`,
       );
     } catch (error) {
       setContactHistoryExportStatus(`Contact-history export failed: ${dashboardApiStatus(error)}`);

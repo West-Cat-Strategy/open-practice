@@ -2587,7 +2587,7 @@ describe("dashboard client behavior", () => {
     expect(readOnlyHtml).not.toContain("relatedContact&quot;:{&quot;id");
     expect(writableHtml).toContain("contact-resolution-actions");
     expect(writableHtml).toContain("Contact-history export");
-    expect(writableHtml).toContain("Export JSON");
+    expect(writableHtml).toContain("Queue export");
     expect(writableHtml).toContain("Transient export; no server-side export body stored.");
     expect(writableHtml).toContain("Needs review");
   });

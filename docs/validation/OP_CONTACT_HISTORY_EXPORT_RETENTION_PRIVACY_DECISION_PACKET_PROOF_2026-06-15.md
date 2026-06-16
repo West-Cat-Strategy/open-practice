@@ -43,6 +43,10 @@ export artifact, generated data, private deployment detail, or runtime behavior 
 The packet uses synthetic, policy-level examples only and does not include client, matter,
 credential, payment, privileged-document, private audit, or private deployment details.
 
+Historical note: later 2026-06-16 runtime proofs update the packet wording for the shipped
+synchronous route and queued/download-link follow-up. This 2026-06-15 proof remains the docs-only
+pre-implementation record.
+
 ## Validation
 
 Passed:

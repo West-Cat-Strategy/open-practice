@@ -668,6 +668,68 @@ describe("job metadata redaction", () => {
     });
   });
 
+  it("keeps contact-history export queue metadata while dropping private history", () => {
+    expect(
+      redactJobMetadata({
+        reportType: "contact_history_export",
+        reportScope: "contact",
+        contactId: "contact-ada",
+        requestedByUserId: "user-admin",
+        purpose: "staff_review",
+        reviewReasonPresent: true,
+        downloadExpiresAt: "2026-06-17T12:00:00.000Z",
+        generatedCategoryCount: 9,
+        timelineEntryCount: 4,
+        matterAssociationCount: 1,
+        portalGrantCount: 1,
+        conflictSummaryCount: 2,
+        retentionPosture: "queued_regenerated_download_no_retained_export_body",
+        legalHoldPosture: "respects_existing_matter_visibility_no_hold_override",
+        privacyPosture: "redacted_authorized_projection_only",
+        storedBody: false,
+        retainedExportArtifact: false,
+        deletionAutomation: false,
+        retentionDeadline: false,
+        legalHoldOverride: false,
+        redactedAuthorizedProjection: true,
+        exportBodyStoredInJobMetadata: false,
+        enqueueStatus: "queued_for_local_report_worker",
+        reviewReason: "Synthetic staff reason must not survive metadata",
+        rawBody: "Synthetic queued export body must not survive metadata",
+        exportBody: [{ private: "Synthetic contact export content" }],
+        privateNotes: "Synthetic private contact note",
+        matchedValue: "synthetic@example.test",
+        storageKey: "matters/matter-001/private.pdf",
+        token: "private-token",
+        providerPayload: { body: "Synthetic provider body" },
+      }),
+    ).toEqual({
+      reportType: "contact_history_export",
+      reportScope: "contact",
+      contactId: "contact-ada",
+      requestedByUserId: "user-admin",
+      purpose: "staff_review",
+      reviewReasonPresent: true,
+      downloadExpiresAt: "2026-06-17T12:00:00.000Z",
+      generatedCategoryCount: 9,
+      timelineEntryCount: 4,
+      matterAssociationCount: 1,
+      portalGrantCount: 1,
+      conflictSummaryCount: 2,
+      retentionPosture: "queued_regenerated_download_no_retained_export_body",
+      legalHoldPosture: "respects_existing_matter_visibility_no_hold_override",
+      privacyPosture: "redacted_authorized_projection_only",
+      storedBody: false,
+      retainedExportArtifact: false,
+      deletionAutomation: false,
+      retentionDeadline: false,
+      legalHoldOverride: false,
+      redactedAuthorizedProjection: true,
+      exportBodyStoredInJobMetadata: false,
+      enqueueStatus: "queued_for_local_report_worker",
+    });
+  });
+
   it("allows document assembly routing metadata while dropping raw answers and provider output", () => {
     expect(
       redactJobMetadata({

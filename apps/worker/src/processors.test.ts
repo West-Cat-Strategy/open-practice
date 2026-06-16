@@ -1828,6 +1828,246 @@ describe("worker processors", () => {
     expect(job?.metadata).not.toHaveProperty("rawBody");
   });
 
+  it("completes contact-history export report jobs with bounded metadata only", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createJobLifecycleRecord({
+      id: "job-contact-history-export-worker-test",
+      firmId: "firm-west-legal",
+      queueName: "reports",
+      jobName: "contact_history_export",
+      status: "queued",
+      targetResourceType: "contact_history_export",
+      targetResourceId: "contact-history-export-worker-test",
+      attemptsMade: 0,
+      maxAttempts: 2,
+      queuedAt: "2026-06-16T12:00:00.000Z",
+      metadata: {
+        reportType: "contact_history_export",
+        reportScope: "contact",
+        contactId: "contact-river",
+        requestedByUserId: "user-admin",
+        purpose: "staff_review",
+        reviewReasonPresent: true,
+        downloadExpiresAt: "2026-06-17T12:00:00.000Z",
+        rawBody: "Synthetic queued contact export body must not survive job metadata",
+        reviewReason: "Synthetic review reason must not survive job metadata",
+      },
+    });
+
+    const result = await processOpenPracticeJob({
+      queueName: "reports",
+      jobName: "contact_history_export",
+      data: {
+        firmId: "firm-west-legal",
+        resourceType: "contact_history_export",
+        resourceId: "contact-history-export-worker-test",
+        metadata: {
+          reportType: "contact_history_export",
+          reportScope: "contact",
+          contactId: "contact-river",
+          requestedByUserId: "user-admin",
+          purpose: "staff_review",
+          reviewReasonPresent: true,
+          downloadExpiresAt: "2026-06-17T12:00:00.000Z",
+          rawBody: "Synthetic queued contact export body must not survive job metadata",
+          reviewReason: "Synthetic review reason must not survive job metadata",
+        },
+      },
+      jobLifecycleId: "job-contact-history-export-worker-test",
+      attemptsMade: 0,
+      maxAttempts: 2,
+      repository,
+      s3: {} as never,
+      ocrProvider: {} as never,
+      mailSender: {} as never,
+      inboundEmailParser: {} as never,
+    });
+
+    expect(result).toMatchObject({
+      status: "completed",
+      metadata: {
+        firmId: "firm-west-legal",
+        resourceType: "contact_history_export",
+        resourceId: "contact-history-export-worker-test",
+        reportType: "contact_history_export",
+        reportScope: "contact",
+        contactId: "contact-river",
+        requestedByUserId: "user-admin",
+        purpose: "staff_review",
+        reviewReasonPresent: true,
+        generatedCategoryCount: 9,
+        timelineEntryCount: expect.any(Number),
+        matterAssociationCount: expect.any(Number),
+        portalGrantCount: expect.any(Number),
+        conflictSummaryCount: expect.any(Number),
+        retentionPosture: "queued_regenerated_download_no_retained_export_body",
+        legalHoldPosture: "respects_existing_matter_visibility_no_hold_override",
+        privacyPosture: "redacted_authorized_projection_only",
+        storedBody: false,
+        retainedExportArtifact: false,
+        deletionAutomation: false,
+        retentionDeadline: false,
+        legalHoldOverride: false,
+        redactedAuthorizedProjection: true,
+        exportBodyStoredInJobMetadata: false,
+        contactExportStatus: "completed",
+      },
+    });
+    const [job] = await repository.listJobLifecycleRecords("firm-west-legal", {
+      queueName: "reports",
+    });
+    expect(job).toMatchObject({
+      id: "job-contact-history-export-worker-test",
+      status: "completed",
+      metadata: expect.objectContaining({
+        reportType: "contact_history_export",
+        contactId: "contact-river",
+        generatedCategoryCount: 9,
+        contactExportStatus: "completed",
+      }),
+    });
+    const serializedJob = JSON.stringify(job);
+    expect(serializedJob).not.toContain("Synthetic queued contact export body");
+    expect(serializedJob).not.toContain("Synthetic review reason");
+    expect(serializedJob).not.toContain("Synthetic private");
+    expect(job.metadata).not.toHaveProperty("rawBody");
+    expect(job.metadata).not.toHaveProperty("reviewReason");
+  });
+
+  it("skips contact-history export jobs when the requester is missing or no longer authorized", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createJobLifecycleRecord({
+      id: "job-contact-history-export-missing-requester",
+      firmId: "firm-west-legal",
+      queueName: "reports",
+      jobName: "contact_history_export",
+      status: "queued",
+      targetResourceType: "contact_history_export",
+      targetResourceId: "contact-history-export-missing-requester",
+      attemptsMade: 0,
+      maxAttempts: 2,
+      queuedAt: "2026-06-16T12:00:00.000Z",
+      metadata: {
+        reportType: "contact_history_export",
+        reportScope: "contact",
+        contactId: "contact-river",
+        requestedByUserId: "user-missing",
+        purpose: "staff_review",
+        reviewReasonPresent: true,
+        downloadExpiresAt: "2026-06-17T12:00:00.000Z",
+      },
+    });
+
+    const result = await processOpenPracticeJob({
+      queueName: "reports",
+      jobName: "contact_history_export",
+      data: {
+        firmId: "firm-west-legal",
+        resourceType: "contact_history_export",
+        resourceId: "contact-history-export-missing-requester",
+        metadata: {
+          reportType: "contact_history_export",
+          reportScope: "contact",
+          contactId: "contact-river",
+          requestedByUserId: "user-missing",
+          purpose: "staff_review",
+          reviewReasonPresent: true,
+          downloadExpiresAt: "2026-06-17T12:00:00.000Z",
+        },
+      },
+      jobLifecycleId: "job-contact-history-export-missing-requester",
+      attemptsMade: 0,
+      maxAttempts: 2,
+      repository,
+      s3: {} as never,
+      ocrProvider: {} as never,
+      mailSender: {} as never,
+      inboundEmailParser: {} as never,
+    });
+
+    expect(result).toMatchObject({
+      status: "skipped",
+      reason: "Contact-history export requester is no longer authorized",
+      metadata: {
+        resourceType: "contact_history_export",
+        contactId: "contact-river",
+        requestedByUserId: "user-missing",
+        contactExportStatus: "requester_not_authorized",
+      },
+    });
+    const [job] = await repository.listJobLifecycleRecords("firm-west-legal", {
+      queueName: "reports",
+    });
+    expect(job).toMatchObject({
+      status: "skipped",
+      metadata: expect.objectContaining({
+        contactId: "contact-river",
+        contactExportStatus: "requester_not_authorized",
+      }),
+    });
+
+    const changedAccessRepository = new InMemoryOpenPracticeRepository();
+    await changedAccessRepository.createJobLifecycleRecord({
+      id: "job-contact-history-export-changed-requester",
+      firmId: "firm-west-legal",
+      queueName: "reports",
+      jobName: "contact_history_export",
+      status: "queued",
+      targetResourceType: "contact_history_export",
+      targetResourceId: "contact-history-export-changed-requester",
+      attemptsMade: 0,
+      maxAttempts: 2,
+      queuedAt: "2026-06-16T12:00:00.000Z",
+      metadata: {
+        reportType: "contact_history_export",
+        reportScope: "contact",
+        contactId: "contact-river",
+        requestedByUserId: "user-staff",
+        purpose: "staff_review",
+        reviewReasonPresent: true,
+        downloadExpiresAt: "2026-06-17T12:00:00.000Z",
+      },
+    });
+
+    const changedAccessResult = await processOpenPracticeJob({
+      queueName: "reports",
+      jobName: "contact_history_export",
+      data: {
+        firmId: "firm-west-legal",
+        resourceType: "contact_history_export",
+        resourceId: "contact-history-export-changed-requester",
+        metadata: {
+          reportType: "contact_history_export",
+          reportScope: "contact",
+          contactId: "contact-river",
+          requestedByUserId: "user-staff",
+          purpose: "staff_review",
+          reviewReasonPresent: true,
+          downloadExpiresAt: "2026-06-17T12:00:00.000Z",
+        },
+      },
+      jobLifecycleId: "job-contact-history-export-changed-requester",
+      attemptsMade: 0,
+      maxAttempts: 2,
+      repository: changedAccessRepository,
+      s3: {} as never,
+      ocrProvider: {} as never,
+      mailSender: {} as never,
+      inboundEmailParser: {} as never,
+    });
+
+    expect(changedAccessResult).toMatchObject({
+      status: "skipped",
+      reason: "Contact-history export requester is no longer authorized",
+      metadata: {
+        resourceType: "contact_history_export",
+        contactId: "contact-river",
+        requestedByUserId: "user-staff",
+        contactExportStatus: "requester_not_authorized",
+      },
+    });
+  });
+
   it("runs OCR jobs from document storage and completes lifecycle records", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const requestedObjects: string[] = [];

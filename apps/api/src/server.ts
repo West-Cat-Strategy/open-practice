@@ -593,7 +593,10 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
   });
   registerSessionRoutes(server);
   registerMatterRoutes(server, { repository: options.repository });
-  registerContactRoutes(server, { repository: options.repository });
+  registerContactRoutes(server, {
+    repository: options.repository,
+    reportJobQueue: options.reportJobQueue,
+  });
   registerConnectorRoutes(server, {
     repository: options.repository,
     connectorJobQueue: options.connectorJobQueue,

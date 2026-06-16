@@ -868,7 +868,7 @@ export function ContactsSection({
                       type="button"
                     >
                       <Download size={16} aria-hidden="true" />
-                      Export JSON
+                      Queue export
                     </button>
                   </div>
                   {contactHistoryExportSummary ? (
