@@ -54,6 +54,46 @@ type InboundEmailMatterDraft = {
   automaticMatterCreation: false;
   bodyRedacted: true;
   metadataRedacted: true;
+  reviewCues?: InboundEmailMatterDraftReviewCues;
+};
+
+type InboundEmailMatterDraftReviewCues = {
+  duplicateCandidates: Array<{
+    contactId: string;
+    displayName: string;
+    kind: "person" | "organization";
+    status: "prospective" | "active" | "inactive" | "archived" | "former" | "restricted";
+    matchedFields: Array<
+      "name" | "alias" | "former_name" | "identifier" | "email" | "phone" | "website" | "address"
+    >;
+    matchCount: number;
+    visibleSharedMatterCount: number;
+    severity: "blocker" | "review" | "info";
+  }>;
+  existingMatterCandidates: Array<{
+    matterId: string;
+    number: string;
+    title: string;
+    status: string;
+    practiceArea: string;
+    jurisdiction: "BC" | "ON" | "CANADA" | "OTHER";
+    matchReasons: string[];
+  }>;
+  checklist: Array<{
+    key: string;
+    label: string;
+    description: string;
+    state: "complete" | "needs_attention" | "review";
+    count?: number;
+    source: "draft" | "existing_matter";
+    matterId?: string;
+  }>;
+  boundary: {
+    automaticMatterCreation: false;
+    bodyRedacted: true;
+    metadataRedacted: true;
+    matterPermissionsExpanded: false;
+  };
 };
 
 export function assertInboundEmailAccess(
@@ -127,6 +167,180 @@ export function serializeStaffTriageDetail(value: unknown): Record<string, unkno
   return Object.keys(output).length > 0 ? output : undefined;
 }
 
+function safeNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
+}
+
+function safeStringArray(value: unknown, limit = 6): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string").slice(0, limit)
+    : [];
+}
+
+const duplicateMatchedFields = new Set([
+  "name",
+  "alias",
+  "former_name",
+  "identifier",
+  "email",
+  "phone",
+  "website",
+  "address",
+]);
+const contactStatuses = new Set([
+  "prospective",
+  "active",
+  "inactive",
+  "archived",
+  "former",
+  "restricted",
+]);
+const reviewSeverities = new Set(["blocker", "review", "info"]);
+const checklistStates = new Set(["complete", "needs_attention", "review"]);
+
+function serializeInboundEmailMatterDraftReviewCues(
+  value: unknown,
+): InboundEmailMatterDraftReviewCues | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const input = value as Record<string, unknown>;
+  const duplicateCandidates = Array.isArray(input.duplicateCandidates)
+    ? input.duplicateCandidates
+        .map((candidate) => {
+          if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+            return undefined;
+          }
+          const item = candidate as Record<string, unknown>;
+          const matchedFields = safeStringArray(item.matchedFields).filter((field) =>
+            duplicateMatchedFields.has(field),
+          ) as InboundEmailMatterDraftReviewCues["duplicateCandidates"][number]["matchedFields"];
+          const matchCount = safeNumber(item.matchCount);
+          const visibleSharedMatterCount = safeNumber(item.visibleSharedMatterCount);
+          if (
+            typeof item.contactId !== "string" ||
+            typeof item.displayName !== "string" ||
+            !["person", "organization"].includes(String(item.kind)) ||
+            !contactStatuses.has(String(item.status)) ||
+            matchedFields.length === 0 ||
+            matchCount === undefined ||
+            visibleSharedMatterCount === undefined ||
+            !reviewSeverities.has(String(item.severity))
+          ) {
+            return undefined;
+          }
+          return {
+            contactId: item.contactId,
+            displayName: item.displayName,
+            kind: item.kind as "person" | "organization",
+            status: item.status as
+              | "prospective"
+              | "active"
+              | "inactive"
+              | "archived"
+              | "former"
+              | "restricted",
+            matchedFields,
+            matchCount,
+            visibleSharedMatterCount,
+            severity: item.severity as "blocker" | "review" | "info",
+          };
+        })
+        .filter(
+          (
+            candidate,
+          ): candidate is InboundEmailMatterDraftReviewCues["duplicateCandidates"][number] =>
+            Boolean(candidate),
+        )
+        .slice(0, 5)
+    : [];
+
+  const existingMatterCandidates = Array.isArray(input.existingMatterCandidates)
+    ? input.existingMatterCandidates
+        .map((candidate) => {
+          if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+            return undefined;
+          }
+          const item = candidate as Record<string, unknown>;
+          if (
+            typeof item.matterId !== "string" ||
+            typeof item.number !== "string" ||
+            typeof item.title !== "string" ||
+            typeof item.status !== "string" ||
+            typeof item.practiceArea !== "string" ||
+            !["BC", "ON", "CANADA", "OTHER"].includes(String(item.jurisdiction))
+          ) {
+            return undefined;
+          }
+          return {
+            matterId: item.matterId,
+            number: item.number,
+            title: item.title,
+            status: item.status,
+            practiceArea: item.practiceArea,
+            jurisdiction: item.jurisdiction as "BC" | "ON" | "CANADA" | "OTHER",
+            matchReasons: safeStringArray(item.matchReasons),
+          };
+        })
+        .filter(
+          (
+            candidate,
+          ): candidate is InboundEmailMatterDraftReviewCues["existingMatterCandidates"][number] =>
+            Boolean(candidate),
+        )
+        .slice(0, 4)
+    : [];
+
+  const checklist = Array.isArray(input.checklist)
+    ? input.checklist
+        .map((cue) => {
+          if (!cue || typeof cue !== "object" || Array.isArray(cue)) return undefined;
+          const item = cue as Record<string, unknown>;
+          if (
+            typeof item.key !== "string" ||
+            typeof item.label !== "string" ||
+            typeof item.description !== "string" ||
+            !checklistStates.has(String(item.state)) ||
+            !["draft", "existing_matter"].includes(String(item.source))
+          ) {
+            return undefined;
+          }
+          const count = safeNumber(item.count);
+          return {
+            key: item.key,
+            label: item.label,
+            description: item.description,
+            state: item.state as "complete" | "needs_attention" | "review",
+            ...(count === undefined ? {} : { count }),
+            source: item.source as "draft" | "existing_matter",
+            ...(typeof item.matterId === "string" ? { matterId: item.matterId } : {}),
+          };
+        })
+        .filter((cue): cue is InboundEmailMatterDraftReviewCues["checklist"][number] =>
+          Boolean(cue),
+        )
+        .slice(0, 10)
+    : [];
+
+  if (
+    duplicateCandidates.length === 0 &&
+    existingMatterCandidates.length === 0 &&
+    checklist.length === 0
+  ) {
+    return undefined;
+  }
+
+  return {
+    duplicateCandidates,
+    existingMatterCandidates,
+    checklist,
+    boundary: {
+      automaticMatterCreation: false,
+      bodyRedacted: true,
+      metadataRedacted: true,
+      matterPermissionsExpanded: false,
+    },
+  };
+}
+
 export function serializeInboundEmailMatterDraft(
   value: unknown,
 ): InboundEmailMatterDraft | undefined {
@@ -148,6 +362,7 @@ export function serializeInboundEmailMatterDraft(
     !Array.isArray(proposedMatter.client)
       ? (proposedMatter.client as Record<string, unknown>)
       : {};
+  const reviewCues = serializeInboundEmailMatterDraftReviewCues(input.reviewCues);
   if (
     input.status !== "drafted" ||
     typeof input.createdAt !== "string" ||
@@ -191,6 +406,7 @@ export function serializeInboundEmailMatterDraft(
     automaticMatterCreation: false,
     bodyRedacted: true,
     metadataRedacted: true,
+    ...(reviewCues ? { reviewCues } : {}),
   };
 }
 

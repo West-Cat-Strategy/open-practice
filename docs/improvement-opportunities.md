@@ -164,10 +164,12 @@ surface.
 - **Inbound email to matter draft**
   - **Shipped slice:** 2026-06-16 staff-confirmed review-only matter drafts can be prepared from
     unscoped inbound email using safe source cues, proposed matter fields, and a staff-authored
-    redacted body summary.
+    redacted body summary. The review surface now also carries safe duplicate-contact,
+    existing-visible-matter, and checklist cues from authorized projections.
   - **Shipped boundary:** The slice does not auto-create matters, change provider ingestion, persist
     raw client text in job metadata, expose raw body/object-storage/provider metadata, or widen
-    matter permissions.
+    matter permissions. Duplicate and existing-matter cues are reviewer-facing only and do not add
+    merge automation, matter routing, or task/checklist persistence.
   - **References:** `jlawyerorg__j-lawyer-org`.
   - **Reuse and snippets:** AGPL/reference-only; no direct snippets.
 

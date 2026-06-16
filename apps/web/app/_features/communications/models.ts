@@ -41,6 +41,46 @@ export interface InboundEmailMatterDraft {
   automaticMatterCreation: false;
   bodyRedacted: true;
   metadataRedacted: true;
+  reviewCues?: InboundEmailMatterDraftReviewCues;
+}
+
+export interface InboundEmailMatterDraftReviewCues {
+  duplicateCandidates: Array<{
+    contactId: string;
+    displayName: string;
+    kind: "person" | "organization";
+    status: "prospective" | "active" | "inactive" | "archived" | "former" | "restricted";
+    matchedFields: Array<
+      "name" | "alias" | "former_name" | "identifier" | "email" | "phone" | "website" | "address"
+    >;
+    matchCount: number;
+    visibleSharedMatterCount: number;
+    severity: "blocker" | "review" | "info";
+  }>;
+  existingMatterCandidates: Array<{
+    matterId: string;
+    number: string;
+    title: string;
+    status: string;
+    practiceArea: string;
+    jurisdiction: "BC" | "ON" | "CANADA" | "OTHER";
+    matchReasons: string[];
+  }>;
+  checklist: Array<{
+    key: string;
+    label: string;
+    description: string;
+    state: "complete" | "needs_attention" | "review";
+    count?: number;
+    source: "draft" | "existing_matter";
+    matterId?: string;
+  }>;
+  boundary: {
+    automaticMatterCreation: false;
+    bodyRedacted: true;
+    metadataRedacted: true;
+    matterPermissionsExpanded: false;
+  };
 }
 
 export interface UnscopedInboundEmailReviewMessage {

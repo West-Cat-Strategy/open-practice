@@ -22,6 +22,7 @@ import { DashboardApiError } from "./api-client";
 import {
   dashboardUnavailableSectionCopy,
   formatPortalDocumentAccessFailure,
+  InboundEmailMatterDraftReviewCueSummary,
 } from "./dashboard-client";
 import {
   applyMatterAvailabilityToNavigation,
@@ -1514,6 +1515,47 @@ describe("dashboard client behavior", () => {
                     automaticMatterCreation: false,
                     bodyRedacted: true,
                     metadataRedacted: true,
+                    reviewCues: {
+                      duplicateCandidates: [
+                        {
+                          contactId: "contact-ada",
+                          displayName: "Ada Morgan",
+                          kind: "person",
+                          status: "active",
+                          matchedFields: ["name"],
+                          matchCount: 1,
+                          visibleSharedMatterCount: 1,
+                          severity: "review",
+                        },
+                      ],
+                      existingMatterCandidates: [
+                        {
+                          matterId: "matter-001",
+                          number: "2026-0001",
+                          title: "Morgan tenancy dispute",
+                          status: "open",
+                          practiceArea: "Residential tenancy",
+                          jurisdiction: "BC",
+                          matchReasons: ["visible client name", "practice area"],
+                        },
+                      ],
+                      checklist: [
+                        {
+                          key: "source_attachment_review",
+                          label: "Attachment review",
+                          description: "Inbound source reports attachments for staff review.",
+                          state: "review",
+                          count: 1,
+                          source: "draft",
+                        },
+                      ],
+                      boundary: {
+                        automaticMatterCreation: false,
+                        bodyRedacted: true,
+                        metadataRedacted: true,
+                        matterPermissionsExpanded: false,
+                      },
+                    },
                   },
                 },
               },
@@ -1546,6 +1588,35 @@ describe("dashboard client behavior", () => {
               automaticMatterCreation: false,
               bodyRedacted: true,
               metadataRedacted: true,
+              reviewCues: {
+                duplicateCandidates: [
+                  {
+                    contactId: "contact-ada",
+                    displayName: "Ada Morgan",
+                    matchedFields: ["name"],
+                  },
+                ],
+                existingMatterCandidates: [
+                  {
+                    matterId: "matter-001",
+                    number: "2026-0001",
+                    title: "Morgan tenancy dispute",
+                  },
+                ],
+                checklist: [
+                  {
+                    key: "source_attachment_review",
+                    label: "Attachment review",
+                    state: "review",
+                  },
+                ],
+                boundary: {
+                  automaticMatterCreation: false,
+                  bodyRedacted: true,
+                  metadataRedacted: true,
+                  matterPermissionsExpanded: false,
+                },
+              },
             },
           },
         ],
@@ -3829,6 +3900,91 @@ describe("dashboard client behavior", () => {
         redactedBodySummary: "",
       }),
     ).toBe(false);
+  });
+
+  it("renders inbound email matter draft review cues without creating a matter", () => {
+    const html = renderToStaticMarkup(
+      createElement(InboundEmailMatterDraftReviewCueSummary, {
+        draft: {
+          status: "drafted",
+          createdAt: "2026-05-05T12:15:00.000Z",
+          createdByUserId: "user-admin",
+          source: {
+            inboundMessageId: "inbound-message-unscoped",
+            providerMessageIdPresent: true,
+            receivedAt: "2026-05-05T12:00:00.000Z",
+            recipientCount: 1,
+            subjectPresent: true,
+            senderSummary: "redacted sender at example.test",
+            attachmentCount: 1,
+          },
+          redactedBodySummary: "Potential intake; private facts removed.",
+          proposedMatter: {
+            title: "Synthetic inbound matter",
+            practiceArea: "Residential tenancy",
+            jurisdiction: "BC",
+            client: {
+              kind: "person",
+              displayName: "Synthetic Client",
+            },
+          },
+          automaticMatterCreation: false,
+          bodyRedacted: true,
+          metadataRedacted: true,
+          reviewCues: {
+            duplicateCandidates: [
+              {
+                contactId: "contact-ada",
+                displayName: "Ada Morgan",
+                kind: "person",
+                status: "active",
+                matchedFields: ["name"],
+                matchCount: 1,
+                visibleSharedMatterCount: 1,
+                severity: "review",
+              },
+            ],
+            existingMatterCandidates: [
+              {
+                matterId: "matter-001",
+                number: "2026-0001",
+                title: "Morgan tenancy dispute",
+                status: "open",
+                practiceArea: "Residential tenancy",
+                jurisdiction: "BC",
+                matchReasons: ["visible client name", "practice area"],
+              },
+            ],
+            checklist: [
+              {
+                key: "source_attachment_review",
+                label: "Attachment review",
+                description: "Inbound source reports attachments for staff review.",
+                state: "review",
+                count: 1,
+                source: "draft",
+              },
+            ],
+            boundary: {
+              automaticMatterCreation: false,
+              bodyRedacted: true,
+              metadataRedacted: true,
+              matterPermissionsExpanded: false,
+            },
+          },
+        },
+      }),
+    );
+
+    expect(html).toContain("Duplicate review");
+    expect(html).toContain("Ada Morgan");
+    expect(html).toContain("Existing matters");
+    expect(html).toContain("2026-0001 Morgan tenancy dispute");
+    expect(html).toContain("Checklist");
+    expect(html).toContain("Attachment review: review");
+    expect(html).toContain("review only");
+    expect(html).not.toContain("Create matter");
+    expect(html).not.toContain("private@example.test");
   });
 
   it("labels dashboard lane freshness without exposing response bodies", () => {

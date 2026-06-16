@@ -529,6 +529,58 @@ type InboundMatterDraftResponse = {
 
 const dashboardLaneStaleAfterMs = 5 * 60 * 1000;
 
+export function InboundEmailMatterDraftReviewCueSummary({
+  draft,
+}: {
+  draft?: InboundEmailMatterDraft;
+}) {
+  const cues = draft?.reviewCues;
+  if (!cues) return null;
+  const duplicateNames = cues.duplicateCandidates
+    .slice(0, 2)
+    .map((candidate) => candidate.displayName)
+    .join(", ");
+  const existingMatterLabels = cues.existingMatterCandidates
+    .slice(0, 2)
+    .map((candidate) => `${candidate.number} ${candidate.title}`)
+    .join(", ");
+  const checklistLabels = cues.checklist
+    .slice(0, 3)
+    .map((cue) => `${cue.label}: ${cue.state.replaceAll("_", " ")}`)
+    .join(", ");
+  return (
+    <div className="detail-grid compact-detail-grid">
+      <span>
+        <strong>Duplicate review</strong>
+        <small>
+          {cues.duplicateCandidates.length} candidate
+          {cues.duplicateCandidates.length === 1 ? "" : "s"}
+          {duplicateNames ? ` · ${duplicateNames}` : ""}
+        </small>
+      </span>
+      <span>
+        <strong>Existing matters</strong>
+        <small>
+          {cues.existingMatterCandidates.length} visible candidate
+          {cues.existingMatterCandidates.length === 1 ? "" : "s"}
+          {existingMatterLabels ? ` · ${existingMatterLabels}` : ""}
+        </small>
+      </span>
+      <span>
+        <strong>Checklist</strong>
+        <small>
+          {cues.checklist.length} cue{cues.checklist.length === 1 ? "" : "s"}
+          {checklistLabels ? ` · ${checklistLabels}` : ""}
+        </small>
+      </span>
+      <span>
+        <strong>Boundary</strong>
+        <small>review only · permissions unchanged · body and metadata redacted</small>
+      </span>
+    </div>
+  );
+}
+
 function portalDocumentAccessKey(matterId: string, contactId: string): string {
   return `${matterId}:${contactId}`;
 }
@@ -732,6 +784,7 @@ function UnscopedInboundEmailMatterDraftPanel({
                   {message.subjectPresent ? "subject present" : "no subject"} · body redacted
                 </small>
               </span>
+              <InboundEmailMatterDraftReviewCueSummary draft={message.matterDraft} />
               <div className="detail-grid compact-detail-grid">
                 <label>
                   <span className="field-label">Matter title</span>

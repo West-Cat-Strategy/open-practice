@@ -109,6 +109,50 @@ function inboundMessage(
         automaticMatterCreation: false,
         bodyRedacted: true,
         metadataRedacted: true,
+        reviewCues: {
+          duplicateCandidates: [
+            {
+              contactId: "contact-ada",
+              displayName: "Ada Morgan",
+              kind: "person",
+              status: "active",
+              matchedFields: ["name"],
+              matchCount: 1,
+              visibleSharedMatterCount: 1,
+              severity: "review",
+              matchedValue: "client@example.test",
+            },
+          ],
+          existingMatterCandidates: [
+            {
+              matterId: "matter-001",
+              number: "2026-0001",
+              title: "Morgan tenancy dispute",
+              status: "open",
+              practiceArea: "Residential tenancy",
+              jurisdiction: "BC",
+              matchReasons: ["visible client name", "practice area"],
+              providerMetadata: "provider-private-id",
+            },
+          ],
+          checklist: [
+            {
+              key: "source_attachment_review",
+              label: "Attachment review",
+              description: "Inbound source reports attachments for staff review.",
+              state: "review",
+              count: 1,
+              source: "draft",
+              rawStorageKey: "inbound/private-key",
+            },
+          ],
+          boundary: {
+            automaticMatterCreation: false,
+            bodyRedacted: true,
+            metadataRedacted: true,
+            matterPermissionsExpanded: false,
+          },
+        },
       },
       providerId: "provider-private-id",
     },
@@ -330,6 +374,47 @@ describe("communications inbox routes", () => {
             automaticMatterCreation: false,
             bodyRedacted: true,
             metadataRedacted: true,
+            reviewCues: {
+              duplicateCandidates: [
+                {
+                  contactId: "contact-ada",
+                  displayName: "Ada Morgan",
+                  kind: "person",
+                  status: "active",
+                  matchedFields: ["name"],
+                  matchCount: 1,
+                  visibleSharedMatterCount: 1,
+                  severity: "review",
+                },
+              ],
+              existingMatterCandidates: [
+                {
+                  matterId: "matter-001",
+                  number: "2026-0001",
+                  title: "Morgan tenancy dispute",
+                  status: "open",
+                  practiceArea: "Residential tenancy",
+                  jurisdiction: "BC",
+                  matchReasons: ["visible client name", "practice area"],
+                },
+              ],
+              checklist: [
+                {
+                  key: "source_attachment_review",
+                  label: "Attachment review",
+                  description: "Inbound source reports attachments for staff review.",
+                  state: "review",
+                  count: 1,
+                  source: "draft",
+                },
+              ],
+              boundary: {
+                automaticMatterCreation: false,
+                bodyRedacted: true,
+                metadataRedacted: true,
+                matterPermissionsExpanded: false,
+              },
+            },
           },
           triage: {
             status: "needs_review",
@@ -450,6 +535,8 @@ describe("communications inbox routes", () => {
     expect(serialized).not.toContain("Private client update draft metadata");
     expect(serialized).not.toContain("Private ordinary client message body");
     expect(serialized).not.toContain("provider-private-id");
+    expect(serialized).not.toContain("matchedValue");
+    expect(serialized).not.toContain("inbound/private-key");
   });
 
   it("normalizes SMS follow-up metadata into a redacted text placeholder", async () => {
