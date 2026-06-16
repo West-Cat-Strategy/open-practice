@@ -1,8 +1,13 @@
 # Full CRM Contacts Progress
 
+## Checkpoint: Mainline merge
+
+- Current checkpoint: Full CRM Contacts was merged to `main` at `c34d578e` and is now mainline behavior.
+- Validation proof: `docs/validation/OP_FULL_CRM_CONTACTS_PROOF_2026-06-15.md` records the focused and broad validation evidence for the shipped CRM work.
+
 ## Checkpoint: Branch setup and context review
 
-- Current checkpoint: implementation started on `feature/full-crm-contacts`.
+- Historical checkpoint: implementation started on `feature/full-crm-contacts`.
 - Sync status: `git status --short --branch` was clean on `main`, `git fetch origin` completed, and `feature/full-crm-contacts` was created from `origin/main` at `894ee5f4`.
 - Files and areas reviewed: `AGENTS.md`, root package scripts/workspace config, docs index, architecture, API/state-machine, planning, live workboard, improvement backlog, testing, validation index, development guides, OSS/reuse/license policy, reference repo guide/lock, OP-T130 contact graph proof, OP-T156 client portal proof, contacts/conflicts/portal/matter/auth/audit/domain/database/API/web source, and existing focused tests.
 - Missing required guidance: root `README.md` does not exist; `docs/README.md` is the canonical first-stop guide.
@@ -136,7 +141,7 @@
   - API dossier test initially expected no conflict history for Ada; fixed it to assert the new
     authorization-filtered visible conflict-history projection.
   - `pnpm format:check` initially failed on changed files; fixed with Prettier over the exact
-    branch-owned path set.
+    changed path set.
   - `pnpm policy:check` initially failed because new contact CRM routes were missing from
     `scripts/route-authorization-manifest.mjs`; fixed with explicit route entries.
   - `pnpm lint` initially exposed stale generated workspace ESLint shims in ignored `node_modules`,

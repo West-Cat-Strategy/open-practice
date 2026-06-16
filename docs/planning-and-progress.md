@@ -10,8 +10,8 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 | Snapshot              | Value                                                                |
 | --------------------- | -------------------------------------------------------------------- |
-| Current focus         | Full CRM Contacts is implemented and validated in branch.            |
-| Next recommended pick | Merge handoff for `feature/full-crm-contacts`.                       |
+| Current focus         | Full CRM Contacts is implemented and validated on mainline.          |
+| Next recommended pick | Pick the next candidate from the durable roadmap/backlog.            |
 | Ready rows            | 0                                                                    |
 | Candidate rows        | 0                                                                    |
 | In progress rows      | 0                                                                    |
@@ -36,13 +36,13 @@ actions, public routes, automatic matter creation, campaign/SMS/bulk delivery, a
 or automatic client contact was added. Proof is recorded in
 [OP-T157 staff submissions operations proof](validation/OP-T157_STAFF_SUBMISSIONS_OPERATIONS_PROOF_2026-06-15.md).
 
-The 2026-06-15 Full CRM Contacts branch expands Contacts into a legal-practice CRM while preserving
+The 2026-06-15 Full CRM Contacts mainline work expands Contacts into a legal-practice CRM while preserving
 the existing dossier, review queue, data-quality, conflict-check, matter-party, and client-portal
 grant foundations. It keeps organizations as `Contact.kind = "organization"`, uses
 `matter_parties` as the matter-contact association surface, adds reviewable contact methods,
 relationships, portal-access state, and timeline APIs, and documents clean-room reference use in
 [Full CRM contacts proof](validation/OP_FULL_CRM_CONTACTS_PROOF_2026-06-15.md). Broad validation is
-recorded in the proof for `feature/full-crm-contacts`.
+recorded in the proof for the mainline merge at `c34d578e`.
 
 The 2026-06-14 mainline merge proof for the six 2026-06-13 lanes is recorded in
 [OP mainline merge push prune proof](validation/OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-14.md).

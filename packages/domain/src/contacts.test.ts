@@ -299,14 +299,64 @@ describe("contact dossiers", () => {
     const dossiers = buildContactDossiers({
       firmId: "firm-west-legal",
       contacts: [
-        ...sampleContacts,
+        ...sampleContacts.map((contact) =>
+          contact.id === "contact-ada"
+            ? {
+                ...contact,
+                contactMethods: [
+                  {
+                    id: "method-ada-phone",
+                    type: "phone" as const,
+                    label: "mobile" as const,
+                    value: "604-555-0100",
+                    conflictCheckIncluded: true,
+                  },
+                  {
+                    id: "method-ada-service",
+                    type: "address" as const,
+                    label: "service" as const,
+                    address: {
+                      line1: "10 Synthetic Way",
+                      city: "Vancouver",
+                      province: "BC" as const,
+                      postalCode: "V6B 0A0",
+                    },
+                    conflictCheckIncluded: true,
+                  },
+                ],
+              }
+            : contact,
+        ),
         {
           id: "contact-ada-duplicate",
           firmId: "firm-west-legal",
           kind: "person",
-          displayName: "Ada M Nguyen",
-          aliases: [],
+          displayName: "Ada Morgan",
+          status: "prospective",
+          roleCategories: ["prospective_client"],
+          aliases: ["Ada M. Nguyen"],
           identifiers: [{ type: "email", value: "ada@example.test" }],
+          contactMethods: [
+            {
+              id: "method-ada-duplicate-phone",
+              type: "phone",
+              label: "mobile",
+              value: "604-555-0100",
+              conflictCheckIncluded: true,
+            },
+            {
+              id: "method-ada-duplicate-service",
+              type: "address",
+              label: "service",
+              address: {
+                line1: "10 Synthetic Way",
+                city: "Vancouver",
+                province: "BC" as const,
+                postalCode: "V6B 0A0",
+              },
+              conflictCheckIncluded: true,
+            },
+          ],
         },
       ],
       matters: sampleMatters.filter((matter) => matter.id === "matter-001"),
@@ -355,14 +405,23 @@ describe("contact dossiers", () => {
       expect.arrayContaining([
         expect.objectContaining({
           kind: "duplicate_candidate",
-          reason: "Possible duplicate contact name or alias",
+          reason: "Possible duplicate contact by address, alias, identifier, name, phone",
           relatedContactIds: ["contact-ada-duplicate"],
-        }),
-        expect.objectContaining({
-          kind: "duplicate_candidate",
-          reason: "Possible duplicate contact identifier",
-          relatedContactIds: ["contact-ada-duplicate"],
-          matchedOn: "identifier",
+          matchedOn: "name",
+          duplicateReview: {
+            candidate: {
+              contactId: "contact-ada-duplicate",
+              displayName: "Ada Morgan",
+              kind: "person",
+              status: "prospective",
+              roleCategories: ["prospective_client"],
+            },
+            matchedFields: ["address", "alias", "identifier", "name", "phone"],
+            matchCount: 9,
+            sharedVisibleMatterIds: ["matter-001"],
+            sharedVisibleMatterCount: 1,
+            reviewSeverity: "review",
+          },
         }),
         expect.objectContaining({
           kind: "protected_party_cue",

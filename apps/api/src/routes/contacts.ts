@@ -357,6 +357,7 @@ function serializeContactSummary(contact: ContactDossier["contact"]) {
 }
 
 function serializeContactDetail(dossier: ContactDossier, portalGrants: PortalGrant[] = []) {
+  const serializedDossier = serializeContactDossier(dossier);
   return {
     contact: serializeContactSummary(dossier.contact),
     matters: dossier.matters,
@@ -382,7 +383,7 @@ function serializeContactDetail(dossier: ContactDossier, portalGrants: PortalGra
     },
     crmTaxonomy: dossier.crmTaxonomy,
     conflictCues: dossier.conflictCues,
-    qualityReview: dossier.qualityReview,
+    qualityReview: serializedDossier.qualityReview,
     conflictHistory: dossier.conflictHistory,
   };
 }

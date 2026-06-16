@@ -100,6 +100,11 @@ export function filterContactDossiers(
       ...dossier.qualityReview.signals.flatMap((signal) => [
         signal.kind,
         signal.reason,
+        signal.duplicateReview?.candidate.displayName ?? "",
+        signal.duplicateReview?.candidate.kind ?? "",
+        signal.duplicateReview?.candidate.status ?? "",
+        ...(signal.duplicateReview?.candidate.roleCategories ?? []),
+        ...(signal.duplicateReview?.matchedFields ?? []),
         signal.sourceRecordId ?? "",
         signal.changedAt ?? "",
       ]),
@@ -148,6 +153,29 @@ export function contactReviewQueueRiskClass(item: ContactReviewQueueItem): "risk
 
 export function formatContactReviewSignalKind(kind: string): string {
   return kind.replaceAll("_", " ");
+}
+
+export function summarizeContactDuplicateReviewCue(
+  signal: ContactDossier["qualityReview"]["signals"][number],
+): string | undefined {
+  if (!signal.duplicateReview) return undefined;
+  const fields = signal.duplicateReview.matchedFields
+    .map((field) => field.replaceAll("_", " "))
+    .join(", ");
+  const sharedMatterCopy =
+    signal.duplicateReview.sharedVisibleMatterCount === 1
+      ? "1 shared visible matter"
+      : `${signal.duplicateReview.sharedVisibleMatterCount} shared visible matters`;
+  return [
+    signal.duplicateReview.candidate.displayName,
+    signal.duplicateReview.candidate.kind,
+    signal.duplicateReview.candidate.status,
+    fields,
+    `${signal.duplicateReview.matchCount} safe match${
+      signal.duplicateReview.matchCount === 1 ? "" : "es"
+    }`,
+    sharedMatterCopy,
+  ].join(" · ");
 }
 
 export type ContactDataQualityResolutionPayload = {

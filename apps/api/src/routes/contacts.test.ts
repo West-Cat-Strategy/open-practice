@@ -448,6 +448,22 @@ describe("contact routes", () => {
           auditSafe: true,
           signals: expect.arrayContaining([
             expect.objectContaining({
+              kind: "duplicate_candidate",
+              matchedValueRedacted: true,
+              duplicateReview: {
+                candidate: expect.objectContaining({
+                  contactId: "contact-river",
+                  displayName: "River City Rentals Inc.",
+                  kind: "organization",
+                }),
+                matchedFields: ["identifier"],
+                matchCount: 1,
+                sharedVisibleMatterIds: ["matter-001"],
+                sharedVisibleMatterCount: 1,
+                reviewSeverity: "review",
+              },
+            }),
+            expect.objectContaining({
               kind: "conflict_revalidation",
               sourceRecordId: "proposal-contact-name",
             }),
@@ -461,6 +477,8 @@ describe("contact routes", () => {
     expect(serialized).not.toContain("sin:");
     expect(serialized).not.toContain("ada@example.test");
     expect(serialized).not.toContain('"matchedValue":');
+    expect(serialized).toContain('"duplicateReview"');
+    expect(serialized).toContain('"matchedFields":["identifier"]');
   });
 
   it("records contact data-quality decisions for visible cues without mutating contact or conflict state", async () => {
