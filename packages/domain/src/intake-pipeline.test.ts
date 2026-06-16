@@ -96,6 +96,8 @@ describe("intake pipeline projection", () => {
           updatedByUserId: "user-admin",
         },
       ],
+      publicConsultationReviewOwnerUserId: "user-review-owner",
+      assignedMatterIds: ["matter-001"],
     });
 
     expect(snapshot.summary).toMatchObject({
@@ -149,6 +151,75 @@ describe("intake pipeline projection", () => {
           automaticClientContact: false,
         },
       },
+    });
+    expect(snapshot.submissionsOperations).toMatchObject({
+      auditSafe: true,
+      summary: {
+        totalSubmissions: 3,
+        pendingStaffReviewCount: 0,
+        conflictReviewCount: 1,
+        waitingOnClientCount: 0,
+        scheduledConsultationCount: 0,
+        convertedCount: 2,
+        closedCount: 0,
+        assignedCount: 3,
+        unassignedCount: 0,
+        highPriorityCount: 1,
+        defaultedSourceCount: 1,
+        byStatus: {
+          pending_staff_review: 0,
+          conflict_review: 1,
+          waiting_on_client: 0,
+          scheduled_consultation: 0,
+          converted: 2,
+          closed: 0,
+        },
+        byAssignmentPosture: {
+          review_owner_assigned: 2,
+          matter_assigned: 1,
+          firm_queue: 0,
+          unassigned: 0,
+        },
+        automationBoundary: {
+          automaticMatterCreation: false,
+          campaignAutomation: false,
+          smsDelivery: false,
+          bulkDelivery: false,
+          adSpendIngestion: false,
+          automaticClientContact: false,
+        },
+      },
+    });
+    expect(snapshot.submissionsOperations.rows.map((row) => row.id)).toEqual([
+      "public-consultation:public-intake-001",
+      "intake-session:intake-session-001",
+      "public-consultation:public-intake-converted",
+    ]);
+    expect(snapshot.submissionsOperations.rows[0]).toMatchObject({
+      status: "conflict_review",
+      assignmentPosture: "review_owner_assigned",
+      followUpAction: "review_conflict",
+      requestLinkCount: 1,
+      requestLinkStatuses: expect.objectContaining({ pending: 1 }),
+      appointmentCount: 0,
+      appointmentStatuses: { confirmed: 0, tentative: 0, cancelled: 0 },
+      exportSafeSummary: expect.stringContaining("conflict review"),
+      automationBoundary: {
+        automaticMatterCreation: false,
+        campaignAutomation: false,
+        smsDelivery: false,
+        bulkDelivery: false,
+        adSpendIngestion: false,
+        automaticClientContact: false,
+      },
+      auditSafe: true,
+    });
+    expect(snapshot.submissionsOperations.rows[1]).toMatchObject({
+      status: "converted",
+      assignmentPosture: "matter_assigned",
+      requestLinkStatuses: expect.objectContaining({ available: 1, submitted: 1 }),
+      appointmentStatuses: { confirmed: 1, tentative: 0, cancelled: 0 },
+      conversionCount: 1,
     });
 
     const publicLead = snapshot.leads.find(
@@ -248,6 +319,7 @@ describe("intake pipeline projection", () => {
     expect(serialized).not.toContain("https://intake.example.test/session");
     expect(serialized).not.toContain("raw-token-hash");
     expect(serialized).not.toContain("Synthetic consultation appointment");
+    expect(serialized).not.toContain("user-review-owner@example.test");
     expect(serialized).not.toContain('automaticMatterCreation":true');
     expect(serialized).not.toContain('campaignAutomation":true');
     expect(serialized).not.toContain('smsDelivery":true');

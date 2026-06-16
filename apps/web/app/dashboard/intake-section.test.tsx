@@ -3,7 +3,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import { blankIntakeFormDefinition } from "../intake-forms-dashboard";
-import { emptyIntakePipelineSummary } from "../intake-pipeline-dashboard";
+import {
+  emptyIntakePipelineSummary,
+  emptySubmissionsOperations,
+} from "../intake-pipeline-dashboard";
 import type {
   IntakeFormsDashboardResponse,
   IntakePipelineDashboardResponse,
@@ -207,6 +210,61 @@ const pipelineSummary = {
   },
 };
 
+const submissionsOperations = {
+  ...emptySubmissionsOperations(),
+  summary: {
+    ...emptySubmissionsOperations().summary,
+    totalSubmissions: 1,
+    pendingStaffReviewCount: 1,
+    assignedCount: 1,
+    highPriorityCount: 1,
+    byStatus: {
+      ...emptySubmissionsOperations().summary.byStatus,
+      pending_staff_review: 1,
+    },
+    byAssignmentPosture: {
+      ...emptySubmissionsOperations().summary.byAssignmentPosture,
+      review_owner_assigned: 1,
+    },
+  },
+  rows: [
+    {
+      id: syntheticLead.id,
+      sourceType: syntheticLead.sourceType,
+      sourceLabel: syntheticLead.sourceAttribution.label,
+      displayName: syntheticLead.displayName,
+      matterId: syntheticLead.matterId,
+      status: "pending_staff_review" as const,
+      assignmentPosture: "review_owner_assigned" as const,
+      leadStatus: syntheticLead.leadStatus,
+      conflictPosture: syntheticLead.conflictReview.posture,
+      opposingPartyCount: syntheticLead.conflictReview.opposingPartyCount,
+      followUpAction: syntheticLead.followUpReview.action,
+      followUpPosture: syntheticLead.followUpReview.posture,
+      followUpPriority: syntheticLead.followUpReview.priority,
+      lastActivityAt: syntheticLead.followUpReview.lastActivityAt,
+      sourceQuality: syntheticLead.followUpReview.sourceQuality,
+      requestLinkCount: 1,
+      requestLinkStatuses: {
+        pending: 1,
+        active: 0,
+        submitted: 0,
+        reviewed: 0,
+        revoked: 0,
+        available: 0,
+      },
+      appointmentCount: 0,
+      appointmentStatuses: { confirmed: 0, tentative: 0, cancelled: 0 },
+      conversionCount: 0,
+      exportSafeSummary:
+        "Synthetic Intake Lead pending staff review · Website consultation form source · high priority · review owner assigned · 1 request links · 0 appointments · 0 conversions",
+      automationBoundary: syntheticLead.followUpReview.automationBoundary,
+      auditSafe: true as const,
+    },
+  ],
+  auditSafe: true as const,
+};
+
 const syntheticPublicConsultationIntake: PublicConsultationIntake = {
   id: "public_intake_synthetic",
   firmId: "firm_synthetic",
@@ -285,6 +343,7 @@ function baseProps(overrides: Partial<IntakeSectionProps> = {}): IntakeSectionPr
     intakePipeline: {
       leads: [syntheticLead],
       summary: pipelineSummary,
+      submissionsOperations,
       status: "available",
     },
     intakePreviewAnswers: { client_display_name: "Synthetic Client" },
@@ -368,6 +427,12 @@ describe("IntakeSection", () => {
     expect(html).toContain("Website consultation form");
     expect(html).toContain("Review public request");
     expect(html).toContain("Current matter pipeline: conflict review");
+    expect(html).toContain("Submissions operations");
+    expect(html).toContain("1 submissions · 1 staff reviews · 0 waiting · 0 unassigned");
+    expect(html).toContain("Pending staff review");
+    expect(html).toContain("Review owner");
+    expect(html).toContain("1 request links · 0 appointment links");
+    expect(html).toContain("Synthetic Intake Lead pending staff review");
     expect(html).toContain("Public consultation requests");
     expect(html).toContain("Synthetic Public Client");
     expect(html).toContain("opposing parties: Synthetic Opposing Party");
@@ -406,6 +471,7 @@ describe("IntakeSection", () => {
           intakePipeline: {
             leads: [],
             summary: emptyIntakePipelineSummary(),
+            submissionsOperations: emptySubmissionsOperations(),
             status: "access_denied",
           },
           intakeTemplates: [],
@@ -418,6 +484,7 @@ describe("IntakeSection", () => {
     );
 
     expect(html).toContain("Intake pipeline is unavailable for this role.");
+    expect(html).toContain("Submissions operations are unavailable for this role.");
     expect(html).toContain("No public consultation requests are pending review.");
     expect(html).toContain("No form links are linked to this matter.");
     expect(html).toContain("No submitted intake forms are pending review.");

@@ -53,6 +53,23 @@ describe("intake pipeline routes", () => {
       submittedAt: "2026-05-28T10:00:00.000Z",
       metadata: { source: "public_consultation_form" },
     });
+    await repository.upsertProviderSetting({
+      id: "provider-public-intake-firm-west-legal",
+      firmId: "firm-west-legal",
+      kind: "public_intake",
+      key: "consultation",
+      enabled: true,
+      encryptedConfig: JSON.stringify({
+        enabled: true,
+        senderAddress: "intake@example.test",
+        recipientEmails: ["staff@example.test"],
+        allowedOrigins: ["https://consult.example.test"],
+        reviewOwnerUserId: "user-review-owner",
+        submissionTokenHash: "x".repeat(32),
+      }),
+      createdAt: "2026-05-28T09:00:00.000Z",
+      updatedAt: "2026-05-28T09:00:00.000Z",
+    });
     await repository.createPublicConsultationIntake({
       id: "public-intake-pipeline-converted",
       firmId: "firm-west-legal",
@@ -188,6 +205,57 @@ describe("intake pipeline routes", () => {
         }),
       },
     });
+    expect(body.submissionsOperations).toMatchObject({
+      auditSafe: true,
+      summary: {
+        totalSubmissions: expect.any(Number),
+        pendingStaffReviewCount: expect.any(Number),
+        conflictReviewCount: expect.any(Number),
+        waitingOnClientCount: expect.any(Number),
+        scheduledConsultationCount: expect.any(Number),
+        convertedCount: expect.any(Number),
+        closedCount: expect.any(Number),
+        assignedCount: expect.any(Number),
+        unassignedCount: expect.any(Number),
+        highPriorityCount: expect.any(Number),
+        defaultedSourceCount: expect.any(Number),
+        automationBoundary: {
+          automaticMatterCreation: false,
+          campaignAutomation: false,
+          smsDelivery: false,
+          bulkDelivery: false,
+          adSpendIngestion: false,
+          automaticClientContact: false,
+        },
+      },
+      rows: expect.arrayContaining([
+        expect.objectContaining({
+          id: "public-consultation:public-intake-pipeline",
+          status: "conflict_review",
+          assignmentPosture: "review_owner_assigned",
+          followUpAction: "review_conflict",
+          followUpPriority: "high",
+          requestLinkStatuses: expect.objectContaining({ pending: 1 }),
+          appointmentStatuses: { confirmed: 0, tentative: 0, cancelled: 0 },
+          exportSafeSummary: expect.stringContaining("conflict review"),
+          auditSafe: true,
+        }),
+        expect.objectContaining({
+          id: "intake-session:intake-session-pipeline-submitted",
+          status: "pending_staff_review",
+          followUpAction: "review_submitted_intake",
+          requestLinkStatuses: expect.objectContaining({ submitted: 1 }),
+        }),
+      ]),
+    });
+    expect(body.submissionsOperations.summary.byAssignmentPosture.review_owner_assigned).toBe(2);
+    expect(body.submissionsOperations.summary.byStatus.conflict_review).toBeGreaterThanOrEqual(1);
+    expect(body.submissionsOperations.summary.byStatus.pending_staff_review).toBeGreaterThanOrEqual(
+      1,
+    );
+    expect(body.submissionsOperations.rows[0].id).toBe(
+      "public-consultation:public-intake-pipeline",
+    );
     expect(body.summary.followUpReview.byAction.review_conflict).toBeGreaterThanOrEqual(1);
     expect(body.summary.followUpReview.byAction.review_submitted_intake).toBeGreaterThanOrEqual(1);
     expect(body.summary.followUpReview.byAction.confirm_conversion).toBeGreaterThanOrEqual(1);
@@ -270,6 +338,9 @@ describe("intake pipeline routes", () => {
     expect(response.body).not.toContain("pipeline-raw-token-hash");
     expect(response.body).not.toContain("pipeline-submitted-raw-token-hash");
     expect(response.body).not.toContain("Synthetic private appointment title");
+    expect(response.body).not.toContain("intake@example.test");
+    expect(response.body).not.toContain("staff@example.test");
+    expect(response.body).not.toContain("user-review-owner@example.test");
     expect(response.body).not.toContain('automaticMatterCreation":true');
     expect(response.body).not.toContain('campaignAutomation":true');
     expect(response.body).not.toContain('smsDelivery":true');

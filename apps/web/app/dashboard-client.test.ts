@@ -274,10 +274,13 @@ import {
 import {
   buildIntakePipelinePath,
   emptyIntakePipelineDashboard,
+  intakePipelineAssignmentPostureLabel,
   intakePipelineFollowUpActionLabel,
   intakePipelineSourceLabel,
   intakePipelineSourceQualityLabel,
   intakePipelineStatusLabel,
+  intakePipelineSubmissionsStatusLabel,
+  intakePipelineSubmissionsSummaryLine,
   intakePipelineSummaryLine,
 } from "./intake-pipeline-dashboard";
 import {
@@ -5689,9 +5692,52 @@ describe("dashboard client behavior", () => {
         },
       },
     });
+    expect(emptyIntakePipelineDashboard("available").submissionsOperations).toMatchObject({
+      auditSafe: true,
+      rows: [],
+      summary: {
+        totalSubmissions: 0,
+        pendingStaffReviewCount: 0,
+        conflictReviewCount: 0,
+        waitingOnClientCount: 0,
+        scheduledConsultationCount: 0,
+        convertedCount: 0,
+        closedCount: 0,
+        assignedCount: 0,
+        unassignedCount: 0,
+        highPriorityCount: 0,
+        defaultedSourceCount: 0,
+        byStatus: {
+          pending_staff_review: 0,
+          conflict_review: 0,
+          waiting_on_client: 0,
+          scheduled_consultation: 0,
+          converted: 0,
+          closed: 0,
+        },
+        byAssignmentPosture: {
+          review_owner_assigned: 0,
+          matter_assigned: 0,
+          firm_queue: 0,
+          unassigned: 0,
+        },
+        automationBoundary: {
+          automaticMatterCreation: false,
+          campaignAutomation: false,
+          smsDelivery: false,
+          bulkDelivery: false,
+          adSpendIngestion: false,
+          automaticClientContact: false,
+        },
+      },
+    });
     expect(intakePipelineSourceLabel("public_consultation")).toBe("Public consultation");
     expect(intakePipelineSourceLabel("intake_session")).toBe("Intake session");
     expect(intakePipelineStatusLabel("conflict_review")).toBe("conflict review");
+    expect(intakePipelineSubmissionsStatusLabel("pending_staff_review")).toBe(
+      "Pending staff review",
+    );
+    expect(intakePipelineAssignmentPostureLabel("matter_assigned")).toBe("Matter assigned");
     expect(intakePipelineFollowUpActionLabel("review_submitted_intake")).toBe(
       "Review submitted intake",
     );
@@ -5751,6 +5797,19 @@ describe("dashboard client behavior", () => {
         },
       }),
     ).toBe("3 leads · 1 conversions · 2 conflict reviews · 2 high-priority follow-ups");
+    expect(
+      intakePipelineSubmissionsSummaryLine({
+        ...emptyIntakePipelineDashboard("available").submissionsOperations,
+        summary: {
+          ...emptyIntakePipelineDashboard("available").submissionsOperations.summary,
+          totalSubmissions: 4,
+          pendingStaffReviewCount: 1,
+          conflictReviewCount: 1,
+          waitingOnClientCount: 1,
+          unassignedCount: 1,
+        },
+      }),
+    ).toBe("4 submissions · 2 staff reviews · 1 waiting · 1 unassigned");
     expect(buildIntakeFormLinkListPath("matter 001")).toBe(
       "/api/intake-form-links?matterId=matter%20001",
     );

@@ -49,6 +49,20 @@ export type IntakePipelineFollowUpPriority = "high" | "normal" | "low";
 
 export type IntakePipelineSourceAttributionQuality = "tracked" | "defaulted";
 
+export type IntakePipelineSubmissionsOperationStatus =
+  | "pending_staff_review"
+  | "conflict_review"
+  | "waiting_on_client"
+  | "scheduled_consultation"
+  | "converted"
+  | "closed";
+
+export type IntakePipelineSubmissionsAssignmentPosture =
+  | "review_owner_assigned"
+  | "matter_assigned"
+  | "firm_queue"
+  | "unassigned";
+
 export interface IntakePipelineFollowUpAutomationBoundary {
   automaticMatterCreation: false;
   campaignAutomation: false;
@@ -125,9 +139,62 @@ export interface IntakePipelineSummary {
   };
 }
 
+export type IntakePipelineRequestLinkStatus = IntakePipelineRequestLink["status"];
+export type IntakePipelineAppointmentStatus = CalendarEventRecord["status"];
+
+export interface IntakePipelineSubmissionsOperationRow {
+  id: string;
+  sourceType: IntakePipelineSourceType;
+  sourceLabel: string;
+  displayName: string;
+  matterId?: string;
+  status: IntakePipelineSubmissionsOperationStatus;
+  assignmentPosture: IntakePipelineSubmissionsAssignmentPosture;
+  leadStatus: IntakePipelineLeadStatus;
+  conflictPosture: IntakePipelineConflictReviewPosture;
+  opposingPartyCount: number;
+  followUpAction: IntakePipelineFollowUpAction;
+  followUpPosture: IntakePipelineFollowUpPosture;
+  followUpPriority: IntakePipelineFollowUpPriority;
+  lastActivityAt: string;
+  sourceQuality: IntakePipelineSourceAttributionQuality;
+  requestLinkCount: number;
+  requestLinkStatuses: Record<IntakePipelineRequestLinkStatus, number>;
+  appointmentCount: number;
+  appointmentStatuses: Record<IntakePipelineAppointmentStatus, number>;
+  conversionCount: number;
+  exportSafeSummary: string;
+  automationBoundary: IntakePipelineFollowUpAutomationBoundary;
+  auditSafe: true;
+}
+
+export interface IntakePipelineSubmissionsOperationsSummary {
+  totalSubmissions: number;
+  pendingStaffReviewCount: number;
+  conflictReviewCount: number;
+  waitingOnClientCount: number;
+  scheduledConsultationCount: number;
+  convertedCount: number;
+  closedCount: number;
+  assignedCount: number;
+  unassignedCount: number;
+  highPriorityCount: number;
+  defaultedSourceCount: number;
+  byStatus: Record<IntakePipelineSubmissionsOperationStatus, number>;
+  byAssignmentPosture: Record<IntakePipelineSubmissionsAssignmentPosture, number>;
+  automationBoundary: IntakePipelineFollowUpAutomationBoundary;
+}
+
+export interface IntakePipelineSubmissionsOperations {
+  summary: IntakePipelineSubmissionsOperationsSummary;
+  rows: IntakePipelineSubmissionsOperationRow[];
+  auditSafe: true;
+}
+
 export interface IntakePipelineSnapshot {
   leads: IntakePipelineLeadRecord[];
   summary: IntakePipelineSummary;
+  submissionsOperations: IntakePipelineSubmissionsOperations;
 }
 
 export interface BuildIntakePipelineSnapshotInput {
@@ -136,6 +203,8 @@ export interface BuildIntakePipelineSnapshotInput {
   intakeFormLinks: IntakeFormLinkRecord[];
   intakeFormReviews: IntakeFormReviewRecord[];
   calendarEvents: CalendarEventRecord[];
+  publicConsultationReviewOwnerUserId?: string;
+  assignedMatterIds?: string[];
 }
 
 const leadStatuses = [
@@ -176,6 +245,37 @@ const followUpPostures = [
   "converted",
   "closed",
 ] as const satisfies readonly IntakePipelineFollowUpPosture[];
+
+const submissionsOperationStatuses = [
+  "pending_staff_review",
+  "conflict_review",
+  "waiting_on_client",
+  "scheduled_consultation",
+  "converted",
+  "closed",
+] as const satisfies readonly IntakePipelineSubmissionsOperationStatus[];
+
+const submissionsAssignmentPostures = [
+  "review_owner_assigned",
+  "matter_assigned",
+  "firm_queue",
+  "unassigned",
+] as const satisfies readonly IntakePipelineSubmissionsAssignmentPosture[];
+
+const requestLinkStatuses = [
+  "pending",
+  "active",
+  "submitted",
+  "reviewed",
+  "revoked",
+  "available",
+] as const satisfies readonly IntakePipelineRequestLinkStatus[];
+
+const appointmentStatuses = [
+  "confirmed",
+  "tentative",
+  "cancelled",
+] as const satisfies readonly IntakePipelineAppointmentStatus[];
 
 function zeroCounts<T extends string>(values: readonly T[]): Record<T, number> {
   return Object.fromEntries(values.map((value) => [value, 0])) as Record<T, number>;
@@ -583,6 +683,162 @@ function summarize(leads: IntakePipelineLeadRecord[]): IntakePipelineSummary {
   return summary;
 }
 
+function submissionsOperationStatus(
+  lead: IntakePipelineLeadRecord,
+): IntakePipelineSubmissionsOperationStatus {
+  if (lead.followUpReview.posture === "converted") return "converted";
+  if (lead.followUpReview.posture === "closed") return "closed";
+  if (lead.followUpReview.posture === "waiting_on_client") return "waiting_on_client";
+  if (lead.followUpReview.posture === "consultation_scheduled") return "scheduled_consultation";
+  if (lead.followUpReview.action === "review_conflict") return "conflict_review";
+  return "pending_staff_review";
+}
+
+function submissionsAssignmentPosture(input: {
+  lead: IntakePipelineLeadRecord;
+  publicConsultationReviewOwnerUserId?: string;
+  assignedMatterIds: Set<string>;
+}): IntakePipelineSubmissionsAssignmentPosture {
+  if (input.lead.sourceType === "public_consultation") {
+    return input.publicConsultationReviewOwnerUserId ? "review_owner_assigned" : "unassigned";
+  }
+  if (input.lead.matterId && input.assignedMatterIds.has(input.lead.matterId)) {
+    return "matter_assigned";
+  }
+  return input.lead.matterId ? "firm_queue" : "unassigned";
+}
+
+function operationPriorityRank(row: IntakePipelineSubmissionsOperationRow): number {
+  if (row.followUpPriority === "high" && row.status === "conflict_review") return 0;
+  if (row.followUpPriority === "high" && row.status === "pending_staff_review") return 1;
+  if (row.status === "pending_staff_review") return 2;
+  if (row.status === "waiting_on_client") return 3;
+  if (row.status === "scheduled_consultation") return 4;
+  if (row.status === "converted") return 5;
+  return 6;
+}
+
+function statusCounts<T extends string>(
+  values: readonly T[],
+  records: readonly T[],
+): Record<T, number> {
+  const counts = zeroCounts(values);
+  for (const record of records) {
+    counts[record] += 1;
+  }
+  return counts;
+}
+
+function operationSummaryText(input: {
+  lead: IntakePipelineLeadRecord;
+  status: IntakePipelineSubmissionsOperationStatus;
+  assignmentPosture: IntakePipelineSubmissionsAssignmentPosture;
+}): string {
+  return [
+    `${input.lead.displayName} ${input.status.replaceAll("_", " ")}`,
+    `${input.lead.sourceAttribution.label} source`,
+    `${input.lead.followUpReview.priority} priority`,
+    `${input.assignmentPosture.replaceAll("_", " ")}`,
+    `${input.lead.requestLinks.length} request links`,
+    `${input.lead.appointmentLinks.length} appointments`,
+    `${input.lead.conversionCount} conversions`,
+  ].join(" · ");
+}
+
+function buildSubmissionsOperations(input: {
+  leads: IntakePipelineLeadRecord[];
+  publicConsultationReviewOwnerUserId?: string;
+  assignedMatterIds?: string[];
+}): IntakePipelineSubmissionsOperations {
+  const assignedMatterIds = new Set(input.assignedMatterIds ?? []);
+  const rows = input.leads
+    .map((lead): IntakePipelineSubmissionsOperationRow => {
+      const status = submissionsOperationStatus(lead);
+      const assignmentPosture = submissionsAssignmentPosture({
+        lead,
+        publicConsultationReviewOwnerUserId: input.publicConsultationReviewOwnerUserId,
+        assignedMatterIds,
+      });
+      return {
+        id: lead.id,
+        sourceType: lead.sourceType,
+        sourceLabel: lead.sourceAttribution.label,
+        displayName: lead.displayName,
+        matterId: lead.matterId,
+        status,
+        assignmentPosture,
+        leadStatus: lead.leadStatus,
+        conflictPosture: lead.conflictReview.posture,
+        opposingPartyCount: lead.conflictReview.opposingPartyCount,
+        followUpAction: lead.followUpReview.action,
+        followUpPosture: lead.followUpReview.posture,
+        followUpPriority: lead.followUpReview.priority,
+        lastActivityAt: lead.followUpReview.lastActivityAt,
+        sourceQuality: lead.followUpReview.sourceQuality,
+        requestLinkCount: lead.requestLinks.length,
+        requestLinkStatuses: statusCounts(
+          requestLinkStatuses,
+          lead.requestLinks.map((link) => link.status),
+        ),
+        appointmentCount: lead.appointmentLinks.length,
+        appointmentStatuses: statusCounts(
+          appointmentStatuses,
+          lead.appointmentLinks.map((appointment) => appointment.status),
+        ),
+        conversionCount: lead.conversionCount,
+        exportSafeSummary: operationSummaryText({ lead, status, assignmentPosture }),
+        automationBoundary: noFollowUpAutomationBoundary,
+        auditSafe: true,
+      };
+    })
+    .sort((left, right) => {
+      const rank = operationPriorityRank(left) - operationPriorityRank(right);
+      if (rank !== 0) return rank;
+      return right.lastActivityAt.localeCompare(left.lastActivityAt);
+    });
+
+  const summary: IntakePipelineSubmissionsOperationsSummary = {
+    totalSubmissions: rows.length,
+    pendingStaffReviewCount: 0,
+    conflictReviewCount: 0,
+    waitingOnClientCount: 0,
+    scheduledConsultationCount: 0,
+    convertedCount: 0,
+    closedCount: 0,
+    assignedCount: 0,
+    unassignedCount: 0,
+    highPriorityCount: 0,
+    defaultedSourceCount: 0,
+    byStatus: zeroCounts(submissionsOperationStatuses),
+    byAssignmentPosture: zeroCounts(submissionsAssignmentPostures),
+    automationBoundary: noFollowUpAutomationBoundary,
+  };
+
+  for (const row of rows) {
+    summary.byStatus[row.status] += 1;
+    summary.byAssignmentPosture[row.assignmentPosture] += 1;
+    if (row.status === "pending_staff_review") summary.pendingStaffReviewCount += 1;
+    if (row.status === "conflict_review") summary.conflictReviewCount += 1;
+    if (row.status === "waiting_on_client") summary.waitingOnClientCount += 1;
+    if (row.status === "scheduled_consultation") summary.scheduledConsultationCount += 1;
+    if (row.status === "converted") summary.convertedCount += 1;
+    if (row.status === "closed") summary.closedCount += 1;
+    if (row.assignmentPosture === "unassigned") {
+      summary.unassignedCount += 1;
+    } else {
+      summary.assignedCount += 1;
+    }
+    if (row.followUpPriority === "high") summary.highPriorityCount += 1;
+    if (row.sourceQuality === "defaulted") summary.defaultedSourceCount += 1;
+  }
+
+  return {
+    summary,
+    rows,
+    auditSafe: true,
+  };
+}
+
 export function buildIntakePipelineSnapshot(
   input: BuildIntakePipelineSnapshotInput,
 ): IntakePipelineSnapshot {
@@ -623,5 +879,10 @@ export function buildIntakePipelineSnapshot(
   return {
     leads,
     summary: summarize(leads),
+    submissionsOperations: buildSubmissionsOperations({
+      leads,
+      publicConsultationReviewOwnerUserId: input.publicConsultationReviewOwnerUserId,
+      assignedMatterIds: input.assignedMatterIds,
+    }),
   };
 }
