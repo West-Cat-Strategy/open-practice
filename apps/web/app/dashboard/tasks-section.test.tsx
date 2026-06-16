@@ -19,6 +19,7 @@ const syntheticMatter = {
   timeEntries: [],
   expenses: [],
   activity: [],
+  lifecycleTransitions: [],
   trustBalanceCents: 0,
   setupProfile: {
     stage: {

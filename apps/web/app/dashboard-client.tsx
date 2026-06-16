@@ -254,10 +254,14 @@ import {
 } from "./audit-dashboard";
 import {
   buildMatterFileCommandCenter,
+  appendMatterLifecycleTransition,
+  buildMatterLifecycleTransitionPath,
+  buildMatterLifecycleTransitionPayload,
   filterMatterActivity,
   summarizeMatterActivity,
   type MatterActivityKindFilter,
   type MatterActivityStatusFilter,
+  type MatterLifecycleTransitionFormState,
 } from "./matter-command-center";
 import { DashboardApiError, dashboardApiStatus, requestDashboardJson } from "./api-client";
 import { requestConnectorOperationsForDashboard } from "./_features/connectors/client-resources";
@@ -702,6 +706,17 @@ export default function DashboardClient({
     refreshing: false,
   });
   const [activeMatterId, setActiveMatterId] = useState(initialMatters[0]?.id ?? "");
+  const [lifecycleTransitionForm, setLifecycleTransitionForm] =
+    useState<MatterLifecycleTransitionFormState>({
+      transition: "pause",
+      readiness: "ready",
+      reason: "",
+      blockers: "",
+    });
+  const [lifecycleTransitionStatus, setLifecycleTransitionStatus] = useState(
+    "No lifecycle readiness review recorded in this session.",
+  );
+  const [recordingLifecycleTransition, setRecordingLifecycleTransition] = useState(false);
   const [workerRunFilter, setWorkerRunFilter] = useState<WorkerRunQueueFilter>("all");
   const [savedOperationalViewDefinitions, setSavedOperationalViewDefinitions] = useState(
     operationalViewDefinitions,
@@ -1405,6 +1420,13 @@ export default function DashboardClient({
   const activeTrustPostings = activeMatter
     ? recentTrustPostings(activeTrustControls, activeMatter.id)
     : [];
+  const canRecordLifecycleTransition = Boolean(
+    activeMatter &&
+    capabilities.sections.some(
+      (section) =>
+        section.key === "matters" && section.enabled && section.actions.includes("update"),
+    ),
+  );
   const activeUnbilledTime = activeBilling?.unbilledTime ?? [];
   const activeUnbilledExpenses = activeBilling?.unbilledExpenses ?? [];
   const activeCaptureReviewTime = activeBilling?.captureReviewTime ?? [];
@@ -1829,6 +1851,42 @@ export default function DashboardClient({
     ]);
     setTaskWorkbench(workbenchPayload);
     setTaskRows(taskListPayload.tasks);
+  }
+
+  async function recordMatterLifecycleTransition(): Promise<void> {
+    if (!activeMatter) return;
+    setRecordingLifecycleTransition(true);
+    setLifecycleTransitionStatus("Recording lifecycle readiness review...");
+    try {
+      const record = await requestDashboardJson<MatterSummary["lifecycleTransitions"][number]>(
+        apiBaseUrl,
+        buildMatterLifecycleTransitionPath(activeMatter.id),
+        {
+          method: "POST",
+          headers: devHeaders,
+          payload: buildMatterLifecycleTransitionPayload(lifecycleTransitionForm),
+        },
+      );
+      setMatters((current) =>
+        current.map((matter) =>
+          matter.id === activeMatter.id ? appendMatterLifecycleTransition(matter, record) : matter,
+        ),
+      );
+      setLifecycleTransitionStatus(
+        `${compactStatus(record.transition)} readiness recorded as ${compactStatus(record.readiness)}.`,
+      );
+      setLifecycleTransitionForm((current) => ({
+        ...current,
+        reason: "",
+        blockers: "",
+      }));
+    } catch (error) {
+      setLifecycleTransitionStatus(
+        `Lifecycle readiness review failed: ${dashboardApiStatus(error)}`,
+      );
+    } finally {
+      setRecordingLifecycleTransition(false);
+    }
   }
 
   async function updateTaskArchivedVisibility(includeArchived: boolean): Promise<void> {
@@ -5540,6 +5598,7 @@ export default function DashboardClient({
                   activeMatterCommandCenter={activeMatterCommandCenter}
                   activityKindFilter={activityKindFilter}
                   activityStatusFilter={activityStatusFilter}
+                  canRecordLifecycleTransition={canRecordLifecycleTransition}
                   filteredMatterActivity={filteredMatterActivity}
                   navigationSections={navigationSections}
                   overview={overview}
@@ -5547,9 +5606,14 @@ export default function DashboardClient({
                   compactStatus={compactStatus}
                   formatCurrency={cents}
                   formatMinutes={minutes}
+                  lifecycleTransitionForm={lifecycleTransitionForm}
+                  lifecycleTransitionStatus={lifecycleTransitionStatus}
                   onActivityKindFilterChange={setActivityKindFilter}
                   onActivityStatusFilterChange={setActivityStatusFilter}
+                  onLifecycleTransitionFormChange={setLifecycleTransitionForm}
+                  onRecordLifecycleTransition={recordMatterLifecycleTransition}
                   onSelectSection={selectDashboardSection}
+                  recordingLifecycleTransition={recordingLifecycleTransition}
                 />
               ) : null}
 

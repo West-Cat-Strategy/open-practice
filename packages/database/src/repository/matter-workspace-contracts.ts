@@ -9,6 +9,7 @@ import type {
   MatterParty,
   TimeEntry,
   User,
+  MatterLifecycleTransitionRecord,
 } from "@open-practice/domain";
 
 export interface MatterSummary extends Matter {
@@ -19,6 +20,7 @@ export interface MatterSummary extends Matter {
   activity: ActivityTimelineEntry[];
   trustBalanceCents: number;
   setupProfile: MatterSetupProfile;
+  lifecycleTransitions: MatterLifecycleTransitionRecord[];
 }
 
 export interface PracticeOverview {

@@ -360,6 +360,144 @@ describe("matter routes", () => {
     expect(response.statusCode).toBe(403);
   });
 
+  it("records review-only lifecycle transition evidence without mutating matter status", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const before = await repository.listMattersForUser(user("licensee", ["matter-001"]));
+    const response = await testServer(user("licensee", ["matter-001"]), repository).inject({
+      method: "POST",
+      url: "/api/matters/matter-001/lifecycle-transitions",
+      payload: {
+        transition: "close",
+        readiness: "blocked",
+        reason: "Synthetic close packet needs review.",
+        blockers: ["Synthetic trust review remains open."],
+      },
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(response.json()).toMatchObject({
+      matterId: "matter-001",
+      transition: "close",
+      currentStatus: before[0]?.status,
+      targetStatus: "closed",
+      readiness: "blocked",
+      reason: "Synthetic close packet needs review.",
+      blockers: ["Synthetic trust review remains open."],
+      reviewedByUserId: "user-licensee",
+    });
+
+    const after = await repository.listMattersForUser(user("licensee", ["matter-001"]));
+    expect(after[0]).toMatchObject({
+      id: "matter-001",
+      status: before[0]?.status,
+      lifecycleTransitions: [expect.objectContaining({ transition: "close" })],
+    });
+    expect(after[0]?.closedOn).toBe(before[0]?.closedOn);
+    const audit = await repository.listAuditEvents(firmId);
+    expect(audit.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          action: "matter.lifecycle_transition_reviewed",
+          resourceId: "matter-001",
+          metadata: expect.objectContaining({
+            transition: "close",
+            targetStatus: "closed",
+            readiness: "blocked",
+            blockerCount: 1,
+            reviewOnly: true,
+          }),
+        }),
+      ]),
+    );
+    expect(JSON.stringify(audit.events)).not.toContain("Synthetic trust review remains open");
+  });
+
+  it("lists lifecycle transition evidence for visible matters", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createMatterLifecycleTransition({
+      id: "matter-lifecycle-pause",
+      firmId,
+      matterId: "matter-001",
+      transition: "pause",
+      readiness: "ready",
+      reason: "Synthetic pause review is ready.",
+      reviewedByUserId: "user-licensee",
+      reviewedAt: "2026-06-16T12:00:00.000Z",
+      createdAt: "2026-06-16T12:00:00.000Z",
+      auditEventId: "audit-matter-lifecycle-pause",
+    });
+
+    const response = await testServer(user("licensee", ["matter-001"]), repository).inject({
+      method: "GET",
+      url: "/api/matters/matter-001/lifecycle-transitions",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      reviewOnly: true,
+      transitions: [
+        {
+          id: "matter-lifecycle-pause",
+          transition: "pause",
+          currentStatus: "open",
+          targetStatus: "paused",
+          readiness: "ready",
+        },
+      ],
+    });
+  });
+
+  it("keeps lifecycle transition routes staff-only and matter-scoped", async () => {
+    const client = await testServer(user("client_external", ["matter-001"])).inject({
+      method: "GET",
+      url: "/api/matters/matter-001/lifecycle-transitions",
+    });
+    const crossMatter = await testServer(user("licensee", ["matter-001"])).inject({
+      method: "POST",
+      url: "/api/matters/matter-002/lifecycle-transitions",
+      payload: {
+        transition: "archive",
+        readiness: "ready",
+        reason: "Synthetic archive review is ready.",
+      },
+    });
+    const firmWide = await testServer(
+      user("owner_admin", []),
+      new InMemoryOpenPracticeRepository(),
+    ).inject({
+      method: "GET",
+      url: "/api/matters/matter-002/lifecycle-transitions",
+    });
+
+    expect(client.statusCode).toBe(403);
+    expect(crossMatter.statusCode).toBe(403);
+    expect(firmWide.statusCode).toBe(200);
+  });
+
+  it("validates lifecycle transition review evidence", async () => {
+    const missingReason = await testServer(user("licensee", ["matter-001"])).inject({
+      method: "POST",
+      url: "/api/matters/matter-001/lifecycle-transitions",
+      payload: {
+        transition: "reopen",
+        readiness: "ready",
+        reason: "",
+      },
+    });
+    const missingBlocker = await testServer(user("licensee", ["matter-001"])).inject({
+      method: "POST",
+      url: "/api/matters/matter-001/lifecycle-transitions",
+      payload: {
+        transition: "archive",
+        readiness: "blocked",
+        reason: "Synthetic archive review is blocked.",
+      },
+    });
+
+    expect(missingReason.statusCode).toBe(400);
+    expect(missingBlocker.statusCode).toBe(400);
+  });
+
   it("redacts conflict-check details for non firm-wide reviewers", async () => {
     const response = await testServer(user("licensee", ["matter-001"])).inject({
       method: "POST",

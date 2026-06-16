@@ -192,7 +192,9 @@ import {
 } from "./matter-workspace/drizzle.js";
 import {
   convertDrizzlePublicConsultationIntakeToMatter,
+  createDrizzleMatterLifecycleTransition,
   createDrizzleMatterWithClient,
+  listDrizzleMatterLifecycleTransitions,
 } from "./matter-lifecycle/drizzle.js";
 import {
   completeDrizzleFirstRunSetup,
@@ -492,6 +494,19 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       getUser: (firmId, userId) => this.getUser(firmId, userId),
       listMattersForUser: (user) => this.listMattersForUser(user),
     });
+  }
+
+  async listMatterLifecycleTransitions(
+    firmId: string,
+    matterId: string,
+  ): ReturnType<OpenPracticeRepository["listMatterLifecycleTransitions"]> {
+    return listDrizzleMatterLifecycleTransitions(this.db, firmId, matterId);
+  }
+
+  async createMatterLifecycleTransition(
+    input: Parameters<OpenPracticeRepository["createMatterLifecycleTransition"]>[0],
+  ): ReturnType<OpenPracticeRepository["createMatterLifecycleTransition"]> {
+    return createDrizzleMatterLifecycleTransition(this.db, input);
   }
 
   async listContactDossiersForUser(

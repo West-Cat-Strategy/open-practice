@@ -16,6 +16,7 @@ export * from "./intake-pipeline.js";
 export * from "./ledger.js";
 export * from "./legal-clinics.js";
 export * from "./legal-research.js";
+export * from "./matter-lifecycle.js";
 export * from "./matter-setup.js";
 export * from "./models.js";
 export * from "./operational-views.js";

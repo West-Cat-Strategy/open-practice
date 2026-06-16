@@ -73,6 +73,7 @@ import {
   type LegalResearchArtifactRecord,
   type ManualPaymentRecord,
   type Matter,
+  type MatterLifecycleTransitionRecord,
   type MatterParty,
   type PaymentAllocationRecord,
   type PortalGrant,
@@ -422,8 +423,10 @@ import {
   type MemoryMatterWorkspaceStore,
 } from "./matter-workspace/memory.js";
 import {
+  createMemoryMatterLifecycleTransition,
   convertMemoryPublicConsultationIntakeToMatter,
   createMemoryMatterWithClient,
+  listMemoryMatterLifecycleTransitions,
   type MemoryMatterLifecycleStore,
 } from "./matter-lifecycle/memory.js";
 import {
@@ -537,6 +540,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private contactRelationships: ContactRelationshipRecord[];
   private contactDataQualityResolutions: ContactDataQualityResolutionRecord[] = [];
   private matters: Matter[];
+  private matterLifecycleTransitions: MatterLifecycleTransitionRecord[] = [];
   private matterParties: MatterParty[];
   private documents: DocumentRecord[];
   private legalClinicPrograms: LegalClinicProgram[];
@@ -823,6 +827,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
       trustTransferRequests: this.trustTransferRequests,
       ledgerAccounts: this.ledgerAccounts,
       postedTransactions: this.postedTransactions,
+      matterLifecycleTransitions: this.matterLifecycleTransitions,
     };
   }
 
@@ -858,6 +863,12 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
       },
       set publicConsultationIntakes(value: PublicConsultationIntakeRecord[]) {
         repository.publicConsultationIntakes = value;
+      },
+      get matterLifecycleTransitions() {
+        return repository.matterLifecycleTransitions;
+      },
+      set matterLifecycleTransitions(value: MatterLifecycleTransitionRecord[]) {
+        repository.matterLifecycleTransitions = value;
       },
     };
   }
@@ -1011,7 +1022,12 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
       contacts: this.contacts,
       matters: this.matters,
       matterParties: this.matterParties,
-      contactRelationships: this.contactRelationships,
+      get contactRelationships() {
+        return repository.contactRelationships;
+      },
+      set contactRelationships(value: ContactRelationshipRecord[]) {
+        repository.contactRelationships = value;
+      },
       get conflictChecks() {
         return repository.conflictChecks;
       },
@@ -1496,6 +1512,24 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     input: Parameters<OpenPracticeRepository["convertPublicConsultationIntakeToMatter"]>[0],
   ): ReturnType<OpenPracticeRepository["convertPublicConsultationIntakeToMatter"]> {
     return convertMemoryPublicConsultationIntakeToMatter(this.matterLifecycleStore, input, {
+      appendAuditEvent: (event) => this.appendAuditEvent(event),
+      listMattersForUser: (user) => this.listMattersForUser(user),
+    });
+  }
+
+  async listMatterLifecycleTransitions(
+    firmId: string,
+    matterId: string,
+  ): ReturnType<OpenPracticeRepository["listMatterLifecycleTransitions"]> {
+    return Promise.resolve(
+      listMemoryMatterLifecycleTransitions(this.matterLifecycleStore, firmId, matterId),
+    );
+  }
+
+  async createMatterLifecycleTransition(
+    input: Parameters<OpenPracticeRepository["createMatterLifecycleTransition"]>[0],
+  ): ReturnType<OpenPracticeRepository["createMatterLifecycleTransition"]> {
+    return createMemoryMatterLifecycleTransition(this.matterLifecycleStore, input, {
       appendAuditEvent: (event) => this.appendAuditEvent(event),
       listMattersForUser: (user) => this.listMattersForUser(user),
     });

@@ -1,6 +1,9 @@
 import type {
   ContactIdentifier,
   ContactKind,
+  MatterLifecycleReadiness,
+  MatterLifecycleTransition,
+  MatterLifecycleTransitionRecord,
   Province,
   PublicConsultationIntakeRecord,
 } from "@open-practice/domain";
@@ -50,4 +53,21 @@ export interface MatterLifecycleRepository {
   convertPublicConsultationIntakeToMatter(
     input: ConvertPublicConsultationIntakeInput,
   ): Promise<{ intake: PublicConsultationIntakeRecord; matter: MatterSummary }>;
+  listMatterLifecycleTransitions(
+    firmId: string,
+    matterId: string,
+  ): Promise<MatterLifecycleTransitionRecord[]>;
+  createMatterLifecycleTransition(input: {
+    id: string;
+    firmId: string;
+    matterId: string;
+    transition: MatterLifecycleTransition;
+    readiness: MatterLifecycleReadiness;
+    reason: string;
+    blockers?: string[];
+    reviewedByUserId: string;
+    reviewedAt: string;
+    createdAt: string;
+    auditEventId: string;
+  }): Promise<MatterLifecycleTransitionRecord>;
 }

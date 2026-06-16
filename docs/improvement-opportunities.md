@@ -148,10 +148,12 @@ signature request metadata proof before proposing another envelope slice.
   - **Reuse and snippets:** Apache-2.0/architecture-only; snippets require an explicit reuse decision.
 
 - **Matter lifecycle transition journal**
-  - **First slice:** Add review-only matter transition records for pause, close, archive, and reopen
-    readiness with reasons and blockers.
-  - **Local gap / shipped boundary:** Matter status is stored, but transitions are not journaled as a
-    first-class lifecycle with blocker evidence.
+  - **Shipped first slice:** OP now journals review-only pause, close, archive, and reopen readiness
+    records with current/target status snapshots, concise reasons/blockers, matter-scoped API
+    access, safe audit metadata, and dashboard evidence for already-visible matters.
+  - **Remaining gap:** Future work should only add explicit lifecycle commands after a separate
+    policy/design slice proves automation, portal, task, billing, assignment, and destructive cleanup
+    consequences. The shipped journal remains evidence-only and does not mutate matter status.
   - **References:** `primeroims__primero`, `arkcase__arkcase`, and `jlawyerorg__j-lawyer-org`.
   - **Reuse and snippets:** AGPL/LGPL/reference-only; no direct snippets.
 

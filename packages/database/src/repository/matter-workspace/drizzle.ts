@@ -29,6 +29,7 @@ import {
   mapEmailOutboxRow,
   mapGeneratedDocumentRow,
   mapMatter,
+  mapMatterLifecycleTransitionRow,
   matterTrustBalance,
 } from "../drizzle-mappers.js";
 import type { LedgerSnapshot } from "../ledger-core-contracts.js";
@@ -165,6 +166,16 @@ export async function listDrizzleMatterWorkspaceMattersForUser(
   const invoices = await dependencies.listInvoices(user.firmId);
   const payments = await dependencies.listPayments(user.firmId);
   const trustTransferRequests = await dependencies.listTrustTransferRequests(user.firmId);
+  const lifecycleRows = await db
+    .select()
+    .from(schema.matterLifecycleTransitionRecords)
+    .where(
+      and(
+        eq(schema.matterLifecycleTransitionRecords.firmId, user.firmId),
+        inArray(schema.matterLifecycleTransitionRecords.matterId, visibleMatterIds),
+      ),
+    );
+  const lifecycleTransitions = lifecycleRows.map(mapMatterLifecycleTransitionRow);
 
   return matterRows.map((row) => {
     const matter = mapMatter(row);
@@ -216,6 +227,10 @@ export async function listDrizzleMatterWorkspaceMattersForUser(
       expenses: matterExpenses,
       activity,
       trustBalanceCents,
+      lifecycleTransitions: lifecycleTransitions
+        .filter((record) => record.matterId === matter.id)
+        .sort((left, right) => right.reviewedAt.localeCompare(left.reviewedAt))
+        .slice(0, 8),
       setupProfile: buildMatterSetupProfile({
         matter,
         parties,
