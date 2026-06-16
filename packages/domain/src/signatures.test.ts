@@ -6,7 +6,9 @@ import {
   getSignatureStatusUpdateDecision,
   orderSignatureProviderEvents,
   orderSignatureProviderStatuses,
+  safeSignatureRequestEnvelopeValidationSummary,
   shouldUpdateSignatureRequestStatus,
+  validateSignatureRequestEnvelopeMetadata,
 } from "./signatures.js";
 
 describe("signature provider lifecycle helpers", () => {
@@ -83,5 +85,82 @@ describe("signature provider lifecycle helpers", () => {
         evidence: {},
       }).replayKey,
     ).toBe("embedded:embedded%3Amatter-001%3Adoc-001:viewed:2026-04-24T10%3A01%3A00.000Z");
+  });
+});
+
+describe("signature request envelope metadata helpers", () => {
+  it("validates provider-neutral signing order and field placement", () => {
+    expect(
+      validateSignatureRequestEnvelopeMetadata({
+        documentId: "doc-001",
+        signerOrder: [{ role: "client", order: 1, required: true }],
+        fieldPlacements: [
+          {
+            id: "client-signature",
+            role: "client",
+            fieldType: "signature",
+            page: 1,
+            required: true,
+            documentId: "doc-001",
+            xPercent: 72,
+            yPercent: 84,
+          },
+        ],
+      }),
+    ).toEqual({
+      status: "valid",
+      issues: [],
+      signerCount: 1,
+      fieldCount: 1,
+      requiredFieldCount: 1,
+    });
+  });
+
+  it("reports stable issues without provider-specific rules", () => {
+    expect(
+      validateSignatureRequestEnvelopeMetadata({
+        documentId: "doc-001",
+        signerOrder: [
+          { role: "client", order: 0, required: true },
+          { role: "client", order: 0, required: false },
+        ],
+        fieldPlacements: [
+          {
+            id: "witness-signature",
+            role: "witness",
+            fieldType: "signature",
+            page: 0,
+            required: true,
+            documentId: "doc-002",
+            xPercent: 101,
+            yPercent: -1,
+          },
+        ],
+      }).issues,
+    ).toEqual([
+      "Field witness-signature has an invalid horizontal placement.",
+      "Field witness-signature has an invalid page.",
+      "Field witness-signature has an invalid vertical placement.",
+      "Field witness-signature is linked to a different document.",
+      "Field witness-signature references signer role witness outside signer order.",
+      "Signer role client has an invalid signing order.",
+      "Signer role client is duplicated.",
+      "Signing order 0 is assigned more than once.",
+    ]);
+  });
+
+  it("keeps legacy missing metadata as an unchecked safe summary", () => {
+    expect(
+      safeSignatureRequestEnvelopeValidationSummary({
+        documentId: "doc-001",
+        validationStatus: "unchecked",
+      }),
+    ).toEqual({
+      status: "unchecked",
+      issues: [],
+      signerCount: 0,
+      fieldCount: 0,
+      requiredFieldCount: 0,
+    });
   });
 });

@@ -41,6 +41,25 @@ function signaturePayload(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function envelopeMetadata(overrides: Record<string, unknown> = {}) {
+  return {
+    signerOrder: [{ role: "client", order: 1, required: true }],
+    fieldPlacements: [
+      {
+        id: "client-signature",
+        role: "client",
+        fieldType: "signature",
+        page: 1,
+        required: true,
+        documentId: "doc-001",
+        xPercent: 72,
+        yPercent: 84,
+      },
+    ],
+    ...overrides,
+  };
+}
+
 async function createMatterTwoDocument(repository: InMemoryOpenPracticeRepository) {
   await repository.createDocumentUploadIntent({
     id: "doc-matter-002",
@@ -162,6 +181,130 @@ describe("signature routes", () => {
     const auditEvent = audit.events.find((event) => event.action === "signature_request.created");
     expect(auditEvent?.metadata).not.toHaveProperty("consentText");
     expect(auditEvent?.metadata).not.toHaveProperty("signers");
+  });
+
+  it("creates signature requests with OP-authored envelope metadata", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository });
+    const created = await server.inject({
+      method: "POST",
+      url: "/api/signature-requests",
+      payload: signaturePayload({ envelopeMetadata: envelopeMetadata() }),
+    });
+
+    expect(created.statusCode).toBe(200);
+    expect(created.json()).toMatchObject({
+      request: {
+        signerOrder: [{ role: "client", order: 1, required: true }],
+        fieldPlacements: [
+          expect.objectContaining({
+            id: "client-signature",
+            role: "client",
+            fieldType: "signature",
+            documentId: "doc-001",
+          }),
+        ],
+        validationStatus: "valid",
+      },
+    });
+
+    const requestId = created.json<{ request: { id: string } }>().request.id;
+    const list = await server.inject({ method: "GET", url: "/api/signature-requests" });
+    const packet = await server.inject({
+      method: "GET",
+      url: `/api/signature-requests/${requestId}/evidence-packet`,
+    });
+
+    expect(list.json<Array<{ id: string; validationStatus?: string }>>()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: requestId, validationStatus: "valid" }),
+      ]),
+    );
+    expect(packet.json()).toMatchObject({
+      envelopeValidation: {
+        status: "valid",
+        issues: [],
+        signerCount: 1,
+        fieldCount: 1,
+        requiredFieldCount: 1,
+      },
+    });
+    const serializedPacket = JSON.stringify(packet.json());
+    expect(serializedPacket).not.toContain("xPercent");
+    expect(serializedPacket).not.toContain("yPercent");
+  });
+
+  it("rejects invalid envelope metadata before provider, email, repository, or audit work", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await enableSmtp(repository);
+    const submissions: unknown[] = [];
+    const queuedEmails: unknown[] = [];
+    const provider: SignatureProvider = {
+      async createSubmission(input) {
+        submissions.push(input);
+        return {
+          provider: "embedded",
+          externalId: "embedded:not-called",
+          status: "sent",
+        };
+      },
+    };
+    const beforeRequests = await repository.listSignatureRequests("firm-west-legal");
+    const beforeAudit = await repository.listAuditEvents("firm-west-legal");
+    const server = testServer({
+      repository,
+      signatureProvider: provider,
+      emailJobQueue: {
+        async add(_name: string, data: unknown) {
+          queuedEmails.push(data);
+          return { id: "email-job-not-called" };
+        },
+      },
+    });
+    const created = await server.inject({
+      method: "POST",
+      url: "/api/signature-requests",
+      payload: signaturePayload({
+        envelopeMetadata: envelopeMetadata({
+          signerOrder: [
+            { role: "client", order: 1, required: true },
+            { role: "client", order: 1, required: false },
+          ],
+          fieldPlacements: [
+            {
+              id: "witness-signature",
+              role: "witness",
+              fieldType: "signature",
+              page: 0,
+              required: true,
+              documentId: "doc-002",
+              xPercent: 101,
+              yPercent: -1,
+            },
+          ],
+        }),
+      }),
+    });
+
+    expect(created.statusCode).toBe(400);
+    expect(created.json()).toMatchObject({
+      code: "SIGNATURE_ENVELOPE_METADATA_INVALID",
+      message: "Signature envelope metadata is invalid",
+      details: {
+        issues: expect.arrayContaining([
+          "Signing order 1 is assigned more than once.",
+          "Signer role client is duplicated.",
+          "Field witness-signature references signer role witness outside signer order.",
+        ]),
+      },
+    });
+    expect(submissions).toEqual([]);
+    expect(queuedEmails).toEqual([]);
+    await expect(repository.listSignatureRequests("firm-west-legal")).resolves.toHaveLength(
+      beforeRequests.length,
+    );
+    const afterAudit = await repository.listAuditEvents("firm-west-legal");
+    expect(afterAudit.events).toHaveLength(beforeAudit.events.length);
   });
 
   it("returns an audit-safe evidence packet with signer roles and redacted evidence", async () => {

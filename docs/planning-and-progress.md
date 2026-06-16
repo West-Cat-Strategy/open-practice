@@ -22,6 +22,15 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 ## Current Handoff Notes
 
+The 2026-06-16 Signature Request Envelope Metadata branch adds OP-authored signer-order and
+field-placement metadata directly to existing signature requests. Domain validation stays
+provider-neutral, invalid metadata is rejected before provider submission or email/audit side
+effects, PostgreSQL and memory repositories keep default `unchecked` compatibility for legacy
+requests, staff evidence packets expose only safe validation counts/issues, and the dashboard shows
+compact envelope posture without signer emails, consent text, provider evidence, or raw placement
+coordinates. Proof is recorded in
+[Signature request envelope metadata proof](validation/OP_SIGNATURE_REQUEST_ENVELOPE_METADATA_PROOF_2026-06-16.md).
+
 The 2026-06-16 workflow-step history projection branch adds a read-only history view over existing
 job lifecycle records and workflow-shaped audit events. It keeps the implementation additive: no
 Temporal service, no new workflow engine, no worker orchestration changes, no workflow table, and

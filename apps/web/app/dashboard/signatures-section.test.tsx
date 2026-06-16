@@ -17,6 +17,20 @@ const syntheticSignature: SignatureRequestsResponse[number] = {
   status: "pending_provider_submission",
   consentText: "Synthetic consent text",
   evidence: {},
+  signerOrder: [{ role: "client", order: 1, required: true }],
+  fieldPlacements: [
+    {
+      id: "synthetic-client-signature",
+      role: "client",
+      fieldType: "signature",
+      page: 1,
+      required: true,
+      documentId: "document_synthetic",
+      xPercent: 72,
+      yPercent: 84,
+    },
+  ],
+  validationStatus: "valid",
   createdAt: "2026-06-06T00:00:00.000Z",
 };
 
@@ -33,7 +47,14 @@ describe("SignaturesSection", () => {
     expect(html).toContain("Synthetic engagement letter");
     expect(html).toContain("manual");
     expect(html).toContain("manual-envelope-synthetic");
+    expect(html).toContain("valid envelope");
+    expect(html).toContain("1 signer role");
+    expect(html).toContain("1 field");
     expect(html).toContain("pending provider_submission");
+    expect(html).not.toContain("ada@example.test");
+    expect(html).not.toContain("Synthetic consent text");
+    expect(html).not.toContain("xPercent");
+    expect(html).not.toContain("72");
   });
 
   it("keeps the empty signature request state visible", () => {
@@ -44,5 +65,22 @@ describe("SignaturesSection", () => {
     );
 
     expect(html).toContain("No signature requests are linked to this matter.");
+  });
+
+  it("renders legacy unchecked envelope posture", () => {
+    const html = renderToStaticMarkup(
+      createElement(SignaturesSection, {
+        activeSignatures: [
+          {
+            ...syntheticSignature,
+            signerOrder: [],
+            fieldPlacements: [],
+            validationStatus: "unchecked",
+          },
+        ],
+      }),
+    );
+
+    expect(html).toContain("Envelope unchecked");
   });
 });

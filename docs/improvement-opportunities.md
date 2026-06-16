@@ -56,6 +56,12 @@ re-proposed here.
 OP-T157 shipped the first staff-only intake submissions operations surface, so the former
 staff-only intake submissions operations queue candidate is no longer re-proposed here.
 
+The first signature envelope metadata slice shipped on 2026-06-16. OP-authored signer-order and
+field-placement metadata now lives on existing signature requests with provider-neutral validation,
+safe evidence-packet summaries, and dashboard posture. Future signing candidates should compare
+against OP-T133 document-assembly envelopes, OP-T156 client portal embedded signer actions, and the
+signature request metadata proof before proposing another envelope slice.
+
 #### Intake, Documents, And Signing
 
 - **Advanced intake rule simulation matrix**
@@ -86,14 +92,6 @@ staff-only intake submissions operations queue candidate is no longer re-propose
   - **References:** `jhpyle__docassemble`.
   - **Reuse and snippets:** The project is MIT, but current OP posture is reference-only; no direct
     snippets without a reuse decision.
-
-- **Signature envelope, field placement, and signing-order model**
-  - **First slice:** Add OP-authored envelope metadata for signer order and field placement
-    validation over existing embedded signature records.
-  - **Local gap / shipped boundary:** OP tracks signers, events, and evidence packets, but not a
-    reusable envelope/template/field-placement model.
-  - **References:** `documenso__documenso` and `docusealco__docuseal`.
-  - **Reuse and snippets:** AGPL/reference-only; no direct snippets.
 
 - **Private document conversion and annotation research spike**
   - **First slice:** Prototype an optional local conversion/annotation boundary that stores only

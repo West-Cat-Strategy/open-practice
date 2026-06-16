@@ -708,6 +708,9 @@ describe("database schema hardening", () => {
     expect(getTableConfig(signatureRequests).columns.map((column) => column.name)).toContain(
       "requested_by_user_id",
     );
+    expect(getTableConfig(signatureRequests).columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining(["signer_order", "field_placements", "validation_status"]),
+    );
     expect(getTableConfig(signatureRequestSigners).columns.map((column) => column.name)).toContain(
       "signature_request_id",
     );
