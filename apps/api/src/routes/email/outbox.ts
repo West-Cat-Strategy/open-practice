@@ -8,7 +8,6 @@ import {
 import { createSessionToken, hashToken } from "../../http/auth-helpers.js";
 import { ApiHttpError } from "../../http/response.js";
 import { parseRequestPart } from "../../http/validation.js";
-import type { ApiAuthContext } from "../../server.js";
 import { appendWorkflowAuditEvent } from "../audit-events.js";
 import {
   deliveryConfirmationSchema,
@@ -28,17 +27,12 @@ import {
   summarizeQueuedRouteEmail,
 } from "../outbound-email.js";
 import type { ApiRouteDependencies } from "../types.js";
-import { assertEmailAccess, requireReceiptSecret } from "./shared.js";
-
-const relatedResourceTypeSchema = z.enum([
-  "document",
-  "draft",
-  "external_upload",
-  "intake_session",
-  "invoice",
-  "share_link",
-  "signature_request",
-]);
+import {
+  assertEmailAccess,
+  assertRelatedEmailResourceMatchesMatter,
+  relatedEmailResourceTypeSchema,
+  requireReceiptSecret,
+} from "./shared.js";
 
 const emailPreviewBodySchema = z
   .object({
@@ -52,7 +46,7 @@ const emailPreviewBodySchema = z
     subject: z.string().min(1),
     htmlBody: z.string().default(""),
     textBody: z.string().default(""),
-    relatedResourceType: relatedResourceTypeSchema.optional(),
+    relatedResourceType: relatedEmailResourceTypeSchema.optional(),
     relatedResourceId: z.string().min(1).optional(),
   })
   .refine((body) => body.templateKey || body.template, {
@@ -101,7 +95,7 @@ const emailOutboxBodySchema = z
     subject: z.string().min(1),
     htmlBody: z.string().default(""),
     textBody: z.string().default(""),
-    relatedResourceType: relatedResourceTypeSchema.optional(),
+    relatedResourceType: relatedEmailResourceTypeSchema.optional(),
     relatedResourceId: z.string().min(1).optional(),
     idempotencyKey: z.string().min(8).max(180).optional(),
     deliveryConfirmation: deliveryConfirmationSchema.optional(),
@@ -118,7 +112,6 @@ const emailOutboxBodySchema = z
     message: "Either htmlBody or textBody is required",
   });
 
-type RelatedResourceType = z.infer<typeof relatedResourceTypeSchema>;
 type RegisterEmailOutboxRouteOptions = Pick<
   ApiRouteDependencies,
   "repository" | "emailJobQueue"
@@ -224,70 +217,6 @@ function serializeDeliveryHistory(
   };
 }
 
-async function resolveRelatedResourceMatterId(
-  repository: ApiRouteDependencies["repository"],
-  firmId: string,
-  type: RelatedResourceType,
-  id: string,
-): Promise<string | undefined> {
-  if (type === "document") {
-    return (await repository.getDocument(firmId, id))?.matterId;
-  }
-  if (type === "draft") {
-    return (await repository.getDraft(firmId, id))?.matterId;
-  }
-  if (type === "external_upload") {
-    return (await repository.listExternalUploadLinks(firmId)).find((link) => link.id === id)
-      ?.matterId;
-  }
-  if (type === "intake_session") {
-    return (await repository.getIntakeSession(firmId, id))?.matterId;
-  }
-  if (type === "invoice") {
-    return (await repository.getInvoice(firmId, id))?.matterId;
-  }
-  if (type === "share_link") {
-    return (await repository.getShareLink(firmId, id))?.matterId;
-  }
-  return (await repository.listSignatureRequests(firmId)).find((request) => request.id === id)
-    ?.matterId;
-}
-
-async function assertRelatedResourceMatchesMatter(
-  repository: ApiRouteDependencies["repository"],
-  context: ApiAuthContext,
-  input: {
-    matterId: string;
-    relatedResourceType?: RelatedResourceType;
-    relatedResourceId?: string;
-  },
-): Promise<void> {
-  if (!input.relatedResourceType && !input.relatedResourceId) return;
-  if (!input.relatedResourceType || !input.relatedResourceId) {
-    throw Object.assign(
-      new Error("relatedResourceType and relatedResourceId must be provided together"),
-      {
-        statusCode: 400,
-      },
-    );
-  }
-
-  const relatedMatterId = await resolveRelatedResourceMatterId(
-    repository,
-    context.firmId,
-    input.relatedResourceType,
-    input.relatedResourceId,
-  );
-  if (!relatedMatterId) {
-    throw Object.assign(new Error("Related email resource was not found"), { statusCode: 404 });
-  }
-  if (relatedMatterId !== input.matterId) {
-    throw Object.assign(new Error("Related email resource does not match the email matter"), {
-      statusCode: 403,
-    });
-  }
-}
-
 function buildReceiptRecordUrl(publicWebBaseUrl: string | undefined, token: string): string {
   const baseUrl = (publicWebBaseUrl ?? "http://localhost:3000").replace(/\/+$/, "");
   return `${baseUrl}/api/portal/email-receipts/${encodeURIComponent(token)}`;
@@ -372,7 +301,7 @@ export function registerEmailOutboxRoutes(
       action: "create",
       matterId: body.matterId,
     });
-    await assertRelatedResourceMatchesMatter(repository, request.auth, body);
+    await assertRelatedEmailResourceMatchesMatter(repository, request.auth, body);
 
     const textPreview = previewText(body.textBody);
     const htmlPreview = previewHtml(body.htmlBody);
@@ -427,7 +356,7 @@ export function registerEmailOutboxRoutes(
       action: "create",
       matterId: body.matterId,
     });
-    await assertRelatedResourceMatchesMatter(repository, request.auth, body);
+    await assertRelatedEmailResourceMatchesMatter(repository, request.auth, body);
     requireEmailDeliveryConfirmation(body.deliveryConfirmation, {
       recipientCount: body.to.length + body.cc.length + body.bcc.length,
     });

@@ -270,6 +270,12 @@ import {
 } from "./matter-command-center";
 import { DashboardApiError, dashboardApiStatus, requestDashboardJson } from "./api-client";
 import { requestConnectorOperationsForDashboard } from "./_features/connectors/client-resources";
+import type {
+  EmailTemplateDashboardResponse,
+  EmailTemplateDraftItem,
+  EmailTemplateDraftMutationResponse,
+  EmailTemplatePreviewSnapshotMutationResponse,
+} from "./_features/email-templates/models";
 import {
   cents,
   compactDate,
@@ -297,6 +303,10 @@ import {
 } from "./dashboard/dashboard-shell";
 import { ContactsSection } from "./dashboard/contacts-section";
 import { CalendarSection } from "./dashboard/calendar-section";
+import {
+  EmailTemplateDraftsPanel,
+  type EmailTemplateDraftFormState,
+} from "./dashboard/email-template-drafts-panel";
 import { FirstMatterWorkspace } from "./dashboard/first-matter-workspace";
 import { MatterOverviewSection } from "./dashboard/matter-overview-section";
 import { QueuesSection } from "./dashboard/queues-section";
@@ -420,6 +430,41 @@ import type {
   UnscopedInboundEmailReviewMessage,
 } from "./types";
 
+const defaultEmailTemplateDraftForm: EmailTemplateDraftFormState = {
+  name: "",
+  category: "matter_update",
+  templateKey: "",
+  from: "Open Practice <no-reply@open-practice.local>",
+  subject: "",
+  textBody: "",
+  htmlBody: "",
+  recipientHints: "",
+};
+
+function emailTemplateDraftFormFromRecord(
+  draft?: EmailTemplateDraftItem,
+): EmailTemplateDraftFormState {
+  if (!draft) return { ...defaultEmailTemplateDraftForm };
+  return {
+    id: draft.id,
+    name: draft.name,
+    category: draft.category,
+    templateKey: draft.templateKey,
+    from: draft.from,
+    subject: draft.subject,
+    textBody: draft.textBody,
+    htmlBody: draft.htmlBody,
+    recipientHints: draft.recipientHints.join(", "),
+  };
+}
+
+function parseEmailTemplateRecipientHints(value: string): string[] {
+  return value
+    .split(",")
+    .map((hint) => hint.trim())
+    .filter(Boolean);
+}
+
 interface DashboardClientProps {
   apiBaseUrl: string;
   auditProjection: AuditProjectionDashboardResponse;
@@ -437,6 +482,7 @@ interface DashboardClientProps {
   documentProcessing: DocumentProcessingDashboardResponse;
   drafting: DraftingDashboardResponse;
   emailDeliveryHistory: EmailDeliveryDashboardResponse;
+  emailTemplates: EmailTemplateDashboardResponse;
   emailSettings: EmailSettings;
   externalUploads: ExternalUploadsDashboardResponse;
   imapSettings: ImapSettings;
@@ -797,6 +843,7 @@ export default function DashboardClient({
   documentProcessing,
   drafting,
   emailDeliveryHistory,
+  emailTemplates,
   emailSettings,
   externalUploads,
   imapSettings,
@@ -845,6 +892,21 @@ export default function DashboardClient({
   const [providerStatus, setProviderStatus] = useState(initialProviderStatus);
   const [connectorOperations, setConnectorOperations] = useState(initialConnectorOperations);
   const [communicationsInboxState, setCommunicationsInboxState] = useState(communicationsInbox);
+  const [emailTemplateDrafts, setEmailTemplateDrafts] = useState(emailTemplates.templateDrafts);
+  const [emailTemplatePreviewSnapshotsByMatterId, setEmailTemplatePreviewSnapshotsByMatterId] =
+    useState(emailTemplates.previewSnapshotsByMatterId);
+  const [selectedEmailTemplateDraftId, setSelectedEmailTemplateDraftId] = useState(
+    emailTemplates.templateDrafts[0]?.id ?? "",
+  );
+  const [emailTemplateDraftForm, setEmailTemplateDraftForm] = useState(() =>
+    emailTemplateDraftFormFromRecord(emailTemplates.templateDrafts[0]),
+  );
+  const [emailTemplateDraftStatus, setEmailTemplateDraftStatus] = useState(
+    "No email template draft saved in this session.",
+  );
+  const [savingEmailTemplateDraft, setSavingEmailTemplateDraft] = useState(false);
+  const [savingEmailTemplatePreviewSnapshot, setSavingEmailTemplatePreviewSnapshot] =
+    useState(false);
   const [operationalViews, setOperationalViews] = useState(initialOperationalViews);
   const [reportingWorkspace, setReportingWorkspace] = useState(initialReportingWorkspace);
   const [freshnessNow, setFreshnessNow] = useState(() => new Date());
@@ -1549,6 +1611,116 @@ export default function DashboardClient({
   const activeEmailDeliveries = activeMatter
     ? (emailDeliveryHistory.emailsByMatterId[activeMatter.id] ?? [])
     : [];
+  const activeEmailTemplatePreviewSnapshots = activeMatter
+    ? (emailTemplatePreviewSnapshotsByMatterId[activeMatter.id] ?? [])
+    : [];
+  function selectEmailTemplateDraft(templateDraftId: string): void {
+    const draft = emailTemplateDrafts.find((candidate) => candidate.id === templateDraftId);
+    setSelectedEmailTemplateDraftId(templateDraftId);
+    setEmailTemplateDraftForm(emailTemplateDraftFormFromRecord(draft));
+  }
+
+  function startNewEmailTemplateDraft(): void {
+    setSelectedEmailTemplateDraftId("");
+    setEmailTemplateDraftForm({ ...defaultEmailTemplateDraftForm });
+    setEmailTemplateDraftStatus("New email template draft started.");
+  }
+
+  function updateEmailTemplateDraftForm(
+    field: keyof EmailTemplateDraftFormState,
+    value: string,
+  ): void {
+    setEmailTemplateDraftForm((current) => ({ ...current, [field]: value }));
+  }
+
+  async function saveEmailTemplateDraft(): Promise<void> {
+    setSavingEmailTemplateDraft(true);
+    setEmailTemplateDraftStatus("Saving email template draft.");
+    try {
+      const payload = {
+        name: emailTemplateDraftForm.name,
+        category: emailTemplateDraftForm.category,
+        templateKey: emailTemplateDraftForm.templateKey,
+        from: emailTemplateDraftForm.from,
+        subject: emailTemplateDraftForm.subject,
+        textBody: emailTemplateDraftForm.textBody,
+        htmlBody: emailTemplateDraftForm.htmlBody,
+        recipientHints: parseEmailTemplateRecipientHints(emailTemplateDraftForm.recipientHints),
+        status: "draft",
+      };
+      const path = emailTemplateDraftForm.id
+        ? `/api/email/template-drafts/${encodeURIComponent(emailTemplateDraftForm.id)}`
+        : "/api/email/template-drafts";
+      const response = await requestDashboardJson<EmailTemplateDraftMutationResponse>(
+        apiBaseUrl,
+        path,
+        {
+          method: emailTemplateDraftForm.id ? "PATCH" : "POST",
+          headers: devHeaders,
+          payload,
+        },
+      );
+      setEmailTemplateDrafts((current) => {
+        const others = current.filter((draft) => draft.id !== response.templateDraft.id);
+        return [response.templateDraft, ...others].sort((left, right) =>
+          right.updatedAt.localeCompare(left.updatedAt),
+        );
+      });
+      setSelectedEmailTemplateDraftId(response.templateDraft.id);
+      setEmailTemplateDraftForm(emailTemplateDraftFormFromRecord(response.templateDraft));
+      setEmailTemplateDraftStatus("Email template draft saved.");
+    } catch (error) {
+      setEmailTemplateDraftStatus(
+        `Email template draft save failed (${dashboardApiStatus(error)}).`,
+      );
+    } finally {
+      setSavingEmailTemplateDraft(false);
+    }
+  }
+
+  async function createEmailTemplatePreviewSnapshot(): Promise<void> {
+    if (!activeMatter || !selectedEmailTemplateDraftId) {
+      setEmailTemplateDraftStatus("Select a matter and saved email template draft first.");
+      return;
+    }
+
+    setSavingEmailTemplatePreviewSnapshot(true);
+    setEmailTemplateDraftStatus("Saving preview snapshot.");
+    try {
+      const response = await requestDashboardJson<EmailTemplatePreviewSnapshotMutationResponse>(
+        apiBaseUrl,
+        `/api/email/template-drafts/${encodeURIComponent(
+          selectedEmailTemplateDraftId,
+        )}/preview-snapshots`,
+        {
+          method: "POST",
+          headers: devHeaders,
+          payload: {
+            matterId: activeMatter.id,
+            to: [],
+            cc: [],
+            bcc: [],
+          },
+        },
+      );
+      setEmailTemplatePreviewSnapshotsByMatterId((current) => {
+        const existing = current[activeMatter.id] ?? [];
+        return {
+          ...current,
+          [activeMatter.id]: [
+            response.previewSnapshot,
+            ...existing.filter((snapshot) => snapshot.id !== response.previewSnapshot.id),
+          ].slice(0, 5),
+        };
+      });
+      setEmailTemplateDraftStatus("Preview snapshot saved.");
+    } catch (error) {
+      setEmailTemplateDraftStatus(`Preview snapshot failed (${dashboardApiStatus(error)}).`);
+    } finally {
+      setSavingEmailTemplatePreviewSnapshot(false);
+    }
+  }
+
   const activeCommunicationsInbox = activeMatter
     ? communicationsInboxState.inboxByMatterId[activeMatter.id]
     : undefined;
@@ -5940,6 +6112,23 @@ export default function DashboardClient({
                   activeActivitySummary={activeActivitySummary}
                   activeCommunicationsInbox={activeCommunicationsInbox}
                   activeEmailDeliveries={activeEmailDeliveries}
+                  emailTemplateDraftsPanel={
+                    <EmailTemplateDraftsPanel
+                      activeMatterId={activeMatter?.id}
+                      form={emailTemplateDraftForm}
+                      onCreatePreviewSnapshot={createEmailTemplatePreviewSnapshot}
+                      onFieldChange={updateEmailTemplateDraftForm}
+                      onNewDraft={startNewEmailTemplateDraft}
+                      onSaveDraft={saveEmailTemplateDraft}
+                      onSelectDraft={selectEmailTemplateDraft}
+                      previewSnapshots={activeEmailTemplatePreviewSnapshots}
+                      previewing={savingEmailTemplatePreviewSnapshot}
+                      saving={savingEmailTemplateDraft}
+                      selectedTemplateDraftId={selectedEmailTemplateDraftId}
+                      status={emailTemplateDraftStatus}
+                      templateDrafts={emailTemplateDrafts}
+                    />
+                  }
                   activeLegalClinicProfile={activeLegalClinicProfile}
                   activeLegalClinicProgram={activeLegalClinicProgram}
                   activeMatter={activeMatter}

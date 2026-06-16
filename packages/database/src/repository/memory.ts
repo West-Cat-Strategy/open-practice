@@ -43,6 +43,8 @@ import {
   type EmailEventRecord,
   type EmailOutboxRecord,
   type EmailReceiptTokenRecord,
+  type EmailTemplateDraftRecord,
+  type EmailTemplatePreviewSnapshotRecord,
   type ExpenseEntry,
   type ExternalUploadLinkRecord,
   type Firm,
@@ -148,6 +150,7 @@ import type {
   AuthSessionRecord,
 } from "./auth-contracts.js";
 import type { ConnectorRepository } from "./connector-contracts.js";
+import type { EmailTemplateDraftRepository } from "./email-template-drafts-contracts.js";
 import type { EmailJobsRepository } from "./jobs-email-contracts.js";
 import type { FirmSettingsRepository } from "./firm-settings-contracts.js";
 import type { ProviderSettingsRepository } from "./provider-settings-contracts.js";
@@ -368,6 +371,10 @@ import {
   type MemorySignatureStore,
 } from "./signatures/memory.js";
 import { createMemoryConnectorRepository, type MemoryConnectorStore } from "./connectors/memory.js";
+import {
+  createMemoryEmailTemplateDraftRepository,
+  type MemoryEmailTemplateDraftStore,
+} from "./email-template-drafts/memory.js";
 import { createMemoryEmailJobsRepository, type MemoryEmailJobsStore } from "./jobs-email/memory.js";
 import {
   createMemoryInboundEmailAddress,
@@ -530,6 +537,12 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   declare listEmailReceiptTokens: EmailJobsRepository["listEmailReceiptTokens"];
   declare updateJobLifecycleRecord: EmailJobsRepository["updateJobLifecycleRecord"];
   declare listJobLifecycleRecords: EmailJobsRepository["listJobLifecycleRecords"];
+  declare listEmailTemplateDrafts: EmailTemplateDraftRepository["listEmailTemplateDrafts"];
+  declare getEmailTemplateDraft: EmailTemplateDraftRepository["getEmailTemplateDraft"];
+  declare createEmailTemplateDraft: EmailTemplateDraftRepository["createEmailTemplateDraft"];
+  declare updateEmailTemplateDraft: EmailTemplateDraftRepository["updateEmailTemplateDraft"];
+  declare createEmailTemplatePreviewSnapshot: EmailTemplateDraftRepository["createEmailTemplatePreviewSnapshot"];
+  declare listEmailTemplatePreviewSnapshots: EmailTemplateDraftRepository["listEmailTemplatePreviewSnapshots"];
   declare getFirmSettings: FirmSettingsRepository["getFirmSettings"];
   declare listProviderSettings: ProviderSettingsRepository["listProviderSettings"];
   declare upsertProviderSetting: ProviderSettingsRepository["upsertProviderSetting"];
@@ -605,6 +618,8 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private emailOutbox: EmailOutboxRecord[] = [];
   private emailEvents: EmailEventRecord[] = [];
   private emailReceiptTokens: EmailReceiptTokenRecord[] = [];
+  private emailTemplateDrafts: EmailTemplateDraftRecord[] = [];
+  private emailTemplatePreviewSnapshots: EmailTemplatePreviewSnapshotRecord[] = [];
   private authAccounts: AuthAccountRecord[] = [];
   private authSessions: AuthSessionRecord[] = [];
   private calendarCredentials: CalendarCredentialRecord[] = [];
@@ -1215,6 +1230,13 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     };
   }
 
+  private get emailTemplateDraftStore(): MemoryEmailTemplateDraftStore {
+    return {
+      emailTemplateDrafts: this.emailTemplateDrafts,
+      emailTemplatePreviewSnapshots: this.emailTemplatePreviewSnapshots,
+    };
+  }
+
   private get inboundEmailStore(): MemoryInboundEmailStore {
     return {
       inboundEmailAddresses: this.inboundEmailAddresses,
@@ -1421,6 +1443,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     Object.assign(this, createMemoryAuthRepository(this.authStore));
     Object.assign(this, createMemoryConnectorRepository(this.connectorStore));
     Object.assign(this, createMemoryEmailJobsRepository(this.emailJobsStore));
+    Object.assign(this, createMemoryEmailTemplateDraftRepository(this.emailTemplateDraftStore));
     Object.assign(
       this,
       createMemoryFirmSettingsRepository(() => this.firmSettings),

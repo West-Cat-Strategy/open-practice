@@ -225,6 +225,276 @@ describe("email routes", () => {
     expect(JSON.stringify(auditAfter.events)).not.toContain("A short synthetic update");
   });
 
+  it("creates, lists, and updates provider-neutral template drafts with safe audit metadata", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({
+      repository,
+      authUser: user("owner_admin", ["matter-001", "matter-002"]),
+    });
+
+    const created = await server.inject({
+      method: "POST",
+      url: "/api/email/template-drafts",
+      payload: {
+        name: "Retainer follow-up",
+        category: "matter_update",
+        templateKey: "retainer.follow_up",
+        from: "Open Practice <notice@example.test>",
+        subject: "Synthetic private subject",
+        textBody: "Synthetic private body for saved draft content.",
+        htmlBody: "<p>Synthetic private body for saved draft content.</p>",
+        recipientHints: ["primary_client"],
+      },
+    });
+
+    expect(created.statusCode).toBe(201);
+    expect(created.json().templateDraft).toMatchObject({
+      id: expect.any(String),
+      firmId: "firm-west-legal",
+      name: "Retainer follow-up",
+      category: "matter_update",
+      templateKey: "retainer.follow_up",
+      subject: "Synthetic private subject",
+      textBody: "Synthetic private body for saved draft content.",
+      recipientHints: ["primary_client"],
+      status: "draft",
+      version: 1,
+    });
+
+    const listed = await server.inject({
+      method: "GET",
+      url: "/api/email/template-drafts",
+    });
+    expect(listed.statusCode).toBe(200);
+    expect(listed.json().templateDrafts).toHaveLength(1);
+
+    const updated = await server.inject({
+      method: "PATCH",
+      url: `/api/email/template-drafts/${created.json().templateDraft.id}`,
+      payload: {
+        name: "Retainer follow-up v2",
+        subject: "Updated synthetic private subject",
+      },
+    });
+    expect(updated.statusCode).toBe(200);
+    expect(updated.json().templateDraft).toMatchObject({
+      name: "Retainer follow-up v2",
+      subject: "Updated synthetic private subject",
+      version: 2,
+    });
+
+    const audit = await repository.listAuditEvents("firm-west-legal");
+    const serializedAudit = JSON.stringify(audit.events);
+    expect(audit.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          action: "email_template_draft.created",
+          resourceType: "email_template_draft",
+          metadata: expect.objectContaining({
+            category: "matter_update",
+            subjectLength: "Synthetic private subject".length,
+            textLength: "Synthetic private body for saved draft content.".length,
+            recipientHintCount: 1,
+            draftAndPreviewOnly: true,
+            providerNeutral: true,
+          }),
+        }),
+        expect.objectContaining({
+          action: "email_template_draft.updated",
+          resourceType: "email_template_draft",
+          metadata: expect.objectContaining({
+            version: 2,
+            providerNeutral: true,
+          }),
+        }),
+      ]),
+    );
+    expect(serializedAudit).not.toContain("Synthetic private subject");
+    expect(serializedAudit).not.toContain("Synthetic private body");
+    expect(serializedAudit).not.toContain("notice@example.test");
+    await expect(repository.listEmailOutbox("firm-west-legal")).resolves.toEqual([]);
+    await expect(repository.listJobLifecycleRecords("firm-west-legal")).resolves.toEqual([]);
+  });
+
+  it("persists template preview snapshots without provider, outbox, or job side effects", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({
+      repository,
+      authUser: user("owner_admin", ["matter-001", "matter-002"]),
+    });
+    const created = await server.inject({
+      method: "POST",
+      url: "/api/email/template-drafts",
+      payload: {
+        name: "Matter update",
+        category: "matter_update",
+        templateKey: "matter.update",
+        subject: "Synthetic private preview subject",
+        textBody: "Synthetic private preview body.",
+        htmlBody:
+          '<p onclick="alert(1)">Synthetic private preview body.</p><script>secret()</script>',
+      },
+    });
+    const templateDraftId = created.json().templateDraft.id;
+
+    const snapshot = await server.inject({
+      method: "POST",
+      url: `/api/email/template-drafts/${templateDraftId}/preview-snapshots`,
+      payload: {
+        matterId: "matter-001",
+        to: ["client@example.test"],
+        cc: ["staff@example.test"],
+        relatedResourceType: "signature_request",
+        relatedResourceId: "sig-001",
+      },
+    });
+
+    expect(snapshot.statusCode).toBe(201);
+    expect(snapshot.json()).toMatchObject({
+      status: "previewed",
+      mode: "template_snapshot",
+      previewSnapshot: {
+        templateDraftId,
+        matterId: "matter-001",
+        templateKey: "matter.update",
+        subjectPreview: "Synthetic private preview subject",
+        recipientSummary: {
+          toCount: 1,
+          ccCount: 1,
+          bccCount: 0,
+          recipientCount: 2,
+        },
+        relatedResource: { type: "signature_request", id: "sig-001" },
+        warnings: expect.arrayContaining(["html_body_sanitized"]),
+        delivery: { persisted: true, queued: false },
+      },
+    });
+    expect(snapshot.json().previewSnapshot.body.htmlPreview).not.toContain("<script>");
+    expect(snapshot.json().previewSnapshot.body.htmlPreview).not.toContain("onclick");
+
+    const listed = await server.inject({
+      method: "GET",
+      url: `/api/email/template-drafts/${templateDraftId}/preview-snapshots?matterId=matter-001`,
+    });
+    expect(listed.statusCode).toBe(200);
+    expect(listed.json().previewSnapshots).toHaveLength(1);
+    expect(listed.json().previewSnapshots[0].delivery).toEqual({ persisted: true, queued: false });
+
+    await expect(repository.listEmailOutbox("firm-west-legal")).resolves.toEqual([]);
+    await expect(repository.listJobLifecycleRecords("firm-west-legal")).resolves.toEqual([]);
+    const audit = await repository.listAuditEvents("firm-west-legal");
+    const serializedAudit = JSON.stringify(audit.events);
+    expect(audit.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          action: "email_template_preview_snapshot.created",
+          resourceType: "email_template_preview_snapshot",
+          metadata: expect.objectContaining({
+            templateDraftId,
+            matterId: "matter-001",
+            recipientCount: 2,
+            queued: false,
+            providerNeutral: true,
+          }),
+        }),
+      ]),
+    );
+    expect(serializedAudit).not.toContain("client@example.test");
+    expect(serializedAudit).not.toContain("Synthetic private preview subject");
+    expect(serializedAudit).not.toContain("Synthetic private preview body");
+  });
+
+  it("requires matter-scoped email access for template preview snapshots", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const ownerServer = testServer({
+      repository,
+      authUser: user("owner_admin", ["matter-001", "matter-002"]),
+    });
+    const created = await ownerServer.inject({
+      method: "POST",
+      url: "/api/email/template-drafts",
+      payload: {
+        name: "Matter update",
+        category: "matter_update",
+        templateKey: "matter.update",
+        subject: "Matter update",
+        textBody: "Preview only.",
+      },
+    });
+
+    const response = await testServer({
+      repository,
+      authUser: user("firm_member", ["matter-002"]),
+    }).inject({
+      method: "POST",
+      url: `/api/email/template-drafts/${created.json().templateDraft.id}/preview-snapshots`,
+      payload: {
+        matterId: "matter-001",
+      },
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({
+      code: "EMAIL_ACCESS_REQUIRED",
+    });
+    await expect(
+      repository.listEmailTemplatePreviewSnapshots(
+        "firm-west-legal",
+        created.json().templateDraft.id,
+      ),
+    ).resolves.toEqual([]);
+  });
+
+  it("rejects template preview snapshots when related resources belong to another matter", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createDraft({
+      id: "draft-matter-002",
+      firmId: "firm-west-legal",
+      matterId: "matter-002",
+      title: "Matter 002 synthetic draft",
+      editorJson: { type: "doc", content: [{ type: "paragraph", text: "Synthetic" }] },
+      version: 1,
+      createdByUserId: "user-admin",
+      updatedByUserId: "user-admin",
+      createdAt: "2026-06-16T10:00:00.000Z",
+      updatedAt: "2026-06-16T10:00:00.000Z",
+      metadata: {},
+    });
+    const server = testServer({
+      repository,
+      authUser: user("owner_admin", ["matter-001", "matter-002"]),
+    });
+    const created = await server.inject({
+      method: "POST",
+      url: "/api/email/template-drafts",
+      payload: {
+        name: "Matter update",
+        category: "matter_update",
+        templateKey: "matter.update",
+        subject: "Matter update",
+        textBody: "Preview only.",
+      },
+    });
+
+    const response = await server.inject({
+      method: "POST",
+      url: `/api/email/template-drafts/${created.json().templateDraft.id}/preview-snapshots`,
+      payload: {
+        matterId: "matter-001",
+        relatedResourceType: "draft",
+        relatedResourceId: "draft-matter-002",
+      },
+    });
+
+    expect(response.statusCode).toBe(403);
+    await expect(
+      repository.listEmailTemplatePreviewSnapshots(
+        "firm-west-legal",
+        created.json().templateDraft.id,
+      ),
+    ).resolves.toEqual([]);
+  });
+
   it("normalizes legacy preview template aliases and flags missing recipients", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const response = await testServer({ repository }).inject({

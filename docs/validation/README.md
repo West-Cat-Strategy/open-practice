@@ -24,6 +24,13 @@ It covers the optional `activity` filter for the existing contact timeline proje
 dashboard filtering for safe CRM activity and review-only task/follow-up cues, and the preserved
 no-sync/no-automatic-task/no-raw-private-history boundary.
 
+The 2026-06-16 OP-T158 email template drafts proof is recorded in
+[OP-T158_EMAIL_TEMPLATE_DRAFTS_PROOF_2026-06-16.md](OP-T158_EMAIL_TEMPLATE_DRAFTS_PROOF_2026-06-16.md).
+It covers provider-neutral firm-scoped saved email template drafts, matter-scoped persisted preview
+snapshots, safe preview/audit metadata, related-resource matter matching, focused
+domain/database/API/web tests, and the preserved no-campaign/no-bulk-send/no-provider-side-effect
+boundary.
+
 The 2026-06-16 inbound email matter draft proof is recorded in
 [OP_INBOUND_EMAIL_MATTER_DRAFT_PROOF_2026-06-16.md](OP_INBOUND_EMAIL_MATTER_DRAFT_PROOF_2026-06-16.md).
 It covers the review-only `POST /api/inbound-email/messages/:id/matter-draft` endpoint, sanitized

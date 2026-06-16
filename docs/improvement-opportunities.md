@@ -106,13 +106,14 @@ surface.
 #### Communications, Workflows, And Meetings
 
 - **Structured email template drafts**
-  - **First slice:** Add provider-neutral saved email template drafts plus preview snapshots, without
-    campaign automation or live sends.
-  - **Local gap / shipped boundary:** Email preview is render-only and future template management is
-    documented as out of scope.
+  - **Shipped slice:** OP-T158 adds provider-neutral firm-scoped saved email template drafts and
+    matter-scoped persisted preview snapshots.
+  - **Remaining gap / future boundary:** Campaign automation, bulk sends, subscription management,
+    provider delivery side effects, queue/send jobs, and live delivery from template management
+    remain future work. `/api/email/previews` stays render-only.
   - **References:** `usewaypoint__email-builder-js`.
-  - **Reuse and snippets:** MIT/adapt-with-attribution; a dependency or tiny attributed excerpt may
-    be allowable after `docs/reuse-decision-policy.md` review.
+  - **Reuse and snippets:** Reference-only for OP-T158; no dependency, copied excerpt, vendored
+    asset, or reference-derived code was added.
 
 - **Inbound provider webhook intake boundary**
   - **Shipped slice:** The first Mailgun raw-MIME provider webhook validates the provider

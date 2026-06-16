@@ -47,6 +47,8 @@ import {
   type EmailEventRecord,
   type EmailOutboxRecord,
   type EmailReceiptTokenRecord,
+  type EmailTemplateDraftRecord,
+  type EmailTemplatePreviewSnapshotRecord,
   type ExpenseEntry,
   type ExternalUploadLinkRecord,
   type FirmSettings,
@@ -726,6 +728,101 @@ export function emailOutboxInsert(
     failedAt: record.failedAt ? new Date(record.failedAt) : null,
     lastAttemptAt: record.lastAttemptAt ? new Date(record.lastAttemptAt) : null,
     terminalFailureAt: record.terminalFailureAt ? new Date(record.terminalFailureAt) : null,
+  };
+}
+
+export function mapEmailTemplateDraftRow(
+  row: typeof schema.emailTemplateDrafts.$inferSelect,
+): EmailTemplateDraftRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    name: row.name,
+    description: row.description ?? undefined,
+    category: row.category,
+    templateKey: row.templateKey,
+    from: row.from,
+    subject: row.subject,
+    textBody: row.textBody,
+    htmlBody: row.htmlBody,
+    recipientHints: row.recipientHints,
+    relatedResourceType: row.relatedResourceType ?? undefined,
+    status: row.status as EmailTemplateDraftRecord["status"],
+    version: row.version,
+    createdByUserId: row.createdByUserId,
+    updatedByUserId: row.updatedByUserId,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+    metadata: row.metadata,
+  };
+}
+
+export function emailTemplateDraftInsert(
+  record: EmailTemplateDraftRecord,
+): typeof schema.emailTemplateDrafts.$inferInsert {
+  return {
+    ...record,
+    description: record.description ?? null,
+    relatedResourceType: record.relatedResourceType ?? null,
+    createdAt: new Date(record.createdAt),
+    updatedAt: new Date(record.updatedAt),
+  };
+}
+
+export function mapEmailTemplatePreviewSnapshotRow(
+  row: typeof schema.emailTemplatePreviewSnapshots.$inferSelect,
+): EmailTemplatePreviewSnapshotRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    templateDraftId: row.templateDraftId,
+    matterId: row.matterId,
+    createdByUserId: row.createdByUserId,
+    templateKey: row.templateKey,
+    subjectPreview: row.subjectPreview,
+    body: {
+      textPreview: row.textPreview ?? undefined,
+      htmlPreview: row.htmlPreview ?? undefined,
+      contentTypes: {
+        text: Boolean(row.textPreview),
+        html: Boolean(row.htmlPreview),
+      },
+    },
+    recipientSummary: row.recipientSummary,
+    relatedResource:
+      row.relatedResourceType && row.relatedResourceId
+        ? {
+            type: row.relatedResourceType,
+            id: row.relatedResourceId,
+          }
+        : undefined,
+    warnings: row.warnings,
+    delivery: row.delivery,
+    createdAt: row.createdAt.toISOString(),
+    metadata: row.metadata,
+  };
+}
+
+export function emailTemplatePreviewSnapshotInsert(
+  record: EmailTemplatePreviewSnapshotRecord,
+): typeof schema.emailTemplatePreviewSnapshots.$inferInsert {
+  return {
+    id: record.id,
+    firmId: record.firmId,
+    templateDraftId: record.templateDraftId,
+    matterId: record.matterId,
+    createdByUserId: record.createdByUserId,
+    templateKey: record.templateKey,
+    subjectPreview: record.subjectPreview,
+    textPreview: record.body.textPreview ?? null,
+    htmlPreview: record.body.htmlPreview ?? null,
+    recipientSummary: record.recipientSummary,
+    relatedResourceType: record.relatedResource?.type ?? null,
+    relatedResourceId: record.relatedResource?.id ?? null,
+    warnings: record.warnings,
+    delivery: record.delivery,
+    createdAt: new Date(record.createdAt),
+    metadata: record.metadata,
   };
 }
 

@@ -12,6 +12,7 @@ import {
   Upload,
   type LucideIcon,
 } from "lucide-react";
+import type { ReactNode } from "react";
 import type { OpenPracticeSidebarNavigationSection } from "../../routes/routeCatalog";
 import {
   buildMatterFileCommandCenter,
@@ -118,6 +119,7 @@ export function MatterOverviewSection({
   activeActivitySummary,
   activeCommunicationsInbox,
   activeEmailDeliveries,
+  emailTemplateDraftsPanel,
   activeLegalClinicProfile,
   activeLegalClinicProgram,
   activeMatter,
@@ -144,6 +146,7 @@ export function MatterOverviewSection({
   activeActivitySummary: ReturnType<typeof summarizeMatterActivity>;
   activeCommunicationsInbox?: CommunicationsInboxDashboardResponse["inboxByMatterId"][string];
   activeEmailDeliveries: EmailDeliveryDashboardResponse["emailsByMatterId"][string];
+  emailTemplateDraftsPanel?: ReactNode;
   activeLegalClinicProfile?: LegalClinicDashboardResponse["profilesByMatterId"][string][number];
   activeLegalClinicProgram?: ReturnType<typeof findLegalClinicProgram>;
   activeMatter: MatterSummary;
@@ -209,6 +212,8 @@ export function MatterOverviewSection({
           <strong>API</strong>
         </div>
       </div>
+
+      {emailTemplateDraftsPanel}
 
       <div className="section-title">
         <h3>Matter setup</h3>
