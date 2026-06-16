@@ -183,3 +183,107 @@ Prune actions completed:
 
 Post-prune inventory showed only the primary `/Users/bryan/projects/open-practice` worktree on
 `main`, no unmerged local branches, and only `refs/heads/main` on `origin`.
+
+## Eight-Lane Follow-Up Merge
+
+This section records the 2026-06-16 eight-lane follow-up integration branch
+`codex/open-practice-mainline-merge-2026-06-16`, forked from refreshed `origin/main` at
+`a7765463`.
+
+| Branch                                                  | Commit    | Scope                                                            |
+| ------------------------------------------------------- | --------- | ---------------------------------------------------------------- |
+| `codex/staff-intake-rule-simulation-matrix-2026-06-16`  | `2fdf043` | Staff-only saved intake QA scenarios.                            |
+| `codex/contact-history-export-queue-2026-06-16`         | `29f00d7` | Queued contact-history export request, poll, and download links. |
+| `feature/contact-timeline-activity-filters`             | `f0c1388` | Contact timeline activity filters.                               |
+| `codex/email-template-drafts-2026-06-16`                | `1092a11` | OP-T158 email template drafts and preview snapshots.             |
+| `codex/financial-command-approval-journal-2026-06-16`   | `f2e3245` | Read-only financial command approval journal.                    |
+| `feature/inbound-email-matter-draft-review-cues`        | `90e9161` | Inbound email matter draft review cues.                          |
+| `codex/private-document-conversion-boundary-2026-06-16` | `12725e0` | Private document conversion and annotation boundary docs.        |
+| `codex/trust-posting-approval-commands-2026-06-16`      | `83e8de5` | Trust posting approval commands.                                 |
+
+### Eight-Lane Merge Reconciliation
+
+- Preserved both contact-history export paths: the synchronous single-contact `staff_review` export
+  and the queued request/poll/download link flow. The queued download route regenerates from the
+  current authorized full timeline projection and does not inherit dashboard activity filters.
+- Preserved both contact timeline follow-ups: existing review-only task/follow-up cues and the
+  optional `activity` filter on `GET /api/contacts/:contactId/timeline`.
+- Preserved both ledger follow-ups: the read-only financial command journal in trust controls and
+  explicit trust posting request prepare/list/approve/reject commands. The integrated UI renders
+  both the journal and prepared posting requests.
+- Resolved migration collision by keeping `0061_email_template_drafts.sql`, renumbering trust
+  posting requests to `0062_trust_posting_requests.sql`, and updating Drizzle journal entries
+  `idx: 61` and `idx: 62`.
+- Shared docs/proof conflicts were resolved by preserving every dated lane proof, then updating
+  `docs/planning-and-progress.md`, `docs/validation/README.md`, and this proof note for the
+  integrated batch.
+
+### Eight-Lane Integrated Validation
+
+The final eight-lane integration diff had 101 changed paths. The selector was run against that exact
+path set:
+
+```bash
+pnpm verify:select -- --files <101 integration paths>
+```
+
+It recommended:
+
+```bash
+pnpm format:check
+pnpm docs:check
+pnpm policy:check
+pnpm test
+pnpm --filter @open-practice/domain test
+pnpm --filter @open-practice/domain typecheck
+pnpm --filter @open-practice/database test
+pnpm --filter @open-practice/database db:check
+pnpm migrations:check
+pnpm --filter @open-practice/database typecheck
+pnpm --filter @open-practice/database build
+pnpm --filter @open-practice/api test
+pnpm --filter @open-practice/api typecheck
+pnpm --filter @open-practice/providers test
+pnpm --filter @open-practice/worker test
+pnpm --filter @open-practice/worker typecheck
+pnpm --filter @open-practice/worker build
+pnpm --filter @open-practice/web test
+pnpm --filter @open-practice/web typecheck
+pnpm build
+```
+
+| Command                                           | Result | Notes                                                                                                      |
+| ------------------------------------------------- | ------ | ---------------------------------------------------------------------------------------------------------- |
+| `pnpm verify:select -- --files <101 paths>`       | Passed | Selected the broad API/database/domain/web/worker/docs/migration validation set above.                     |
+| `pnpm format:check`                               | Passed | First run found two Markdown formatting issues after conflict proof edits; Prettier was applied and reran. |
+| `pnpm docs:check`                                 | Passed | Documentation link validation passed.                                                                      |
+| `pnpm policy:check`                               | Passed | Secrets/package/dead-code/migration/OSS/doc/proof/dockerignore/boundary policy checks passed.              |
+| `pnpm test`                                       | Passed | Root script tests passed: 63 tests.                                                                        |
+| `pnpm --filter @open-practice/domain test`        | Passed | 30 files and 200 tests passed.                                                                             |
+| `pnpm --filter @open-practice/domain typecheck`   | Passed | TypeScript check passed.                                                                                   |
+| `pnpm --filter @open-practice/database test`      | Passed | 22 files and 127 tests passed.                                                                             |
+| `pnpm --filter @open-practice/database db:check`  | Passed | `drizzle-kit check` passed.                                                                                |
+| `pnpm migrations:check`                           | Passed | Migration parity passed: 63 SQL files match 63 journal entries.                                            |
+| `pnpm --filter @open-practice/database typecheck` | Passed | TypeScript check passed.                                                                                   |
+| `pnpm --filter @open-practice/database build`     | Passed | Database build passed.                                                                                     |
+| `pnpm --filter @open-practice/api test`           | Passed | 41 files and 546 tests passed.                                                                             |
+| `pnpm --filter @open-practice/api typecheck`      | Passed | TypeScript check passed.                                                                                   |
+| `pnpm --filter @open-practice/providers test`     | Passed | 9 files and 20 tests passed.                                                                               |
+| `pnpm --filter @open-practice/worker test`        | Passed | 5 files and 44 tests passed.                                                                               |
+| `pnpm --filter @open-practice/worker typecheck`   | Passed | TypeScript check passed.                                                                                   |
+| `pnpm --filter @open-practice/worker build`       | Passed | Worker build passed.                                                                                       |
+| `pnpm --filter @open-practice/web test`           | Passed | 37 files and 200 tests passed.                                                                             |
+| `pnpm --filter @open-practice/web typecheck`      | Passed | TypeScript check passed.                                                                                   |
+| `pnpm build`                                      | Passed | Turbo build passed across all 6 package/app tasks.                                                         |
+| `pnpm ci:local`                                   | Passed | Broad local integration bundle passed after the selected gates.                                            |
+| `git diff --check`                                | Passed | No whitespace errors.                                                                                      |
+| `pnpm e2e:host`                                   | Passed | Host Playwright lane passed: 35 tests in about 59.5s.                                                      |
+| `pnpm e2e:matterless`                             | Passed | Matterless Playwright lane passed: 1 test in about 2.7s.                                                   |
+| `pnpm e2e:client-portal`                          | Passed | Client portal Playwright lane passed: 2 tests in about 2.0s.                                               |
+| `node scripts/run-e2e.mjs first-run`              | Passed | First-run setup lane passed: 1 test in about 4.3s.                                                         |
+| `pnpm e2e:docker`                                 | Passed | Docker lane built pinned support images, ran Docker-backed Playwright, and passed 3 tests in about 33.8s.  |
+
+### Eight-Lane Push And Prune
+
+Pending local `main` fast-forward, `origin/main` push parity, and clean merged worktree/branch
+prune.
