@@ -290,6 +290,7 @@ export interface EmailEventRecord {
     | "sending"
     | "sent"
     | "failed"
+    | "cancelled"
     | "bounced"
     | "complained"
     | "opened"

@@ -1614,6 +1614,22 @@ export const auditEventTaxonomyDefinitions = [
     ],
   }),
   define({
+    action: "calendar.reminder.reconciled",
+    category: "calendar",
+    resourceType: "calendar_event",
+    matterScope: "matter",
+    actorHint: "authenticated_user",
+    resourceMetadataKeys: [
+      "eventId",
+      "reminderId",
+      "channel",
+      "status",
+      "reconciliationReason",
+      "cancelledEmailCount",
+      "skippedJobCount",
+    ],
+  }),
+  define({
     action: "calendar.reminder.deleted",
     category: "calendar",
     resourceType: "calendar_event",

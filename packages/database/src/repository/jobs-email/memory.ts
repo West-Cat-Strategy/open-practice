@@ -293,6 +293,107 @@ export function retryMemoryEmailOutbox(
   return { email: clone(email), event: clone(event), job: clone(input.job) };
 }
 
+function isMatchingCalendarReminderEmail(
+  email: EmailOutboxRecord,
+  input: {
+    firmId: string;
+    matterId: string;
+    eventId: string;
+    reminderId: string;
+  },
+): boolean {
+  return (
+    email.firmId === input.firmId &&
+    email.matterId === input.matterId &&
+    email.status === "queued" &&
+    email.templateKey === "calendar.reminder" &&
+    email.relatedResourceType === "calendar_event" &&
+    email.relatedResourceId === input.eventId &&
+    email.metadata.source === "calendar.reminder" &&
+    email.metadata.eventId === input.eventId &&
+    email.metadata.reminderId === input.reminderId &&
+    email.metadata.matterId === input.matterId
+  );
+}
+
+export function reconcileMemoryCalendarReminderDelivery(
+  store: MemoryEmailJobsStore,
+  input: {
+    firmId: string;
+    matterId: string;
+    eventId: string;
+    reminderId: string;
+    occurredAt: string;
+    requestedByUserId: string;
+    reason: string;
+  },
+): { cancelledEmails: EmailOutboxRecord[]; skippedJobs: JobLifecycleRecord[] } {
+  const cancelledEmails: EmailOutboxRecord[] = [];
+  const skippedJobs: JobLifecycleRecord[] = [];
+
+  for (const [index, existing] of store.emailOutbox.entries()) {
+    if (!isMatchingCalendarReminderEmail(existing, input)) continue;
+
+    const metadata = {
+      ...existing.metadata,
+      deliveryState: {
+        reconciledBy: "calendar.reminder",
+        reconciliationReason: input.reason,
+        reconciledAt: input.occurredAt,
+        requestedByUserId: input.requestedByUserId,
+      },
+    };
+    const email: EmailOutboxRecord = {
+      ...existing,
+      status: "cancelled",
+      metadata,
+    };
+    store.emailOutbox[index] = clone(email);
+    cancelledEmails.push(clone(email));
+
+    const job = store.jobLifecycleRecords.find(
+      (candidate) =>
+        candidate.firmId === input.firmId &&
+        candidate.queueName === "email" &&
+        candidate.jobName === "send_email" &&
+        candidate.status === "queued" &&
+        candidate.targetResourceType === "email_outbox" &&
+        candidate.targetResourceId === existing.id,
+    );
+    if (job) {
+      job.status = "skipped";
+      job.finishedAt = input.occurredAt;
+      job.metadata = {
+        ...job.metadata,
+        reconciledBy: "calendar.reminder",
+        reconciliationReason: input.reason,
+        reconciledAt: input.occurredAt,
+        requestedByUserId: input.requestedByUserId,
+      };
+      skippedJobs.push(clone(job));
+    }
+
+    store.emailEvents.push({
+      id: crypto.randomUUID(),
+      firmId: input.firmId,
+      emailId: existing.id,
+      eventType: "cancelled",
+      occurredAt: input.occurredAt,
+      jobId: job?.id,
+      source: "api",
+      metadata: {
+        matterId: input.matterId,
+        eventId: input.eventId,
+        reminderId: input.reminderId,
+        reconciledBy: "calendar.reminder",
+        reconciliationReason: input.reason,
+      },
+    });
+  }
+
+  return { cancelledEmails, skippedJobs };
+}
+
 export function listMemoryEmailEvents(
   store: MemoryEmailJobsStore,
   firmId: string,
@@ -447,6 +548,8 @@ export function createMemoryEmailJobsRepository(store: MemoryEmailJobsStore): Em
       listMemoryEmailReceiptTokens(store, firmId, options),
     recordEmailDeliveryResult: async (input) => recordMemoryEmailDeliveryResult(store, input),
     retryEmailOutbox: async (input) => retryMemoryEmailOutbox(store, input),
+    reconcileCalendarReminderDelivery: async (input) =>
+      reconcileMemoryCalendarReminderDelivery(store, input),
     listEmailEvents: async (firmId, options) => listMemoryEmailEvents(store, firmId, options),
     updateJobLifecycleRecord: async (firmId, id, updates) =>
       updateMemoryJobLifecycleRecord(store, firmId, id, updates),

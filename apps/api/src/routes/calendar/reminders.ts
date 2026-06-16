@@ -101,7 +101,7 @@ async function queueCalendarReminderNotification(input: {
       textBody: calendarReminderText(input.event, input.reminder),
       relatedResourceType: "calendar_event",
       relatedResourceId: input.event.id,
-      idempotencyKey: input.reminder.id,
+      idempotencyKey: `${input.reminder.id}:${input.reminder.updatedAt}:${input.reminder.remindAt}`,
       source: "calendar.reminder",
       delayMs,
       metadata: {
@@ -136,6 +136,50 @@ function calendarReminderAuditMetadata(
     channel: reminder.channel,
     status: reminder.status,
   };
+}
+
+async function recordReminderReconciliation(input: {
+  repository: CalendarRouteDependencies["repository"];
+  firmId: string;
+  actorId: string;
+  event: CalendarEventRecord;
+  reminder: CalendarEventReminderRecord;
+  occurredAt: string;
+  reason: string;
+}) {
+  if (!input.event.matterId || !input.reminder.matterId) {
+    return { cancelledEmails: [], skippedJobs: [] };
+  }
+
+  const reconciled = await input.repository.reconcileCalendarReminderDelivery({
+    firmId: input.firmId,
+    matterId: input.event.matterId,
+    eventId: input.event.id,
+    reminderId: input.reminder.id,
+    occurredAt: input.occurredAt,
+    requestedByUserId: input.actorId,
+    reason: input.reason,
+  });
+  if (reconciled.cancelledEmails.length === 0 && reconciled.skippedJobs.length === 0) {
+    return reconciled;
+  }
+
+  await recordCalendarAuditEvent(input.repository, {
+    firmId: input.firmId,
+    actorId: input.actorId,
+    action: "calendar.reminder.reconciled",
+    resourceType: "calendar_event",
+    resourceId: input.event.id,
+    occurredAt: input.occurredAt,
+    metadata: {
+      ...calendarReminderAuditMetadata(input.reminder),
+      reconciliationReason: input.reason,
+      cancelledEmailCount: reconciled.cancelledEmails.length,
+      skippedJobCount: reconciled.skippedJobs.length,
+    },
+  });
+
+  return reconciled;
 }
 
 export function registerCalendarReminderRoutes(
@@ -259,12 +303,10 @@ export function registerCalendarReminderRoutes(
     ).find((reminder) => reminder.id === params.reminderId);
     if (!current) return reply.code(404).send({ error: "NotFound", message: "Reminder not found" });
     const nextStatus = body.status ?? current.status;
-    const notificationRequested =
-      current.status !== "pending" &&
-      isCalendarReminderNotificationRequested({
-        status: nextStatus,
-        deliveryConfirmation: body.deliveryConfirmation,
-      });
+    const notificationRequested = isCalendarReminderNotificationRequested({
+      status: nextStatus,
+      deliveryConfirmation: body.deliveryConfirmation,
+    });
     if (notificationRequested) {
       if (!event.matterId) {
         throw new ApiHttpError(
@@ -294,6 +336,32 @@ export function registerCalendarReminderRoutes(
       occurredAt: now,
       metadata: calendarReminderAuditMetadata(reminder),
     });
+    const pendingRemindAtChanged =
+      current.status === "pending" &&
+      nextStatus === "pending" &&
+      body.remindAt !== undefined &&
+      body.remindAt !== current.remindAt;
+    if (current.status === "pending" && nextStatus !== "pending") {
+      await recordReminderReconciliation({
+        repository,
+        firmId: request.auth.firmId,
+        actorId: request.auth.user.id,
+        event,
+        reminder,
+        occurredAt: now,
+        reason: "status_changed",
+      });
+    } else if (pendingRemindAtChanged || (current.status === "pending" && notificationRequested)) {
+      await recordReminderReconciliation({
+        repository,
+        firmId: request.auth.firmId,
+        actorId: request.auth.user.id,
+        event,
+        reminder,
+        occurredAt: now,
+        reason: pendingRemindAtChanged ? "rescheduled" : "refreshed",
+      });
+    }
     const queuedReminder = notificationRequested
       ? await queueCalendarReminderNotification({
           repository,
@@ -373,6 +441,15 @@ export function registerCalendarReminderRoutes(
       resourceId: event.id,
       occurredAt: now,
       metadata: calendarReminderAuditMetadata(reminder),
+    });
+    await recordReminderReconciliation({
+      repository,
+      firmId: request.auth.firmId,
+      actorId: request.auth.user.id,
+      event,
+      reminder,
+      occurredAt: now,
+      reason: "deleted",
     });
     return { reminder };
   });

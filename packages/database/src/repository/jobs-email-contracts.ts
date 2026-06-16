@@ -51,6 +51,15 @@ export interface EmailJobsRepository {
     job: JobLifecycleRecord;
     metadata?: Record<string, unknown>;
   }): Promise<{ email: EmailOutboxRecord; event: EmailEventRecord; job: JobLifecycleRecord }>;
+  reconcileCalendarReminderDelivery(input: {
+    firmId: string;
+    matterId: string;
+    eventId: string;
+    reminderId: string;
+    occurredAt: string;
+    requestedByUserId: string;
+    reason: string;
+  }): Promise<{ cancelledEmails: EmailOutboxRecord[]; skippedJobs: JobLifecycleRecord[] }>;
   listEmailEvents(firmId: string, options?: { emailId?: string }): Promise<EmailEventRecord[]>;
   createEmailReceiptToken(token: EmailReceiptTokenRecord): Promise<EmailReceiptTokenRecord>;
   getEmailReceiptTokenByHash(tokenHash: string): Promise<EmailReceiptTokenRecord | undefined>;
