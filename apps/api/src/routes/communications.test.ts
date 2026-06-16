@@ -83,6 +83,33 @@ function inboundMessage(
           dueAt: "2026-05-06T18:00:00.000Z",
         },
       },
+      matterDraft: {
+        status: "drafted",
+        createdAt: "2026-05-05T12:20:00.000Z",
+        createdByUserId: "user-admin",
+        source: {
+          inboundMessageId: "inbound-message-001",
+          providerMessageIdPresent: true,
+          receivedAt: now,
+          recipientCount: 1,
+          subjectPresent: true,
+          senderSummary: "redacted sender at example.test",
+          attachmentCount: 1,
+        },
+        redactedBodySummary: "Potential intake with private details removed.",
+        proposedMatter: {
+          title: "Synthetic inbound matter",
+          practiceArea: "Residential tenancy",
+          jurisdiction: "BC",
+          client: {
+            kind: "person",
+            displayName: "Synthetic Client",
+          },
+        },
+        automaticMatterCreation: false,
+        bodyRedacted: true,
+        metadataRedacted: true,
+      },
       providerId: "provider-private-id",
     },
     ...overrides,
@@ -290,6 +317,20 @@ describe("communications inbox routes", () => {
           status: "triage_pending",
           labels: ["client"],
           attachmentCount: 1,
+          matterDraft: {
+            status: "drafted",
+            source: {
+              inboundMessageId: "inbound-message-001",
+              providerMessageIdPresent: true,
+              recipientCount: 1,
+              senderSummary: "redacted sender at example.test",
+              attachmentCount: 1,
+            },
+            redactedBodySummary: "Potential intake with private details removed.",
+            automaticMatterCreation: false,
+            bodyRedacted: true,
+            metadataRedacted: true,
+          },
           triage: {
             status: "needs_review",
             assignedToUserId: "user-staff",
@@ -408,6 +449,7 @@ describe("communications inbox routes", () => {
     expect(serialized).not.toContain("Private client update draft body");
     expect(serialized).not.toContain("Private client update draft metadata");
     expect(serialized).not.toContain("Private ordinary client message body");
+    expect(serialized).not.toContain("provider-private-id");
   });
 
   it("normalizes SMS follow-up metadata into a redacted text placeholder", async () => {

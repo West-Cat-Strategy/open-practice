@@ -5,6 +5,7 @@ export interface CommunicationsInboxInboundEmail {
   labels: string[];
   receivedAt: string;
   attachmentCount: number;
+  matterDraft?: InboundEmailMatterDraft;
   triage?: {
     status?: string;
     assignedToUserId?: string;
@@ -12,6 +13,53 @@ export interface CommunicationsInboxInboundEmail {
     updatedAt?: string;
     updatedByUserId?: string;
   };
+}
+
+export interface InboundEmailMatterDraft {
+  status: "drafted";
+  createdAt: string;
+  createdByUserId: string;
+  source: {
+    inboundMessageId: string;
+    providerMessageIdPresent: boolean;
+    receivedAt: string;
+    recipientCount: number;
+    subjectPresent: boolean;
+    senderSummary: string;
+    attachmentCount: number;
+  };
+  redactedBodySummary: string;
+  proposedMatter: {
+    title: string;
+    practiceArea: string;
+    jurisdiction: "BC" | "ON" | "CANADA" | "OTHER";
+    client: {
+      kind: "person" | "organization";
+      displayName: string;
+    };
+  };
+  automaticMatterCreation: false;
+  bodyRedacted: true;
+  metadataRedacted: true;
+}
+
+export interface UnscopedInboundEmailReviewMessage {
+  id: string;
+  status: string;
+  labels: string[];
+  receivedAt: string;
+  recipientCount: number;
+  senderSummary: string;
+  providerMessageIdPresent: boolean;
+  subjectPresent: boolean;
+  bodyRedacted: true;
+  metadataRedacted: true;
+  matterDraft?: InboundEmailMatterDraft;
+}
+
+export interface UnscopedInboundEmailReviewResponse {
+  status: "available" | "access_denied" | "unavailable";
+  messages: UnscopedInboundEmailReviewMessage[];
 }
 
 export interface CommunicationsInboxOutboundDelivery {
@@ -150,4 +198,5 @@ export interface CommunicationsInboxMatterResponse {
 
 export interface CommunicationsInboxDashboardResponse {
   inboxByMatterId: Record<string, CommunicationsInboxMatterResponse>;
+  unscopedInboundEmail: UnscopedInboundEmailReviewResponse;
 }

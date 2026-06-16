@@ -597,6 +597,50 @@ describe("audit event taxonomy", () => {
     );
   });
 
+  it("classifies inbound matter draft metadata without raw message details", () => {
+    const classification = classifyAuditEvent(
+      auditEvent({
+        action: "inbound_email.matter_draft.confirmed",
+        resourceType: "inbound_email",
+        resourceId: "inbound-message-001",
+        metadata: {
+          sourceMessageId: "inbound-message-001",
+          providerMessageIdPresent: true,
+          receivedAt: "2026-05-01T18:00:00.000Z",
+          recipientCount: 1,
+          attachmentCount: 0,
+          subjectPresent: true,
+          redactedSummaryLength: 64,
+          proposedTitleLength: 28,
+          proposedPracticeArea: "Residential tenancy",
+          proposedJurisdiction: "BC",
+          clientKind: "person",
+          automaticMatterCreation: false,
+          rawStorageKey: "inbound-email/firm-west-legal/raw/private.eml",
+          rawBody: "Private client message",
+        },
+      }),
+    );
+
+    expect(classification).toMatchObject({
+      category: "communications",
+      known: true,
+      matterScope: "firm",
+      resourceTypeMatches: true,
+    });
+    expect(classification.metadataHints.resource).toEqual(
+      expect.arrayContaining([
+        "sourceMessageId",
+        "providerMessageIdPresent",
+        "redactedSummaryLength",
+        "proposedTitleLength",
+        "automaticMatterCreation",
+      ]),
+    );
+    expect(classification.metadataHints.resource).not.toContain("rawStorageKey");
+    expect(classification.metadataHints.resource).not.toContain("rawBody");
+  });
+
   it("classifies inbound parser recovery metadata without raw object hints", () => {
     const retry = classifyAuditEvent(
       auditEvent({

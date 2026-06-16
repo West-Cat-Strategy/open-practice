@@ -515,6 +515,9 @@ export type {
   CommunicationsInboxInboundEmail,
   CommunicationsInboxMatterResponse,
   CommunicationsInboxOutboundDelivery,
+  InboundEmailMatterDraft,
+  UnscopedInboundEmailReviewMessage,
+  UnscopedInboundEmailReviewResponse,
 } from "./_features/communications/models";
 
 export type {
