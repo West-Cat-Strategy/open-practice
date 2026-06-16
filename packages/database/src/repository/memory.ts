@@ -63,6 +63,7 @@ import {
   type JobLifecycleRecord,
   type LedgerAccount,
   type LedgerAccountingReviewProfileRecord,
+  type LedgerPostingRequestRecord,
   type LedgerReconciliationExceptionResolutionRecord,
   type LedgerReconciliationRecord,
   type LedgerStatementImportBatchRecord,
@@ -418,6 +419,14 @@ import {
   type MemoryLedgerCoreStore,
 } from "./ledger-core/memory.js";
 import {
+  approveMemoryLedgerPostingRequest,
+  getMemoryLedgerPostingRequest,
+  listMemoryLedgerPostingRequests,
+  prepareMemoryLedgerPostingRequest,
+  rejectMemoryLedgerPostingRequest,
+  type MemoryLedgerPostingRequestStore,
+} from "./ledger-posting-requests/memory.js";
+import {
   getMemoryMatterWorkspaceOverview,
   listMemoryMatterWorkspaceMattersForUser,
   type MemoryMatterWorkspaceStore,
@@ -569,6 +578,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private trustTransferRequests: TrustTransferRequestRecord[];
   private ledgerAccounts: LedgerAccount[];
   private ledgerApprovals: LedgerTransactionApprovalRecord[] = [];
+  private ledgerPostingRequests: LedgerPostingRequestRecord[] = [];
   private ledgerReconciliations: LedgerReconciliationRecord[] = [];
   private ledgerStatementImportBatches: LedgerStatementImportBatchRecord[] = [];
   private ledgerStatementMatchRuleProfiles: LedgerStatementMatchRuleProfileRecord[] = [];
@@ -794,6 +804,27 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
       },
       set postedTransactions(value: PostedLedgerTransaction[]) {
         repository.postedTransactions = value;
+      },
+    };
+  }
+
+  private get ledgerPostingRequestStore(): MemoryLedgerPostingRequestStore {
+    const repository = this;
+    return {
+      get ledgerAccounts() {
+        return repository.ledgerAccounts;
+      },
+      get postedTransactions() {
+        return repository.postedTransactions;
+      },
+      set postedTransactions(value: PostedLedgerTransaction[]) {
+        repository.postedTransactions = value;
+      },
+      get ledgerPostingRequests() {
+        return repository.ledgerPostingRequests;
+      },
+      set ledgerPostingRequests(value: LedgerPostingRequestRecord[]) {
+        repository.ledgerPostingRequests = value;
       },
     };
   }
@@ -2050,6 +2081,52 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     transaction: Parameters<OpenPracticeRepository["postLedgerTransaction"]>[0],
   ): ReturnType<OpenPracticeRepository["postLedgerTransaction"]> {
     return Promise.resolve(postMemoryLedgerTransaction(this.ledgerCoreStore, transaction));
+  }
+
+  async prepareLedgerPostingRequest(
+    request: Parameters<OpenPracticeRepository["prepareLedgerPostingRequest"]>[0],
+  ): ReturnType<OpenPracticeRepository["prepareLedgerPostingRequest"]> {
+    return Promise.resolve(
+      prepareMemoryLedgerPostingRequest(this.ledgerPostingRequestStore, request),
+    );
+  }
+
+  async getLedgerPostingRequest(
+    firmId: string,
+    requestId: string,
+  ): ReturnType<OpenPracticeRepository["getLedgerPostingRequest"]> {
+    return Promise.resolve(
+      getMemoryLedgerPostingRequest(this.ledgerPostingRequestStore, firmId, requestId),
+    );
+  }
+
+  async listLedgerPostingRequests(
+    firmId: string,
+    options: Parameters<OpenPracticeRepository["listLedgerPostingRequests"]>[1] = {},
+  ): ReturnType<OpenPracticeRepository["listLedgerPostingRequests"]> {
+    return Promise.resolve(
+      listMemoryLedgerPostingRequests(this.ledgerPostingRequestStore, firmId, options),
+    );
+  }
+
+  async approveLedgerPostingRequest(
+    firmId: string,
+    requestId: string,
+    input: Parameters<OpenPracticeRepository["approveLedgerPostingRequest"]>[2],
+  ): ReturnType<OpenPracticeRepository["approveLedgerPostingRequest"]> {
+    return Promise.resolve(
+      approveMemoryLedgerPostingRequest(this.ledgerPostingRequestStore, firmId, requestId, input),
+    );
+  }
+
+  async rejectLedgerPostingRequest(
+    firmId: string,
+    requestId: string,
+    input: Parameters<OpenPracticeRepository["rejectLedgerPostingRequest"]>[2],
+  ): ReturnType<OpenPracticeRepository["rejectLedgerPostingRequest"]> {
+    return Promise.resolve(
+      rejectMemoryLedgerPostingRequest(this.ledgerPostingRequestStore, firmId, requestId, input),
+    );
   }
 
   async listAuditEvents(firmId: string): ReturnType<OpenPracticeRepository["listAuditEvents"]> {

@@ -380,6 +380,48 @@ describe("audit event taxonomy", () => {
     );
   });
 
+  it("classifies trust posting request review events without raw note bodies", () => {
+    const classification = classifyAuditEvent(
+      auditEvent({
+        action: "ledger.posting_request.rejected",
+        resourceType: "ledger_posting_request",
+        resourceId: "posting-request-001",
+        metadata: {
+          matterIds: ["matter-001"],
+          postingRequestId: "posting-request-001",
+          transactionId: "trust-posting-001",
+          accountIds: ["acct-trust-bank", "acct-client-liability"],
+          previousStatus: "pending_approval",
+          status: "rejected",
+          reviewNotesPresent: true,
+          rejectionReasonPresent: true,
+          rejectionReason: "Synthetic raw reason should not be a hint",
+        },
+      }),
+    );
+
+    expect(classification).toMatchObject({
+      category: "trust",
+      known: true,
+      matterScope: "optional_matter",
+      resourceTypeMatches: true,
+    });
+    expect(classification.metadataHints.resource).toEqual(
+      expect.arrayContaining([
+        "postingRequestId",
+        "transactionId",
+        "accountIds",
+        "previousStatus",
+        "status",
+        "reviewNotesPresent",
+        "rejectionReasonPresent",
+      ]),
+    );
+    expect(classification.metadataHints.resource).not.toEqual(
+      expect.arrayContaining(["reviewNotes", "rejectionReason"]),
+    );
+  });
+
   it("classifies hosted payment request shells without payment details or evidence bodies", () => {
     const classification = classifyAuditEvent(
       auditEvent({

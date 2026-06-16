@@ -38,8 +38,9 @@ trust accounting software, accounting software, or tax-advice tooling.
   unmatched statement-preview rows. They are review notes only: they do not mutate posted ledger
   entries, create reconciliation records, move funds, or certify accounting conclusions.
 - The trust controls workbench is a read-only operator review surface for existing balances,
-  approvals, reconciliations, statement-row counts, variance notes, recent postings, and diagnostics.
-  It does not post, approve, reconcile, certify, or move funds.
+  approvals, reconciliations, statement-row counts, variance notes, recent postings,
+  pending/posted/rejected posting-request cues, and diagnostics. It does not itself post, approve,
+  reconcile, certify, or move funds.
 - Jurisdictional trust reports are read-only aggregates over existing matter jurisdiction labels,
   balances, approvals, reconciliation summaries, variance totals, and diagnostics. They do not expose
   statement evidence or private matter detail, create export packages, or certify compliance in any
@@ -59,6 +60,11 @@ trust accounting software, accounting software, or tax-advice tooling.
   record reviewer evidence after invoice-balance and matter trust-balance checks; linkage can only
   reference an existing matching ledger transaction that has not already been linked to another
   trust-transfer request.
+- Trust posting requests are operational maker-checker support for selected postings only. Preparing
+  a request stores the proposed balanced/idempotent transaction without posting; approval by a
+  different checker posts it through the existing ledger transaction path with current no-overdraft
+  checks; rejection never posts. This is separate from trust-transfer approval/linking, bank-feed
+  matching, settlement, compliance certification, and jurisdiction-certified trust accounting.
 
 ## Reference Guidance
 
@@ -80,8 +86,8 @@ Manual payments and future payment-processor imports should be reconciled before
 status. Open Practice records new manual payments as pending evidence until reviewer reconciliation
 creates the effective allocation. A trust-transfer request may document that funds are intended to
 move from trust after review and may later be linked to an existing matching ledger transaction, but
-the actual trust ledger
-change must remain a separate, explicit, balanced posting with its own audit trail.
+the actual trust ledger change must remain a separate, explicit, balanced posting with its own audit
+trail.
 
 ## Before Compliance Claims
 

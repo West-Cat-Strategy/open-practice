@@ -61,6 +61,86 @@ function buildSyntheticControls(): TrustControlsDashboardResponse {
       decidedAt: "2026-06-06T00:00:00.000Z",
     },
   ];
+  controls.postingRequests = [
+    {
+      id: "posting_request_pending",
+      firmId: "firm_synthetic",
+      transactionId: "trust_txn_prepared_pending",
+      idempotencyKey: "prepared-pending",
+      requestFingerprint: "synthetic:fingerprint:pending",
+      status: "pending_approval",
+      proposedPostedAt: "2026-06-08T00:00:00.000Z",
+      entries: [
+        {
+          firmId: "firm_synthetic",
+          matterId: "matter_synthetic",
+          clientId: "contact_synthetic",
+          accountId: "trust_account_synthetic",
+          debitCents: 100,
+          creditCents: 0,
+          memo: "Synthetic prepared debit",
+        },
+        {
+          firmId: "firm_synthetic",
+          matterId: "matter_synthetic",
+          clientId: "contact_synthetic",
+          accountId: "trust_account_synthetic",
+          debitCents: 0,
+          creditCents: 100,
+          memo: "Synthetic prepared credit",
+        },
+      ],
+      matterIds: ["matter_synthetic"],
+      clientIds: ["contact_synthetic"],
+      accountIds: ["trust_account_synthetic"],
+      preparedByUserId: "user_preparer",
+      preparedAt: "2026-06-08T00:00:00.000Z",
+      preparationNotes: "Synthetic preparation note",
+    },
+    {
+      id: "posting_request_rejected",
+      firmId: "firm_synthetic",
+      transactionId: "trust_txn_prepared_rejected",
+      idempotencyKey: "prepared-rejected",
+      requestFingerprint: "synthetic:fingerprint:rejected",
+      status: "rejected",
+      proposedPostedAt: "2026-06-09T00:00:00.000Z",
+      entries: [
+        {
+          firmId: "firm_synthetic",
+          matterId: "matter_synthetic",
+          clientId: "contact_synthetic",
+          accountId: "trust_account_synthetic",
+          debitCents: 200,
+          creditCents: 0,
+          memo: "Synthetic rejected debit",
+        },
+        {
+          firmId: "firm_synthetic",
+          matterId: "matter_synthetic",
+          clientId: "contact_synthetic",
+          accountId: "trust_account_synthetic",
+          debitCents: 0,
+          creditCents: 200,
+          memo: "Synthetic rejected credit",
+        },
+      ],
+      matterIds: ["matter_synthetic"],
+      clientIds: ["contact_synthetic"],
+      accountIds: ["trust_account_synthetic"],
+      preparedByUserId: "user_preparer",
+      preparedAt: "2026-06-09T00:00:00.000Z",
+      reviewedByUserId: "user_checker",
+      reviewedAt: "2026-06-09T01:00:00.000Z",
+      rejectionReason: "Synthetic rejection reason",
+    },
+  ];
+  controls.postingRequestSummary = {
+    pendingApprovalCount: 1,
+    postedCount: 0,
+    rejectedCount: 1,
+    totalCount: 2,
+  };
   controls.reconciliations = [
     {
       id: "reconciliation_synthetic",
@@ -242,6 +322,10 @@ describe("TrustControlsSection", () => {
     expect(html).toContain("Matter trust balance");
     expect(html).toContain("Trust controls workbench");
     expect(html).toContain("Trust controls loaded.");
+    expect(html).toContain("Prepared posting requests");
+    expect(html).toContain("trust_txn_prepared_pending");
+    expect(html).toContain("pending approval");
+    expect(html).toContain("rejection reason recorded");
     expect(html).toContain("review-only profiles · no automatic matching");
     expect(html).toContain("metadata only · manual review required");
     expect(html).toContain("No auto-match · no ledger posting · no live feed");
@@ -287,6 +371,7 @@ describe("TrustControlsSection", () => {
     expect(html).toContain("0 accounts");
     expect(html).toContain("No accounting review profiles are recorded");
     expect(html).toContain("No bank-feed import batch metadata is recorded");
+    expect(html).toContain("No prepared posting requests are present");
     expect(html).toContain("No trust ledger postings are linked to this matter yet.");
     expect(html).toContain("No reconciliation exceptions or unreconciled trust accounts");
     expect(html).toContain("Pending approval transaction IDs");

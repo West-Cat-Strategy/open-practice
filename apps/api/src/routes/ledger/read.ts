@@ -4,6 +4,7 @@ import {
   ledgerAccountingReviewSummary,
   ledgerBankFeedReconciliationReviewSummary,
   ledgerControlsDiagnostics,
+  ledgerPostingRequestReviewSummary,
 } from "@open-practice/domain";
 import { hasFirmWideLedgerAccess } from "../../http/auth-guards.js";
 import { parseRequestPart } from "../../http/validation.js";
@@ -50,6 +51,7 @@ export function registerLedgerReadRoutes(
     });
 
     const ledger = await repository.getLedger(request.auth.firmId, query);
+    const postingRequests = await repository.listLedgerPostingRequests(request.auth.firmId, query);
     const visibleTransactionIds = new Set(ledger.entries.map((entry) => entry.transactionId));
     const approvals = (await repository.listLedgerTransactionApprovals(request.auth.firmId)).filter(
       (approval) => visibleTransactionIds.has(approval.transactionId),
@@ -73,6 +75,8 @@ export function registerLedgerReadRoutes(
     return {
       ledger,
       approvals,
+      postingRequests,
+      postingRequestSummary: ledgerPostingRequestReviewSummary(postingRequests),
       reconciliations,
       diagnostics,
       accountingReview: {
@@ -95,6 +99,7 @@ export function registerLedgerReadRoutes(
         transferRequestPosting: "requires_explicit_approval_and_manual_post",
         makerChecker: {
           ledgerTransactionApproval: "second_review_required",
+          ledgerPostingRequest: "prepared_postings_require_checker_approval_before_posting",
           trustTransferRequest: "request_and_posting_are_separate_records",
           reconciliation: "firm_wide_review_required",
         },

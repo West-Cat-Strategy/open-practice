@@ -9,9 +9,13 @@ import {
   ledgerBalanceByMatter,
   ledgerBankFeedReconciliationReviewSummary,
   ledgerControlsDiagnostics,
+  ledgerPostingRequestFromTransaction,
+  ledgerPostingRequestReviewSummary,
   ledgerReconciliationReviewSummary,
+  ledgerTransactionFromPostingRequest,
   postLedgerTransaction,
   previewLedgerStatementImport,
+  validateLedgerPostingRequestRecord,
   validateLedgerAccountingReviewProfileRecord,
   validateLedgerReconciliationExceptionResolutionRecord,
   validateLedgerReconciliationRecord,
@@ -25,6 +29,7 @@ import type {
   LedgerReconciliationRecord,
   LedgerStatementImportBatchRecord,
   LedgerStatementMatchRuleProfileRecord,
+  LedgerTransaction,
   LedgerTransactionApprovalRecord,
   PostedLedgerTransaction,
 } from "./ledger.js";
@@ -296,6 +301,128 @@ describe("ledger controls diagnostics", () => {
         },
       ),
     ).toThrow(/overdraw/);
+  });
+
+  it("validates pending posting requests before they become effective", () => {
+    const transaction: LedgerTransaction = {
+      id: "prepared-trust-transfer",
+      firmId: sampleFirm.id,
+      idempotencyKey: "prepared-trust-transfer",
+      postedByUserId: "user-preparer",
+      postedAt: "2026-04-05T12:00:00.000Z",
+      entries: [
+        {
+          firmId: sampleFirm.id,
+          matterId: "matter-001",
+          clientId: "contact-ada",
+          accountId: "acct-client-liability",
+          debitCents: 2500,
+          creditCents: 0,
+          memo: "Prepared fee transfer",
+        },
+        {
+          firmId: sampleFirm.id,
+          matterId: "matter-001",
+          clientId: "contact-ada",
+          accountId: "acct-trust-bank",
+          debitCents: 0,
+          creditCents: 2500,
+          memo: "Prepared fee transfer",
+        },
+      ],
+    };
+    const pending = ledgerPostingRequestFromTransaction({
+      id: "posting-request-001",
+      preparedByUserId: "user-preparer",
+      preparedAt: "2026-04-05T12:01:00.000Z",
+      preparationNotes: "Synthetic prepared posting note",
+      transaction,
+    });
+
+    expect(pending).toMatchObject({
+      status: "pending_approval",
+      transactionId: transaction.id,
+      matterIds: ["matter-001"],
+      clientIds: ["contact-ada"],
+      accountIds: ["acct-client-liability", "acct-trust-bank"],
+      preparationNotes: "Synthetic prepared posting note",
+    });
+    expect(() =>
+      validateLedgerPostingRequestRecord({
+        ...pending,
+        requestFingerprint: "changed",
+      }),
+    ).toThrow(/fingerprint/);
+    expect(() =>
+      validateLedgerPostingRequestRecord({
+        ...pending,
+        status: "posted",
+        reviewedByUserId: "user-preparer",
+        reviewedAt: "2026-04-05T12:03:00.000Z",
+        ledgerTransactionId: transaction.id,
+      }),
+    ).toThrow(/different user/);
+
+    const postedRequest = {
+      ...pending,
+      status: "posted" as const,
+      reviewedByUserId: "user-checker",
+      reviewedAt: "2026-04-05T12:03:00.000Z",
+      reviewNotes: "Synthetic checker note",
+      ledgerTransactionId: transaction.id,
+    };
+    expect(() => validateLedgerPostingRequestRecord(postedRequest)).not.toThrow();
+    expect(
+      ledgerTransactionFromPostingRequest(postedRequest, { postedByUserId: "user-checker" }),
+    ).toMatchObject({
+      id: transaction.id,
+      postedByUserId: "user-checker",
+      requestFingerprint: pending.requestFingerprint,
+    });
+    expect(
+      ledgerPostingRequestReviewSummary([
+        pending,
+        postedRequest,
+        {
+          ...pending,
+          id: "posting-request-rejected",
+          status: "rejected",
+          idempotencyKey: "prepared-rejected",
+          reviewedByUserId: "user-checker",
+          reviewedAt: "2026-04-05T12:04:00.000Z",
+          rejectionReason: "Synthetic rejection reason",
+        },
+      ]),
+    ).toEqual({
+      pendingApprovalCount: 1,
+      postedCount: 1,
+      rejectedCount: 1,
+      totalCount: 3,
+    });
+
+    const original: PostedLedgerTransaction = {
+      id: "trust-retainer",
+      firmId: sampleFirm.id,
+      idempotencyKey: "retainer",
+      requestFingerprint: "seed",
+      entries: sampleLedgerEntries,
+    };
+    const reversalRequest = ledgerPostingRequestFromTransaction({
+      id: "posting-request-reversal",
+      preparedByUserId: "user-preparer",
+      preparedAt: "2026-04-05T12:02:00.000Z",
+      transaction: createReversalTransaction(original, {
+        id: "trust-retainer-reversal",
+        idempotencyKey: "retainer-reversal",
+        postedByUserId: "user-preparer",
+        postedAt: "2026-04-05T12:02:00.000Z",
+      }),
+    });
+    const approvedReversal = postLedgerTransaction(
+      { postedTransactions: [original], accounts: sampleLedgerAccounts },
+      ledgerTransactionFromPostingRequest(reversalRequest, { postedByUserId: "user-checker" }),
+    );
+    expect(approvedReversal.reversesTransactionId).toBe(original.id);
   });
 
   it("summarizes approval, reconciliation, and overdrawn-balance signals", () => {

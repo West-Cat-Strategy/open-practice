@@ -1013,6 +1013,13 @@ function trustControls(
         decidedAt: "2026-04-02T18:00:00.000Z",
       },
     ],
+    postingRequests: [],
+    postingRequestSummary: {
+      pendingApprovalCount: 0,
+      postedCount: 0,
+      rejectedCount: 0,
+      totalCount: 0,
+    },
     reconciliations: [
       {
         id: "reconciliation-001",
@@ -3153,6 +3160,10 @@ describe("dashboard client behavior", () => {
       approvedApprovalCount: 0,
       rejectedApprovalCount: 1,
       totalApprovalCount: 1,
+      pendingPostingRequestCount: 0,
+      postedPostingRequestCount: 0,
+      rejectedPostingRequestCount: 0,
+      totalPostingRequestCount: 0,
       exceptionReconciliationCount: 1,
       importedStatementRowCount: 1,
       matchedStatementRowCount: 0,

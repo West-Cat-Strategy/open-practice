@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { ledgerPostingRequestFromTransaction } from "@open-practice/domain";
 import { InMemoryOpenPracticeRepository } from "../src/repository/memory.js";
 import { now } from "./repository.fixtures.js";
 
@@ -108,6 +109,234 @@ describe("repository ledger approvals and reconciliations", () => {
     ).resolves.toMatchObject({
       evidence: { review: { synthetic: true } },
     });
+  });
+
+  it("prepares, approves, and rejects trust posting requests before posting", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const prepared = ledgerPostingRequestFromTransaction({
+      id: "posting-request-001",
+      preparedByUserId: "user-admin",
+      preparedAt: now,
+      preparationNotes: "Synthetic posting request note",
+      transaction: {
+        id: "prepared-trust-posting",
+        firmId: "firm-west-legal",
+        idempotencyKey: "prepared-trust-posting",
+        postedByUserId: "user-admin",
+        postedAt: now,
+        entries: [
+          {
+            firmId: "firm-west-legal",
+            matterId: "matter-001",
+            clientId: "contact-ada",
+            accountId: "acct-client-liability",
+            debitCents: 13230,
+            creditCents: 0,
+            memo: "Synthetic prepared trust posting",
+          },
+          {
+            firmId: "firm-west-legal",
+            matterId: "matter-001",
+            clientId: "contact-ada",
+            accountId: "acct-trust-bank",
+            debitCents: 0,
+            creditCents: 13230,
+            memo: "Synthetic prepared trust posting",
+          },
+        ],
+      },
+    });
+
+    await expect(repository.prepareLedgerPostingRequest(prepared)).resolves.toMatchObject({
+      id: "posting-request-001",
+      status: "pending_approval",
+      preparationNotes: "Synthetic posting request note",
+    });
+    const replay = await repository.prepareLedgerPostingRequest({ ...prepared, id: "replay-id" });
+    expect(replay.id).toBe("posting-request-001");
+    const conflictingPrepared = ledgerPostingRequestFromTransaction({
+      id: "posting-request-conflict",
+      preparedByUserId: "user-admin",
+      preparedAt: now,
+      transaction: {
+        id: "prepared-trust-posting-conflict",
+        firmId: "firm-west-legal",
+        idempotencyKey: "prepared-trust-posting",
+        postedByUserId: "user-admin",
+        postedAt: now,
+        entries: prepared.entries.map((entry, index) =>
+          index === 0 ? { ...entry, memo: "Changed synthetic prepared trust posting" } : entry,
+        ),
+      },
+    });
+    await expect(repository.prepareLedgerPostingRequest(conflictingPrepared)).rejects.toThrow(
+      /different ledger payload/,
+    );
+    const cloned = await repository.getLedgerPostingRequest(
+      "firm-west-legal",
+      "posting-request-001",
+    );
+    if (!cloned) throw new Error("Expected posting request clone");
+    cloned.matterIds.push("matter-mutated");
+    await expect(
+      repository.getLedgerPostingRequest("firm-west-legal", "posting-request-001"),
+    ).resolves.toMatchObject({ matterIds: ["matter-001"] });
+
+    await expect(
+      repository.listLedgerPostingRequests("firm-west-legal", {
+        matterId: "matter-001",
+        status: "pending_approval",
+      }),
+    ).resolves.toEqual([expect.objectContaining({ id: "posting-request-001" })]);
+    await expect(
+      repository.getLedger("firm-west-legal", { matterId: "matter-001" }),
+    ).resolves.not.toMatchObject({
+      entries: expect.arrayContaining([
+        expect.objectContaining({ transactionId: "prepared-trust-posting" }),
+      ]),
+    });
+    await expect(
+      repository.approveLedgerPostingRequest("firm-west-legal", "posting-request-001", {
+        reviewedByUserId: "user-admin",
+        reviewedAt: now,
+      }),
+    ).rejects.toThrow(/different user/);
+
+    const approved = await repository.approveLedgerPostingRequest(
+      "firm-west-legal",
+      "posting-request-001",
+      {
+        reviewedByUserId: "user-licensee",
+        reviewedAt: "2026-04-02T19:00:00.000Z",
+        reviewNotes: "Synthetic checker note",
+      },
+    );
+    expect(approved.request).toMatchObject({
+      status: "posted",
+      ledgerTransactionId: "prepared-trust-posting",
+      reviewedByUserId: "user-licensee",
+    });
+    expect(approved.postedTransaction.entries).toHaveLength(2);
+    const approvedReplay = await repository.approveLedgerPostingRequest(
+      "firm-west-legal",
+      "posting-request-001",
+      {
+        reviewedByUserId: "user-licensee",
+        reviewedAt: "2026-04-02T19:01:00.000Z",
+      },
+    );
+    expect(approvedReplay.postedTransaction.id).toBe("prepared-trust-posting");
+    await expect(
+      repository.getLedger("firm-west-legal", { matterId: "matter-001" }),
+    ).resolves.toMatchObject({
+      entries: expect.arrayContaining([
+        expect.objectContaining({ transactionId: "prepared-trust-posting" }),
+      ]),
+    });
+
+    const rejected = ledgerPostingRequestFromTransaction({
+      id: "posting-request-rejected",
+      preparedByUserId: "user-admin",
+      preparedAt: now,
+      transaction: {
+        id: "prepared-rejected-posting",
+        firmId: "firm-west-legal",
+        idempotencyKey: "prepared-rejected-posting",
+        postedByUserId: "user-admin",
+        postedAt: now,
+        entries: prepared.entries,
+      },
+    });
+    await repository.prepareLedgerPostingRequest(rejected);
+    await expect(
+      repository.rejectLedgerPostingRequest("firm-west-legal", "posting-request-rejected", {
+        reviewedByUserId: "user-licensee",
+        reviewedAt: "2026-04-02T19:02:00.000Z",
+        rejectionReason: "Synthetic rejection reason",
+      }),
+    ).resolves.toMatchObject({ status: "rejected" });
+    await expect(
+      repository.getLedger("firm-west-legal", { matterId: "matter-001" }),
+    ).resolves.not.toMatchObject({
+      entries: expect.arrayContaining([
+        expect.objectContaining({ transactionId: "prepared-rejected-posting" }),
+      ]),
+    });
+  });
+
+  it("leaves stale-balance posting requests pending when approval would overdraw", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const prepared = ledgerPostingRequestFromTransaction({
+      id: "posting-request-overdraft",
+      preparedByUserId: "user-admin",
+      preparedAt: now,
+      transaction: {
+        id: "prepared-overdraft-posting",
+        firmId: "firm-west-legal",
+        idempotencyKey: "prepared-overdraft-posting",
+        postedByUserId: "user-admin",
+        postedAt: now,
+        entries: [
+          {
+            firmId: "firm-west-legal",
+            matterId: "matter-001",
+            clientId: "contact-ada",
+            accountId: "acct-client-liability",
+            debitCents: 140000,
+            creditCents: 0,
+            memo: "Synthetic prepared stale-balance transfer",
+          },
+          {
+            firmId: "firm-west-legal",
+            matterId: "matter-001",
+            clientId: "contact-ada",
+            accountId: "acct-trust-bank",
+            debitCents: 0,
+            creditCents: 140000,
+            memo: "Synthetic prepared stale-balance transfer",
+          },
+        ],
+      },
+    });
+
+    await repository.prepareLedgerPostingRequest(prepared);
+    await repository.postLedgerTransaction({
+      id: "intervening-trust-posting",
+      firmId: "firm-west-legal",
+      idempotencyKey: "intervening-trust-posting",
+      postedByUserId: "user-admin",
+      postedAt: "2026-04-02T18:30:00.000Z",
+      entries: [
+        {
+          firmId: "firm-west-legal",
+          matterId: "matter-001",
+          clientId: "contact-ada",
+          accountId: "acct-client-liability",
+          debitCents: 20000,
+          creditCents: 0,
+          memo: "Synthetic intervening transfer",
+        },
+        {
+          firmId: "firm-west-legal",
+          matterId: "matter-001",
+          clientId: "contact-ada",
+          accountId: "acct-trust-bank",
+          debitCents: 0,
+          creditCents: 20000,
+          memo: "Synthetic intervening transfer",
+        },
+      ],
+    });
+
+    await expect(
+      repository.approveLedgerPostingRequest("firm-west-legal", "posting-request-overdraft", {
+        reviewedByUserId: "user-licensee",
+        reviewedAt: "2026-04-02T19:00:00.000Z",
+      }),
+    ).rejects.toThrow(/overdraw/);
+    await expect(
+      repository.getLedgerPostingRequest("firm-west-legal", "posting-request-overdraft"),
+    ).resolves.toMatchObject({ status: "pending_approval", ledgerTransactionId: undefined });
   });
 
   it("guards trust approval and reconciliation persistence", async () => {

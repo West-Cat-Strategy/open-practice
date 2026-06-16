@@ -13,6 +13,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import type {
+  LedgerPostingRequestRecord,
   LedgerAccountingReviewProfileRecord,
   LedgerReconciliationExceptionResolutionStatementRow,
   LedgerReconciliationStatementRow,
@@ -146,6 +147,80 @@ export const trustTransactionApprovals = pgTable(
     decisionValue: check(
       "trust_transaction_approvals_decision_value",
       sql`${table.decision} in ('approved', 'rejected')`,
+    ),
+  }),
+);
+
+export const trustPostingRequests = pgTable(
+  "trust_posting_requests",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    transactionId: text("transaction_id").notNull(),
+    idempotencyKey: text("idempotency_key").notNull(),
+    requestFingerprint: text("request_fingerprint").notNull(),
+    status: text("status").notNull().default("pending_approval"),
+    proposedPostedAt: timestamp("proposed_posted_at", { withTimezone: true }).notNull(),
+    entries: jsonb("entries").$type<LedgerPostingRequestRecord["entries"]>().notNull().default([]),
+    matterIds: jsonb("matter_ids")
+      .$type<LedgerPostingRequestRecord["matterIds"]>()
+      .notNull()
+      .default([]),
+    clientIds: jsonb("client_ids")
+      .$type<LedgerPostingRequestRecord["clientIds"]>()
+      .notNull()
+      .default([]),
+    accountIds: jsonb("account_ids")
+      .$type<LedgerPostingRequestRecord["accountIds"]>()
+      .notNull()
+      .default([]),
+    reversesTransactionId: text("reverses_transaction_id").references(() => trustTransactions.id),
+    preparedByUserId: text("prepared_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    preparedAt: timestamp("prepared_at", { withTimezone: true }).notNull(),
+    preparationNotes: text("preparation_notes"),
+    reviewedByUserId: text("reviewed_by_user_id").references(() => users.id),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    reviewNotes: text("review_notes"),
+    rejectionReason: text("rejection_reason"),
+    ledgerTransactionId: text("ledger_transaction_id").references(() => trustTransactions.id),
+  },
+  (table) => ({
+    firmIdempotency: uniqueIndex("trust_posting_requests_idempotency_idx").on(
+      table.firmId,
+      table.idempotencyKey,
+    ),
+    statusPreparedAt: index("trust_posting_requests_status_prepared_idx").on(
+      table.firmId,
+      table.status,
+      table.preparedAt,
+    ),
+    transaction: index("trust_posting_requests_transaction_idx").on(
+      table.firmId,
+      table.transactionId,
+    ),
+    statusValue: check(
+      "trust_posting_requests_status_value",
+      sql`${table.status} in ('pending_approval', 'posted', 'rejected')`,
+    ),
+    entriesPresent: check(
+      "trust_posting_requests_entries_present",
+      sql`jsonb_array_length(${table.entries}) > 0`,
+    ),
+    preparedDifferentFromReviewer: check(
+      "trust_posting_requests_checker_differs",
+      sql`${table.reviewedByUserId} is null or ${table.reviewedByUserId} <> ${table.preparedByUserId}`,
+    ),
+    postedFields: check(
+      "trust_posting_requests_posted_fields",
+      sql`${table.status} <> 'posted' or (${table.reviewedByUserId} is not null and ${table.reviewedAt} is not null and ${table.ledgerTransactionId} is not null)`,
+    ),
+    rejectedFields: check(
+      "trust_posting_requests_rejected_fields",
+      sql`${table.status} <> 'rejected' or (${table.reviewedByUserId} is not null and ${table.reviewedAt} is not null and ${table.rejectionReason} is not null and length(trim(${table.rejectionReason})) > 0 and ${table.ledgerTransactionId} is null)`,
     ),
   }),
 );

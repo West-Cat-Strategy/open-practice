@@ -67,6 +67,7 @@ import {
   type LedgerAccount,
   type LedgerAccountingReviewProfileRecord,
   type LedgerEntry,
+  type LedgerPostingRequestRecord,
   type LedgerReconciliationExceptionResolutionRecord,
   type LedgerReconciliationExceptionResolutionStatementRow,
   type LedgerReconciliationRecord,
@@ -1785,6 +1786,33 @@ export function mapLedgerApprovalRow(
     decision: row.decision as LedgerTransactionApprovalRecord["decision"],
     decidedAt: row.decidedAt.toISOString(),
     notes: row.notes ?? undefined,
+  };
+}
+
+export function mapLedgerPostingRequestRow(
+  row: typeof schema.trustPostingRequests.$inferSelect,
+): LedgerPostingRequestRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    transactionId: row.transactionId,
+    idempotencyKey: row.idempotencyKey,
+    requestFingerprint: row.requestFingerprint,
+    status: row.status as LedgerPostingRequestRecord["status"],
+    proposedPostedAt: row.proposedPostedAt.toISOString(),
+    entries: row.entries as LedgerPostingRequestRecord["entries"],
+    matterIds: row.matterIds as string[],
+    clientIds: row.clientIds as string[],
+    accountIds: row.accountIds as string[],
+    reversesTransactionId: row.reversesTransactionId ?? undefined,
+    preparedByUserId: row.preparedByUserId,
+    preparedAt: row.preparedAt.toISOString(),
+    preparationNotes: row.preparationNotes ?? undefined,
+    reviewedByUserId: row.reviewedByUserId ?? undefined,
+    reviewedAt: dateToIso(row.reviewedAt),
+    reviewNotes: row.reviewNotes ?? undefined,
+    rejectionReason: row.rejectionReason ?? undefined,
+    ledgerTransactionId: row.ledgerTransactionId ?? undefined,
   };
 }
 

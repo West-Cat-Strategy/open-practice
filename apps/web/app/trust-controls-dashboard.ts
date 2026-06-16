@@ -17,6 +17,10 @@ export interface TrustReviewSummary {
   approvedApprovalCount: number;
   rejectedApprovalCount: number;
   totalApprovalCount: number;
+  pendingPostingRequestCount: number;
+  postedPostingRequestCount: number;
+  rejectedPostingRequestCount: number;
+  totalPostingRequestCount: number;
   exceptionReconciliationCount: number;
   importedStatementRowCount: number;
   matchedStatementRowCount: number;
@@ -60,6 +64,13 @@ export function emptyTrustControlsDashboard(): TrustControlsDashboardResponse {
       trustBalances: {},
     },
     approvals: [],
+    postingRequests: [],
+    postingRequestSummary: {
+      pendingApprovalCount: 0,
+      postedCount: 0,
+      rejectedCount: 0,
+      totalCount: 0,
+    },
     reconciliations: [],
     accountingReview: {
       importBatches: [],
@@ -107,6 +118,7 @@ export function emptyTrustControlsDashboard(): TrustControlsDashboardResponse {
       transferRequestPosting: "requires_explicit_approval_and_manual_post",
       makerChecker: {
         ledgerTransactionApproval: "second_review_required",
+        ledgerPostingRequest: "prepared_postings_require_checker_approval_before_posting",
         trustTransferRequest: "request_and_posting_are_separate_records",
         reconciliation: "firm_wide_review_required",
       },
@@ -225,6 +237,10 @@ export function summarizeTrustControls(
       .length,
     rejectedApprovalCount: rejectedTransactionIds.size,
     totalApprovalCount: controls.approvals.length,
+    pendingPostingRequestCount: controls.postingRequestSummary.pendingApprovalCount,
+    postedPostingRequestCount: controls.postingRequestSummary.postedCount,
+    rejectedPostingRequestCount: controls.postingRequestSummary.rejectedCount,
+    totalPostingRequestCount: controls.postingRequestSummary.totalCount,
     exceptionReconciliationCount: exceptionReconciliationIds.size,
     importedStatementRowCount,
     matchedStatementRowCount,

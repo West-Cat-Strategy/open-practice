@@ -428,6 +428,13 @@
       "when": 1781568004000,
       "tag": "0060_matter_lifecycle_transition_records",
       "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1781568005000,
+      "tag": "0061_trust_posting_requests",
+      "breakpoints": true
     }
   ]
 }

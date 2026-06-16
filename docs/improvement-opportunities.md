@@ -217,11 +217,13 @@ signature request metadata proof before proposing another envelope slice.
 #### Trust, Billing, And Accounting Controls
 
 - **Pre-post trust posting approval commands**
-  - **First slice:** Add `trust_posting_requests` create/list/approve/reject semantics so selected
-    trust postings can be prepared by one staff user and posted only after checker approval.
-  - **Local gap / shipped boundary:** Trust transactions can post immediately today, while existing
-    approval records are post-facto; do not duplicate the shipped trust-transfer approve/reject/link
-    flow.
+  - **Shipped first slice:** `trust_posting_requests` now provide prepare/list/approve/reject
+    semantics so selected trust postings can be prepared by one staff user and posted only after
+    checker approval.
+  - **Remaining boundary:** Direct trust transactions still post immediately for non-selected
+    postings. The posting-request commands reuse the existing ledger transaction posting path at
+    approval time, stay separate from the shipped trust-transfer approve/reject/link flow, and do not
+    automate settlement, bank-feed matching, or jurisdiction-certified trust accounting.
   - **References:** `apache__fineract` command, maker-checker, and command-audit modules.
   - **Reuse and snippets:** Apache-2.0/adopt-selectively; tiny snippets may be allowable only after a
     reuse decision and notices, but clean-room TypeScript should be preferred.
