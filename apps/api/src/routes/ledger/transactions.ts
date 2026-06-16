@@ -6,6 +6,7 @@ import { parseRequestPart } from "../../http/validation.js";
 import type { ApiAuthContext } from "../../server.js";
 import { appendRouteAuditEvent, appendWorkflowAuditEvent } from "../audit-events.js";
 import type { ApiRouteDependencies } from "../types.js";
+import { assertNoPendingLedgerPostingRequestForTransaction } from "./posting-requests.js";
 import { assertLedgerAccess } from "./shared.js";
 
 const ledgerPostBodySchema = z.object({
@@ -97,6 +98,7 @@ export function registerLedgerTransactionRoutes(
       }
       throw error;
     }
+    await assertNoPendingLedgerPostingRequestForTransaction(repository, transaction);
     let posted: Awaited<ReturnType<typeof repository.postLedgerTransaction>>;
     try {
       posted = await repository.postLedgerTransaction(transaction);

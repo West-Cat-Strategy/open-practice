@@ -188,6 +188,13 @@ import {
   validateDrizzleLedgerTransactionScope,
 } from "./ledger-core/drizzle.js";
 import {
+  approveDrizzleLedgerPostingRequest,
+  getDrizzleLedgerPostingRequest,
+  listDrizzleLedgerPostingRequests,
+  prepareDrizzleLedgerPostingRequest,
+  rejectDrizzleLedgerPostingRequest,
+} from "./ledger-posting-requests/drizzle.js";
+import {
   getDrizzleMatterWorkspaceOverview,
   listDrizzleMatterWorkspaceMattersForUser,
 } from "./matter-workspace/drizzle.js";
@@ -1017,6 +1024,42 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     transaction: Parameters<OpenPracticeRepository["postLedgerTransaction"]>[0],
   ): ReturnType<OpenPracticeRepository["postLedgerTransaction"]> {
     return postDrizzleLedgerTransaction(this.db, transaction);
+  }
+
+  async prepareLedgerPostingRequest(
+    request: Parameters<OpenPracticeRepository["prepareLedgerPostingRequest"]>[0],
+  ): ReturnType<OpenPracticeRepository["prepareLedgerPostingRequest"]> {
+    return prepareDrizzleLedgerPostingRequest(this.db, request);
+  }
+
+  async getLedgerPostingRequest(
+    firmId: string,
+    requestId: string,
+  ): ReturnType<OpenPracticeRepository["getLedgerPostingRequest"]> {
+    return getDrizzleLedgerPostingRequest(this.db, firmId, requestId);
+  }
+
+  async listLedgerPostingRequests(
+    firmId: string,
+    options: Parameters<OpenPracticeRepository["listLedgerPostingRequests"]>[1] = {},
+  ): ReturnType<OpenPracticeRepository["listLedgerPostingRequests"]> {
+    return listDrizzleLedgerPostingRequests(this.db, firmId, options);
+  }
+
+  async approveLedgerPostingRequest(
+    firmId: string,
+    requestId: string,
+    input: Parameters<OpenPracticeRepository["approveLedgerPostingRequest"]>[2],
+  ): ReturnType<OpenPracticeRepository["approveLedgerPostingRequest"]> {
+    return approveDrizzleLedgerPostingRequest(this.db, firmId, requestId, input);
+  }
+
+  async rejectLedgerPostingRequest(
+    firmId: string,
+    requestId: string,
+    input: Parameters<OpenPracticeRepository["rejectLedgerPostingRequest"]>[2],
+  ): ReturnType<OpenPracticeRepository["rejectLedgerPostingRequest"]> {
+    return rejectDrizzleLedgerPostingRequest(this.db, firmId, requestId, input);
   }
 
   async listAuditEvents(firmId: string): ReturnType<OpenPracticeRepository["listAuditEvents"]> {

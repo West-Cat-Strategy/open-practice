@@ -47,6 +47,40 @@ export interface PostedLedgerTransaction {
   reversesTransactionId?: string;
 }
 
+export const ledgerPostingRequestStatuses = ["pending_approval", "posted", "rejected"] as const;
+
+export type LedgerPostingRequestStatus = (typeof ledgerPostingRequestStatuses)[number];
+
+export interface LedgerPostingRequestRecord {
+  id: string;
+  firmId: string;
+  transactionId: string;
+  idempotencyKey: string;
+  requestFingerprint: string;
+  status: LedgerPostingRequestStatus;
+  proposedPostedAt: string;
+  entries: Omit<LedgerEntry, "id" | "transactionId" | "postedAt">[];
+  matterIds: string[];
+  clientIds: string[];
+  accountIds: string[];
+  reversesTransactionId?: string;
+  preparedByUserId: string;
+  preparedAt: string;
+  preparationNotes?: string;
+  reviewedByUserId?: string;
+  reviewedAt?: string;
+  reviewNotes?: string;
+  rejectionReason?: string;
+  ledgerTransactionId?: string;
+}
+
+export interface LedgerPostingRequestReviewSummary {
+  pendingApprovalCount: number;
+  postedCount: number;
+  rejectedCount: number;
+  totalCount: number;
+}
+
 export type LedgerApprovalDecision = "approved" | "rejected";
 
 export interface LedgerTransactionApprovalRecord {
@@ -499,6 +533,129 @@ export function postLedgerTransaction(
   };
 }
 
+export function ledgerPostingRequestFromTransaction(input: {
+  id: string;
+  preparedByUserId: string;
+  preparedAt: string;
+  transaction: LedgerTransaction;
+  status?: LedgerPostingRequestStatus;
+  reviewedByUserId?: string;
+  reviewedAt?: string;
+  preparationNotes?: string;
+  reviewNotes?: string;
+  rejectionReason?: string;
+  ledgerTransactionId?: string;
+}): LedgerPostingRequestRecord {
+  const requestFingerprint =
+    input.transaction.requestFingerprint ?? ledgerRequestFingerprint(input.transaction);
+  const record: LedgerPostingRequestRecord = {
+    id: input.id,
+    firmId: input.transaction.firmId,
+    transactionId: input.transaction.id,
+    idempotencyKey: input.transaction.idempotencyKey,
+    requestFingerprint,
+    status: input.status ?? "pending_approval",
+    proposedPostedAt: input.transaction.postedAt,
+    entries: input.transaction.entries,
+    matterIds: uniqueInOrder(input.transaction.entries.map((entry) => entry.matterId)),
+    clientIds: uniqueInOrder(input.transaction.entries.map((entry) => entry.clientId)),
+    accountIds: uniqueInOrder(input.transaction.entries.map((entry) => entry.accountId)),
+    reversesTransactionId: input.transaction.reversesTransactionId,
+    preparedByUserId: input.preparedByUserId,
+    preparedAt: input.preparedAt,
+    preparationNotes: input.preparationNotes,
+    reviewedByUserId: input.reviewedByUserId,
+    reviewedAt: input.reviewedAt,
+    reviewNotes: input.reviewNotes,
+    rejectionReason: input.rejectionReason,
+    ledgerTransactionId: input.ledgerTransactionId,
+  };
+  validateLedgerPostingRequestRecord(record);
+  return record;
+}
+
+export function ledgerTransactionFromPostingRequest(
+  request: LedgerPostingRequestRecord,
+  input: { postedByUserId: string; postedAt?: string },
+): LedgerTransaction {
+  return {
+    id: request.transactionId,
+    firmId: request.firmId,
+    idempotencyKey: request.idempotencyKey,
+    requestFingerprint: request.requestFingerprint,
+    postedByUserId: input.postedByUserId,
+    postedAt: input.postedAt ?? request.proposedPostedAt,
+    reversesTransactionId: request.reversesTransactionId,
+    entries: request.entries,
+  };
+}
+
+export function validateLedgerPostingRequestRecord(request: LedgerPostingRequestRecord): void {
+  if (!ledgerPostingRequestStatuses.includes(request.status)) {
+    throw new Error("Ledger posting request status is invalid");
+  }
+  if (!request.id.trim()) throw new Error("Ledger posting request id is required");
+  if (!request.firmId.trim()) throw new Error("Ledger posting request firm is required");
+  if (!request.transactionId.trim()) {
+    throw new Error("Ledger posting request transaction id is required");
+  }
+  if (!request.idempotencyKey.trim()) {
+    throw new Error("Ledger posting request idempotency key is required");
+  }
+  if (!request.preparedByUserId.trim()) {
+    throw new Error("Ledger posting request preparer is required");
+  }
+  if (request.entries.length === 0) {
+    throw new Error("Ledger posting request entries are required");
+  }
+  validateBalancedEntries(request.entries);
+
+  const transaction = ledgerTransactionFromPostingRequest(request, {
+    postedByUserId: request.preparedByUserId,
+    postedAt: request.proposedPostedAt,
+  });
+  if (ledgerRequestFingerprint(transaction) !== request.requestFingerprint) {
+    throw new Error("Ledger posting request fingerprint does not match proposed transaction");
+  }
+
+  const matterIds = uniqueInOrder(request.entries.map((entry) => entry.matterId));
+  const clientIds = uniqueInOrder(request.entries.map((entry) => entry.clientId));
+  const accountIds = uniqueInOrder(request.entries.map((entry) => entry.accountId));
+  if (matterIds.join("\n") !== request.matterIds.join("\n")) {
+    throw new Error("Ledger posting request matter ids do not match proposed entries");
+  }
+  if (clientIds.join("\n") !== request.clientIds.join("\n")) {
+    throw new Error("Ledger posting request client ids do not match proposed entries");
+  }
+  if (accountIds.join("\n") !== request.accountIds.join("\n")) {
+    throw new Error("Ledger posting request account ids do not match proposed entries");
+  }
+
+  if (request.reviewedByUserId && request.reviewedByUserId === request.preparedByUserId) {
+    throw new Error("Ledger posting request requires checker approval by a different user");
+  }
+
+  if (request.status === "pending_approval") {
+    if (request.reviewedByUserId || request.reviewedAt || request.ledgerTransactionId) {
+      throw new Error("Pending ledger posting requests cannot include reviewer or posting fields");
+    }
+  } else if (request.status === "posted") {
+    if (!request.reviewedByUserId || !request.reviewedAt || !request.ledgerTransactionId) {
+      throw new Error("Posted ledger posting requests require reviewer and ledger transaction");
+    }
+  } else if (request.status === "rejected") {
+    if (!request.reviewedByUserId || !request.reviewedAt) {
+      throw new Error("Rejected ledger posting requests require reviewer fields");
+    }
+    if (!request.rejectionReason?.trim()) {
+      throw new Error("Rejected ledger posting requests require a rejection reason");
+    }
+    if (request.ledgerTransactionId) {
+      throw new Error("Rejected ledger posting requests cannot include a ledger transaction");
+    }
+  }
+}
+
 function validateReversal(
   postedTransactions: PostedLedgerTransaction[],
   transaction: LedgerTransaction,
@@ -619,6 +776,18 @@ export function clientTrustBalanceDeltas(
   }
 
   return [...deltas.values()].filter((delta) => delta.deltaCents !== 0);
+}
+
+export function ledgerPostingRequestReviewSummary(
+  requests: LedgerPostingRequestRecord[],
+): LedgerPostingRequestReviewSummary {
+  return {
+    pendingApprovalCount: requests.filter((request) => request.status === "pending_approval")
+      .length,
+    postedCount: requests.filter((request) => request.status === "posted").length,
+    rejectedCount: requests.filter((request) => request.status === "rejected").length,
+    totalCount: requests.length,
+  };
 }
 
 export function ledgerControlsDiagnostics(input: {

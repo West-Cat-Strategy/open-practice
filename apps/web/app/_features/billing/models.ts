@@ -15,6 +15,8 @@ import type {
   LedgerAccountingReviewSummary,
   LedgerBankFeedReconciliationReviewSummary,
   LedgerEntry,
+  LedgerPostingRequestRecord,
+  LedgerPostingRequestReviewSummary,
   LedgerReconciliationRecord,
   LedgerStatementImportBatchRecord,
   LedgerStatementMatchRuleProfileRecord,
@@ -132,6 +134,8 @@ export interface TrustControlsDashboardResponse {
     trustBalances: Record<string, number>;
   };
   approvals: LedgerTransactionApprovalRecord[];
+  postingRequests: LedgerPostingRequestRecord[];
+  postingRequestSummary: LedgerPostingRequestReviewSummary;
   reconciliations: LedgerReconciliationRecord[];
   accountingReview: {
     importBatches: LedgerStatementImportBatchRecord[];
@@ -152,6 +156,7 @@ export interface TrustControlsDashboardResponse {
     transferRequestPosting: string;
     makerChecker: {
       ledgerTransactionApproval: string;
+      ledgerPostingRequest?: string;
       trustTransferRequest: string;
       reconciliation: string;
     };

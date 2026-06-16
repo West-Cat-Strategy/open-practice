@@ -21,6 +21,7 @@ import type { IntakeFormsRepository } from "./intake-forms-contracts.js";
 import type { IntakeTemplateRepository } from "./intake-templates-contracts.js";
 import type { EmailJobsRepository } from "./jobs-email-contracts.js";
 import type { LedgerCoreRepository } from "./ledger-core-contracts.js";
+import type { LedgerPostingRequestRepository } from "./ledger-posting-requests-contracts.js";
 import type { LedgerReviewRepository } from "./ledger-review-contracts.js";
 import type { LegalClinicRepository } from "./legal-clinics-contracts.js";
 import type { LegalResearchArtifactRepository } from "./legal-research-artifacts-contracts.js";
@@ -58,6 +59,7 @@ export * from "./intake-forms-contracts.js";
 export * from "./intake-templates-contracts.js";
 export * from "./jobs-email-contracts.js";
 export * from "./ledger-core-contracts.js";
+export * from "./ledger-posting-requests-contracts.js";
 export * from "./ledger-review-contracts.js";
 export * from "./legal-clinics-contracts.js";
 export * from "./legal-research-artifacts-contracts.js";
@@ -245,6 +247,7 @@ export interface OpenPracticeRepository
     IntakeFormsRepository,
     IntakeTemplateRepository,
     LedgerCoreRepository,
+    LedgerPostingRequestRepository,
     LegalClinicRepository,
     LegalResearchArtifactRepository,
     LedgerReviewRepository,

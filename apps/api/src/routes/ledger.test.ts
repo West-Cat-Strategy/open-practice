@@ -92,6 +92,38 @@ function ledgerTransactionPayload(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function preparedPostingRequestPayload(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "posting-request-route-test",
+    preparedAt: "2026-04-24T12:10:00.000Z",
+    preparationNotes: "Synthetic preparation note for checker review.",
+    proposedTransaction: ledgerTransactionPayload({
+      id: "prepared-route-posting",
+      idempotencyKey: "prepared-route-posting-key",
+      postedAt: "2026-04-24T12:05:00.000Z",
+      entries: [
+        {
+          matterId: "matter-001",
+          clientId: "contact-ada",
+          accountId: "acct-client-liability",
+          debitCents: 2500,
+          creditCents: 0,
+          memo: "Route test prepared trust transfer",
+        },
+        {
+          matterId: "matter-001",
+          clientId: "contact-ada",
+          accountId: "acct-trust-bank",
+          debitCents: 0,
+          creditCents: 2500,
+          memo: "Route test prepared trust transfer",
+        },
+      ],
+    }),
+    ...overrides,
+  };
+}
+
 function reconciliationRecord(
   overrides: Partial<LedgerReconciliationRecord> = {},
 ): LedgerReconciliationRecord {
@@ -972,6 +1004,278 @@ describe("ledger routes", () => {
     expect(conflict.json()).toMatchObject({
       error: "ApiHttpError",
       message: "Idempotency key was reused with a different payload",
+    });
+  });
+
+  it("prepares, lists, approves, and rejects selected trust posting requests", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository });
+    const preparePayload = preparedPostingRequestPayload();
+
+    const prepared = await server.inject({
+      method: "POST",
+      url: "/api/ledger/posting-requests/prepare",
+      payload: preparePayload,
+    });
+    expect(prepared.statusCode).toBe(200);
+    expect(prepared.json()).toMatchObject({
+      id: "posting-request-route-test",
+      transactionId: "prepared-route-posting",
+      status: "pending_approval",
+      preparedByUserId: "user-admin",
+      preparationNotes: "Synthetic preparation note for checker review.",
+    });
+    const ledgerAfterPrepare = await repository.getLedger("firm-west-legal", {
+      matterId: "matter-001",
+    });
+    expect(
+      ledgerAfterPrepare.entries.some((entry) => entry.transactionId === "prepared-route-posting"),
+    ).toBe(false);
+
+    const list = await server.inject({
+      method: "GET",
+      url: "/api/ledger/posting-requests?status=pending_approval",
+    });
+    const controls = await server.inject({
+      method: "GET",
+      url: "/api/ledger/controls",
+    });
+    const bypass = await server.inject({
+      method: "POST",
+      url: "/api/ledger/transactions",
+      payload: preparePayload.proposedTransaction,
+    });
+    const selfApproval = await server.inject({
+      method: "POST",
+      url: "/api/ledger/posting-requests/posting-request-route-test/approve",
+      payload: {
+        reviewedAt: "2026-04-24T12:30:00.000Z",
+        reviewNotes: "Synthetic self approval should be blocked.",
+      },
+    });
+    const approved = await server.inject({
+      method: "POST",
+      url: "/api/ledger/posting-requests/posting-request-route-test/approve",
+      headers: {
+        "x-open-practice-user-id": "user-licensee",
+        "x-open-practice-firm-id": "firm-west-legal",
+      },
+      payload: {
+        reviewedAt: "2026-04-24T12:31:00.000Z",
+        reviewNotes: "Synthetic checker note.",
+      },
+    });
+
+    expect(list.statusCode).toBe(200);
+    expect(list.json()).toEqual([
+      expect.objectContaining({ id: "posting-request-route-test", status: "pending_approval" }),
+    ]);
+    expect(controls.statusCode).toBe(200);
+    expect(controls.json()).toMatchObject({
+      postingRequests: [
+        expect.objectContaining({ id: "posting-request-route-test", status: "pending_approval" }),
+      ],
+      postingRequestSummary: {
+        pendingApprovalCount: 1,
+        postedCount: 0,
+        rejectedCount: 0,
+        totalCount: 1,
+      },
+      trustControlPolicy: {
+        automaticTrustPosting: false,
+        makerChecker: {
+          ledgerPostingRequest: "prepared_postings_require_checker_approval_before_posting",
+        },
+      },
+    });
+    expect(bypass.statusCode).toBe(409);
+    expect(bypass.json()).toMatchObject({
+      error: "ApiHttpError",
+      message: "Selected trust posting is pending approval",
+    });
+    expect(selfApproval.statusCode).toBe(403);
+    expect(selfApproval.json()).toMatchObject({
+      error: "ApiHttpError",
+      message: "Ledger posting request requires checker approval by a different user",
+    });
+    expect(approved.statusCode).toBe(200);
+    expect(approved.json()).toMatchObject({
+      id: "posting-request-route-test",
+      status: "posted",
+      reviewedByUserId: "user-licensee",
+      ledgerTransactionId: "prepared-route-posting",
+    });
+    await expect(
+      repository.getLedger("firm-west-legal", { matterId: "matter-001" }),
+    ).resolves.toMatchObject({
+      entries: expect.arrayContaining([
+        expect.objectContaining({ transactionId: "prepared-route-posting" }),
+      ]),
+    });
+
+    const rejectedPrepare = await server.inject({
+      method: "POST",
+      url: "/api/ledger/posting-requests/prepare",
+      payload: preparedPostingRequestPayload({
+        id: "posting-request-route-rejected",
+        proposedTransaction: ledgerTransactionPayload({
+          id: "prepared-route-rejected",
+          idempotencyKey: "prepared-route-rejected-key",
+          postedAt: "2026-04-24T13:05:00.000Z",
+          entries: preparePayload.proposedTransaction.entries,
+        }),
+      }),
+    });
+    const rejected = await server.inject({
+      method: "POST",
+      url: "/api/ledger/posting-requests/posting-request-route-rejected/reject",
+      headers: {
+        "x-open-practice-user-id": "user-licensee",
+        "x-open-practice-firm-id": "firm-west-legal",
+      },
+      payload: {
+        reviewedAt: "2026-04-24T13:31:00.000Z",
+        rejectionReason: "Synthetic rejection reason.",
+      },
+    });
+
+    expect(rejectedPrepare.statusCode).toBe(200);
+    expect(rejected.statusCode).toBe(200);
+    expect(rejected.json()).toMatchObject({
+      id: "posting-request-route-rejected",
+      status: "rejected",
+    });
+    expect(rejected.json()).not.toHaveProperty("ledgerTransactionId");
+    const ledgerAfterReject = await repository.getLedger("firm-west-legal", {
+      matterId: "matter-001",
+    });
+    expect(
+      ledgerAfterReject.entries.some((entry) => entry.transactionId === "prepared-route-rejected"),
+    ).toBe(false);
+
+    const audit = await repository.listAuditEvents("firm-west-legal");
+    expect(audit).toMatchObject({
+      events: expect.arrayContaining([
+        expect.objectContaining({
+          action: "ledger.posting_request.prepared",
+          resourceType: "ledger_posting_request",
+          resourceId: "posting-request-route-test",
+          metadata: expect.objectContaining({
+            postingRequestId: "posting-request-route-test",
+            transactionId: "prepared-route-posting",
+            preparationNotesPresent: true,
+          }),
+        }),
+        expect.objectContaining({
+          action: "ledger.posting_request.approved",
+          metadata: expect.objectContaining({
+            postingRequestId: "posting-request-route-test",
+            ledgerTransactionId: "prepared-route-posting",
+            reviewNotesPresent: true,
+          }),
+        }),
+        expect.objectContaining({
+          action: "ledger.posting_request.rejected",
+          metadata: expect.objectContaining({
+            postingRequestId: "posting-request-route-rejected",
+            rejectionReasonPresent: true,
+          }),
+        }),
+        expect.objectContaining({
+          action: "ledger.transaction.posted",
+          resourceId: "prepared-route-posting",
+          metadata: expect.objectContaining({
+            postingRequestId: "posting-request-route-test",
+            workflowStatus: "succeeded",
+          }),
+        }),
+      ]),
+      valid: true,
+    });
+    expect(JSON.stringify(audit.events)).not.toContain("Synthetic checker note.");
+    expect(JSON.stringify(audit.events)).not.toContain("Synthetic rejection reason.");
+  });
+
+  it("enforces matter-scoped posting request list and decision restrictions", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository });
+    const prepared = await server.inject({
+      method: "POST",
+      url: "/api/ledger/posting-requests/prepare",
+      payload: preparedPostingRequestPayload({
+        id: "posting-request-matter-002",
+        proposedTransaction: ledgerTransactionPayload({
+          id: "prepared-route-matter-002",
+          idempotencyKey: "prepared-route-matter-002-key",
+          entries: [
+            {
+              matterId: "matter-002",
+              clientId: "contact-northstar",
+              accountId: "acct-client-liability",
+              debitCents: 500,
+              creditCents: 0,
+              memo: "Matter 002 prepared transfer",
+            },
+            {
+              matterId: "matter-002",
+              clientId: "contact-northstar",
+              accountId: "acct-trust-bank",
+              debitCents: 0,
+              creditCents: 500,
+              memo: "Matter 002 prepared transfer",
+            },
+          ],
+        }),
+      }),
+    });
+    const scopedWithoutMatter = await server.inject({
+      method: "GET",
+      url: "/api/ledger/posting-requests",
+      headers: {
+        "x-open-practice-user-id": "user-licensee",
+        "x-open-practice-firm-id": "firm-west-legal",
+      },
+    });
+    const scopedAssignedMatter = await server.inject({
+      method: "GET",
+      url: "/api/ledger/posting-requests?matterId=matter-001",
+      headers: {
+        "x-open-practice-user-id": "user-licensee",
+        "x-open-practice-firm-id": "firm-west-legal",
+      },
+    });
+    const scopedOtherMatter = await server.inject({
+      method: "GET",
+      url: "/api/ledger/posting-requests?matterId=matter-002",
+      headers: {
+        "x-open-practice-user-id": "user-licensee",
+        "x-open-practice-firm-id": "firm-west-legal",
+      },
+    });
+    const approveOtherMatter = await server.inject({
+      method: "POST",
+      url: "/api/ledger/posting-requests/posting-request-matter-002/approve",
+      headers: {
+        "x-open-practice-user-id": "user-licensee",
+        "x-open-practice-firm-id": "firm-west-legal",
+      },
+      payload: { reviewedAt: "2026-04-24T14:00:00.000Z" },
+    });
+
+    expect(prepared.statusCode).toBe(200);
+    expect(scopedWithoutMatter.statusCode).toBe(400);
+    expect(scopedWithoutMatter.json()).toMatchObject({
+      message: "matterId is required for matter-scoped ledger access",
+    });
+    expect(scopedAssignedMatter.statusCode).toBe(200);
+    expect(scopedAssignedMatter.json()).toEqual([]);
+    expect(scopedOtherMatter.statusCode).toBe(403);
+    expect(scopedOtherMatter.json()).toMatchObject({
+      message: "Trust ledger access required",
+    });
+    expect(approveOtherMatter.statusCode).toBe(403);
+    expect(approveOtherMatter.json()).toMatchObject({
+      message: "Trust ledger access required",
     });
   });
 

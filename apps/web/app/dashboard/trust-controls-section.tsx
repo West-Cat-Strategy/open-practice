@@ -1,4 +1,11 @@
-import { AlertTriangle, Banknote, Clock3, FileText, ShieldCheck } from "lucide-react";
+import {
+  AlertTriangle,
+  Banknote,
+  ClipboardCheck,
+  Clock3,
+  FileText,
+  ShieldCheck,
+} from "lucide-react";
 
 import type { FinancialCommandJournalEntry, FinancialCommandJournalFamily } from "../types";
 import type { TrustControlsDashboardResponse } from "../_features/billing/models";
@@ -128,6 +135,7 @@ export function TrustControlsSection({
       label: accountLabel(activeTrustControls, accountId),
     }),
   );
+  const postingRequests = activeTrustControls.postingRequests.slice(0, 5);
 
   return (
     <>
@@ -143,6 +151,10 @@ export function TrustControlsSection({
         <div>
           <span className="field-label">Rejected decisions</span>
           <strong>{trustReviewSummary.rejectedApprovalCount}</strong>
+        </div>
+        <div>
+          <span className="field-label">Prepared postings</span>
+          <strong>{trustReviewSummary.pendingPostingRequestCount}</strong>
         </div>
         <div>
           <span className="field-label">Exceptions</span>
@@ -176,6 +188,15 @@ export function TrustControlsSection({
           <span>
             {trustReviewSummary.matchedStatementRowCount} matched ·{" "}
             {trustReviewSummary.unmatchedStatementRowCount} unmatched
+          </span>
+        </div>
+        <div className="activity-card">
+          <ClipboardCheck size={18} />
+          <strong>{trustReviewSummary.totalPostingRequestCount} prepared postings</strong>
+          <span>
+            {trustReviewSummary.pendingPostingRequestCount} pending ·{" "}
+            {trustReviewSummary.postedPostingRequestCount} posted ·{" "}
+            {trustReviewSummary.rejectedPostingRequestCount} rejected
           </span>
         </div>
         <div className="activity-card">
@@ -246,6 +267,39 @@ export function TrustControlsSection({
           </span>
           <em>review only</em>
         </div>
+      </div>
+
+      <div className="section-title">
+        <h3>Prepared posting requests</h3>
+        <span>checker approval before posting</span>
+      </div>
+      <div className="party-list">
+        {postingRequests.map((postingRequest) => (
+          <div className="party-row" key={postingRequest.id}>
+            <span>
+              <strong>{postingRequest.transactionId}</strong>
+              <small>
+                {postingRequest.entries.length} entries · prepared{" "}
+                {compactDate(postingRequest.preparedAt)} · {postingRequest.matterIds.length} matters
+              </small>
+              <small>
+                {postingRequest.ledgerTransactionId
+                  ? `posted as ${postingRequest.ledgerTransactionId}`
+                  : postingRequest.rejectionReason
+                    ? "rejection reason recorded"
+                    : "awaiting checker decision"}
+              </small>
+            </span>
+            <em className={postingRequest.status === "rejected" ? "risk" : undefined}>
+              {compactStatus(postingRequest.status)}
+            </em>
+          </div>
+        ))}
+        {postingRequests.length === 0 ? (
+          <p className="inline-empty">
+            No prepared posting requests are present for the current controls payload.
+          </p>
+        ) : null}
       </div>
 
       <div className="section-title">
