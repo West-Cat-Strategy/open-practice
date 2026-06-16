@@ -80,18 +80,12 @@ open-practice-minio:RELEASE.2025-10-15T17-29-55Z-go1.26.4
 MinIO appears twice because the `minio` and `minio-init` services intentionally share the same
 wrapped image.
 
-`pnpm docker:residual-watch` wrote blocked local evidence to
-`/tmp/codex-security-scans/open-practice/docker-residual-watch/2026-06-13T23-08-38Z`. The helper
-confirmed Docker Scout is installed and rendered Compose image inventory, but Docker Engine was not
-reachable:
-
-```text
-Cannot connect to the Docker daemon at unix:///Users/bryan/.docker/run/docker.sock. Is the docker daemon running?
-```
-
-The Scout image checks were therefore blocked for local wrapped images; Scout attempted remote pulls
-for local image names and received registry authorization failures. No Dockerfile, Compose, or image
-pin change is made in this dependency lane.
+`pnpm docker:residual-watch` was rerun on 2026-06-15 PDT from branch
+`proof/docker-gaps-2026-06-16` and passed, writing local evidence to
+`/tmp/codex-security-scans/open-practice/docker-residual-watch/2026-06-16T00-58-57Z`. The artifact
+records a clean branch-local run with Docker and Docker Scout reachable, no blockers, no residual
+review candidates, and exit code 0. No Dockerfile, Compose, or image pin change is made in this
+dependency lane.
 
 ## Validation
 

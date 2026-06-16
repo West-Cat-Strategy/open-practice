@@ -111,8 +111,14 @@ Passed:
 
 Skipped/environmental:
 
-- `pnpm e2e:docker` could not run because Docker was unavailable locally:
-  `Cannot connect to the Docker daemon at unix:///Users/bryan/.docker/run/docker.sock`.
+- `pnpm e2e:docker` was rerun on 2026-06-15 PDT from branch
+  `proof/docker-gaps-2026-06-16`. Docker Engine was reachable and Compose started the disposable
+  PostgreSQL/Redis/MinIO/Mailpit stack, but the lane did not reach Playwright because
+  `pnpm --filter @open-practice/database db:migrate` exited 1 after starting `drizzle-kit migrate`.
+  A focused follow-up reproduction was then blocked by the existing local `open-practice-dev-*`
+  stack holding the Docker E2E loopback ports, including `127.0.0.1:35432` for Postgres. No
+  product-code, migration, Dockerfile, Compose, or image-pin change is included in this proof
+  refresh.
 - The Codex Browser plugin smoke could not be run because tool discovery returned no exposed
   Browser automation tool in this session. The UI was still exercised through the repo's Playwright
   host, matterless, client-portal, and first-run lanes.
