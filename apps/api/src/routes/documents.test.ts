@@ -406,6 +406,42 @@ describe("document routes", () => {
     });
   });
 
+  it("denies upload completion when the stored document belongs to an unassigned matter", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const checksumSha256 = "c".repeat(64);
+    const server = testServer({
+      repository,
+      s3: s3Config(checksumSha256, true, true, fileSizeBytes, "AES256"),
+    });
+    const intent = await server.inject({
+      method: "POST",
+      url: "/api/documents/upload-intents",
+      payload: uploadIntentPayload({
+        matterId: "matter-002",
+        filename: "other-matter.pdf",
+        checksumSha256,
+      }),
+    });
+    expect(intent.statusCode).toBe(200);
+    const documentId = intent.json<{ document: { id: string } }>().document.id;
+
+    const completed = await server.inject({
+      method: "POST",
+      url: `/api/documents/${documentId}/upload-complete`,
+      payload: { checksumSha256 },
+      headers: {
+        "x-open-practice-user-id": "user-licensee",
+        "x-open-practice-firm-id": "firm-west-legal",
+      },
+    });
+
+    expect(completed.statusCode).toBe(403);
+    expect(completed.json()).toMatchObject({
+      error: "ApiHttpError",
+      message: "Document access required",
+    });
+  });
+
   it("returns 405 for the legacy GET upload intent route without creating an intent", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const response = await testServer({

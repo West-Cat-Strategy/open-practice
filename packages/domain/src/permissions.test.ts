@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { DocumentRecord, PortalGrant, User } from "./models.js";
+import type { JobLifecycleRecord } from "./operations.js";
 import {
+  authorizationFixtureCases,
+  authorizationRelationVocabulary,
+} from "./authorization-fixtures.js";
+import {
+  canReadJobLifecycleRecord,
   canAccess,
   canShareDocumentThroughPortal,
   dashboardCapabilities,
@@ -33,6 +39,160 @@ const grant: PortalGrant = {
   grantedByUserId: "user-admin",
   permissions: ["view_documents"],
 };
+
+function fixtureCase(id: string) {
+  const match = authorizationFixtureCases.find((candidate) => candidate.id === id);
+  if (!match) throw new Error(`Missing authorization fixture case ${id}`);
+  return match;
+}
+
+function sampleUser(id: string): User {
+  const match = sampleUsers.find((candidate) => candidate.id === id);
+  if (!match) throw new Error(`Missing sample user ${id}`);
+  return match;
+}
+
+function jobRecord(input: {
+  id: string;
+  matterId?: string;
+  reportScope?: string;
+}): JobLifecycleRecord {
+  return {
+    id: input.id,
+    firmId: sampleFirm.id,
+    queueName: "reports",
+    jobName: "audit_export",
+    status: "completed",
+    targetResourceType: "audit_export",
+    targetResourceId: input.id,
+    attemptsMade: 1,
+    maxAttempts: 1,
+    queuedAt: "2026-05-02T10:00:00.000Z",
+    finishedAt: "2026-05-02T10:01:00.000Z",
+    metadata: {
+      ...(input.matterId ? { matterId: input.matterId } : {}),
+      ...(input.reportScope ? { reportScope: input.reportScope } : {}),
+    },
+  };
+}
+
+describe("authorization fixture catalogue", () => {
+  it("catalogues the current OP relation vocabulary without canonical auth rewrites", () => {
+    expect(Object.keys(authorizationRelationVocabulary).sort()).toEqual([
+      "account_bound_portal_grant_holder",
+      "assigned_matter_staff",
+      "expired_public_share_token_holder",
+      "external_portal_contact",
+      "firm_wide_reviewer",
+      "public_share_token_holder",
+      "revoked_public_share_token_holder",
+      "unassigned_matter_staff",
+      "unverified_public_share_token_holder",
+    ]);
+    expect(authorizationFixtureCases.map((candidate) => candidate.id)).toEqual([
+      "matter:firm-wide:list-all",
+      "matter:assigned:list-visible",
+      "matter:unassigned:list-hidden",
+      "document:assigned:read-visible",
+      "document:unassigned:read-hidden",
+      "document:portal-grant:metadata-visible",
+      "job:firm-wide:no-matter-visible",
+      "job:assigned:matter-job-visible",
+      "job:unassigned:matter-job-hidden",
+      "job:unassigned:no-matter-hidden",
+      "portal-link:public-share:metadata-visible",
+      "portal-link:expired-share:hidden",
+      "portal-link:revoked-share:hidden",
+      "portal-link:email-unverified:denied",
+    ]);
+  });
+
+  it("keeps matter and document fixture decisions aligned with RBAC plus matter scope", () => {
+    for (const id of [
+      "matter:firm-wide:list-all",
+      "matter:assigned:list-visible",
+      "matter:unassigned:list-hidden",
+      "document:assigned:read-visible",
+      "document:unassigned:read-hidden",
+    ]) {
+      const item = fixtureCase(id);
+      expect(
+        canAccess({
+          user: sampleUser(item.subjectId),
+          firmId: sampleFirm.id,
+          resource: item.resource,
+          action: item.action,
+          matterId: item.matterId,
+        }),
+      ).toBe(item.expectedDecision === "allow");
+    }
+  });
+
+  it("keeps portal document and job list-visible fixtures aligned with current helpers", () => {
+    const externalUser: User = {
+      id: "client-ada",
+      firmId: sampleFirm.id,
+      displayName: "Synthetic Portal Client",
+      email: "ada@example.test",
+      role: "client_external",
+      assignedMatterIds: [],
+      mfaEnabled: true,
+    };
+    const portalCase = fixtureCase("document:portal-grant:metadata-visible");
+    expect(
+      canAccess({
+        user: externalUser,
+        firmId: sampleFirm.id,
+        resource: portalCase.resource,
+        action: portalCase.action,
+        matterId: portalCase.matterId,
+        contactId: portalCase.contactId,
+        portalGrants: samplePortalGrants,
+        now: "2026-04-10T12:00:00.000Z",
+      }),
+    ).toBe(true);
+
+    const owner = sampleUser("user-admin");
+    const licensee = sampleUser("user-licensee");
+    expect(
+      canReadJobLifecycleRecord({
+        user: owner,
+        firmId: sampleFirm.id,
+        record: jobRecord({ id: fixtureCase("job:firm-wide:no-matter-visible").resourceId! }),
+      }),
+    ).toBe(true);
+    expect(
+      canReadJobLifecycleRecord({
+        user: licensee,
+        firmId: sampleFirm.id,
+        record: jobRecord({
+          id: fixtureCase("job:assigned:matter-job-visible").resourceId!,
+          matterId: "matter-001",
+        }),
+      }),
+    ).toBe(true);
+    expect(
+      canReadJobLifecycleRecord({
+        user: licensee,
+        firmId: sampleFirm.id,
+        record: jobRecord({
+          id: fixtureCase("job:unassigned:matter-job-hidden").resourceId!,
+          matterId: "matter-002",
+        }),
+      }),
+    ).toBe(false);
+    expect(
+      canReadJobLifecycleRecord({
+        user: licensee,
+        firmId: sampleFirm.id,
+        record: jobRecord({
+          id: fixtureCase("job:unassigned:no-matter-hidden").resourceId!,
+          reportScope: "firm",
+        }),
+      }),
+    ).toBe(false);
+  });
+});
 
 describe("portal document sharing permissions", () => {
   it("requires accepted review state before sharing external-upload documents", () => {

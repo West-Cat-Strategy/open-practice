@@ -5,7 +5,7 @@ import {
   type MatterSummary,
   type OpenPracticeRepository,
 } from "@open-practice/database";
-import type { ProfessionalRole, User } from "@open-practice/domain";
+import { authorizationFixtureCases, type ProfessionalRole, type User } from "@open-practice/domain";
 import { registerMatterRoutes } from "./matters.js";
 
 const firmId = "firm-west-legal";
@@ -48,6 +48,31 @@ afterEach(async () => {
 });
 
 describe("matter routes", () => {
+  it("matches the authorization fixture catalogue for matter list visibility", async () => {
+    const matterCases = authorizationFixtureCases.filter((item) => item.family === "matter");
+    expect(matterCases.map((item) => item.id)).toEqual([
+      "matter:firm-wide:list-all",
+      "matter:assigned:list-visible",
+      "matter:unassigned:list-hidden",
+    ]);
+
+    const firmWide = await testServer(user("owner_admin", [])).inject({
+      method: "GET",
+      url: "/api/matters",
+    });
+    expect(firmWide.statusCode).toBe(200);
+    expect(firmWide.json<MatterSummary[]>().map((matter) => matter.id)).toEqual(
+      expect.arrayContaining(["matter-001", "matter-002"]),
+    );
+
+    const assigned = await testServer(user("licensee", ["matter-001"])).inject({
+      method: "GET",
+      url: "/api/matters",
+    });
+    expect(assigned.statusCode).toBe(200);
+    expect(assigned.json<MatterSummary[]>().map((matter) => matter.id)).toEqual(["matter-001"]);
+  });
+
   it("returns full firm overview only to firm-wide readers", async () => {
     const response = await testServer(user("owner_admin", ["matter-001", "matter-002"])).inject({
       method: "GET",
