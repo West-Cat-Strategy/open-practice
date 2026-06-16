@@ -13,6 +13,7 @@ import type { ConversationThreadRepository } from "./conversation-threads-contra
 import type { DocumentAssemblyRepository } from "./document-assembly-contracts.js";
 import type { DocumentRepository } from "./documents-contracts.js";
 import type { DraftRepository } from "./drafts-contracts.js";
+import type { EmailTemplateDraftRepository } from "./email-template-drafts-contracts.js";
 import type { FirmSettingsRepository } from "./firm-settings-contracts.js";
 import type { HostedPaymentRequestRepository } from "./hosted-payment-requests-contracts.js";
 import type { InboundEmailRepository } from "./inbound-email-contracts.js";
@@ -49,6 +50,7 @@ export * from "./conversation-threads-contracts.js";
 export * from "./document-assembly-contracts.js";
 export * from "./documents-contracts.js";
 export * from "./drafts-contracts.js";
+export * from "./email-template-drafts-contracts.js";
 export * from "./firm-settings-contracts.js";
 export * from "./hosted-payment-requests-contracts.js";
 export * from "./inbound-email-contracts.js";
@@ -238,6 +240,7 @@ export interface OpenPracticeRepository
     ContactRepository,
     ConnectorRepository,
     EmailJobsRepository,
+    EmailTemplateDraftRepository,
     InboundEmailRepository,
     IntakeFormsRepository,
     IntakeTemplateRepository,

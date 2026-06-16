@@ -39,6 +39,8 @@ import {
   draftTemplates,
   emailEvents,
   emailOutbox,
+  emailTemplateDrafts,
+  emailTemplatePreviewSnapshots,
   externalUploadLinks,
   firmSettings,
   inboundEmailAddresses,
@@ -950,6 +952,53 @@ describe("database schema hardening", () => {
         "source",
         "error_message",
         "metadata",
+      ]),
+    );
+    const templateDraftConfig = getTableConfig(emailTemplateDrafts);
+    expect(templateDraftConfig.columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining([
+        "firm_id",
+        "name",
+        "category",
+        "template_key",
+        "from_address",
+        "subject",
+        "text_body",
+        "html_body",
+        "recipient_hints",
+        "status",
+        "version",
+        "created_by_user_id",
+        "updated_by_user_id",
+        "metadata",
+      ]),
+    );
+    expect(templateDraftConfig.checks.map((check) => check.name)).toEqual(
+      expect.arrayContaining([
+        "email_template_drafts_status_value",
+        "email_template_drafts_positive_version",
+      ]),
+    );
+    const previewSnapshotConfig = getTableConfig(emailTemplatePreviewSnapshots);
+    expect(previewSnapshotConfig.columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining([
+        "firm_id",
+        "template_draft_id",
+        "matter_id",
+        "created_by_user_id",
+        "subject_preview",
+        "text_preview",
+        "html_preview",
+        "recipient_summary",
+        "warnings",
+        "delivery",
+        "metadata",
+      ]),
+    );
+    expect(previewSnapshotConfig.indexes.map((index) => index.config.name)).toEqual(
+      expect.arrayContaining([
+        "email_template_preview_snapshots_template_created_idx",
+        "email_template_preview_snapshots_matter_created_idx",
       ]),
     );
     expect(getTableConfig(inboundEmailAddresses).columns.map((column) => column.name)).toEqual(

@@ -3,6 +3,7 @@ import { registerEmailOutboxRoutes } from "./email/outbox.js";
 import { registerEmailReceiptRoutes } from "./email/receipts.js";
 import { registerEmailSettingsRoutes } from "./email/settings.js";
 import { registerEmailStatusRoutes } from "./email/status.js";
+import { registerEmailTemplateDraftRoutes } from "./email/templates.js";
 import type { ApiRouteDependencies } from "./types.js";
 
 export { buildEmailStatus } from "./email/status.js";
@@ -18,6 +19,7 @@ export function registerEmailRoutes(
 ): void {
   registerEmailStatusRoutes(server, { repository });
   registerEmailSettingsRoutes(server, { repository });
+  registerEmailTemplateDraftRoutes(server, { repository });
   registerEmailOutboxRoutes(server, { repository, emailJobQueue, jwtSecret, publicWebBaseUrl });
   registerEmailReceiptRoutes(server, { repository, jwtSecret });
 }

@@ -28,6 +28,7 @@ import type {
 } from "./contracts.js";
 import type { AuthRepository } from "./auth-contracts.js";
 import type { ConnectorRepository } from "./connector-contracts.js";
+import type { EmailTemplateDraftRepository } from "./email-template-drafts-contracts.js";
 import type { EmailJobsRepository } from "./jobs-email-contracts.js";
 import type { FirmSettingsRepository } from "./firm-settings-contracts.js";
 import type { ProviderSettingsRepository } from "./provider-settings-contracts.js";
@@ -275,6 +276,7 @@ import {
   recordDrizzleSignatureWebhookAttempt,
 } from "./signatures/drizzle.js";
 import { createDrizzleConnectorRepository } from "./connectors/drizzle.js";
+import { createDrizzleEmailTemplateDraftRepository } from "./email-template-drafts/drizzle.js";
 import { createDrizzleEmailJobsRepository } from "./jobs-email/drizzle.js";
 import {
   createDrizzleInboundEmailAddress,
@@ -387,6 +389,12 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
   declare listEmailReceiptTokens: EmailJobsRepository["listEmailReceiptTokens"];
   declare updateJobLifecycleRecord: EmailJobsRepository["updateJobLifecycleRecord"];
   declare listJobLifecycleRecords: EmailJobsRepository["listJobLifecycleRecords"];
+  declare listEmailTemplateDrafts: EmailTemplateDraftRepository["listEmailTemplateDrafts"];
+  declare getEmailTemplateDraft: EmailTemplateDraftRepository["getEmailTemplateDraft"];
+  declare createEmailTemplateDraft: EmailTemplateDraftRepository["createEmailTemplateDraft"];
+  declare updateEmailTemplateDraft: EmailTemplateDraftRepository["updateEmailTemplateDraft"];
+  declare createEmailTemplatePreviewSnapshot: EmailTemplateDraftRepository["createEmailTemplatePreviewSnapshot"];
+  declare listEmailTemplatePreviewSnapshots: EmailTemplateDraftRepository["listEmailTemplatePreviewSnapshots"];
   declare getFirmSettings: FirmSettingsRepository["getFirmSettings"];
   declare listProviderSettings: ProviderSettingsRepository["listProviderSettings"];
   declare upsertProviderSetting: ProviderSettingsRepository["upsertProviderSetting"];
@@ -398,6 +406,7 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     Object.assign(this, createDrizzleAuthRepository(db));
     Object.assign(this, createDrizzleConnectorRepository(db));
     Object.assign(this, createDrizzleEmailJobsRepository(db));
+    Object.assign(this, createDrizzleEmailTemplateDraftRepository(db));
     Object.assign(this, createDrizzleFirmSettingsRepository(db));
     Object.assign(
       this,

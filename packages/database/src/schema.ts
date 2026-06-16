@@ -13,6 +13,7 @@ export * from "./schema/core.js";
 export * from "./schema/document-assembly.js";
 export * from "./schema/documents.js";
 export * from "./schema/drafts.js";
+export * from "./schema/email-template-drafts.js";
 export * from "./schema/enums.js";
 export * from "./schema/firm-settings.js";
 export * from "./schema/inbound-email.js";

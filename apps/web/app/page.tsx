@@ -32,6 +32,7 @@ import { loadContactDashboardResources } from "./_features/contacts/server-resou
 import type { DocumentAssemblyDashboardResponse } from "./_features/document-assembly/models";
 import type { EmailDeliveryDashboardResponse } from "./_features/email-delivery/models";
 import { loadEmailDeliveryDashboardResources } from "./_features/email-delivery/server-resources";
+import { loadEmailTemplateDashboardResources } from "./_features/email-templates/server-resources";
 import type { ExternalUploadsDashboardResponse } from "./_features/external-uploads/models";
 import { loadExternalUploadsDashboardResources } from "./_features/external-uploads/server-resources";
 import { loadShareLinksStatus } from "./_features/share-links/server-resources";
@@ -169,6 +170,7 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
   });
   const emailDeliveryHistory: EmailDeliveryDashboardResponse =
     await loadEmailDeliveryDashboardResources({ headers, matters });
+  const emailTemplates = await loadEmailTemplateDashboardResources({ headers });
   const communicationsInbox = await loadCommunicationsInboxResources({ headers, matters });
   const documentProcessing: DocumentProcessingDashboardResponse = canViewDocuments
     ? await loadDocumentProcessingDashboardData({
@@ -278,6 +280,7 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
       documentProcessing={documentProcessing}
       drafting={drafting}
       emailDeliveryHistory={emailDeliveryHistory}
+      emailTemplates={emailTemplates}
       emailSettings={emailSettings.settings}
       externalUploads={externalUploads}
       initialRouteSelection={initialRouteSelection}
