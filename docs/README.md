@@ -24,7 +24,10 @@ Use this index as the first stop for repo orientation. Open Practice is a legal-
 - [Improvement Opportunities](improvement-opportunities.md) tracks the next useful implementation directions.
 - [Documentation Archive](archive/README.md) preserves historical planning snapshots and completed
   workboard proof that is no longer active status.
-- [Threat Model](threat-model.md), [Deployment Hardening](deployment-hardening.md), and [Trust/Funds Caveats](trust-funds-caveats.md) define security and compliance posture.
+- [Threat Model](threat-model.md), [Deployment Hardening](deployment-hardening.md),
+  [Trust/Funds Caveats](trust-funds-caveats.md), and
+  [Contact-History Export, Retention, And Privacy Decision Packet](contact-history-export-retention-privacy-decision-packet.md)
+  define security, compliance, retention, and privacy posture.
 - [OSS References](oss-references.md), [Reference Repos](reference-repos.md), [Reference Review 2026-05-12](reference-review-2026-05-12.md), [Clio Product Specification Review 2026-05-26](reference-review-clio-2026-05-26.md), [Reuse Decision Policy](reuse-decision-policy.md), [License Policy](license-policy.md), and [OSS reference lockfile](oss-references.lock.json) define clean-room reference and reuse rules.
 - [Maintenance](development/maintenance.md) and [Agent Workflows](development/agent-workflows.md)
   define ongoing upkeep and AI-assisted development practices.

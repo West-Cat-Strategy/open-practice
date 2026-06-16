@@ -184,7 +184,9 @@ widget registry candidate is no longer re-proposed here.
     and authorization-filtered CRM UI panels.
   - **Remaining gap:** Future work should focus on task/follow-up integration, richer activity
     filtering, duplicate-review assistance without automatic merges, and jurisdiction-reviewed
-    retention/privacy policies for contact-history exports.
+    retention/privacy policies for contact-history exports. The
+    [contact-history export, retention, and privacy decision packet](contact-history-export-retention-privacy-decision-packet.md)
+    is the prerequisite policy surface before any contact-history export runtime implementation.
   - **References:** `civicrm__civicrm-core`, `espocrm__espocrm`, `suitecrm__suitecrm`,
     `twenty__twenty`, `jlawyerorg__j-lawyer-org`, and `arkcase__arkcase`.
   - **Reuse and snippets:** AGPL/LGPL/high-risk reference-only; no direct snippets.

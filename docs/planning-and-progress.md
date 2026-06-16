@@ -22,6 +22,13 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 ## Current Handoff Notes
 
+The 2026-06-15 contact-history export, retention, and privacy decision packet is docs-first policy
+groundwork for future CRM export work. It records the pre-implementation choices needed for export
+purpose, authorized requester paths, redaction, matter boundaries, retention/hold posture, and
+privacy-policy wording without adding API, database, UI, worker, provider, migration, dependency, or
+export runtime behavior. Proof is recorded in
+[Contact-history export decision-packet proof](validation/OP_CONTACT_HISTORY_EXPORT_RETENTION_PRIVACY_DECISION_PACKET_PROOF_2026-06-15.md).
+
 The 2026-06-15 Full CRM Contacts branch expands Contacts into a legal-practice CRM while preserving
 the existing dossier, review queue, data-quality, conflict-check, matter-party, and client-portal
 grant foundations. It keeps organizations as `Contact.kind = "organization"`, uses
