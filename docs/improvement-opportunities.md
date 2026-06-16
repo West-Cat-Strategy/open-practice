@@ -179,12 +179,13 @@ widget registry candidate is no longer re-proposed here.
 
 - **Contact relationship graph expansion**
   - **Shipped slices:** OP-T130 added the first contact relationship graph and CRM taxonomy surface.
-    The 2026-06-15 Full CRM Contacts branch adds contact maintenance APIs, organization contacts,
+    The 2026-06-15 Full CRM Contacts mainline work adds contact maintenance APIs, organization contacts,
     matter-contact association state, portal-access state, relationship editing, conflict matching,
     and authorization-filtered CRM UI panels.
   - **Remaining gap:** Future work should focus on task/follow-up integration, richer activity
-    filtering, duplicate-review assistance without automatic merges, and jurisdiction-reviewed
-    retention/privacy policies for contact-history exports.
+    filtering, and jurisdiction-reviewed retention/privacy policies for contact-history exports.
+    Review-only duplicate assistance now derives safe contact dossier/review-queue cues without
+    automatic merges or contact mutation.
   - **References:** `civicrm__civicrm-core`, `espocrm__espocrm`, `suitecrm__suitecrm`,
     `twenty__twenty`, `jlawyerorg__j-lawyer-org`, and `arkcase__arkcase`.
   - **Reuse and snippets:** AGPL/LGPL/high-risk reference-only; no direct snippets.

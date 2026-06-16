@@ -244,10 +244,36 @@ export interface ContactDossierQualitySignal {
   reason: string;
   matterId?: string;
   relatedContactIds?: string[];
-  matchedOn?: "name" | "alias" | "identifier";
+  matchedOn?: "name" | "alias" | "former_name" | "identifier" | "contact_method" | "address";
   matchedValue?: string;
+  duplicateReview?: ContactDuplicateReviewCue;
   sourceRecordId?: string;
   changedAt?: string;
+}
+
+export type ContactDuplicateMatchedField =
+  | "name"
+  | "alias"
+  | "former_name"
+  | "identifier"
+  | "email"
+  | "phone"
+  | "website"
+  | "address";
+
+export interface ContactDuplicateReviewCue {
+  candidate: {
+    contactId: string;
+    displayName: string;
+    kind: Contact["kind"];
+    status: ContactStatus;
+    roleCategories: ContactRoleCategory[];
+  };
+  matchedFields: ContactDuplicateMatchedField[];
+  matchCount: number;
+  sharedVisibleMatterIds: string[];
+  sharedVisibleMatterCount: number;
+  reviewSeverity: "review";
 }
 
 export interface ContactDossierQualityReview {
@@ -712,26 +738,62 @@ function buildCrmTaxonomy(input: {
   };
 }
 
-function normalizedContactNames(
-  contact: Contact,
-): Array<{ matchedOn: "name" | "alias"; matchedValue: string; normalizedValue: string }> {
+function normalizedContactNames(contact: Contact): Array<{
+  matchedOn: "name" | "alias" | "former_name";
+  matchedField: ContactDuplicateMatchedField;
+  matchedValue: string;
+  normalizedValue: string;
+}> {
   return [
-    { matchedOn: "name" as const, matchedValue: contact.displayName },
+    {
+      matchedOn: "name" as const,
+      matchedField: "name" as const,
+      matchedValue: contact.displayName,
+    },
     ...(contact.canonicalName
-      ? [{ matchedOn: "name" as const, matchedValue: contact.canonicalName }]
+      ? [
+          {
+            matchedOn: "name" as const,
+            matchedField: "name" as const,
+            matchedValue: contact.canonicalName,
+          },
+        ]
       : []),
     ...(contact.organizationLegalName
-      ? [{ matchedOn: "name" as const, matchedValue: contact.organizationLegalName }]
+      ? [
+          {
+            matchedOn: "name" as const,
+            matchedField: "name" as const,
+            matchedValue: contact.organizationLegalName,
+          },
+        ]
       : []),
     ...(contact.organizationOperatingName
-      ? [{ matchedOn: "name" as const, matchedValue: contact.organizationOperatingName }]
+      ? [
+          {
+            matchedOn: "name" as const,
+            matchedField: "name" as const,
+            matchedValue: contact.organizationOperatingName,
+          },
+        ]
       : []),
     ...(contact.organizationRegisteredName
-      ? [{ matchedOn: "name" as const, matchedValue: contact.organizationRegisteredName }]
+      ? [
+          {
+            matchedOn: "name" as const,
+            matchedField: "name" as const,
+            matchedValue: contact.organizationRegisteredName,
+          },
+        ]
       : []),
-    ...contact.aliases.map((alias) => ({ matchedOn: "alias" as const, matchedValue: alias })),
-    ...(contact.formerNames ?? []).map((formerName) => ({
+    ...contact.aliases.map((alias) => ({
       matchedOn: "alias" as const,
+      matchedField: "alias" as const,
+      matchedValue: alias,
+    })),
+    ...(contact.formerNames ?? []).map((formerName) => ({
+      matchedOn: "former_name" as const,
+      matchedField: "former_name" as const,
       matchedValue: formerName,
     })),
   ]
@@ -739,19 +801,84 @@ function normalizedContactNames(
     .filter((entry) => entry.normalizedValue.length > 0);
 }
 
-function normalizedContactIdentifiers(
-  contact: Contact,
-): Array<{ matchedValue: string; normalizedValue: string }> {
-  const identifiers = [
-    ...contact.identifiers,
-    ...(contact.contactMethods ?? [])
-      .filter((method) => method.conflictCheckIncluded !== false)
-      .flatMap((method) => (method.value ? [{ type: method.type, value: method.value }] : [])),
-  ];
-  return identifiers
+function normalizedContactIdentifiers(contact: Contact): Array<{
+  matchedOn: "identifier" | "contact_method" | "address";
+  matchedField: ContactDuplicateMatchedField;
+  matchedValue: string;
+  normalizedValue: string;
+}> {
+  type ContactDuplicateEvidenceSource = {
+    matchedOn: "identifier" | "contact_method" | "address";
+    matchedField: ContactDuplicateMatchedField;
+    type: string;
+    value: string;
+  };
+  const addressParts = (method: NonNullable<Contact["contactMethods"]>[number]): string[] =>
+    [
+      method.address?.line1,
+      method.address?.line2,
+      method.address?.city,
+      method.address?.province,
+      method.address?.postalCode,
+      method.address?.country,
+      [
+        method.address?.line1,
+        method.address?.line2,
+        method.address?.city,
+        method.address?.province,
+        method.address?.postalCode,
+        method.address?.country,
+      ]
+        .filter(Boolean)
+        .join(" "),
+    ].filter((part): part is string => Boolean(part?.trim()));
+  const identifiers: ContactDuplicateEvidenceSource[] = contact.identifiers
+    .filter((identifier) => identifier.conflictCheckIncluded !== false)
     .map((identifier) => ({
-      matchedValue: `${identifier.type}:${identifier.value}`,
-      normalizedValue: `${identifier.type}:${normalizeConflictToken(identifier.value)}`,
+      matchedOn: "identifier",
+      matchedField: "identifier",
+      type: identifier.type,
+      value: identifier.value,
+    }));
+  const methods: ContactDuplicateEvidenceSource[] = (contact.contactMethods ?? [])
+    .filter((method) => method.conflictCheckIncluded !== false)
+    .flatMap((method): ContactDuplicateEvidenceSource[] => {
+      if (method.type === "address") {
+        return addressParts(method).map((value) => ({
+          matchedOn: "address",
+          matchedField: "address",
+          type: "address",
+          value,
+        }));
+      }
+      return method.value
+        ? [
+            {
+              matchedOn: "contact_method",
+              matchedField: method.type,
+              type: method.type,
+              value: method.value,
+            },
+          ]
+        : [];
+    });
+  const website: ContactDuplicateEvidenceSource[] = contact.website
+    ? [
+        {
+          matchedOn: "contact_method",
+          matchedField: "website",
+          type: "website",
+          value: contact.website,
+        },
+      ]
+    : [];
+
+  return [...identifiers, ...methods, ...website]
+    .map((entry) => ({
+      matchedOn: entry.matchedOn,
+      matchedField: entry.matchedField,
+      matchedValue: `${entry.type}:${entry.value}`,
+      normalizedValue: `${entry.type}:${normalizeConflictToken(entry.value)}`,
     }))
     .filter((entry) => entry.normalizedValue.length > entry.normalizedValue.indexOf(":") + 1);
 }
@@ -759,59 +886,92 @@ function normalizedContactIdentifiers(
 function buildDuplicateSignals(
   contact: Contact,
   contacts: Contact[],
+  links: ContactDossierMatterLink[],
+  linksByContactId: Map<string, ContactDossierMatterLink[]>,
 ): ContactDossierQualitySignal[] {
-  const signals: ContactDossierQualitySignal[] = [];
-  const seen = new Set<string>();
+  const signalsByCandidate = new Map<string, ContactDossierQualitySignal>();
   const names = normalizedContactNames(contact);
   const identifiers = normalizedContactIdentifiers(contact);
+  const contactMatterIds = new Set(links.map((link) => link.matterId));
 
   for (const candidate of contacts) {
     if (candidate.id === contact.id) continue;
 
+    const matchedFields = new Set<ContactDuplicateMatchedField>();
+    const matchedValues = new Set<string>();
+    let matchedOn: ContactDossierQualitySignal["matchedOn"];
+    let matchedValue: string | undefined;
+
     const candidateNames = normalizedContactNames(candidate);
-    const nameMatch = names.find((entry) =>
-      candidateNames.some(
-        (candidateEntry) => candidateEntry.normalizedValue === entry.normalizedValue,
-      ),
-    );
-    if (nameMatch) {
-      const key = `${candidate.id}:name:${nameMatch.normalizedValue}`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        signals.push({
-          kind: "duplicate_candidate",
-          severity: "review",
-          reason: "Possible duplicate contact name or alias",
-          relatedContactIds: [candidate.id],
-          matchedOn: nameMatch.matchedOn,
-          matchedValue: nameMatch.matchedValue,
-        });
+    for (const name of names) {
+      if (
+        candidateNames.some(
+          (candidateEntry) => candidateEntry.normalizedValue === name.normalizedValue,
+        )
+      ) {
+        matchedFields.add(name.matchedField);
+        matchedValues.add(`name:${name.normalizedValue}`);
+        matchedOn ??= name.matchedOn;
+        matchedValue ??= name.matchedValue;
       }
     }
 
     const candidateIdentifiers = normalizedContactIdentifiers(candidate);
-    const identifierMatch = identifiers.find((entry) =>
-      candidateIdentifiers.some(
-        (candidateEntry) => candidateEntry.normalizedValue === entry.normalizedValue,
-      ),
-    );
-    if (identifierMatch) {
-      const key = `${candidate.id}:identifier:${identifierMatch.normalizedValue}`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        signals.push({
-          kind: "duplicate_candidate",
-          severity: "review",
-          reason: "Possible duplicate contact identifier",
-          relatedContactIds: [candidate.id],
-          matchedOn: "identifier",
-          matchedValue: identifierMatch.matchedValue,
-        });
+    for (const identifier of identifiers) {
+      if (
+        candidateIdentifiers.some(
+          (candidateEntry) => candidateEntry.normalizedValue === identifier.normalizedValue,
+        )
+      ) {
+        matchedFields.add(identifier.matchedField);
+        matchedValues.add(`identifier:${identifier.normalizedValue}`);
+        matchedOn ??= identifier.matchedOn;
+        matchedValue ??= identifier.matchedValue;
       }
     }
+
+    if (matchedFields.size === 0 || matchedValues.size === 0) continue;
+
+    const candidateLinks = linksByContactId.get(candidate.id) ?? [];
+    const sharedVisibleMatterIds = Array.from(
+      new Set(
+        candidateLinks
+          .map((link) => link.matterId)
+          .filter((matterId) => contactMatterIds.has(matterId)),
+      ),
+    ).sort();
+    const fieldList = Array.from(matchedFields).sort();
+    signalsByCandidate.set(candidate.id, {
+      kind: "duplicate_candidate",
+      severity: "review",
+      reason: `Possible duplicate contact by ${fieldList
+        .map((field) => field.replaceAll("_", " "))
+        .join(", ")}`,
+      relatedContactIds: [candidate.id],
+      matchedOn,
+      matchedValue,
+      duplicateReview: {
+        candidate: {
+          contactId: candidate.id,
+          displayName: candidate.displayName,
+          kind: candidate.kind,
+          status: candidate.status ?? "active",
+          roleCategories: candidate.roleCategories ?? [],
+        },
+        matchedFields: fieldList,
+        matchCount: matchedValues.size,
+        sharedVisibleMatterIds,
+        sharedVisibleMatterCount: sharedVisibleMatterIds.length,
+        reviewSeverity: "review",
+      },
+    });
   }
 
-  return signals;
+  return Array.from(signalsByCandidate.values()).sort((left, right) =>
+    (left.duplicateReview?.candidate.displayName ?? "").localeCompare(
+      right.duplicateReview?.candidate.displayName ?? "",
+    ),
+  );
 }
 
 function buildSensitivePartySignals(
@@ -942,10 +1102,16 @@ function buildQualityReview(input: {
   contact: Contact;
   contacts: Contact[];
   links: ContactDossierMatterLink[];
+  linksByContactId: Map<string, ContactDossierMatterLink[]>;
   intakeVariableProposals: IntakeVariableProposal[];
   visibleMatterIds: Set<string>;
 }): ContactDossierQualityReview {
-  const duplicateSignals = buildDuplicateSignals(input.contact, input.contacts);
+  const duplicateSignals = buildDuplicateSignals(
+    input.contact,
+    input.contacts,
+    input.links,
+    input.linksByContactId,
+  );
   const sensitivePartySignals = buildSensitivePartySignals(input.contact, input.links);
   const revalidationSignals = buildRevalidationSignals(
     input.contact,
@@ -1052,6 +1218,7 @@ export function buildContactDossiers(input: BuildContactDossiersInput): ContactD
           contact,
           contacts: visibleContacts,
           links: sortedMatters,
+          linksByContactId,
           intakeVariableProposals: input.intakeVariableProposals ?? [],
           visibleMatterIds,
         }),

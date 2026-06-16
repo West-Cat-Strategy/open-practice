@@ -8,6 +8,7 @@ import {
   formatContactReviewSignalKind,
   latestContactDataQualityResolutionForSignal,
   summarizeContactDossier,
+  summarizeContactDuplicateReviewCue,
   summarizeContactReviewQueueItem,
 } from "../contact-dossiers-dashboard";
 import { formatMatterPartyRoleLabel } from "../participant-role-labels";
@@ -272,6 +273,13 @@ export function ContactsSection({
                       {signal.matchedValueRedacted ? " · value redacted" : ""}
                     </small>
                   ))}
+                  {item.signals
+                    .slice(0, 2)
+                    .map((signal) => summarizeContactDuplicateReviewCue(signal))
+                    .filter(Boolean)
+                    .map((summary, index) => (
+                      <small key={`${item.contact.id}-duplicate-review-${index}`}>{summary}</small>
+                    ))}
                   {item.signals.length > 2 ? (
                     <small>
                       +{item.signals.length - 2} more redacted cue
@@ -703,6 +711,9 @@ export function ContactsSection({
                             .filter(Boolean)
                             .join(" · ") || "contact-level"}
                         </small>
+                        {summarizeContactDuplicateReviewCue(signal) ? (
+                          <small>{summarizeContactDuplicateReviewCue(signal)}</small>
+                        ) : null}
                         {latestResolution ? (
                           <small>
                             Latest decision:{" "}

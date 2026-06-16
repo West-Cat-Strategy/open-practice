@@ -61,7 +61,7 @@ This matrix decides how each researched or cloned project may influence the prod
 
 ## Product-Area Recommendations
 
-- **Contact CRM**: keep native. The 2026-06-15 Full CRM Contacts branch used CiviCRM,
+- **Contact CRM**: keep native. The 2026-06-15 Full CRM Contacts mainline work used CiviCRM,
   j-lawyer.org, and ArkCase as clean-room vocabulary/workflow context only. EspoCRM, SuiteCRM, and
   Twenty remain policy-documented CRM references, but no CRM source, schema, migration, UI, tests,
   copy, assets, or dependencies were reused.

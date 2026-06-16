@@ -4,7 +4,7 @@ Date: 2026-06-15 PDT
 
 ## Scope
 
-The Full CRM Contacts branch expands the existing Contacts foundation into a legal-practice CRM for
+The Full CRM Contacts mainline work expands the existing Contacts foundation into a legal-practice CRM for
 Canadian legal service providers while preserving the established dossiers, review queue,
 data-quality resolution, conflict-check, matter-party, portal-grant, authorization, and audit
 surfaces.
@@ -130,7 +130,7 @@ Skipped/environmental:
 - API dossier test initially expected empty conflict history; updated to assert the new
   authorization-filtered visible conflict-history projection.
 - `pnpm format:check` initially failed on changed files; fixed by running Prettier over the exact
-  branch-owned path set.
+  changed path set.
 - `pnpm policy:check` initially failed because the new contact CRM routes were missing from the
   route authorization manifest; fixed by adding explicit authenticated/admin and matter-aware route
   entries.

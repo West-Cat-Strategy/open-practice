@@ -147,6 +147,7 @@ import {
   formatContactReviewSignalKind,
   latestContactDataQualityResolutionForSignal,
   summarizeContactDossier,
+  summarizeContactDuplicateReviewCue,
   summarizeContactReviewQueueItem,
 } from "./contact-dossiers-dashboard";
 import {
@@ -494,6 +495,20 @@ function contactDossierWithResolutionSignal(): ContactDossier {
           relatedContactIds: ["contact-river-duplicate"],
           matchedOn: "identifier",
           matchedValue: "email:legal@rivercity.example",
+          duplicateReview: {
+            candidate: {
+              contactId: "contact-river-duplicate",
+              displayName: "River City Rentals Ltd.",
+              kind: "organization",
+              status: "prospective",
+              roleCategories: ["opposing_party"],
+            },
+            matchedFields: ["identifier"],
+            matchCount: 1,
+            sharedVisibleMatterIds: ["matter-001"],
+            sharedVisibleMatterCount: 1,
+            reviewSeverity: "review",
+          },
         },
       ],
     },
@@ -1985,6 +2000,20 @@ describe("dashboard client behavior", () => {
               relatedContactIds: ["contact-river-duplicate"],
               matchedOn: "identifier" as const,
               matchedValue: "email:legal@rivercity.example",
+              duplicateReview: {
+                candidate: {
+                  contactId: "contact-river-duplicate",
+                  displayName: "River City Rentals Ltd.",
+                  kind: "organization" as const,
+                  status: "prospective" as const,
+                  roleCategories: ["opposing_party" as const],
+                },
+                matchedFields: ["identifier" as const],
+                matchCount: 1,
+                sharedVisibleMatterIds: ["matter-001"],
+                sharedVisibleMatterCount: 1,
+                reviewSeverity: "review" as const,
+              },
             },
             {
               kind: "protected_party_cue" as const,
@@ -2081,6 +2110,20 @@ describe("dashboard client behavior", () => {
           relatedContactIds: ["contact-river-duplicate"],
           matchedOn: "identifier" as const,
           matchedValueRedacted: true,
+          duplicateReview: {
+            candidate: {
+              contactId: "contact-river-duplicate",
+              displayName: "River City Rentals Ltd.",
+              kind: "organization" as const,
+              status: "prospective" as const,
+              roleCategories: ["opposing_party" as const],
+            },
+            matchedFields: ["identifier" as const],
+            matchCount: 1,
+            sharedVisibleMatterIds: ["matter-001"],
+            sharedVisibleMatterCount: 1,
+            reviewSeverity: "review" as const,
+          },
         },
         {
           kind: "protected_party_cue" as const,
@@ -2098,6 +2141,9 @@ describe("dashboard client behavior", () => {
     );
     expect(contactReviewQueueRiskClass(item)).toBe("risk");
     expect(formatContactReviewSignalKind("conflict_revalidation")).toBe("conflict revalidation");
+    expect(summarizeContactDuplicateReviewCue(item.signals[0]!)).toBe(
+      "River City Rentals Ltd. · organization · prospective · identifier · 1 safe match · 1 shared visible matter",
+    );
     expect(JSON.stringify(item)).not.toContain("legal@rivercity.example");
   });
 
@@ -2143,6 +2189,20 @@ describe("dashboard client behavior", () => {
             relatedContactIds: ["contact-river-duplicate"],
             matchedOn: "identifier" as const,
             matchedValue: "email:legal@rivercity.example",
+            duplicateReview: {
+              candidate: {
+                contactId: "contact-river-duplicate",
+                displayName: "River City Rentals Ltd.",
+                kind: "organization" as const,
+                status: "prospective" as const,
+                roleCategories: ["opposing_party" as const],
+              },
+              matchedFields: ["identifier" as const],
+              matchCount: 1,
+              sharedVisibleMatterIds: ["matter-001"],
+              sharedVisibleMatterCount: 1,
+              reviewSeverity: "review" as const,
+            },
           },
           {
             kind: "conflict_revalidation" as const,
@@ -2170,6 +2230,9 @@ describe("dashboard client behavior", () => {
       decision: "false_positive",
       relatedContactId: "contact-river-duplicate",
     });
+    expect(summarizeContactDuplicateReviewCue(duplicateSignal)).toContain(
+      "River City Rentals Ltd.",
+    );
     expect(
       buildContactDataQualityResolutionPayload(
         dossier,
@@ -2269,6 +2332,7 @@ describe("dashboard client behavior", () => {
     const visibleSignalText = [signal.reason, signal.matchedOn, signal.matterId, signal.changedAt]
       .filter(Boolean)
       .join(" · ");
+    const duplicateReviewText = summarizeContactDuplicateReviewCue(signal);
 
     expect(
       canRecordContactDataQualityResolutions([capability("contacts", { actions: ["read"] })]),
@@ -2283,9 +2347,9 @@ describe("dashboard client behavior", () => {
     expect(historyRowText).toContain("duplicate candidate");
     expect(historyRowText).toContain("related contact noted");
     expect(historyRowText).toContain("2026-05-01T12:30:00.000Z");
-    expect(JSON.stringify({ visibleSignalText, latestResolution, historyRowText })).not.toContain(
-      "legal@rivercity.example",
-    );
+    expect(
+      JSON.stringify({ visibleSignalText, duplicateReviewText, latestResolution, historyRowText }),
+    ).not.toContain("legal@rivercity.example");
 
     const commonProps = {
       activeContactDossier: dossier,
@@ -2337,6 +2401,9 @@ describe("dashboard client behavior", () => {
     expect(readOnlyHtml).toContain("Matter counterparty");
     expect(readOnlyHtml).toContain("Latest decision");
     expect(readOnlyHtml).toContain("not duplicate");
+    expect(readOnlyHtml).toContain("River City Rentals Ltd.");
+    expect(readOnlyHtml).toContain("1 safe match");
+    expect(readOnlyHtml).toContain("1 shared visible matter");
     expect(readOnlyHtml).toContain("related contact noted");
     expect(readOnlyHtml).not.toContain("contact-resolution-actions");
     expect(readOnlyHtml).not.toContain("legal@rivercity.example");
