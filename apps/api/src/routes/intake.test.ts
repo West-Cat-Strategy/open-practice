@@ -10,6 +10,7 @@ const servers: FastifyInstance[] = [];
 interface TestServerOptions {
   repository?: InMemoryOpenPracticeRepository;
   automationProvider?: DocumentAutomationProvider;
+  documentAssemblyJobQueue?: typeof emailJobQueue | null;
 }
 const emailJobQueue = {
   async add(_name: string, _data: unknown, options?: { jobId?: string }) {
@@ -21,7 +22,11 @@ function firstHeader(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
 }
 
-function testServer({ repository, automationProvider }: TestServerOptions = {}) {
+function testServer({
+  repository,
+  automationProvider,
+  documentAssemblyJobQueue,
+}: TestServerOptions = {}) {
   const testRepository = repository ?? new InMemoryOpenPracticeRepository();
   const server = Fastify({ logger: false });
 
@@ -38,6 +43,8 @@ function testServer({ repository, automationProvider }: TestServerOptions = {}) 
     repository: testRepository,
     automationProvider: automationProvider ?? new EmbeddedAutomationProvider(),
     emailJobQueue,
+    documentAssemblyJobQueue:
+      documentAssemblyJobQueue === null ? undefined : (documentAssemblyJobQueue ?? emailJobQueue),
   });
 
   server.setErrorHandler((error, _request, reply) => {
@@ -293,9 +300,16 @@ describe("intake routes", () => {
     expect(JSON.stringify(snapshotAudit?.metadata)).not.toContain("urgent");
   });
 
-  it("generates eligible embedded intake packages from the latest answer snapshot", async () => {
+  it("queues eligible embedded intake packages from the latest answer snapshot", async () => {
     const repository = new InMemoryOpenPracticeRepository();
-    const server = testServer({ repository });
+    const packageJobs: Array<{ name: string; data: unknown; options?: { jobId?: string } }> = [];
+    const documentAssemblyJobQueue = {
+      async add(name: string, data: unknown, options?: { jobId?: string }) {
+        packageJobs.push({ name, data, options });
+        return { id: options?.jobId ?? "document-assembly-job-test" };
+      },
+    };
+    const server = testServer({ repository, documentAssemblyJobQueue });
     await server.inject({
       method: "POST",
       url: "/api/intake-sessions/intake-session-001/answer-snapshots",
@@ -314,83 +328,97 @@ describe("intake routes", () => {
       },
     });
 
-    expect(response.statusCode).toBe(200);
+    expect(response.statusCode).toBe(202);
     expect(response.json()).toMatchObject({
-      packageId: "repair_notice_package",
-      packageRuntime: {
+      assemblyRequest: {
+        status: "queued",
+        queue: { queueName: "document_assembly", status: "queued" },
         packageId: "repair_notice_package",
         packageTitle: "Repair notice package",
-        templateId: "intake-template-001",
-        templateVersion: 2,
         answerSnapshotId: expect.any(String),
-        replayProof: expect.objectContaining({
-          capturedAt: "2026-04-25T12:10:00.000Z",
-          matchedBranchRuleIds: expect.arrayContaining(["repair-package", "urgent-review-package"]),
-          visibleQuestionIds: expect.arrayContaining(["issue_type", "urgent", "repair_details"]),
-          eligiblePackageIds: expect.arrayContaining([
-            "repair_notice_package",
-            "urgent_review_package",
-          ]),
-          selectedPackageIds: expect.arrayContaining([
-            "repair_notice_package",
-            "urgent_review_package",
-          ]),
-        }),
-        generatedDocuments: [
-          expect.objectContaining({
-            title: "Repair notice letter",
-            packageDocumentId: "repair_notice_letter",
-            provider: "embedded",
-          }),
-          expect.objectContaining({
-            title: "Client instruction summary",
-            packageDocumentId: "client_instruction_summary",
-            provider: "embedded",
-          }),
-        ],
-      },
-      documents: [
-        expect.objectContaining({
-          matterId: "matter-001",
-          intakeSessionId: "intake-session-001",
-          provider: "embedded",
-          title: "Repair notice letter",
-          packageId: "repair_notice_package",
-          packageDocumentId: "repair_notice_letter",
-          externalId:
-            "embedded:embedded:intake-session-001:repair_notice_package:repair_notice_letter",
-          evidenceSummary: expect.objectContaining({ present: true }),
-          storageKeyPresent: false,
-          checksumPresent: false,
-        }),
-        expect.objectContaining({
-          title: "Client instruction summary",
-          packageDocumentId: "client_instruction_summary",
-        }),
-      ],
-      queuedEmail: {
-        status: "disabled",
-        reason: "not_configured",
+        documentCount: 2,
+        pollUrl: expect.stringContaining(
+          "/api/intake-sessions/intake-session-001/generated-packages/",
+        ),
       },
     });
-    expect(JSON.stringify(response.json().documents)).not.toContain("route-test");
-    expect(response.json().documents[0]).not.toHaveProperty("storageKey");
-    expect(response.json().documents[0]).not.toHaveProperty("checksumSha256");
-    expect(response.json().documents[0]).not.toHaveProperty("evidence");
+    expect(packageJobs).toHaveLength(1);
+    expect(packageJobs[0]).toMatchObject({
+      name: "assemble_intake_generated_package",
+      data: {
+        firmId: "firm-west-legal",
+        resourceType: "intake_generated_package",
+        resourceId: expect.any(String),
+        metadata: {
+          matterId: "matter-001",
+          intakeSessionId: "intake-session-001",
+          packageId: "repair_notice_package",
+          packageDocumentCount: 2,
+        },
+      },
+      options: { jobId: expect.any(String) },
+    });
+    expect(JSON.stringify(packageJobs)).not.toContain("route-test");
+    expect(JSON.stringify(packageJobs)).not.toContain("repair_details");
+    expect(JSON.stringify(packageJobs)).not.toContain("urgent");
+    await expect(repository.listGeneratedDocuments("firm-west-legal")).resolves.not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ packageId: "repair_notice_package" })]),
+    );
+    const [job] = await repository.listJobLifecycleRecords("firm-west-legal", {
+      queueName: "document_assembly",
+    });
+    expect(job).toMatchObject({
+      jobName: "assemble_intake_generated_package",
+      targetResourceType: "intake_generated_package",
+      status: "queued",
+      metadata: expect.objectContaining({
+        matterId: "matter-001",
+        intakeSessionId: "intake-session-001",
+        packageId: "repair_notice_package",
+        packageDocumentCount: 2,
+      }),
+    });
+    expect(JSON.stringify(job?.metadata)).not.toContain("route-test");
     const audit = await repository.listAuditEvents("firm-west-legal");
-    const packageAudit = audit.events.find((event) => event.action === "intake.package.generated");
+    const packageAudit = audit.events.find(
+      (event) => event.action === "intake.package.assembly_requested",
+    );
     expect(packageAudit?.metadata).toMatchObject({
       intakeSessionId: "intake-session-001",
       templateId: "intake-template-001",
       templateVersion: 2,
       packageId: "repair_notice_package",
-      documentCount: 2,
-      packageDocumentIds: ["repair_notice_letter", "client_instruction_summary"],
-      providers: ["embedded"],
+      packageDocumentCount: 2,
     });
     expect(JSON.stringify(packageAudit?.metadata)).not.toContain("route-test");
     expect(JSON.stringify(packageAudit?.metadata)).not.toContain("storageKey");
     expect(JSON.stringify(packageAudit?.metadata)).not.toContain("checksum");
+  });
+
+  it("rejects package assembly when the document assembly queue is not configured", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository, documentAssemblyJobQueue: null });
+    await server.inject({
+      method: "POST",
+      url: "/api/intake-sessions/intake-session-001/answer-snapshots",
+      payload: {
+        capturedAt: "2026-04-25T12:10:00.000Z",
+        answers: { issue_type: "repair", urgent: true },
+      },
+    });
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/intake-sessions/intake-session-001/generated-packages",
+      payload: { packageId: "repair_notice_package" },
+    });
+
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toMatchObject({
+      error: "ApiHttpError",
+      message: "Document assembly queue is not configured",
+    });
+    await expect(repository.listJobLifecycleRecords("firm-west-legal")).resolves.toEqual([]);
   });
 
   it("rejects package generation without an eligible answer snapshot", async () => {

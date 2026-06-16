@@ -1,5 +1,6 @@
 import type {
   AiOperationalProposalProvider,
+  DocumentAutomationProvider,
   DraftAssistProvider,
   InboundEmailParser,
   MailSender,
@@ -11,6 +12,7 @@ import type { OpenPracticeRepository } from "@open-practice/database";
 import type { ImapMailboxPoller } from "@open-practice/providers";
 import { processAiTriageJob } from "./processors/ai-triage.js";
 import { processConnectorJob } from "./processors/connectors.js";
+import { processDocumentAssemblyJob } from "./processors/document-assembly.js";
 import { processEmailJob } from "./processors/email.js";
 import { processInboundEmailJob } from "./processors/inbound-email.js";
 import { processInboundEmailPollJob } from "./processors/inbound-email-poll.js";
@@ -42,6 +44,7 @@ export type {
 const disabledReasons: Record<OpenPracticeQueueName, string> = {
   email: "SMTP email delivery is not configured",
   connectors: "Connector delivery is not configured",
+  document_assembly: "Document assembly processing is not configured",
   inbound_email: "Inbound email parsing is not configured",
   reports: "Report export processing is not configured",
   ai_triage: "AI triage is reserved/deferred and has no worker processor",
@@ -71,6 +74,7 @@ export async function processOpenPracticeJob(input: {
   connectorHttpDeliverer?: ConnectorHttpDeliverer;
   connectorDnsResolver?: ConnectorDnsResolver;
   connectorJobQueue?: WorkerJobQueue;
+  automationProvider?: DocumentAutomationProvider;
   inboundEmailJobQueue?: WorkerJobQueue;
 }): Promise<WorkerJobResult> {
   const { data } = input;
@@ -126,6 +130,7 @@ async function processOpenPracticeJobBody(input: {
   connectorHttpDeliverer?: ConnectorHttpDeliverer;
   connectorDnsResolver?: ConnectorDnsResolver;
   connectorJobQueue?: WorkerJobQueue;
+  automationProvider?: DocumentAutomationProvider;
   inboundEmailJobQueue?: WorkerJobQueue;
 }): Promise<WorkerJobResult> {
   const { queueName, data } = input;
@@ -133,6 +138,7 @@ async function processOpenPracticeJobBody(input: {
   if (queueName === "ocr") return processOcrJob(input);
   if (queueName === "email") return processEmailJob(input);
   if (queueName === "connectors") return processConnectorJob(input);
+  if (queueName === "document_assembly") return processDocumentAssemblyJob(input);
   if (queueName === "inbound_email" && input.jobName === IMAP_POLL_JOB_NAME) {
     return processInboundEmailPollJob(input);
   }

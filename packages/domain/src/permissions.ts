@@ -239,6 +239,10 @@ const safeJobMetadataKeys = new Set([
   "contextLinkCount",
   "downstreamMutation",
   "documentId",
+  "documentCount",
+  "generatedDocumentCount",
+  "generatedDocumentIdCount",
+  "generatedDocumentIds",
   "draftAssistRecordId",
   "draftId",
   "deadLetterCount",
@@ -252,6 +256,7 @@ const safeJobMetadataKeys = new Set([
   "failedCount",
   "firmId",
   "inboundMessageId",
+  "intakeSessionId",
   "idempotencyKeyPresent",
   "instructionLength",
   "invoiceCount",
@@ -266,6 +271,7 @@ const safeJobMetadataKeys = new Set([
   "nextRetryAt",
   "provider",
   "providerConfigured",
+  "providerCount",
   "providerEvidenceStored",
   "providerMessageId",
   "providerModel",
@@ -305,6 +311,11 @@ const safeJobMetadataKeys = new Set([
   "suggestedTextLength",
   "task",
   "templateKey",
+  "templateId",
+  "templateVersion",
+  "answerSnapshotId",
+  "packageId",
+  "packageDocumentCount",
   "terminal",
   "textLength",
   "threadId",
@@ -428,7 +439,14 @@ export function canAccess(request: AccessRequest): boolean {
   return true;
 }
 
-function safeJobMetadataValue(value: unknown): string | number | boolean | undefined {
+function safeJobMetadataValue(
+  key: string,
+  value: unknown,
+): string | number | boolean | string[] | undefined {
+  if (key === "generatedDocumentIds" && Array.isArray(value)) {
+    const ids = value.filter((item): item is string => typeof item === "string");
+    return ids.slice(0, 50).map((item) => item.slice(0, 256));
+  }
   if (typeof value === "string") return value.slice(0, 256);
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value === "boolean") return value;
@@ -439,7 +457,7 @@ export function redactJobMetadata(metadata: Record<string, unknown>): Record<str
   const redacted: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(metadata)) {
     if (!safeJobMetadataKeys.has(key)) continue;
-    const safeValue = safeJobMetadataValue(value);
+    const safeValue = safeJobMetadataValue(key, value);
     if (safeValue !== undefined) redacted[key] = safeValue;
   }
   return redacted;

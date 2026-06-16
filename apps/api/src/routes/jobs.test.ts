@@ -61,6 +61,7 @@ describe("jobs routes", () => {
       queues: [
         "email",
         "connectors",
+        "document_assembly",
         "inbound_email",
         "reports",
         "ai_triage",

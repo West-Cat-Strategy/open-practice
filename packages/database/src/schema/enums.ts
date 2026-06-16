@@ -19,6 +19,7 @@ export const matterStatus = pgEnum("matter_status", [
 export const jobQueueName = pgEnum("job_queue_name", [
   "email",
   "connectors",
+  "document_assembly",
   "inbound_email",
   "reports",
   "ai_triage",

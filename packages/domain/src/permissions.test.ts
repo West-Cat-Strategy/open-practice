@@ -668,6 +668,40 @@ describe("job metadata redaction", () => {
     });
   });
 
+  it("allows document assembly routing metadata while dropping raw answers and provider output", () => {
+    expect(
+      redactJobMetadata({
+        matterId: "matter-001",
+        intakeSessionId: "intake-session-001",
+        answerSnapshotId: "answer-snapshot-001",
+        templateId: "intake-template-001",
+        templateVersion: 2,
+        packageId: "repair_notice_package",
+        packageDocumentCount: 2,
+        generatedDocumentIds: ["generated-document-001", "generated-document-002", 42],
+        requestedByUserId: "user-admin",
+        enqueueStatus: "queued_for_local_document_assembly_worker",
+        answers: { issue_type: "repair", repair_details: "Synthetic raw client text" },
+        evidence: { requestedBy: "route-test" },
+        storageKey: "matters/matter-001/private.pdf",
+        checksumSha256: "a".repeat(64),
+        generatedText: "Synthetic generated text",
+        providerMetadata: { body: "Synthetic provider body" },
+      }),
+    ).toEqual({
+      matterId: "matter-001",
+      intakeSessionId: "intake-session-001",
+      answerSnapshotId: "answer-snapshot-001",
+      templateId: "intake-template-001",
+      templateVersion: 2,
+      packageId: "repair_notice_package",
+      packageDocumentCount: 2,
+      generatedDocumentIds: ["generated-document-001", "generated-document-002"],
+      requestedByUserId: "user-admin",
+      enqueueStatus: "queued_for_local_document_assembly_worker",
+    });
+  });
+
   it("allows AI proposal routing metadata while dropping generated and source text", () => {
     expect(
       redactJobMetadata({

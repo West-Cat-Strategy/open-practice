@@ -63,6 +63,7 @@ export interface ApiRouteDependencies extends ProviderAdapterPorts {
   };
   emailJobQueue?: ApiJobQueue;
   connectorJobQueue?: ApiJobQueue;
+  documentAssemblyJobQueue?: ApiJobQueue;
   connectorDnsResolver?: ConnectorDnsResolver;
   inboundEmailJobQueue?: ApiJobQueue;
   reportJobQueue?: ApiJobQueue;

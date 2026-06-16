@@ -428,6 +428,14 @@ export const auditEventTaxonomyDefinitions = [
     resourceMetadataKeys: ["documentId", "intakeSessionId", "templateId"],
   }),
   define({
+    action: "intake.package.assembly_requested",
+    category: "intake",
+    resourceType: "intake_session",
+    matterScope: "matter",
+    actorHint: "authenticated_user",
+    resourceMetadataKeys: ["packageId", "jobId", "documentCount"],
+  }),
+  define({
     action: "intake.package.generated",
     category: "intake",
     resourceType: "intake_session",

@@ -238,6 +238,7 @@ interface ApiOptions {
   paymentProcessorProvider?: PaymentProcessorProvider;
   emailJobQueue?: ApiJobQueue;
   connectorJobQueue?: ApiJobQueue;
+  documentAssemblyJobQueue?: ApiJobQueue;
   connectorDnsResolver?: ConnectorDnsResolver;
   inboundEmailJobQueue?: ApiJobQueue;
   reportJobQueue?: ApiJobQueue;
@@ -656,6 +657,7 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
     repository: options.repository,
     emailJobQueue: options.emailJobQueue,
     connectorJobQueue: options.connectorJobQueue,
+    documentAssemblyJobQueue: options.documentAssemblyJobQueue,
     inboundEmailJobQueue: options.inboundEmailJobQueue,
     reportJobQueue: options.reportJobQueue,
     aiAssistJobQueue: options.aiAssistJobQueue,
@@ -666,6 +668,7 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
     draftAssistProvider: options.draftAssistProvider,
     emailJobQueue: options.emailJobQueue,
     connectorJobQueue: options.connectorJobQueue,
+    documentAssemblyJobQueue: options.documentAssemblyJobQueue,
     inboundEmailJobQueue: options.inboundEmailJobQueue,
     aiAssistJobQueue: options.aiAssistJobQueue,
     ocrJobQueue: options.ocrJobQueue,
@@ -727,6 +730,7 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
     repository: options.repository,
     automationProvider: options.automationProvider ?? new EmbeddedAutomationProvider(),
     emailJobQueue: options.emailJobQueue,
+    documentAssemblyJobQueue: options.documentAssemblyJobQueue,
   });
   registerIntakePipelineRoutes(server, { repository: options.repository });
   registerIntakeFormRoutes(server, {
@@ -1072,6 +1076,19 @@ function createConnectorJobQueueFromEnv(env: ApiEnv): Queue | undefined {
   });
 }
 
+function createDocumentAssemblyJobQueueFromEnv(env: ApiEnv): Queue | undefined {
+  if (!env.REDIS_URL) return undefined;
+  return new Queue("document_assembly", {
+    connection: redisConnectionFromUrl(env.REDIS_URL),
+    defaultJobOptions: {
+      attempts: 2,
+      backoff: { type: "exponential", delay: 60_000 },
+      removeOnComplete: 500,
+      removeOnFail: false,
+    },
+  });
+}
+
 function createInboundEmailJobQueueFromEnv(env: ApiEnv): Queue | undefined {
   if (!env.REDIS_URL) return undefined;
   return new Queue("inbound_email", {
@@ -1138,6 +1155,7 @@ if (process.env.NODE_ENV !== "test") {
   await configureE2ESmtpSettingsFromEnv(repository, env);
   const emailJobQueue = createEmailJobQueueFromEnv(env);
   const connectorJobQueue = createConnectorJobQueueFromEnv(env);
+  const documentAssemblyJobQueue = createDocumentAssemblyJobQueueFromEnv(env);
   const inboundEmailJobQueue = createInboundEmailJobQueueFromEnv(env);
   const reportJobQueue = createReportJobQueueFromEnv(env);
   const aiAssistJobQueue = createAiAssistJobQueueFromEnv(env);
@@ -1154,6 +1172,7 @@ if (process.env.NODE_ENV !== "test") {
     paymentProcessorProvider,
     emailJobQueue,
     connectorJobQueue,
+    documentAssemblyJobQueue,
     inboundEmailJobQueue,
     reportJobQueue,
     aiAssistJobQueue,
@@ -1179,6 +1198,7 @@ if (process.env.NODE_ENV !== "test") {
     void Promise.all([
       emailJobQueue?.close?.(),
       connectorJobQueue?.close(),
+      documentAssemblyJobQueue?.close(),
       inboundEmailJobQueue?.close(),
       reportJobQueue?.close(),
       aiAssistJobQueue?.close(),

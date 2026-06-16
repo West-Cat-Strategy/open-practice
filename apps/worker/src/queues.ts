@@ -9,6 +9,7 @@ import { redactJobMetadata } from "@open-practice/domain";
 export const openPracticeQueues = [
   "email",
   "connectors",
+  "document_assembly",
   "inbound_email",
   "reports",
   "ai_triage",
@@ -37,6 +38,12 @@ export const defaultJobOptionsByQueue: Record<OpenPracticeQueueName, JobsOptions
     attempts: 3,
     backoff: { type: "exponential", delay: 30_000 },
     removeOnComplete: 1_000,
+    removeOnFail: false,
+  },
+  document_assembly: {
+    attempts: 2,
+    backoff: { type: "exponential", delay: 60_000 },
+    removeOnComplete: 500,
     removeOnFail: false,
   },
   inbound_email: {

@@ -86,9 +86,11 @@ signature request metadata proof before proposing another envelope slice.
 - **Interview-to-document assembly queue**
   - **First slice:** Queue generated package assembly from existing OP snapshots and draft export
     providers, with redacted job metadata and no source-record mutation.
-  - **Local gap / shipped boundary:** OP stores generated-document metadata and package replay
-    proof, but assembly is not a worker-owned queue. Do not revive docassemble as a runtime
-    dependency.
+  - **Local gap / shipped boundary:** Shipped in the OP-T133 worker-owned package assembly slice:
+    `POST /api/intake-sessions/:id/generated-packages` now records a redacted
+    `document_assembly` lifecycle job and worker envelope over existing answer snapshots, while
+    the worker reloads the session/snapshot and persists generated-document metadata through the
+    existing embedded automation provider. Do not revive docassemble as a runtime dependency.
   - **References:** `jhpyle__docassemble`.
   - **Reuse and snippets:** The project is MIT, but current OP posture is reference-only; no direct
     snippets without a reuse decision.

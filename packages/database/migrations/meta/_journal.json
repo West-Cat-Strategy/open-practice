@@ -414,6 +414,13 @@
       "when": 1781568002000,
       "tag": "0058_manual_payment_reconciliation_gate",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1781568003000,
+      "tag": "0059_document_assembly_worker_queue",
+      "breakpoints": true
     }
   ]
 }
