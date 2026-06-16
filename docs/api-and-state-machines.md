@@ -35,11 +35,12 @@ accounting/tax advice, or automatic trust-ledger posting from billing actions.
 
 ## Authorization Relation Vocabulary
 
-ReBAC and list-visible matrix work remains a planning/backlog boundary, not a shipped policy engine.
-Current authorization is still enforced through the route-level `requireAccess`/`canAccess` checks,
-matter-scope checks, public-token policies, and job lifecycle helpers described below. Future
-relation-vocabulary or list-visibility fixtures should be promoted from the backlog only when they
-are backed by implementation and validation proof.
+Open Practice now carries an OP-authored fixture catalogue for relation vocabulary plus denial and
+list-visible expectations across matters, documents, jobs, and portal links. The catalogue is test
+coverage for the current behavior, not a shipped ReBAC policy engine or canonical-only authorization
+rewrite. Runtime authorization is still enforced through route-level `requireAccess`/`canAccess`
+checks, matter-scope checks, public-token policies, account-bound portal grants, per-file portal
+document access, and job lifecycle helpers described below.
 
 | Route                                                                                                     | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |

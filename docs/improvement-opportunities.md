@@ -153,11 +153,14 @@ widget registry candidate is no longer re-proposed here.
 
 #### Authorization, Matters, Portals, And Records
 
-- **ReBAC denial and list-visible matrix**
-  - **First slice:** Catalogue relation vocabulary plus denial/list-visible fixtures for matters,
-    documents, jobs, and portal links.
-  - **Local gap / shipped boundary:** OP has RBAC, assigned-matter checks, and a route authorization
-    manifest, but no relationship/list-object behavior matrix.
+- **Authorization fixture catalogue deepening**
+  - **Shipped first slice:** OP now catalogues relation vocabulary plus denial/list-visible fixtures
+    for matters, documents, jobs, and portal links, backed by domain and API route tests without
+    replacing RBAC, matter-scope checks, public-token policies, portal grants, or the route
+    authorization manifest.
+  - **Remaining gap:** Future work should only add a policy-engine spike, relationship query
+    planner, or broader list-query matrix after comparing against the shipped fixture catalogue and
+    proving it will deepen behavior rather than duplicate current authorization tests.
   - **References:** `openfga__openfga`.
   - **Reuse and snippets:** Apache-2.0/architecture-only; snippets require an explicit reuse decision.
 

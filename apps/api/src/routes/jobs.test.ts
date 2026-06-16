@@ -1,7 +1,7 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
 import { InMemoryOpenPracticeRepository } from "@open-practice/database";
-import type { ProfessionalRole, User } from "@open-practice/domain";
+import { authorizationFixtureCases, type ProfessionalRole, type User } from "@open-practice/domain";
 import { registerJobsRoutes } from "./jobs.js";
 import type { ApiJobQueue } from "./types.js";
 
@@ -593,6 +593,14 @@ describe("jobs routes", () => {
   });
 
   it("limits non-admin lifecycle run summaries to assigned matter jobs", async () => {
+    expect(
+      authorizationFixtureCases.filter((item) => item.family === "job").map((item) => item.id),
+    ).toEqual([
+      "job:firm-wide:no-matter-visible",
+      "job:assigned:matter-job-visible",
+      "job:unassigned:matter-job-hidden",
+      "job:unassigned:no-matter-hidden",
+    ]);
     const repository = new InMemoryOpenPracticeRepository();
     await repository.createJobLifecycleRecord({
       id: "job-assigned",
@@ -642,6 +650,14 @@ describe("jobs routes", () => {
       method: "GET",
       url: "/api/jobs",
     });
+    const hiddenQueueResponse = await testServer({ repository, role: "licensee" }).inject({
+      method: "GET",
+      url: "/api/jobs?queueName=media",
+    });
+    const hiddenDetailResponse = await testServer({ repository, role: "licensee" }).inject({
+      method: "GET",
+      url: "/api/jobs/job-firm-wide",
+    });
 
     expect(licenseeResponse.statusCode).toBe(200);
     expect(licenseeResponse.json()).toMatchObject({
@@ -651,6 +667,12 @@ describe("jobs routes", () => {
     expect(licenseeResponse.json().jobs.map((job: { id: string }) => job.id)).toEqual([
       "job-assigned",
     ]);
+    expect(hiddenQueueResponse.statusCode).toBe(200);
+    expect(hiddenQueueResponse.json()).toMatchObject({
+      summary: { total: 0, terminal: 0, failed: 0 },
+      jobs: [],
+    });
+    expect(hiddenDetailResponse.statusCode).toBe(404);
 
     expect(auditorResponse.statusCode).toBe(200);
     expect(auditorResponse.json().summary.total).toBe(3);

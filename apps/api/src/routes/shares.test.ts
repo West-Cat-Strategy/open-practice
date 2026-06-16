@@ -2,7 +2,7 @@ import rateLimit from "@fastify/rate-limit";
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
 import { InMemoryOpenPracticeRepository } from "@open-practice/database";
-import type { ProfessionalRole, User } from "@open-practice/domain";
+import { authorizationFixtureCases, type ProfessionalRole, type User } from "@open-practice/domain";
 import { PUBLIC_TOKEN_HEADER, hashToken } from "../http/auth-helpers.js";
 import {
   PUBLIC_TOKEN_MUTATION_RATE_LIMIT,
@@ -105,6 +105,39 @@ afterEach(async () => {
 });
 
 describe("share routes", () => {
+  it("covers the portal-link authorization fixture outcomes", () => {
+    expect(
+      authorizationFixtureCases
+        .filter((item) => item.family === "portal_link")
+        .map((item) => ({
+          id: item.id,
+          expectedDecision: item.expectedDecision,
+          listVisible: item.listVisible,
+        })),
+    ).toEqual([
+      {
+        id: "portal-link:public-share:metadata-visible",
+        expectedDecision: "allow",
+        listVisible: true,
+      },
+      {
+        id: "portal-link:expired-share:hidden",
+        expectedDecision: "deny",
+        listVisible: false,
+      },
+      {
+        id: "portal-link:revoked-share:hidden",
+        expectedDecision: "deny",
+        listVisible: false,
+      },
+      {
+        id: "portal-link:email-unverified:denied",
+        expectedDecision: "deny",
+        listVisible: false,
+      },
+    ]);
+  });
+
   it("denies share provider status to client-external users", async () => {
     const response = await testServer({
       repository: new InMemoryOpenPracticeRepository(),

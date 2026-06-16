@@ -18,6 +18,13 @@ skipped-check context. The live workboard remains
 
 ## Current Handoff Notes
 
+The 2026-06-16 ReBAC fixture catalogue proof is recorded in
+[OP_REBAC_FIXTURE_CATALOGUE_PROOF_2026-06-16.md](OP_REBAC_FIXTURE_CATALOGUE_PROOF_2026-06-16.md).
+It covers the OP-authored relation vocabulary plus denial/list-visible fixtures for matters,
+documents, jobs, and portal links; focused domain/API route tests; and selector-chosen
+domain/API/provider/worker/docs/policy validation without adding a ReBAC policy engine,
+canonical-only authorization rewrite, schema change, dependency, or route behavior change.
+
 The 2026-06-15 legal-clinic metadata DTO remediation follow-up is recorded in the
 [2026-06-11 whole-application review proof](OP_WHOLE_APP_REVIEW_PROOF_2026-06-11.md).
 It closes the raw arbitrary metadata exposure finding for legal-clinic program/profile responses by

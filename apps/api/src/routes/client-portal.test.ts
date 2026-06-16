@@ -6,7 +6,7 @@ import type {
   EmailOutboxRecord,
   JobLifecycleRecord,
 } from "@open-practice/domain";
-import type { ProfessionalRole, User } from "@open-practice/domain";
+import { authorizationFixtureCases, type ProfessionalRole, type User } from "@open-practice/domain";
 import { hashToken } from "../http/auth-helpers.js";
 import { registerClientPortalRoutes } from "./client-portal.js";
 
@@ -528,6 +528,24 @@ afterEach(async () => {
 });
 
 describe("client portal routes", () => {
+  it("covers the account-bound portal document fixture row", () => {
+    expect(
+      authorizationFixtureCases
+        .filter((item) => item.id === "document:portal-grant:metadata-visible")
+        .map((item) => ({
+          relation: item.relation,
+          expectedDecision: item.expectedDecision,
+          listVisible: item.listVisible,
+        })),
+    ).toEqual([
+      {
+        relation: "account_bound_portal_grant_holder",
+        expectedDecision: "allow",
+        listVisible: true,
+      },
+    ]);
+  });
+
   it("lets staff set up a client account without exposing credential hashes", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const server = testServer({ repository });
