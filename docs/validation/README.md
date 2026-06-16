@@ -70,7 +70,8 @@ inbound email matter drafts, including lane-local validation, conflict reconcili
 validation, push parity, and prune disposition; it also records the eight-lane follow-up merge for
 staff intake QA scenarios, queued contact-history export links, contact timeline filters, OP-T158
 email template drafts, financial command journal, inbound-email review cues, private document
-conversion boundary docs, and trust posting approval commands.
+conversion boundary docs, and trust posting approval commands, including integrated validation,
+push parity, and prune disposition.
 
 The 2026-06-16 matter lifecycle transition journal proof is recorded in
 [OP_MATTER_LIFECYCLE_TRANSITION_JOURNAL_PROOF_2026-06-16.md](OP_MATTER_LIFECYCLE_TRANSITION_JOURNAL_PROOF_2026-06-16.md).

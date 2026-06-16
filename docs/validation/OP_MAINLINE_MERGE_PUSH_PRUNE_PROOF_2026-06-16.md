@@ -285,5 +285,22 @@ pnpm build
 
 ### Eight-Lane Push And Prune
 
-Pending local `main` fast-forward, `origin/main` push parity, and clean merged worktree/branch
-prune.
+Local `main` was fast-forwarded to the validated integration tip and pushed to `origin/main`.
+Post-push parity matched across local `main`, `origin/main`, and `git ls-remote --heads origin` at
+`19832957ea563633710c1d2ec237a418d7ef32a4`.
+
+Pre-prune inventory showed all eight lane branches and the integration branch merged into `main`,
+and `git branch --no-merged main` returned no branches. Each lane worktree was clean, and each lane
+HEAD was an ancestor of `main`.
+
+Prune actions completed:
+
+- Kept the primary `/Users/bryan/projects/open-practice` checkout and switched it to `main`.
+- Removed the eight clean merged sibling worktrees, including the temporary integration worktree.
+- Deleted the eight merged lane branches and the merged integration branch with `git branch -d`.
+- Ran `git remote prune origin` and `git worktree prune`.
+- Left all stashes untouched; current stash count is 42.
+
+Post-prune inventory showed only the primary `/Users/bryan/projects/open-practice` worktree on
+`main`, no unmerged local branches, only local branch `main`, and only `refs/heads/main` on
+`origin`.

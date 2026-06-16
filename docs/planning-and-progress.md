@@ -10,7 +10,7 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 | Snapshot              | Value                                                                      |
 | --------------------- | -------------------------------------------------------------------------- |
-| Current focus         | Eight validated 2026-06-16 follow-up lanes are being published and pruned. |
+| Current focus         | Eight validated 2026-06-16 follow-up lanes are merged, pushed, and pruned. |
 | Next recommended pick | Pick the next candidate from the durable roadmap/backlog.                  |
 | Ready rows            | 0                                                                          |
 | Candidate rows        | 0                                                                          |
