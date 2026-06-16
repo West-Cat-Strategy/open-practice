@@ -25,11 +25,13 @@ The runtime change is additive:
 - No public provider webhook endpoint, raw webhook-body persistence, signing-header persistence,
   replay recovery, production Stripe enablement, provider-specific refund/chargeback handling,
   card/customer detail storage, checkout URL exposure, or card vaulting.
-- No manual payment creation, invoice `paidCents`/`balanceDueCents`/status mutation, automatic
-  reconciliation, reconciliation-record creation, deposit matching, trust ledger posting, payment
-  plan enforcement, refund application, or chargeback mutation.
-- Settlement event review is staff reconciliation evidence only. Manual payment application remains
-  the explicit `POST /api/payments` workflow.
+- No automatic manual payment creation, invoice `paidCents`/`balanceDueCents`/status mutation,
+  automatic reconciliation, reconciliation-record creation, deposit matching, trust ledger posting,
+  payment plan enforcement, refund application, or chargeback mutation.
+- Settlement event review is staff reconciliation evidence only. Manual payment entry remains the
+  explicit `POST /api/payments` workflow, and follow-up 2026-06-16 hardening requires
+  `POST /api/payments/:paymentId/reconcile` reviewer evidence before allocations affect invoice
+  paid/balance status.
 - The slice builds on OP-T135 hosted payment request and Stripe Checkout Session shell proof without
   claiming full payment processing or production webhook readiness.
 

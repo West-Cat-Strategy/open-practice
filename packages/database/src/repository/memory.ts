@@ -267,6 +267,7 @@ import {
   getMemoryInvoice,
   listMemoryInvoices,
   listMemoryPayments,
+  reconcileMemoryPayment,
   updateMemoryInvoice,
   type MemoryBillingInvoicePaymentStore,
 } from "./billing-invoices-payments/memory.js";
@@ -2661,6 +2662,12 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     input: Parameters<OpenPracticeRepository["createPayment"]>[0],
   ): ReturnType<OpenPracticeRepository["createPayment"]> {
     return Promise.resolve(createMemoryPayment(this.billingInvoicePaymentStore, input));
+  }
+
+  async reconcilePayment(
+    input: Parameters<OpenPracticeRepository["reconcilePayment"]>[0],
+  ): ReturnType<OpenPracticeRepository["reconcilePayment"]> {
+    return Promise.resolve(reconcileMemoryPayment(this.billingInvoicePaymentStore, input));
   }
 
   async listPayments(

@@ -845,6 +845,20 @@ export const auditEventTaxonomyDefinitions = [
     resourceMetadataKeys: ["invoiceId", "paymentId", "amountCents", "method", "evidencePresent"],
   }),
   define({
+    action: "manual_payment.reconciled",
+    category: "billing",
+    resourceType: "manual_payment",
+    matterScope: "matter",
+    actorHint: "authenticated_user",
+    resourceMetadataKeys: [
+      "invoiceId",
+      "paymentId",
+      "amountCents",
+      "allocationCount",
+      "evidencePresent",
+    ],
+  }),
+  define({
     action: "hosted_payment_request.created",
     category: "billing",
     resourceType: "hosted_payment_request",

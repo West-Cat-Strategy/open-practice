@@ -22,6 +22,12 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 ## Current Handoff Notes
 
+The 2026-06-16 manual-payment reconciliation gate branch records manual payments as
+`pending_reconciliation` evidence until staff reviewer evidence creates the effective allocation and
+recalculates invoice paid/balance status. It preserves the no-live-settlement and no-trust-posting
+posture from OP-T135/OP-T149, updates Billing dashboard cues, and records proof in
+[Manual payment reconciliation gate proof](validation/OP_MANUAL_PAYMENT_RECONCILIATION_GATE_PROOF_2026-06-16.md).
+
 The 2026-06-16 Signature Request Envelope Metadata branch adds OP-authored signer-order and
 field-placement metadata directly to existing signature requests. Domain validation stays
 provider-neutral, invalid metadata is rejected before provider submission or email/audit side

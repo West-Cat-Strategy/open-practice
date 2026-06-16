@@ -1,10 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import type {
-  AccessRequest,
-  ManualPaymentRecord,
-  PaymentAllocationRecord,
-} from "@open-practice/domain";
+import type { AccessRequest, ManualPaymentRecord } from "@open-practice/domain";
 import {
   hasFirmWideLedgerAccess,
   requireAccess,
@@ -31,6 +27,16 @@ const paymentBodySchema = z.object({
 const paymentQuerySchema = z.object({
   matterId: z.string().min(1).optional(),
   invoiceId: z.string().min(1).optional(),
+});
+
+const paymentParamsSchema = z.object({
+  paymentId: z.string().min(1),
+});
+
+const reconcilePaymentBodySchema = z.object({
+  reconciledAt: z.string().datetime().optional(),
+  notes: z.string().min(1).optional(),
+  evidence: z.record(z.string(), z.unknown()).default({}),
 });
 
 function assertMatterAccess(
@@ -102,20 +108,12 @@ export function registerBillingPaymentRoutes(
       receivedAt: body.receivedAt ?? now,
       method: body.method,
       reference: body.reference,
-      status: "received",
+      status: "pending_reconciliation",
       receivedByUserId: request.auth.user.id,
       notes: body.notes,
       evidence: body.evidence,
     };
-    const allocation: PaymentAllocationRecord = {
-      id: crypto.randomUUID(),
-      firmId: request.auth.firmId,
-      paymentId: payment.id,
-      invoiceId: invoice.id,
-      amountCents: body.amountCents,
-      allocatedAt: now,
-    };
-    const created = await repository.createPayment({ payment, allocations: [allocation] });
+    const created = await repository.createPayment({ payment, allocations: [] });
     await appendRouteAuditEvent(repository, request.auth, {
       action: "manual_payment.created",
       resourceType: "manual_payment",
@@ -131,5 +129,66 @@ export function registerBillingPaymentRoutes(
       },
     });
     return created;
+  });
+
+  server.post("/api/payments/:paymentId/reconcile", async (request) => {
+    const params = parseRequestPart(paymentParamsSchema, request.params, "params");
+    const body = parseRequestPart(reconcilePaymentBodySchema, request.body, "body");
+    const existing = (await repository.listPayments(request.auth.firmId)).find(
+      (candidate) => candidate.id === params.paymentId,
+    );
+    if (!existing) {
+      throw Object.assign(new Error("Manual payment was not found"), { statusCode: 404 });
+    }
+    assertMatterAccess(request.auth, {
+      resource: "expense_entry",
+      action: "create",
+      matterId: existing.matterId,
+    });
+    if (existing.status !== "pending_reconciliation") {
+      throw Object.assign(new Error("Manual payment is not pending reconciliation"), {
+        statusCode: 409,
+      });
+    }
+    if (!existing.invoiceId) {
+      throw Object.assign(new Error("Manual payment invoice was not found"), { statusCode: 404 });
+    }
+    const invoice = await repository.getInvoice(request.auth.firmId, existing.invoiceId);
+    if (!invoice) {
+      throw Object.assign(new Error("Manual payment invoice was not found"), { statusCode: 404 });
+    }
+    if (invoice.matterId !== existing.matterId) {
+      throw Object.assign(new Error("Manual payment invoice must belong to the payment matter"), {
+        statusCode: 400,
+      });
+    }
+    if (existing.amountCents > invoice.balanceDueCents) {
+      throw Object.assign(new Error("Payment allocation exceeds invoice balance"), {
+        statusCode: 409,
+      });
+    }
+    const reconciled = await repository.reconcilePayment({
+      firmId: request.auth.firmId,
+      paymentId: existing.id,
+      reconciledByUserId: request.auth.user.id,
+      reconciledAt: body.reconciledAt ?? new Date().toISOString(),
+      notes: body.notes,
+      evidence: body.evidence,
+    });
+    await appendRouteAuditEvent(repository, request.auth, {
+      action: "manual_payment.reconciled",
+      resourceType: "manual_payment",
+      resourceId: reconciled.id,
+      metadata: {
+        matterId: reconciled.matterId,
+        paymentId: reconciled.id,
+        invoiceId: reconciled.invoiceId,
+        status: reconciled.status,
+        amountCents: reconciled.amountCents,
+        allocationCount: reconciled.allocations.length,
+        evidencePresent: hasEvidence(reconciled.reconciliationEvidence ?? {}),
+      },
+    });
+    return reconciled;
   });
 }

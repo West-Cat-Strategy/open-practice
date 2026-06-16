@@ -138,9 +138,12 @@ export function registerBillingDashboardRoutes(
             invoiceId: payment.invoiceId,
             amountCents: payment.amountCents,
             method: payment.method,
+            status: payment.status,
             receivedAt: payment.receivedAt,
+            reconciledAt: payment.reconciledAt,
             reference: payment.reference,
             evidencePresent: hasEvidence(payment.evidence ?? {}),
+            reconciliationEvidencePresent: hasEvidence(payment.reconciliationEvidence ?? {}),
           })),
         paymentRequests: paymentRequests
           .filter((paymentRequest) => paymentRequest.matterId === matterId)

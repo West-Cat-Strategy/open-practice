@@ -316,6 +316,7 @@ export async function seedSampleData(db: OpenPracticeDatabase): Promise<void> {
         sampleManualPayments.map((payment) => ({
           ...payment,
           receivedAt: new Date(payment.receivedAt),
+          reconciledAt: payment.reconciledAt ? new Date(payment.reconciledAt) : null,
         })),
       )
       .onConflictDoNothing();

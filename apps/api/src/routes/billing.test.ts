@@ -1041,6 +1041,158 @@ describe("billing routes", () => {
     expect(ledgerAfter.json<{ entries: unknown[] }>().entries).toHaveLength(beforeEntryCount);
   });
 
+  it("records manual payments as pending evidence before reconciliation applies invoice allocations", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository });
+    const invoiceBefore = await server.inject({ method: "GET", url: "/api/invoices/invoice-001" });
+    expect(invoiceBefore.statusCode).toBe(200);
+
+    const created = await server.inject({
+      method: "POST",
+      url: "/api/payments",
+      payload: {
+        id: "payment-pending-route-test",
+        matterId: "matter-001",
+        invoiceId: "invoice-001",
+        clientContactId: "contact-ada",
+        amountCents: 2500,
+        method: "eft",
+        reference: "SYNTH-PENDING-1",
+        evidence: { source: "synthetic-payment-evidence" },
+      },
+    });
+    expect(created.statusCode).toBe(200);
+    expect(created.json()).toMatchObject({
+      id: "payment-pending-route-test",
+      status: "pending_reconciliation",
+      allocations: [],
+    });
+
+    const invoiceAfterCreate = await server.inject({
+      method: "GET",
+      url: "/api/invoices/invoice-001",
+    });
+    expect(invoiceAfterCreate.json()).toMatchObject({
+      status: invoiceBefore.json<{ status: string }>().status,
+      paidCents: invoiceBefore.json<{ paidCents: number }>().paidCents,
+      balanceDueCents: invoiceBefore.json<{ balanceDueCents: number }>().balanceDueCents,
+    });
+
+    const dashboardAfterCreate = await server.inject({
+      method: "GET",
+      url: "/api/billing/dashboard",
+    });
+    expect(dashboardAfterCreate.statusCode).toBe(200);
+    expect(
+      dashboardAfterCreate
+        .json<{
+          matters: Array<{
+            payments: Array<{
+              id: string;
+              status: string;
+              evidencePresent?: boolean;
+              reconciliationEvidencePresent?: boolean;
+            }>;
+          }>;
+        }>()
+        .matters.flatMap((matter) => matter.payments),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "payment-pending-route-test",
+          status: "pending_reconciliation",
+          evidencePresent: true,
+          reconciliationEvidencePresent: false,
+        }),
+      ]),
+    );
+
+    const reconciled = await server.inject({
+      method: "POST",
+      url: "/api/payments/payment-pending-route-test/reconcile",
+      payload: {
+        reconciledAt: "2026-06-16T13:00:00.000Z",
+        notes: "Synthetic reviewer note.",
+        evidence: { source: "synthetic-reviewer-evidence" },
+      },
+    });
+    expect(reconciled.statusCode).toBe(200);
+    expect(reconciled.json()).toMatchObject({
+      id: "payment-pending-route-test",
+      status: "received",
+      reconciledAt: "2026-06-16T13:00:00.000Z",
+      reconciledByUserId: "user-admin",
+      reconciliationEvidence: { source: "synthetic-reviewer-evidence" },
+      allocations: [expect.objectContaining({ invoiceId: "invoice-001", amountCents: 2500 })],
+    });
+
+    const invoiceAfterReconcile = await server.inject({
+      method: "GET",
+      url: "/api/invoices/invoice-001",
+    });
+    expect(invoiceAfterReconcile.json()).toMatchObject({
+      status: "partially_paid",
+      paidCents: invoiceBefore.json<{ paidCents: number }>().paidCents + 2500,
+      balanceDueCents: invoiceBefore.json<{ balanceDueCents: number }>().balanceDueCents - 2500,
+    });
+
+    const secondReconcile = await server.inject({
+      method: "POST",
+      url: "/api/payments/payment-pending-route-test/reconcile",
+      payload: { reconciledAt: "2026-06-16T14:00:00.000Z" },
+    });
+    expect(secondReconcile.statusCode).toBe(409);
+    expect(secondReconcile.json()).toMatchObject({
+      message: "Manual payment is not pending reconciliation",
+    });
+
+    const overBalance = await server.inject({
+      method: "POST",
+      url: "/api/payments",
+      payload: {
+        id: "payment-over-balance-route-test",
+        matterId: "matter-001",
+        invoiceId: "invoice-001",
+        amountCents: invoiceAfterReconcile.json<{ balanceDueCents: number }>().balanceDueCents + 1,
+        method: "eft",
+      },
+    });
+    expect(overBalance.statusCode).toBe(200);
+    const overBalanceReconcile = await server.inject({
+      method: "POST",
+      url: "/api/payments/payment-over-balance-route-test/reconcile",
+      payload: { reconciledAt: "2026-06-16T15:00:00.000Z" },
+    });
+    expect(overBalanceReconcile.statusCode).toBe(409);
+    expect(overBalanceReconcile.json()).toMatchObject({
+      message: "Payment allocation exceeds invoice balance",
+    });
+
+    const audit = await auditEvents(repository);
+    expect(audit).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          action: "manual_payment.created",
+          resourceId: "payment-pending-route-test",
+          metadata: expect.objectContaining({
+            status: "pending_reconciliation",
+            allocationCount: 0,
+            evidencePresent: true,
+          }),
+        }),
+        expect.objectContaining({
+          action: "manual_payment.reconciled",
+          resourceId: "payment-pending-route-test",
+          metadata: expect.objectContaining({
+            status: "received",
+            allocationCount: 1,
+            evidencePresent: true,
+          }),
+        }),
+      ]),
+    );
+  });
+
   it("creates Stripe checkout sessions for payment request shells without applying settlement", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const checkoutCalls: PaymentProcessorCheckoutSessionInput[] = [];
@@ -1687,6 +1839,15 @@ describe("billing routes", () => {
       },
     });
     expect(payment.statusCode).toBe(200);
+    const reconciledPayment = await invoiceServer.inject({
+      method: "POST",
+      url: "/api/payments/payment-before-trust-transfer-approval/reconcile",
+      payload: {
+        reconciledAt: "2026-06-16T13:00:00.000Z",
+        evidence: { source: "synthetic-trust-transfer-balance-proof" },
+      },
+    });
+    expect(reconciledPayment.statusCode).toBe(200);
     const overInvoiceBalance = await invoiceServer.inject({
       method: "POST",
       url: "/api/billing/trust-transfer-requests/trust-transfer-request-001/approve",
@@ -2132,6 +2293,17 @@ describe("billing routes", () => {
     });
     expect(payment.statusCode).toBe(200);
 
+    const reconciledPayment = await server.inject({
+      method: "POST",
+      url: "/api/payments/payment-audit-route-test/reconcile",
+      payload: {
+        reconciledAt: "2026-06-16T13:00:00.000Z",
+        notes: "Synthetic reviewer note.",
+        evidence: { source: "synthetic-reviewer-evidence" },
+      },
+    });
+    expect(reconciledPayment.statusCode).toBe(200);
+
     const trustRequest = await server.inject({
       method: "POST",
       url: "/api/billing/trust-transfer-requests",
@@ -2267,7 +2439,19 @@ describe("billing routes", () => {
             matterId: "matter-001",
             invoiceId: "invoice-audit-route-test",
             amountCents: 2500,
+            status: "pending_reconciliation",
+            allocationCount: 0,
+          }),
+        }),
+        expect.objectContaining({
+          action: "manual_payment.reconciled",
+          resourceId: "payment-audit-route-test",
+          metadata: expect.objectContaining({
+            matterId: "matter-001",
+            invoiceId: "invoice-audit-route-test",
+            amountCents: 2500,
             status: "received",
+            allocationCount: 1,
           }),
         }),
         expect.objectContaining({

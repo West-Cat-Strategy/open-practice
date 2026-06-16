@@ -139,6 +139,7 @@ import {
   getDrizzleInvoice,
   listDrizzleInvoices,
   listDrizzlePayments,
+  reconcileDrizzlePayment,
   updateDrizzleInvoice,
 } from "./billing-invoices-payments/drizzle.js";
 import {
@@ -1650,6 +1651,12 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     input: Parameters<OpenPracticeRepository["createPayment"]>[0],
   ): ReturnType<OpenPracticeRepository["createPayment"]> {
     return createDrizzlePayment(this.db, input);
+  }
+
+  async reconcilePayment(
+    input: Parameters<OpenPracticeRepository["reconcilePayment"]>[0],
+  ): ReturnType<OpenPracticeRepository["reconcilePayment"]> {
+    return reconcileDrizzlePayment(this.db, input);
   }
 
   async listPayments(

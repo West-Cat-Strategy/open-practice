@@ -28,6 +28,14 @@ export interface BillingInvoicePaymentRepository {
     payment: ManualPaymentRecord;
     allocations: PaymentAllocationRecord[];
   }): Promise<PaymentWithAllocations>;
+  reconcilePayment(input: {
+    firmId: string;
+    paymentId: string;
+    reconciledByUserId: string;
+    reconciledAt: string;
+    notes?: string;
+    evidence?: Record<string, unknown>;
+  }): Promise<PaymentWithAllocations>;
   listPayments(
     firmId: string,
     options?: { matterId?: string; invoiceId?: string },

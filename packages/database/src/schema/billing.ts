@@ -131,6 +131,10 @@ export const manualPayments = pgTable("manual_payments", {
   receivedByUserId: text("received_by_user_id")
     .notNull()
     .references(() => users.id),
+  reconciledAt: timestamp("reconciled_at", { withTimezone: true }),
+  reconciledByUserId: text("reconciled_by_user_id").references(() => users.id),
+  reconciliationNotes: text("reconciliation_notes"),
+  reconciliationEvidence: jsonb("reconciliation_evidence").notNull().default({}),
   notes: text("notes"),
   evidence: jsonb("evidence").notNull().default({}),
 });

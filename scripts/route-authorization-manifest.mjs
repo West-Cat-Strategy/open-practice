@@ -1072,6 +1072,15 @@ export const ROUTE_AUTHORIZATION_MANIFEST = [
   authRoute(
     "registerBillingRoutes",
     "apps/api/src/routes/billing.test.ts",
+    "POST",
+    "/api/payments/:paymentId/reconcile",
+    "expense_entry",
+    "create",
+    "derived",
+  ),
+  authRoute(
+    "registerBillingRoutes",
+    "apps/api/src/routes/billing.test.ts",
     "GET",
     "/api/billing/payment-requests",
     "expense_entry",

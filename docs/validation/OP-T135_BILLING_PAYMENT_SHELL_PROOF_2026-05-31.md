@@ -11,6 +11,8 @@ Implemented the smallest coherent OP-T135 first slice:
 - Added optional Stripe Checkout Session creation for open hosted payment-request shells, recording
   provider/session posture and evidence without applying payment status, settlement, reconciliation,
   invoice-balance mutation, or trust-ledger posting.
+- Follow-up 2026-06-16 hardening keeps new manual-payment records in `pending_reconciliation` until
+  reviewer evidence creates the effective invoice allocation.
 - Kept production Stripe enablement gated: `STRIPE_SECRET_KEY` is rejected in production until
   webhook, settlement reconciliation, refund, and chargeback gates exist.
 - Surfaced payment request shells and manual-payment evidence flags in billing dashboard and billing

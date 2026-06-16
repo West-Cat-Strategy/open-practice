@@ -98,6 +98,9 @@ export async function createDrizzlePayment(
     allocations: PaymentAllocationRecord[];
   },
 ): Promise<PaymentWithAllocations> {
+  if (input.payment.status === "pending_reconciliation" && input.allocations.length > 0) {
+    throw new Error("Pending reconciliation payments cannot have effective allocations");
+  }
   const allocatedCents = input.allocations.reduce(
     (sum, allocation) => sum + allocation.amountCents,
     0,
@@ -141,6 +144,87 @@ export async function createDrizzlePayment(
     });
   }
   return { ...clone(input.payment), allocations: clone(input.allocations) };
+}
+
+export async function reconcileDrizzlePayment(
+  db: OpenPracticeDatabase,
+  input: {
+    firmId: string;
+    paymentId: string;
+    reconciledByUserId: string;
+    reconciledAt: string;
+    notes?: string;
+    evidence?: Record<string, unknown>;
+  },
+): Promise<PaymentWithAllocations> {
+  const [paymentRow] = await db
+    .select()
+    .from(schema.manualPayments)
+    .where(
+      and(
+        eq(schema.manualPayments.firmId, input.firmId),
+        eq(schema.manualPayments.id, input.paymentId),
+      ),
+    );
+  if (!paymentRow) throw new Error("Manual payment was not found");
+  const payment = mapPaymentRow(paymentRow);
+  if (payment.status !== "pending_reconciliation") {
+    throw new Error("Manual payment is not pending reconciliation");
+  }
+  if (!payment.invoiceId) throw new Error("Manual payment invoice was not found");
+  const invoice = await getDrizzleInvoice(db, input.firmId, payment.invoiceId);
+  if (!invoice) throw new Error("Manual payment invoice was not found");
+  if (invoice.matterId !== payment.matterId) {
+    throw new Error("Manual payment invoice must belong to the payment matter");
+  }
+  if (payment.amountCents > invoice.balanceDueCents) {
+    throw new Error("Payment allocation exceeds invoice balance");
+  }
+  const allocation: PaymentAllocationRecord = {
+    id: crypto.randomUUID(),
+    firmId: input.firmId,
+    paymentId: payment.id,
+    invoiceId: invoice.id,
+    amountCents: payment.amountCents,
+    allocatedAt: input.reconciledAt,
+  };
+  await db.insert(schema.paymentAllocations).values(paymentAllocationInsert(allocation));
+  const existingAllocations = await listDrizzlePaymentAllocationsForInvoice(
+    db,
+    input.firmId,
+    invoice.id,
+  );
+  const totals = calculateInvoiceTotals({
+    lines: invoice.lines,
+    allocations: existingAllocations,
+  });
+  await updateDrizzleInvoice(db, {
+    ...invoice,
+    ...totals,
+    status: invoiceStatusForPayment({
+      currentStatus: invoice.status,
+      totalCents: totals.totalCents,
+      paidCents: totals.paidCents,
+    }),
+  });
+  const [updatedRow] = await db
+    .update(schema.manualPayments)
+    .set({
+      status: "received",
+      reconciledAt: new Date(input.reconciledAt),
+      reconciledByUserId: input.reconciledByUserId,
+      reconciliationNotes: input.notes ?? null,
+      reconciliationEvidence: input.evidence ?? {},
+    })
+    .where(
+      and(
+        eq(schema.manualPayments.firmId, input.firmId),
+        eq(schema.manualPayments.id, input.paymentId),
+      ),
+    )
+    .returning();
+  if (!updatedRow) throw new Error("Manual payment was not found");
+  return { ...mapPaymentRow(updatedRow), allocations: [allocation] };
 }
 
 export async function listDrizzlePayments(

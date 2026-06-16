@@ -146,6 +146,7 @@ function buildSyntheticBillingDashboard(): BillingDashboardResponse {
             invoiceId: "invoice_synthetic",
             amountCents: 12500,
             method: "eft",
+            status: "pending_reconciliation",
             receivedAt: "2026-06-07T00:00:00.000Z",
             reference: "Synthetic EFT",
             evidencePresent: true,
@@ -296,5 +297,6 @@ describe("BillingSection", () => {
     expect(html).toContain("No invoice balance mutation");
     expect(html).toContain("No automatic reconciliation");
     expect(html).toContain("Synthetic EFT");
+    expect(html).toContain("Pending reconciliation");
   });
 });

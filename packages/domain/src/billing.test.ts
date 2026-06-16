@@ -24,6 +24,7 @@ import {
   timerDraftMinutesFromWindow,
   trustTransferRequestAvailableBalanceCents,
   type BillingRateRuleRecord,
+  type ManualPaymentRecord,
 } from "./billing.js";
 import {
   sampleInvoiceLines,
@@ -48,6 +49,27 @@ describe("billing period locks and rate rules", () => {
     expect(() => assertBillingStatusTransition("approved", "submitted")).toThrow(
       /Invalid billing status transition/,
     );
+  });
+
+  it("keeps pending manual payments as review evidence until reconciliation applies allocations", () => {
+    const pendingPayment: ManualPaymentRecord = {
+      id: "payment-domain-pending",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      invoiceId: "invoice-001",
+      receivedAt: "2026-06-16T12:00:00.000Z",
+      amountCents: 2500,
+      method: "eft",
+      status: "pending_reconciliation",
+      receivedByUserId: "user-licensee",
+      evidence: { source: "synthetic-review-evidence" },
+    };
+
+    expect(pendingPayment.status).toBe("pending_reconciliation");
+    expect(calculateInvoiceTotals({ lines: sampleInvoiceLines, allocations: [] })).toMatchObject({
+      paidCents: 0,
+      balanceDueCents: 13230,
+    });
   });
 
   it("treats billing period locks as start-inclusive and end-exclusive", () => {
