@@ -1484,6 +1484,9 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   ): ReturnType<OpenPracticeRepository["listContactDossiersForUser"]> {
     return listMemoryContactDossiersForUser(this.contactStore, user, {
       listMattersForUser: (candidate) => this.listMattersForUser(candidate),
+      listTaskDeadlines: (firmId, options) => this.listTaskDeadlines(firmId, options),
+      listCalendarSchedulingRequests: (firmId, options) =>
+        this.listCalendarSchedulingRequests(firmId, options),
     });
   }
 
@@ -1496,6 +1499,9 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
       user,
       {
         listMattersForUser: (candidate) => this.listMattersForUser(candidate),
+        listTaskDeadlines: (firmId, taskOptions) => this.listTaskDeadlines(firmId, taskOptions),
+        listCalendarSchedulingRequests: (firmId, schedulingOptions) =>
+          this.listCalendarSchedulingRequests(firmId, schedulingOptions),
       },
       options,
     );
@@ -1550,6 +1556,9 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   ): ReturnType<OpenPracticeRepository["listContactPortalGrantsForUser"]> {
     return listMemoryContactPortalGrantsForUser(this.contactStore, user, contactId, {
       listMattersForUser: (candidate) => this.listMattersForUser(candidate),
+      listTaskDeadlines: (firmId, options) => this.listTaskDeadlines(firmId, options),
+      listCalendarSchedulingRequests: (firmId, options) =>
+        this.listCalendarSchedulingRequests(firmId, options),
     });
   }
 
@@ -1559,6 +1568,9 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   ): ReturnType<OpenPracticeRepository["listContactTimelineForUser"]> {
     return listMemoryContactTimelineForUser(this.contactStore, user, contactId, {
       listMattersForUser: (candidate) => this.listMattersForUser(candidate),
+      listTaskDeadlines: (firmId, options) => this.listTaskDeadlines(firmId, options),
+      listCalendarSchedulingRequests: (firmId, options) =>
+        this.listCalendarSchedulingRequests(firmId, options),
     });
   }
 

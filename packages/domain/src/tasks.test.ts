@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { CalendarSchedulingRequestRecord, MatterParty, TaskDeadlineRecord } from "./models.js";
-import { buildTaskDeadlineWorkbench, classifyTaskDeadline } from "./tasks.js";
+import {
+  buildContactTimelineTaskCues,
+  buildTaskDeadlineWorkbench,
+  classifyTaskDeadline,
+} from "./tasks.js";
 
 const now = new Date("2026-05-02T16:00:00.000Z");
 
@@ -372,5 +376,126 @@ describe("task deadline workbench", () => {
         },
       }),
     ]);
+  });
+
+  it("builds redacted contact timeline task cues without private task or scheduling content", () => {
+    const entries = buildContactTimelineTaskCues({
+      contactId: "contact-client",
+      firmId: "firm-west-legal",
+      userId: "user-licensee",
+      visibleMatterIds: ["matter-001"],
+      now,
+      tasks: [
+        task({
+          id: "task-visible-open",
+          title: "Private task title must stay out",
+          description: "Private task description must stay out",
+          assignedToUserId: "user-licensee",
+          dueAt: "2026-05-01T19:00:00.000Z",
+        }),
+        task({
+          id: "task-hidden-matter",
+          matterId: "matter-002",
+          title: "Hidden matter task must stay out",
+          dueAt: "2026-05-01T20:00:00.000Z",
+        }),
+        task({
+          id: "task-completed",
+          title: "Completed task must stay out",
+          dueAt: "2026-05-01T21:00:00.000Z",
+          completedAt: "2026-05-02T15:00:00.000Z",
+        }),
+      ],
+      schedulingRequests: [
+        {
+          id: "calendar-scheduling-request-follow-up",
+          firmId: "firm-west-legal",
+          matterId: "matter-001",
+          kind: "event_scheduling",
+          status: "needs_review",
+          title: "Private scheduling title must stay out",
+          sourceType: "calendar_event",
+          sourceId: "calendar-event-private",
+          sourceLabel: "Private source label must stay out",
+          requestedDueAt: "2026-05-03T17:00:00.000Z",
+          reminderPosture: "dashboard_pending",
+          privacy: "staff_only",
+          timeCaptureCue: {
+            posture: "none",
+            existingTimeEntryCount: 0,
+            billable: false,
+          },
+          createdAt: "2026-05-02T12:00:00.000Z",
+          updatedAt: "2026-05-02T12:00:00.000Z",
+          createdByUserId: "user-licensee",
+          updatedByUserId: "user-licensee",
+        },
+        {
+          id: "calendar-scheduling-request-existing-task",
+          firmId: "firm-west-legal",
+          matterId: "matter-001",
+          kind: "deadline_review",
+          status: "needs_review",
+          title: "Existing task request must not duplicate",
+          taskId: "task-visible-open",
+          sourceType: "task_deadline",
+          sourceId: "task-visible-open",
+          sourceLabel: "Private existing task source must stay out",
+          requestedDueAt: "2026-05-01T19:00:00.000Z",
+          reminderPosture: "dashboard_pending",
+          privacy: "staff_only",
+          timeCaptureCue: {
+            posture: "none",
+            existingTimeEntryCount: 0,
+            billable: false,
+          },
+          createdAt: "2026-05-02T13:00:00.000Z",
+          updatedAt: "2026-05-02T13:00:00.000Z",
+          createdByUserId: "user-licensee",
+          updatedByUserId: "user-licensee",
+        },
+      ],
+    });
+
+    expect(entries).toEqual([
+      expect.objectContaining({
+        id: "follow-up-cue:contact-client:calendar-scheduling-request-follow-up",
+        title: "Follow-up review cue",
+        kind: "task",
+        metadata: expect.objectContaining({
+          cueType: "follow_up_review",
+          contactId: "contact-client",
+          matterId: "matter-001",
+          schedulingRequestId: "calendar-scheduling-request-follow-up",
+          priority: "high",
+          reviewBoundary: {
+            automaticTaskCreation: false,
+            automaticDeadlineMutation: false,
+            automaticReminderChanges: false,
+            queueDelivery: false,
+          },
+        }),
+      }),
+      expect.objectContaining({
+        id: "task-cue:contact-client:task-visible-open",
+        title: "Task deadline cue",
+        kind: "task",
+        metadata: expect.objectContaining({
+          cueType: "open_task",
+          contactId: "contact-client",
+          taskId: "task-visible-open",
+          bucket: "overdue",
+          assignmentScope: "current_user",
+        }),
+      }),
+    ]);
+    expect(JSON.stringify(entries)).not.toContain("Private task title");
+    expect(JSON.stringify(entries)).not.toContain("Private task description");
+    expect(JSON.stringify(entries)).not.toContain("Private scheduling title");
+    expect(JSON.stringify(entries)).not.toContain("Private source label");
+    expect(JSON.stringify(entries)).not.toContain("Private existing task source");
+    expect(JSON.stringify(entries)).not.toContain("Hidden matter task");
+    expect(JSON.stringify(entries)).not.toContain("task-completed");
+    expect(JSON.stringify(entries)).not.toContain("calendar-scheduling-request-existing-task");
   });
 });

@@ -1,4 +1,5 @@
 import type {
+  ActivityTimelineEntry,
   CalendarSchedulingRequestRecord,
   CalendarSchedulingRequestReminderPosture,
   CalendarSchedulingRequestSourceType,
@@ -133,6 +134,27 @@ export interface TaskFollowUpSuggestion {
     id: string;
     label: string;
   };
+  reviewBoundary: {
+    automaticTaskCreation: false;
+    automaticDeadlineMutation: false;
+    automaticReminderChanges: false;
+    queueDelivery: false;
+  };
+}
+
+export type ContactTimelineTaskCueType = "open_task" | "follow_up_review";
+
+export interface ContactTimelineTaskCueMetadata {
+  cueType: ContactTimelineTaskCueType;
+  contactId: string;
+  matterId: string;
+  taskId?: string;
+  schedulingRequestId?: string;
+  bucket?: TaskDeadlineBucket;
+  status?: TaskDeadlineRecord["status"] | CalendarSchedulingRequestRecord["status"];
+  priority?: TaskDeadlineReviewPriority;
+  dueAt?: string;
+  assignmentScope?: TaskDeadlineReviewAssignmentScope;
   reviewBoundary: {
     automaticTaskCreation: false;
     automaticDeadlineMutation: false;
@@ -387,6 +409,102 @@ const TASK_FOLLOW_UP_REVIEW_BOUNDARY = {
   automaticReminderChanges: false,
   queueDelivery: false,
 } as const;
+
+function taskCueAssignmentScope(
+  task: TaskDeadlineProjection,
+  userId: string,
+): TaskDeadlineReviewAssignmentScope {
+  return taskReviewAssignment(task, userId).scope;
+}
+
+export function buildContactTimelineTaskCues(input: {
+  contactId: string;
+  firmId: string;
+  tasks: TaskDeadlineRecord[];
+  schedulingRequests?: CalendarSchedulingRequestRecord[];
+  userId: string;
+  visibleMatterIds: string[];
+  now?: Date;
+}): ActivityTimelineEntry[] {
+  const visibleMatterIds = new Set(input.visibleMatterIds);
+  const now = input.now ?? new Date();
+  const visibleTasks = input.tasks
+    .filter(
+      (task) =>
+        task.firmId === input.firmId &&
+        visibleMatterIds.has(task.matterId) &&
+        task.status === "open" &&
+        !task.completedAt,
+    )
+    .map((task) => projectTaskDeadline(task, now));
+  const visibleTaskIds = new Set(visibleTasks.map((task) => task.id));
+  const taskEntries = visibleTasks.map(
+    (task): ActivityTimelineEntry => ({
+      id: `task-cue:${input.contactId}:${task.id}`,
+      firmId: task.firmId,
+      matterId: task.matterId,
+      occurredAt: task.dueAt ?? task.updatedAt ?? task.createdAt,
+      title: "Task deadline cue",
+      kind: "task",
+      actorId: task.updatedByUserId ?? task.createdByUserId,
+      metadata: {
+        cueType: "open_task",
+        contactId: input.contactId,
+        matterId: task.matterId,
+        taskId: task.id,
+        bucket: task.bucket,
+        status: task.status,
+        priority: task.priority,
+        dueAt: task.dueAt,
+        assignmentScope: taskCueAssignmentScope(task, input.userId),
+        reviewBoundary: TASK_FOLLOW_UP_REVIEW_BOUNDARY,
+      } satisfies ContactTimelineTaskCueMetadata,
+    }),
+  );
+
+  const followUpEntries = (input.schedulingRequests ?? [])
+    .filter(
+      (request) =>
+        request.firmId === input.firmId &&
+        visibleMatterIds.has(request.matterId) &&
+        request.status === "needs_review" &&
+        (!request.taskId || !visibleTaskIds.has(request.taskId)) &&
+        !(
+          request.sourceType === "task_deadline" &&
+          request.sourceId !== undefined &&
+          visibleTaskIds.has(request.sourceId)
+        ),
+    )
+    .map((request): ActivityTimelineEntry => {
+      const dueAt = request.requestedDueAt ?? request.requestedStartsAt;
+      return {
+        id: `follow-up-cue:${input.contactId}:${request.id}`,
+        firmId: request.firmId,
+        matterId: request.matterId,
+        occurredAt: dueAt ?? request.updatedAt ?? request.createdAt,
+        title: "Follow-up review cue",
+        kind: "task",
+        actorId: request.updatedByUserId ?? request.createdByUserId,
+        metadata: {
+          cueType: "follow_up_review",
+          contactId: input.contactId,
+          matterId: request.matterId,
+          schedulingRequestId: request.id,
+          status: request.status,
+          priority: request.privacy === "staff_only" ? "high" : "medium",
+          dueAt,
+          reviewBoundary: TASK_FOLLOW_UP_REVIEW_BOUNDARY,
+        } satisfies ContactTimelineTaskCueMetadata,
+      };
+    });
+
+  return [...taskEntries, ...followUpEntries].sort((left, right) => {
+    const leftTime = Date.parse(left.occurredAt);
+    const rightTime = Date.parse(right.occurredAt);
+    if (leftTime !== rightTime) return rightTime - leftTime;
+    return left.id.localeCompare(right.id);
+  });
+}
 
 function buildSuggestedFollowUps(input: {
   tasks: TaskDeadlineProjection[];

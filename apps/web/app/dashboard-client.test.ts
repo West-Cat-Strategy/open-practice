@@ -2367,6 +2367,34 @@ describe("dashboard client behavior", () => {
       contactDataQualityResolutions: resolutions,
       contactDataQualityStatus: "1 resolution loaded.",
       contactDossiers: [dossier],
+      contactTimeline: [
+        {
+          id: "task-cue:contact-river:task-private-review",
+          firmId: "firm-west-legal",
+          matterId: "matter-001",
+          occurredAt: "2026-05-01T19:00:00.000Z",
+          title: "Task deadline cue",
+          kind: "task" as const,
+          metadata: {
+            cueType: "open_task",
+            contactId: "contact-river",
+            matterId: "matter-001",
+            taskId: "task-private-review",
+            bucket: "overdue",
+            status: "open",
+            priority: "high",
+            dueAt: "2026-05-01T19:00:00.000Z",
+            assignmentScope: "current_user",
+            reviewBoundary: {
+              automaticTaskCreation: false,
+              automaticDeadlineMutation: false,
+              automaticReminderChanges: false,
+              queueDelivery: false,
+            },
+          },
+        },
+      ],
+      contactTimelineStatus: "1 timeline cue loaded.",
       contactSearch: "",
       creatingContact: false,
       creatingMatterFromContactId: "",
@@ -2399,6 +2427,10 @@ describe("dashboard client behavior", () => {
     );
 
     expect(readOnlyHtml).toContain("Resolution history");
+    expect(readOnlyHtml).toContain("Timeline cues");
+    expect(readOnlyHtml).toContain("Task deadline cue");
+    expect(readOnlyHtml).toContain("2026-0001");
+    expect(readOnlyHtml).toContain("review only");
     expect(readOnlyHtml).toContain("Relationship graph");
     expect(readOnlyHtml).toContain("Ada Morgan");
     expect(readOnlyHtml).toContain("Matter counterparty");
@@ -2410,6 +2442,7 @@ describe("dashboard client behavior", () => {
     expect(readOnlyHtml).toContain("related contact noted");
     expect(readOnlyHtml).not.toContain("contact-resolution-actions");
     expect(readOnlyHtml).not.toContain("legal@rivercity.example");
+    expect(readOnlyHtml).not.toContain("task-private-review");
     expect(readOnlyHtml).not.toContain("relatedContact&quot;:{&quot;id");
     expect(writableHtml).toContain("contact-resolution-actions");
     expect(writableHtml).toContain("Needs review");

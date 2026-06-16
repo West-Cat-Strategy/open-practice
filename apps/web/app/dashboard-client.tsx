@@ -305,6 +305,7 @@ import {
   type ContactDataQualityResolutionRecord,
   type ContactDataQualityResolutionsResponse,
   type ContactDossiersResponse,
+  type ContactTimelineResponse,
   type ContactReviewQueueResponse,
 } from "./_features/contacts/models";
 import type {
@@ -760,6 +761,10 @@ export default function DashboardClient({
   const [contactDataQualityStatus, setContactDataQualityStatus] = useState(
     "No contact resolution recorded in this session.",
   );
+  const [activeContactTimeline, setActiveContactTimeline] = useState<
+    ContactTimelineResponse["timeline"]
+  >([]);
+  const [contactTimelineStatus, setContactTimelineStatus] = useState("No contact timeline loaded.");
   const [recordingContactResolutionKey, setRecordingContactResolutionKey] = useState("");
   const [conflictName, setConflictName] = useState("");
   const [conflictAliases, setConflictAliases] = useState("");
@@ -1084,6 +1089,37 @@ export default function DashboardClient({
         (resolution) => resolution.contactId === activeContactDossier.contact.id,
       )
     : [];
+  useEffect(() => {
+    if (!activeContactDossier) {
+      setActiveContactTimeline([]);
+      setContactTimelineStatus("No contact timeline loaded.");
+      return;
+    }
+
+    let cancelled = false;
+    setContactTimelineStatus("Loading contact timeline...");
+    void requestDashboardJson<ContactTimelineResponse>(
+      apiBaseUrl,
+      `/api/contacts/${encodeURIComponent(activeContactDossier.contact.id)}/timeline`,
+      { headers: devHeaders },
+    )
+      .then((payload) => {
+        if (cancelled) return;
+        setActiveContactTimeline(payload.timeline);
+        setContactTimelineStatus(
+          `${payload.timeline.length} timeline cue${payload.timeline.length === 1 ? "" : "s"} loaded.`,
+        );
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setActiveContactTimeline([]);
+        setContactTimelineStatus(`Timeline unavailable: ${dashboardApiStatus(error)}`);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeContactDossier, apiBaseUrl, devHeaders]);
   const canRecordContactDataQualityResolution = Boolean(
     canRecordContactDataQualityResolutions(capabilities.sections),
   );
@@ -4935,6 +4971,8 @@ export default function DashboardClient({
                   contactDataQualityResolutions={activeContactDataQualityResolutions}
                   contactDataQualityStatus={contactDataQualityStatus}
                   contactReviewQueue={contactReviewQueue}
+                  contactTimeline={activeContactTimeline}
+                  contactTimelineStatus={contactTimelineStatus}
                   contactSearch={contactSearch}
                   creatingContact={creatingContact}
                   creatingMatterFromContactId={creatingMatterFromContactId}
@@ -5519,6 +5557,8 @@ export default function DashboardClient({
                   contactDataQualityResolutions={activeContactDataQualityResolutions}
                   contactDataQualityStatus={contactDataQualityStatus}
                   contactReviewQueue={contactReviewQueue}
+                  contactTimeline={activeContactTimeline}
+                  contactTimelineStatus={contactTimelineStatus}
                   contactSearch={contactSearch}
                   creatingContact={creatingContact}
                   creatingMatterFromContactId={creatingMatterFromContactId}
