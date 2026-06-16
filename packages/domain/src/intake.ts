@@ -39,6 +39,13 @@ export interface EmbeddedIntakePackage {
   documents: EmbeddedIntakePackageDocument[];
 }
 
+export interface EmbeddedIntakeQaScenario {
+  id: string;
+  name: string;
+  answers: Record<string, unknown>;
+  selectedPackageIds?: string[];
+}
+
 export interface EmbeddedIntakeTemplateDefinitionV1 {
   schemaVersion: 1;
   questions: EmbeddedIntakeQuestion[];
@@ -89,6 +96,7 @@ export interface EmbeddedIntakeTemplateDefinitionV2 {
   branchRules: EmbeddedIntakeBranchRule[];
   packages: EmbeddedIntakePackage[];
   sections: EmbeddedIntakeFormSection[];
+  qaScenarios?: EmbeddedIntakeQaScenario[];
 }
 
 export type EmbeddedIntakeTemplateDefinition =
@@ -563,6 +571,8 @@ export function validateEmbeddedIntakeTemplateDefinition(
   }
 
   if (definition.schemaVersion === 2) {
+    validateEmbeddedIntakeQaScenarios(definition, { questionIds, packageIds });
+
     assertUniqueIds(
       "form section",
       definition.sections.map((section) => section.id),
@@ -589,6 +599,47 @@ export function validateEmbeddedIntakeTemplateDefinition(
   }
 
   return definition;
+}
+
+function validateEmbeddedIntakeQaScenarios(
+  definition: EmbeddedIntakeTemplateDefinitionV2,
+  context: {
+    questionIds: ReadonlySet<string>;
+    packageIds: ReadonlySet<string>;
+  },
+): void {
+  const scenarios = definition.qaScenarios ?? [];
+  assertUniqueIds(
+    "QA scenario",
+    scenarios.map((scenario) => scenario.id),
+  );
+
+  for (const scenario of scenarios) {
+    if (!scenario.name.trim()) {
+      throw new Error(`QA scenario ${scenario.id} must define a name`);
+    }
+    if (
+      !scenario.answers ||
+      typeof scenario.answers !== "object" ||
+      Array.isArray(scenario.answers)
+    ) {
+      throw new Error(`QA scenario ${scenario.id} answers must be an object`);
+    }
+    for (const questionId of Object.keys(scenario.answers)) {
+      if (!context.questionIds.has(questionId)) {
+        throw new Error(`QA scenario ${scenario.id} answers unknown question ${questionId}`);
+      }
+    }
+    assertUniqueIds(
+      `selected package for QA scenario ${scenario.id}`,
+      scenario.selectedPackageIds ?? [],
+    );
+    for (const packageId of scenario.selectedPackageIds ?? []) {
+      if (!context.packageIds.has(packageId)) {
+        throw new Error(`QA scenario ${scenario.id} selects unknown package ${packageId}`);
+      }
+    }
+  }
 }
 
 export function intakeTemplatePreviewStatus(
@@ -885,6 +936,19 @@ export function buildEmbeddedIntakeTemplateQaReport(input: {
         branchRuleId: rule.id,
       }),
     ),
+    ...(definition.schemaVersion === 2
+      ? (definition.qaScenarios ?? []).map((scenario) =>
+          buildQaPreview({
+            id: `scenario:${scenario.id}`,
+            label: scenario.name,
+            templateId: input.templateId,
+            templateVersion: input.templateVersion,
+            definition,
+            answers: scenario.answers,
+            selectedPackageIds: scenario.selectedPackageIds,
+          }),
+        )
+      : []),
   ];
 
   for (const preview of previews) {
@@ -961,6 +1025,7 @@ function buildQaPreview(input: {
   templateVersion: number;
   definition: EmbeddedIntakeTemplateDefinition;
   answers: Record<string, unknown>;
+  selectedPackageIds?: string[];
   branchRuleId?: string;
 }): IntakeTemplateQaPreview {
   const snapshot = resolveEmbeddedIntakeAnswers({
@@ -968,6 +1033,7 @@ function buildQaPreview(input: {
     templateVersion: input.templateVersion,
     definition: input.definition,
     answers: input.answers,
+    selectedPackageIds: input.selectedPackageIds,
   });
   return {
     id: input.id,

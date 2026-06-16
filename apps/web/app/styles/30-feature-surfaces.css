@@ -830,14 +830,16 @@
 
 .intake-section-editor-list,
 .intake-item-editor-list,
-.intake-branch-rule-list {
+.intake-branch-rule-list,
+.intake-qa-scenario-list {
   display: grid;
   gap: 10px;
 }
 
 .intake-section-editor,
 .intake-item-editor,
-.intake-branch-rule-editor {
+.intake-branch-rule-editor,
+.intake-qa-scenario-editor {
   display: grid;
   gap: 10px;
   border: 1px solid var(--line);
@@ -860,7 +862,8 @@
 }
 
 .intake-item-add-row,
-.intake-question-grid {
+.intake-question-grid,
+.intake-qa-answer-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;

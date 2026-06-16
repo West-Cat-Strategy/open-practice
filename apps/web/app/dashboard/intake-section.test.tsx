@@ -443,6 +443,7 @@ describe("IntakeSection", () => {
     expect(html).toContain("Form builder");
     expect(html).toContain('class="intake-builder-grid"');
     expect(html).toContain("Synthetic intake form");
+    expect(html).toContain("QA scenarios");
     expect(html).toContain("Preview checks");
     expect(html).toContain("Client form links");
     expect(html).toContain("One-time token");

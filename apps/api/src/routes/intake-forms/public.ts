@@ -193,8 +193,10 @@ function serializePublicTemplateDefinition(
   if (definition.schemaVersion !== 2) {
     return { ...definition, questions: publicQuestions };
   }
+  const { qaScenarios, ...publicDefinition } = definition;
+  void qaScenarios;
   return {
-    ...definition,
+    ...publicDefinition,
     questions: publicQuestions,
     sections: definition.sections.map((section) => ({
       ...section,

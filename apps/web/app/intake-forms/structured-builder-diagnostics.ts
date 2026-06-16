@@ -67,6 +67,10 @@ export function structuredIntakeDiagnostics(definition: EmbeddedIntakeTemplateDe
       "form item",
       definition.sections.flatMap((section) => section.items.map((item) => item.id)),
     ),
+    ...duplicateIds(
+      "QA scenario",
+      (definition.qaScenarios ?? []).map((scenario) => scenario.id),
+    ),
   ];
   const warnings: IntakeTemplatePreviewCheck[] = [];
 
@@ -156,6 +160,35 @@ export function structuredIntakeDiagnostics(definition: EmbeddedIntakeTemplateDe
           message: "Signature document availability needs matter-scoped verification.",
           sectionId: section.id,
           itemId: item.id,
+        });
+      }
+    }
+  }
+
+  for (const scenario of definition.qaScenarios ?? []) {
+    if (!scenario.name.trim()) {
+      blocking.push({
+        code: "invalid_definition",
+        severity: "blocking",
+        message: `QA scenario ${scenario.id} must define a name`,
+      });
+    }
+    for (const questionId of Object.keys(scenario.answers ?? {})) {
+      if (!questionIds.has(questionId)) {
+        blocking.push({
+          code: "invalid_definition",
+          severity: "blocking",
+          message: `QA scenario ${scenario.id} answers unknown question ${questionId}`,
+          questionId,
+        });
+      }
+    }
+    for (const packageId of scenario.selectedPackageIds ?? []) {
+      if (!packageIds.has(packageId)) {
+        blocking.push({
+          code: "invalid_definition",
+          severity: "blocking",
+          message: `QA scenario ${scenario.id} selects unknown package ${packageId}`,
         });
       }
     }

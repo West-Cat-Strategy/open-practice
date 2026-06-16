@@ -9,6 +9,7 @@ import type {
   EmbeddedIntakeBranchRule,
   EmbeddedIntakeFormItem,
   EmbeddedIntakeFormItemKind,
+  EmbeddedIntakeQaScenario,
   EmbeddedIntakeTemplateDefinitionV2,
   IntakeTemplatePreviewCheckSeverity,
   IntakeFormItemActionRecord,
@@ -465,6 +466,20 @@ export interface IntakeBranchRulePathSummary {
   requiredIncompleteItemIds: string[];
   matchedBranchRuleIds: string[];
   eligiblePackageIds: string[];
+  selectedPackageIds: string[];
+  packageDocumentCount: number;
+}
+
+export interface IntakeQaScenarioPathSummary {
+  scenarioId: string;
+  name: string;
+  path: string;
+  visibleQuestionIds: string[];
+  visibleFormItemIds: string[];
+  requiredIncompleteItemIds: string[];
+  matchedBranchRuleIds: string[];
+  eligiblePackageIds: string[];
+  selectedPackageIds: string[];
   packageDocumentCount: number;
 }
 
@@ -480,6 +495,20 @@ export function makeIntakeBranchRule(
     operator: "present",
     showQuestionIds: [],
     eligiblePackageIds: [],
+  };
+}
+
+export function makeIntakeQaScenario(
+  definition: EmbeddedIntakeTemplateDefinitionV2,
+): EmbeddedIntakeQaScenario {
+  return {
+    id: uniqueDefinitionId(
+      "scenario",
+      (definition.qaScenarios ?? []).map((scenario) => scenario.id),
+    ),
+    name: "New QA scenario",
+    answers: {},
+    selectedPackageIds: [],
   };
 }
 
@@ -517,6 +546,35 @@ export function summarizeIntakeBranchRulePath(
   definition: EmbeddedIntakeTemplateDefinitionV2,
 ): IntakeBranchRulePathSummary {
   const answers = { [rule.questionId]: sampleBranchRuleAnswer(rule) };
+  const summary = summarizeIntakePath(definition, answers);
+
+  return {
+    ruleId: rule.id,
+    trigger: summarizeIntakeBranchRuleTrigger(rule, definition),
+    path: summarizeIntakeBranchPathCounts(summary),
+    ...summary,
+  };
+}
+
+export function summarizeIntakeQaScenarioPath(
+  scenario: EmbeddedIntakeQaScenario,
+  definition: EmbeddedIntakeTemplateDefinitionV2,
+): IntakeQaScenarioPathSummary {
+  const summary = summarizeIntakePath(definition, scenario.answers, scenario.selectedPackageIds);
+
+  return {
+    scenarioId: scenario.id,
+    name: scenario.name,
+    path: summarizeIntakeBranchPathCounts(summary),
+    ...summary,
+  };
+}
+
+function summarizeIntakePath(
+  definition: EmbeddedIntakeTemplateDefinitionV2,
+  answers: Record<string, unknown>,
+  requestedPackageIds?: string[],
+): Omit<IntakeQaScenarioPathSummary, "scenarioId" | "name" | "path"> {
   const conditionalQuestionIds = new Set(
     definition.branchRules.flatMap((candidate) => candidate.showQuestionIds ?? []),
   );
@@ -537,7 +595,9 @@ export function summarizeIntakeBranchRulePath(
     for (const packageId of candidate.eligiblePackageIds ?? []) eligiblePackageIds.add(packageId);
   }
 
-  const selectedPackageIds = [...eligiblePackageIds];
+  const selectedPackageIds = (requestedPackageIds ?? [...eligiblePackageIds]).filter((packageId) =>
+    eligiblePackageIds.has(packageId),
+  );
   const packageDocumentCount = definition.packages
     .filter((intakePackage) => selectedPackageIds.includes(intakePackage.id))
     .reduce((total, intakePackage) => total + intakePackage.documents.length, 0);
@@ -561,15 +621,11 @@ export function summarizeIntakeBranchRulePath(
     requiredIncompleteItemIds,
     matchedBranchRuleIds,
     eligiblePackageIds: [...eligiblePackageIds],
+    selectedPackageIds,
     packageDocumentCount,
   };
 
-  return {
-    ruleId: rule.id,
-    trigger: summarizeIntakeBranchRuleTrigger(rule, definition),
-    path: summarizeIntakeBranchPathCounts(summary),
-    ...summary,
-  };
+  return summary;
 }
 
 function uniqueDefinitionId(prefix: string, existing: string[]): string {
