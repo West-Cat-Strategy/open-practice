@@ -1028,9 +1028,14 @@ the response, and explicit OCR queue requests are rejected until scanning has pa
 document-processing projection keeps the broad `supportedTasks` list for
 compatibility, adds `actionableTasks: ["ocr"]`, and reports AI triage, transcription, and media
 through reserved/deferred queue and task metadata until their provider governance and enqueue
-surfaces are implemented. Async assist status and job endpoints are separate from
-document-processing classification: `ai_triage` can report configured for
-`draft_assist_suggestion` when the async assist queue is injected, while classification remains
+surfaces are implemented. Document conversion, annotation, chunking, Markdown extraction, semantic
+review, and provider-backed extraction are also reserved/deferred: a future local-only prototype
+must prove that retained state is limited to OP-authored redacted summaries, counts, statuses, and
+posture metadata, and must not put raw client text, raw converted Markdown, raw annotations,
+provider payloads, prompts, sensitive chunks, embeddings, storage keys, object bodies, or private
+excerpts in job metadata, audit metadata, API posture, or proof notes. Async assist status and job
+endpoints are separate from document-processing classification: `ai_triage` can report configured
+for `draft_assist_suggestion` when the async assist queue is injected, while classification remains
 reserved/deferred. Job metadata must not carry email bodies, portal tokens, generated content,
 storage keys, raw evidence, source text, or private secrets.
 The workbench also returns reviewer-only `reviewSuggestions` per visible document. These suggestions

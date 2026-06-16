@@ -38,6 +38,13 @@ metadata for trust-transfer, ledger transaction approval, invoice approval, and 
 decisions, matter-scoped filtering, dashboard rendering, safe allowlisted cues, and the preserved
 no-schema/no-posting/no-settlement/no-public-route/no-read-audit-event boundary.
 
+The 2026-06-16 private document conversion and annotation boundary proof is recorded in
+[OP_PRIVATE_DOCUMENT_CONVERSION_ANNOTATION_BOUNDARY_PROOF_2026-06-16.md](OP_PRIVATE_DOCUMENT_CONVERSION_ANNOTATION_BOUNDARY_PROOF_2026-06-16.md).
+It covers the docs-first local-only boundary for future conversion, annotation, chunking, Markdown
+extraction, semantic review, and provider-backed extraction prototypes; the preserved OCR-only
+actionable document-processing posture; clean-room reference constraints; and the no-raw-client-text/
+no-raw-Markdown/no-annotation/no-provider-payload/no-sensitive-chunk metadata boundary.
+
 The 2026-06-16 inbound email matter draft proof is recorded in
 [OP_INBOUND_EMAIL_MATTER_DRAFT_PROOF_2026-06-16.md](OP_INBOUND_EMAIL_MATTER_DRAFT_PROOF_2026-06-16.md).
 It covers the review-only `POST /api/inbound-email/messages/:id/matter-draft` endpoint, sanitized

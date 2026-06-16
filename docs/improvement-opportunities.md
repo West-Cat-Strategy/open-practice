@@ -99,14 +99,24 @@ surface.
     snippets without a reuse decision.
 
 - **Private document conversion and annotation research spike**
-  - **First slice:** Prototype an optional local conversion/annotation boundary that stores only
-    redacted summaries, not raw client text in job metadata.
-  - **Local gap / shipped boundary:** OCR extraction exists, but annotation, redaction, chunking,
-    Markdown conversion, and semantic review surfaces are absent.
+  - **Status:** Docs-first boundary shipped on 2026-06-16; keep future work focused on a separately
+    reviewed local-only prototype.
+  - **Shipped boundary:** Open Practice now documents that conversion, annotation, chunking,
+    Markdown extraction, and semantic review remain deferred beyond OCR. Future retained state may
+    include only OP-authored redacted summaries, counts, statuses, and posture metadata; raw client
+    text, raw converted Markdown, raw annotations, provider payloads, prompts, sensitive chunks,
+    embeddings, storage keys, object bodies, and private excerpts must not enter job metadata,
+    audit metadata, API posture, or proof notes.
+  - **Remaining gap:** OCR extraction exists, but no runtime conversion, annotation, redaction,
+    chunking, Markdown conversion, or semantic-review API, worker, schema, provider integration, or
+    dashboard surface has shipped.
   - **References:** `unstructured-io__unstructured`, `microsoft__markitdown`,
-    `getomni-ai__zerox`, and `open-source-legal__opencontracts`.
+    `getomni-ai__zerox`, `open-source-legal__opencontracts`, `paperless-ngx__paperless-ngx`, and
+    `papermerge__papermerge-core`.
   - **Reuse and snippets:** Current posture is research/reference-only despite some permissive
-    licenses; no snippets until privacy, provider, and provenance posture are documented.
+    licenses; no snippets, schemas, migrations, UI, tests, styles, assets, or dependencies until a
+    separate reuse decision records source, commit/tag, license, reuse class, touched files,
+    notices, reviewer, and date.
 
 #### Communications, Workflows, And Meetings
 

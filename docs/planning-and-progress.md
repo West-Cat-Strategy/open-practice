@@ -40,6 +40,16 @@ dashboard shows the compact journal, empty state, and audit-chain-invalid warnin
 in
 [Financial command approval journal proof](validation/OP_FINANCIAL_COMMAND_APPROVAL_JOURNAL_PROOF_2026-06-16.md).
 
+The 2026-06-16 private document conversion and annotation boundary branch records docs-first
+policy for future local-only conversion, annotation, chunking, and semantic-review prototypes. It
+keeps OCR as the only actionable document-processing queue today and requires any future retained
+state to be OP-authored, redacted summaries, counts, statuses, and posture metadata only. Raw client
+text, raw converted Markdown, raw annotations, provider payloads, prompts, sensitive chunks,
+embeddings, storage keys, object bodies, and private excerpts must stay out of job metadata, audit
+metadata, API posture, and proof notes. No API, database, worker, provider, route, dependency,
+schema, runtime prototype, or reference-derived source was added. Proof is recorded in
+[private document conversion and annotation boundary proof](validation/OP_PRIVATE_DOCUMENT_CONVERSION_ANNOTATION_BOUNDARY_PROOF_2026-06-16.md).
+
 The 2026-06-16 staff intake QA scenario matrix branch extends OP-T157's visual branch-rule
 authoring surface with staff-only saved QA scenarios inside existing embedded V2 intake template
 definitions. Staff can name scenario paths, provide synthetic answers, choose package combinations,
