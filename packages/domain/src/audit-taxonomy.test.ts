@@ -287,6 +287,54 @@ describe("audit event taxonomy", () => {
     );
   });
 
+  it("classifies contact-history export requests with posture-only metadata", () => {
+    const classification = classifyAuditEvent(
+      auditEvent({
+        action: "contact_history_export.requested",
+        resourceType: "contact_history_export",
+        resourceId: "contact-ada",
+        metadata: {
+          contactId: "contact-ada",
+          purpose: "staff_review",
+          reviewReasonPresent: true,
+          generatedCategoryCount: 9,
+          timelineEntryCount: 4,
+          matterAssociationCount: 1,
+          portalGrantCount: 1,
+          conflictSummaryCount: 2,
+          retentionPosture: "transient_regenerated_no_retained_export_body",
+          legalHoldPosture: "respects_existing_matter_visibility_no_hold_override",
+          privacyPosture: "redacted_authorized_projection_only",
+        },
+      }),
+    );
+
+    expect(classification).toMatchObject({
+      category: "contacts",
+      known: true,
+      matterScope: "optional_matter",
+      resourceTypeMatches: true,
+    });
+    expect(classification.metadataHints.resource).toEqual(
+      expect.arrayContaining([
+        "contactId",
+        "purpose",
+        "reviewReasonPresent",
+        "generatedCategoryCount",
+        "timelineEntryCount",
+        "matterAssociationCount",
+        "portalGrantCount",
+        "conflictSummaryCount",
+        "retentionPosture",
+        "legalHoldPosture",
+        "privacyPosture",
+      ]),
+    );
+    expect(classification.metadataHints.resource).not.toEqual(
+      expect.arrayContaining(["displayName", "email", "phone", "address", "export"]),
+    );
+  });
+
   it("classifies trust transfer review events with safe metadata hints", () => {
     const classification = classifyAuditEvent(
       auditEvent({

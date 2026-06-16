@@ -10,7 +10,7 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 | Snapshot              | Value                                                                |
 | --------------------- | -------------------------------------------------------------------- |
-| Current focus         | Full CRM Contacts is implemented and validated on mainline.          |
+| Current focus         | Single-contact CRM contact-history export runtime is in validation.  |
 | Next recommended pick | Pick the next candidate from the durable roadmap/backlog.            |
 | Ready rows            | 0                                                                    |
 | Candidate rows        | 0                                                                    |
@@ -21,6 +21,16 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 | Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`     |
 
 ## Current Handoff Notes
+
+The 2026-06-16 single-contact CRM contact-history export runtime adds
+`POST /api/contacts/:contactId/history-export` for authenticated staff/admin users with the
+existing `contact:export` permission. It returns a transient `staff_review` JSON export for one
+visible contact from the existing authorized dossier/detail/timeline projections, requires a short
+review reason, records only posture/count audit metadata, and adds a Contacts dashboard action for a
+client-side JSON download. It does not add a schema, migration, worker, provider, queue, object
+storage artifact, persistent download link, retained export body, retention deadline, deletion
+workflow, legal-hold override, or compliance claim. Proof is recorded in
+[CRM contact-history export runtime proof](validation/OP_CONTACT_HISTORY_EXPORT_RUNTIME_PROOF_2026-06-16.md).
 
 The 2026-06-16 manual-payment reconciliation gate branch records manual payments as
 `pending_reconciliation` evidence until staff reviewer evidence creates the effective allocation and

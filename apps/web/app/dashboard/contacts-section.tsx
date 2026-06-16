@@ -1,4 +1,12 @@
-import { CalendarDays, Check, ClipboardCheck, Plus, Search, UserPlus } from "lucide-react";
+import {
+  CalendarDays,
+  Check,
+  ClipboardCheck,
+  Download,
+  Plus,
+  Search,
+  UserPlus,
+} from "lucide-react";
 import {
   contactDataQualityResolutionActions,
   contactDataQualitySignalKey,
@@ -35,6 +43,7 @@ function contactTimelineCueLabel(cueType?: string): string {
 export function ContactsSection({
   activeContactDossier,
   canRecordContactDataQualityResolution,
+  canExportContactHistory,
   canCreateContact,
   canCreateMatter,
   compactStatus,
@@ -48,6 +57,9 @@ export function ContactsSection({
   contactDataQualityResolutions,
   contactDataQualityStatus,
   contactDossiers,
+  contactHistoryExportReason,
+  contactHistoryExportStatus,
+  contactHistoryExportSummary,
   contactTimeline,
   contactTimelineStatus,
   contactReviewQueue,
@@ -61,6 +73,8 @@ export function ContactsSection({
   onContactCreateLifecycleStatusChange = () => undefined,
   onContactCreatePhoneChange,
   onContactCreateRoleCategoryChange = () => undefined,
+  onContactHistoryExportReasonChange,
+  onExportContactHistory,
   onCreateContact,
   onCreateMatterFromContact,
   onNewAppointmentForContact,
@@ -70,9 +84,11 @@ export function ContactsSection({
   onSelectContact,
   onSelectMatter,
   recordingContactResolutionKey,
+  exportingContactHistory,
 }: {
   activeContactDossier?: ContactDossier;
   canRecordContactDataQualityResolution: boolean;
+  canExportContactHistory: boolean;
   canCreateContact: boolean;
   canCreateMatter: boolean;
   compactStatus: (value?: string) => string;
@@ -86,6 +102,9 @@ export function ContactsSection({
   contactDataQualityResolutions: ContactDataQualityResolutionRecord[];
   contactDataQualityStatus: string;
   contactDossiers: ContactDossiersResponse;
+  contactHistoryExportReason: string;
+  contactHistoryExportStatus: string;
+  contactHistoryExportSummary: string;
   contactTimeline: ContactTimelineResponse["timeline"];
   contactTimelineStatus: string;
   contactReviewQueue?: ContactReviewQueueResponse;
@@ -99,6 +118,8 @@ export function ContactsSection({
   onContactCreateLifecycleStatusChange?: (value: string) => void;
   onContactCreatePhoneChange: (value: string) => void;
   onContactCreateRoleCategoryChange?: (value: string) => void;
+  onContactHistoryExportReasonChange: (value: string) => void;
+  onExportContactHistory: () => void;
   onCreateContact: () => void;
   onCreateMatterFromContact: (dossier: ContactDossier) => void;
   onNewAppointmentForContact: (dossier: ContactDossier) => void;
@@ -111,6 +132,7 @@ export function ContactsSection({
   onSelectContact: (contactId: string) => void;
   onSelectMatter: (matterId: string) => void;
   recordingContactResolutionKey: string;
+  exportingContactHistory: boolean;
 }) {
   const taskTimelineCues = contactTimeline.filter((entry) => entry.kind === "task").slice(0, 6);
   const matterNumberById = new Map(
@@ -819,6 +841,41 @@ export function ContactsSection({
                   <p className="inline-empty">No task or follow-up timeline cues.</p>
                 ) : null}
               </div>
+
+              {canExportContactHistory ? (
+                <div className="share-controls contact-history-export-controls">
+                  <div className="section-title">
+                    <h3>Contact-history export</h3>
+                    <span>{contactHistoryExportStatus}</span>
+                  </div>
+                  <div className="calendar-attendee-form">
+                    <label className="search-field contact-export-reason-field">
+                      <span>Review reason</span>
+                      <input
+                        onChange={(event) =>
+                          onContactHistoryExportReasonChange(event.currentTarget.value)
+                        }
+                        placeholder="Staff review reason"
+                        value={contactHistoryExportReason}
+                      />
+                    </label>
+                    <button
+                      className="secondary-button"
+                      disabled={
+                        exportingContactHistory || contactHistoryExportReason.trim().length < 8
+                      }
+                      onClick={onExportContactHistory}
+                      type="button"
+                    >
+                      <Download size={16} aria-hidden="true" />
+                      Export JSON
+                    </button>
+                  </div>
+                  {contactHistoryExportSummary ? (
+                    <p className="inline-empty">{contactHistoryExportSummary}</p>
+                  ) : null}
+                </div>
+              ) : null}
 
               <div className="section-title">
                 <h3>Resolution history</h3>

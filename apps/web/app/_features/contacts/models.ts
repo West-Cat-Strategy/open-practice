@@ -17,6 +17,13 @@ export function canRecordContactDataQualityResolutions(
   );
 }
 
+export function canExportContactHistory(sections: DashboardSectionCapability[]): boolean {
+  return sections.some(
+    (section) =>
+      section.key === "contacts" && section.enabled && section.actions.includes("export"),
+  );
+}
+
 export type ContactDossiersResponse = ContactDossier[];
 
 export type ContactReviewQueueSignal = Omit<
@@ -55,4 +62,35 @@ export type ContactDataQualityResolutionsResponse = ContactDataQualityResolution
 
 export interface ContactTimelineResponse {
   timeline: ActivityTimelineEntry[];
+}
+
+export interface ContactHistoryExportResponse {
+  exportRequest: {
+    purpose: "staff_review";
+    contactId: string;
+    generatedAt: string;
+    generatedByUserId: string;
+    reviewReasonPresent: boolean;
+    retentionPosture: string;
+    legalHoldPosture: string;
+    privacyPosture: string;
+    storedBody: false;
+  };
+  export: {
+    generatedAt: string;
+    generatedByUserId: string;
+    purpose: "staff_review";
+    policyBoundary: Record<string, boolean>;
+    categories: {
+      identityPosture: Record<string, unknown>;
+      namePosture: Record<string, unknown>;
+      contactMethodPosture: Record<string, unknown>;
+      relationshipPosture: unknown[];
+      matterPartyPosture: unknown[];
+      portalAccessPosture: { grants?: unknown[]; [key: string]: unknown };
+      conflictReviewPosture: Record<string, unknown>;
+      dataQualityAndDuplicateReviewPosture: Record<string, unknown>;
+      timelineCues: unknown[];
+    };
+  };
 }

@@ -1,22 +1,46 @@
 # Contact-History Export, Retention, And Privacy Decision Packet
 
-This packet is a pre-implementation policy surface for future contact-history exports. It records
-the decisions Open Practice needs before adding runtime export behavior, retention timelines,
-deletion workflows, or privacy-policy-facing claims.
+This packet records the policy surface for contact-history exports. The first approved runtime
+slice is now selected: a transient `staff_review` JSON export for one visible CRM contact, generated
+from existing authorized dossier/detail/timeline projections with a required review reason and no
+retained export body.
 
 Open Practice currently has the Full CRM Contacts foundation: contact and organization records,
 relationship links, matter-contact associations, portal-access posture, conflict-check integration,
-and authorization-filtered CRM panels. The remaining contact-history export work must stay behind
-explicit product, privacy, and legal review before implementation.
+authorization-filtered CRM panels, and the first single-contact staff-review export runtime.
+Broader contact-history export work must stay behind explicit product, privacy, and legal review
+before implementation.
+
+## Selected First Runtime Slice
+
+The selected first runtime is intentionally narrow:
+
+- request path: `POST /api/contacts/:contactId/history-export`;
+- purpose: `staff_review` only;
+- requester path: authenticated owner-admin/licensee staff with existing `contact:export`;
+- context: one firm-scoped contact visible through the existing dossier/detail visibility rules;
+- body: strict `{ purpose: "staff_review", reviewReason: string }`, with a short review reason
+  required before generation;
+- output: synchronous JSON built from authorized contact detail, visible dossier, visible timeline,
+  portal posture, conflict summaries, and duplicate-review posture;
+- storage posture: transient regeneration only, no server-side retained export body, no object
+  storage artifact, no queue payload, no job metadata body, no provider, no persistent download
+  link, no schema, and no migration;
+- audit posture: `contact_history_export.requested` stores only bounded IDs, purpose, reason
+  presence, generated counts, and retention/hold/privacy posture strings.
+
+This slice does not create retention deadlines, deletion automation, legal-hold override behavior,
+approval workflows, matter-scoped export packets, jurisdiction-certified records-disposition
+claims, or privacy-law compliance claims.
 
 ## Purpose And Audience
 
-A future contact-history export should support staff review, practice administration, audit
-response, and client/matter record review without becoming a broad data dump. The export purpose
-must be selected before implementation so the runtime can constrain fields, authorization,
-retention, and audit evidence to that purpose.
+Future contact-history exports may support practice administration, audit response, and
+client/matter record review without becoming broad data dumps. The first runtime purpose is
+selected as `staff_review` for one visible contact, so the runtime constrains fields,
+authorization, retention posture, and audit evidence to that purpose.
 
-Before implementation, the product owner and reviewer should decide:
+Before any broader implementation, the product owner and reviewer should decide:
 
 - which request paths are allowed, such as staff export for one contact, matter-scoped contact
   history, administrative review, or audit-response packet;
@@ -33,8 +57,8 @@ All examples in future implementation proof must use synthetic data only.
 
 ## Exportable History Categories
 
-The first export design should define categories at the policy level before choosing fields. A safe
-starting catalogue is:
+The selected first export design defines policy categories without exposing raw private history. The
+safe starting catalogue is:
 
 - contact identity posture, such as person or organization type, lifecycle status, role categories,
   and reviewer-maintained identifiers;
@@ -51,14 +75,15 @@ starting catalogue is:
   authorization level already allowed for the requester;
 - data-quality and duplicate-review posture, without automatic merges or hidden source mutation.
 
-The packet does not approve a field list. Runtime work must define a minimum field allowlist for
-each request path and must avoid raw private notes, arbitrary metadata values, storage keys,
-checksum hashes, token values, credentials, provider payloads, or privileged document text unless a
-later review explicitly approves a narrower projection.
+The first runtime approves only a minimum field allowlist for the `staff_review` single-contact
+path. Runtime work must continue to avoid raw private notes, arbitrary metadata values, storage
+keys, checksum hashes, token values, credentials, provider payloads, task titles/descriptions,
+raw matched values, scheduling source labels, hidden matter details, or privileged document text
+unless a later review explicitly approves a narrower projection.
 
 ## Authorization, Redaction, And Matter Boundaries
 
-Future export behavior must preserve the same server-side authorization posture as contact
+Export behavior must preserve the same server-side authorization posture as contact
 dossiers, matter-contact associations, conflict checks, portal grants, and document access.
 
 - Firm scoping and authenticated server-side authorization are required for every export request.
@@ -73,8 +98,9 @@ dossiers, matter-contact associations, conflict checks, portal grants, and docum
   aggregate or redacted output for other authorized readers.
 - Export jobs and audit events should store bounded request metadata, status, purpose, actor,
   timestamps, and taxonomy summaries, not raw export rows or arbitrary metadata values.
-- Download links should be short-lived and revocable, and object storage should remain private with
-  access mediated by server-side authorization.
+- The first runtime has no download link or object-storage artifact; future download links should
+  be short-lived and revocable, and object storage should remain private with access mediated by
+  server-side authorization.
 
 The export design must treat privacy and matter-scoped access as required behavior, not UI-only
 ergonomics.
@@ -85,7 +111,7 @@ Open Practice already has read-only document retention-review hints based on leg
 supersession, upload/checksum/scan state, and review state. That precedent does not approve contact
 retention timelines, deletion workflows, policy eligibility, or records-disposition claims.
 
-Before contact-history export implementation, reviewers must answer:
+Before broader contact-history export implementation, reviewers must answer:
 
 - whether contact-history export records are transient request artifacts, retained audit evidence,
   regenerated downloads, or some combination of those;
@@ -102,13 +128,17 @@ Before contact-history export implementation, reviewers must answer:
 - which decisions need jurisdiction-specific legal review before the product can claim retention or
   records-disposition support.
 
-Until those answers are reviewed, future work may add only review-ready decision surfaces or
-non-mutating hints. It must not add deletion automation, retention deadlines, retention-policy
-eligibility, or jurisdiction-specific records-disposition claims.
+The first runtime answers the narrow storage question as transient regeneration with no retained
+export body, no retention deadline, no deletion workflow, and no compliance claim. Until broader
+answers are reviewed, future work may add only review-ready decision surfaces or non-mutating hints.
+It must not add deletion automation, retention deadlines, retention-policy eligibility, or
+jurisdiction-specific records-disposition claims.
 
 ## Privacy-Policy Choices Before Runtime Work
 
-The privacy-policy owner should decide the user-facing posture before the first export route ships:
+The privacy-policy owner selected the first-route posture as internal staff review of one visible
+contact from an authorized, redacted projection. Before broader routes ship, the privacy-policy
+owner should decide:
 
 - what contact-history information the practice may export and for what purpose;
 - whether exports can include communication preferences, do-not-contact state, confidential-party
@@ -126,10 +156,10 @@ covers records, authorizations, retention, reporting, privacy notices, and role/
 
 ## Explicit Non-Goals
 
-This packet does not add or approve:
+This packet and the selected first runtime do not add or approve:
 
-- API routes, database tables, migrations, UI, workers, providers, dependencies, or generated export
-  files;
+- database tables, migrations, workers, providers, dependencies, stored export files, queued export
+  jobs, persistent download links, or retained export bodies;
 - live CRM sync, outbound email, SMS, payment, AI, provider side effects, or portal notification
   behavior;
 - export body storage in job metadata, audit metadata, queue payloads, or arbitrary review
@@ -140,6 +170,6 @@ This packet does not add or approve:
 - client, matter, credential, payment, private deployment, privileged-document, or private audit
   examples.
 
-The next implementation-ready slice should return to this packet, choose one narrow export purpose,
-define its minimum authorized field allowlist, and record validation proof before any runtime
-change.
+The next implementation-ready slice should return to this packet, choose a separate narrow export
+purpose beyond `staff_review`, define its minimum authorized field allowlist, and record validation
+proof before any broader runtime change.
