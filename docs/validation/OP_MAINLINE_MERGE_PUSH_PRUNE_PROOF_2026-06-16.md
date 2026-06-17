@@ -389,3 +389,101 @@ Validation results:
 | `pnpm docs:check`   | Passed | Documentation link validation passed.                                                                                   |
 | `pnpm policy:check` | Passed | Secrets, package policy, dead-code, migration, OSS reuse, docs, proof index, Docker ignore, and boundary checks passed. |
 | `git diff --check`  | Passed | No whitespace errors.                                                                                                   |
+
+## Merged Sibling Worktree Retirement - 2026-06-17
+
+Live follow-up audit found three sibling worktrees whose branch tips were already merged into local
+`main`; a fourth cleanup worktree was created from `main` so the occupied root checkout and other
+active sibling lanes stayed untouched:
+
+| Worktree                                                             | Branch                                           | Disposition                                                                                                                                         |
+| -------------------------------------------------------------------- | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/Users/bryan/projects/open-practice-docker-footprint-hardening`     | `codex/docker-footprint-hardening`               | Clean and merged into local `main`; removed with its attached local branch.                                                                         |
+| `/Users/bryan/projects/open-practice-parked-worktree-reconciliation` | `docs/parked-worktree-reconciliation-2026-06-17` | Clean and merged into local `main`; removed with its attached local branch.                                                                         |
+| `/Users/bryan/projects/open-practice-promotional-root-readme`        | `docs/promotional-root-readme`                   | Merged into local `main` but carried untracked promotional `README.md` residue; preserved to ignored local evidence before forced worktree removal. |
+
+Pre-cleanup audit evidence:
+
+- `git status --short --branch` in the primary checkout showed
+  `feature/op-t134-timer-draft-lock-proof`, so cleanup ran in
+  `/Users/bryan/projects/open-practice-retire-merged-sibling-worktrees-2026-06-17` on branch
+  `docs/retire-merged-sibling-worktrees-2026-06-17`.
+- `git worktree list --porcelain` also showed active preserved worktrees for aged receivables,
+  document-retention hold design, financial export field profiles, and payment-import boundary.
+- `git branch --merged main` listed the three target branches, and `git branch --no-merged main`
+  returned no branches.
+- Per-worktree status showed the Docker footprint and parked reconciliation worktrees were clean.
+  The promotional root README worktree only carried untracked `README.md` residue.
+- The promotional README residue was copied to
+  `.tmp/worktree-retirement/2026-06-17/promotional-root-readme/README.md` before removal; SHA-256:
+  `a6e672928440324307f5570dd051d387b353d320287be696a1613bd1c1e9f801`.
+- Empty ignored link-target placeholders were added under the same `.tmp` evidence directory because
+  repository doc-link validation walks ignored Markdown files; the preserved README bytes and hash
+  stayed unchanged.
+
+Cleanup commands approved for only these merged sibling worktrees:
+
+```sh
+git worktree remove /Users/bryan/projects/open-practice-docker-footprint-hardening
+git worktree remove /Users/bryan/projects/open-practice-parked-worktree-reconciliation
+git worktree remove --force /Users/bryan/projects/open-practice-promotional-root-readme
+git branch -d codex/docker-footprint-hardening docs/parked-worktree-reconciliation-2026-06-17 docs/promotional-root-readme
+git worktree prune
+```
+
+Cleanup results:
+
+- `git worktree remove /Users/bryan/projects/open-practice-docker-footprint-hardening` passed.
+- `git worktree remove /Users/bryan/projects/open-practice-parked-worktree-reconciliation` passed.
+- `git worktree remove --force /Users/bryan/projects/open-practice-promotional-root-readme` passed
+  after preserving the untracked README residue.
+- `git branch -d codex/docker-footprint-hardening docs/parked-worktree-reconciliation-2026-06-17 docs/promotional-root-readme`
+  passed, deleting the branches at `81e480a7`, `0524d1d5`, and `d1aa96c2`.
+- `git worktree prune` passed.
+
+Post-cleanup inventory captured during this proof refresh:
+
+- `git worktree list --porcelain` shows the primary checkout on
+  `feature/op-t134-timer-draft-lock-proof`; preserved sibling worktrees for aged receivables,
+  Docker residual Postgres drift, document-retention hold design, expense category registry,
+  financial export field profiles, inbound-email recovery metadata, ledger-balance snapshot
+  comparison, matter lifecycle commands, payment-import boundary, provider document-conversion
+  boundary, ReBAC contact-list fixtures, and trust posting action descriptors; and this cleanup
+  worktree on `docs/retire-merged-sibling-worktrees-2026-06-17`.
+- Per-worktree status after cleanup showed unrelated modified or untracked files in the preserved
+  active lanes; all were left untouched. This cleanup worktree carried only the three
+  docs/proof/index changes listed below.
+- `git branch --format='%(refname:short) %(objectname:short) %(upstream:short)'` shows preserved
+  merged non-worktree branches `audit/clio-parity-gap-closure-2026-06-16` and
+  `docs/root-adopter-readme`, plus the unrelated active sibling branches. The three retired target
+  branches are absent.
+- `git branch --no-merged main` returned no branches.
+- Stash count remained `42`; no stashes were touched.
+- No remote refs were pruned or pushed.
+- No API, schema, route, UI, worker, domain, database, dependency, copied excerpt, vendored asset,
+  reference-derived code, client data, matter data, credential, payment, root README adoption, or
+  private deployment detail changed.
+
+### Merged Sibling Worktree Retirement Validation
+
+The final changed path set for this addendum is:
+
+- `docs/planning-and-progress.md`
+- `docs/validation/OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-16.md`
+- `docs/validation/README.md`
+
+`pnpm verify:select -- --files docs/planning-and-progress.md docs/validation/OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-16.md docs/validation/README.md`
+selected:
+
+- `pnpm format:check`
+- `pnpm docs:check`
+- `pnpm policy:check`
+
+Validation results:
+
+| Command             | Result | Notes                                                                                                                   |
+| ------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------- |
+| `pnpm format:check` | Passed | Passed after formatting only the touched proof/workboard Markdown files.                                                |
+| `pnpm docs:check`   | Passed | Documentation link validation passed with ignored evidence link-target placeholders present.                            |
+| `pnpm policy:check` | Passed | Secrets, package policy, dead-code, migration, OSS reuse, docs, proof index, Docker ignore, and boundary checks passed. |
+| `git diff --check`  | Passed | No whitespace errors.                                                                                                   |

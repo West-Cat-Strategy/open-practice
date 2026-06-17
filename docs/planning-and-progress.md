@@ -10,7 +10,7 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 | Snapshot              | Value                                                                |
 | --------------------- | -------------------------------------------------------------------- |
-| Current focus         | Parked meeting/contact-history worktrees were absorbed and retired.  |
+| Current focus         | Safe merged sibling worktrees were audited and retired locally.      |
 | Next recommended pick | Pick from the durable roadmap/backlog after reviewing shipped proof. |
 | Ready rows            | 0                                                                    |
 | Candidate rows        | 0                                                                    |
@@ -21,6 +21,18 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 | Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`     |
 
 ## Current Handoff Notes
+
+The later 2026-06-17 merged sibling worktree retirement removed only
+`/Users/bryan/projects/open-practice-docker-footprint-hardening`,
+`/Users/bryan/projects/open-practice-parked-worktree-reconciliation`, and
+`/Users/bryan/projects/open-practice-promotional-root-readme` after confirming their branches were
+merged into local `main`. The promotional root README residue was preserved as ignored local
+evidence at
+`.tmp/worktree-retirement/2026-06-17/promotional-root-readme/README.md` with SHA-256
+`a6e672928440324307f5570dd051d387b353d320287be696a1613bd1c1e9f801` before the worktree was
+removed. Other active sibling worktrees, merged non-worktree branches, remote refs, and all stashes
+were left untouched. Proof is recorded as an addendum in
+[OP mainline merge push prune proof](validation/OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-16.md).
 
 The 2026-06-17 parked worktree reconciliation confirmed that
 `/Users/bryan/projects/open-practice-meeting-availability` and
