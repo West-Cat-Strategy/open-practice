@@ -304,3 +304,88 @@ Prune actions completed:
 Post-prune inventory showed only the primary `/Users/bryan/projects/open-practice` worktree on
 `main`, no unmerged local branches, only local branch `main`, and only `refs/heads/main` on
 `origin`.
+
+## Parked Worktree Reconciliation - 2026-06-17
+
+Live follow-up audit found two parked dirty worktrees that remained after the 2026-06-16 integration
+even though their branch tips were already absorbed by current `main`:
+
+| Worktree                                                           | Branch                                         | Disposition                                                                                                                                                                                                                                                                                                                                    |
+| ------------------------------------------------------------------ | ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/Users/bryan/projects/open-practice-meeting-availability`         | `feature/meeting-availability-requests`        | Absorbed into `main`; do not land the stale standalone OP-T159 proof or parked dirty diff. Current `main` already contains the scheduling request routes, repository helpers, route manifest entries, dashboard controls, and validation coverage through the Clio parity workflow-depth closure.                                              |
+| `/Users/bryan/projects/open-practice-contact-history-export-scope` | `feature/matter-scoped-contact-history-export` | Absorbed into `main`; do not land the stale standalone matter-scope proof or parked dirty diff. Current `main` already contains optional `matterId` scoping for synchronous and queued contact-history exports, metadata boundaries, dashboard selector behavior, and worker/download rechecks through the Clio parity workflow-depth closure. |
+
+Absorption evidence before local cleanup:
+
+- Root status was on occupied branch `docs/root-adopter-readme` with unrelated
+  `CONTRIBUTING.md`, `docs/README.md`, and root `README.md` edits, so this reconciliation was
+  isolated in sibling worktree
+  `/Users/bryan/projects/open-practice-parked-worktree-reconciliation` on branch
+  `docs/parked-worktree-reconciliation-2026-06-17`.
+- `git worktree list --porcelain` showed both parked worktrees at
+  `d1aa96c276c257fda411909b33f193939a0ee00e`.
+- `git merge-base --is-ancestor d1aa96c2 main` returned success.
+- `git branch --no-merged main` returned no branches.
+- Current `main` is `81c3adbec03a79c76ad0b98f5378fccabbc2f8b7`.
+
+Cleanup commands approved for only these absorbed lanes:
+
+```sh
+git worktree remove --force /Users/bryan/projects/open-practice-meeting-availability
+git worktree remove --force /Users/bryan/projects/open-practice-contact-history-export-scope
+git branch -d feature/meeting-availability-requests
+git branch -d feature/matter-scoped-contact-history-export
+git worktree prune
+```
+
+Cleanup results:
+
+- `git worktree remove --force /Users/bryan/projects/open-practice-meeting-availability` passed.
+- `git worktree remove --force /Users/bryan/projects/open-practice-contact-history-export-scope`
+  passed.
+- `git branch -d feature/meeting-availability-requests` passed and deleted local branch
+  `feature/meeting-availability-requests` at `d1aa96c2`.
+- `git branch -d feature/matter-scoped-contact-history-export` passed and deleted local branch
+  `feature/matter-scoped-contact-history-export` at `d1aa96c2`.
+- `git worktree prune` passed.
+
+Final local inventory after cleanup:
+
+- `git worktree list --porcelain` shows the root checkout on `docs/root-adopter-readme`, the
+  preserved `open-practice-docker-footprint-hardening` worktree, this
+  `docs/parked-worktree-reconciliation-2026-06-17` worktree, and the preserved
+  `open-practice-promotional-root-readme` worktree. It no longer lists the two retired parked
+  worktrees.
+- `git branch --format='%(refname:short) %(objectname:short) %(upstream:short)'` shows only
+  `audit/clio-parity-gap-closure-2026-06-16`, `codex/docker-footprint-hardening`,
+  `docs/parked-worktree-reconciliation-2026-06-17`, `docs/promotional-root-readme`,
+  `docs/root-adopter-readme`, and `main`.
+- `git branch --no-merged main` returned no branches.
+- Stash count remained `42`; no stashes were touched.
+- No API, schema, route, UI, worker, domain, database, dependency, copied excerpt, vendored asset,
+  reference-derived code, client data, matter data, credential, payment, or private deployment
+  detail changed.
+
+### Parked Worktree Reconciliation Validation
+
+The final changed path set for this addendum is:
+
+- `docs/planning-and-progress.md`
+- `docs/validation/OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-16.md`
+- `docs/validation/README.md`
+
+`pnpm verify:select -- --files docs/planning-and-progress.md docs/validation/OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-16.md docs/validation/README.md`
+passed and selected:
+
+- `pnpm format:check`
+- `pnpm docs:check`
+- `pnpm policy:check`
+
+Validation results:
+
+| Command             | Result | Notes                                                                                                                   |
+| ------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------- |
+| `pnpm format:check` | Passed | Prettier check passed after formatting the three touched Markdown files.                                                |
+| `pnpm docs:check`   | Passed | Documentation link validation passed.                                                                                   |
+| `pnpm policy:check` | Passed | Secrets, package policy, dead-code, migration, OSS reuse, docs, proof index, Docker ignore, and boundary checks passed. |
+| `git diff --check`  | Passed | No whitespace errors.                                                                                                   |

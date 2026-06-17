@@ -1,6 +1,6 @@
 # Planning and Progress
 
-**Last Updated:** 2026-06-16
+**Last Updated:** 2026-06-17
 
 Use this file for live tracked work, immediate next moves, and the forward-looking development plan.
 Use `docs/planning.md` for the durable roadmap, `docs/improvement-opportunities.md` for candidate
@@ -8,19 +8,28 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 ## At a Glance
 
-| Snapshot              | Value                                                                    |
-| --------------------- | ------------------------------------------------------------------------ |
-| Current focus         | Clio parity workflow-depth closure is implemented and locally validated. |
-| Next recommended pick | Pick from the durable roadmap/backlog after reviewing shipped proof.     |
-| Ready rows            | 0                                                                        |
-| Candidate rows        | 0                                                                        |
-| In progress rows      | 0                                                                        |
-| Review rows           | 0                                                                        |
-| Blocked rows          | 0                                                                        |
-| Archive               | Historical snapshots and proof live in [Archive](archive/README.md).     |
-| Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`         |
+| Snapshot              | Value                                                                |
+| --------------------- | -------------------------------------------------------------------- |
+| Current focus         | Parked meeting/contact-history worktrees were absorbed and retired.  |
+| Next recommended pick | Pick from the durable roadmap/backlog after reviewing shipped proof. |
+| Ready rows            | 0                                                                    |
+| Candidate rows        | 0                                                                    |
+| In progress rows      | 0                                                                    |
+| Review rows           | 0                                                                    |
+| Blocked rows          | 0                                                                    |
+| Archive               | Historical snapshots and proof live in [Archive](archive/README.md). |
+| Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`     |
 
 ## Current Handoff Notes
+
+The 2026-06-17 parked worktree reconciliation confirmed that
+`/Users/bryan/projects/open-practice-meeting-availability` and
+`/Users/bryan/projects/open-practice-contact-history-export-scope` were fully absorbed by current
+`main` and carried only stale dirty residue. No runtime code was extracted. The two absorbed
+worktrees and only their two local feature branches were retired; unrelated root README work,
+Docker-footprint hardening, promotional README work, and all stashes were left untouched. Proof is
+recorded as an addendum in
+[OP mainline merge push prune proof](validation/OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-16.md).
 
 The 2026-06-16 Clio parity workflow-depth closure branch closes the remaining core gaps with
 metadata-only document conversion review, staff-reviewed scheduling requests, legal-clinic cadence
