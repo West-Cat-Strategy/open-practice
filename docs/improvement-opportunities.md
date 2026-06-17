@@ -329,9 +329,10 @@ surface.
 
 - **Timer-generated draft time entries**
   - **Shipped first slice:** OP-T134 added time and expense capture with rate rules, approvals,
-    write-off, and billing-period locks.
-  - **Remaining gap:** A future timer-to-draft-time-entry flow should always create reviewable draft
-    records and respect billing-period locks before submit/approve.
+    write-off, billing-period locks, and local timer-to-draft capture.
+  - **Current boundary:** The timer flow creates reviewable draft records only and respects
+    billing-period locks before submit or approve; future native mobile capture or external
+    time-tool sync should preserve that posture.
   - **References:** `kimai__kimai`.
   - **Reuse and snippets:** AGPL/reference-only; no direct snippets.
 

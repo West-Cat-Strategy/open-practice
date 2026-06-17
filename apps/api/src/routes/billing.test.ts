@@ -544,6 +544,13 @@ describe("billing routes", () => {
       method: "POST",
       url: "/api/time-entries/time-locked-existing/submit",
     });
+    await repository.updateTimeEntry("firm-west-legal", "time-locked-existing", {
+      billingStatus: "submitted",
+    });
+    const blockedTimeApprove = await server.inject({
+      method: "POST",
+      url: "/api/time-entries/time-locked-existing/approve",
+    });
     const blockedExpenseUpdate = await server.inject({
       method: "PATCH",
       url: "/api/expense-entries/expense-locked-existing",
@@ -564,6 +571,10 @@ describe("billing routes", () => {
     expect(blockedTimeMoveOut.statusCode).toBe(409);
     expect(blockedTimeMoveIn.statusCode).toBe(409);
     expect(blockedTimeStatus.statusCode).toBe(409);
+    expect(blockedTimeApprove.statusCode).toBe(409);
+    expect(blockedTimeApprove.json()).toMatchObject({
+      message: expect.stringContaining("locked billing period"),
+    });
     expect(blockedExpenseUpdate.statusCode).toBe(409);
     expect(blockedExpenseMoveOut.statusCode).toBe(409);
     expect(blockedExpenseMoveIn.statusCode).toBe(409);

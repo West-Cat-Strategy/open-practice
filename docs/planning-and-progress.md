@@ -22,6 +22,19 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 ## Current Handoff Notes
 
+The 2026-06-17 unpublished local mainline delta revalidation confirmed the committed
+`origin/main...HEAD` and `origin/main..HEAD` path sets still match the 18-path Docker/docs/web/build
+delta at `5f15fc87`, then reran `pnpm verify:select -- --files <18 paths>` and the selected checks.
+`pnpm format:check`, `pnpm docs:check`, `pnpm policy:check`, `pnpm test`,
+`pnpm --filter @open-practice/web test`, `pnpm --filter @open-practice/web typecheck`,
+`pnpm build`, and `git diff --check` passed. `pnpm docker:residual-watch`,
+`pnpm docker:app-smoke`, and `pnpm e2e:docker` are blocked by the unavailable Docker daemon/socket;
+residual-watch also surfaced separate Postgres manifest-drift and Mailpit `v1.30.2` review
+candidates. No push or release handoff was performed. Proof is recorded as addenda in
+[Docker app-image footprint and Compose hardening proof](validation/OP_DOCKER_APP_IMAGE_FOOTPRINT_COMPOSE_HARDENING_PROOF_2026-06-16.md)
+and
+[OP mainline merge push prune proof](validation/OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-16.md).
+
 The 2026-06-17 parked worktree reconciliation confirmed that
 `/Users/bryan/projects/open-practice-meeting-availability` and
 `/Users/bryan/projects/open-practice-contact-history-export-scope` were fully absorbed by current

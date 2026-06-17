@@ -184,6 +184,36 @@ The artifact reports:
 - Observed digest: `sha256:d3e64d36360a9f40c30fbbc5dd2dde799fe35f8537500c8b067551a6497f50f4`
 - Blockers: none
 
+## 2026-06-17 Local Mainline Rerun Addendum
+
+Before push or release handoff, the unpublished local mainline delta was revalidated from the current
+checkout at `5f15fc87`. The committed `origin/main...HEAD` and `origin/main..HEAD` path sets matched
+the 18-path mainline delta recorded in the mainline proof addendum. No API, schema, route, domain,
+database, worker, provider, dependency, copied excerpt, vendored asset, client data, matter data,
+credential, payment, or private deployment detail changed in this rerun.
+
+Selected rerun results:
+
+| Command                                      | Status  | Notes                                                                                                                                                                                 |
+| -------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm verify:select -- --files <18 paths>`   | Pass    | Selected Docker residual watch, Docker app smoke, Docker E2E, format/docs/policy checks, repo tests, web test/typecheck, and build.                                                   |
+| `pnpm docker:residual-watch`                 | Blocked | Artifact: `/tmp/codex-security-scans/open-practice/docker-residual-watch/2026-06-17T22-42-26Z`. Docker server/socket checks and Scout image scans were blocked.                       |
+| `pnpm docker:app-smoke`                      | Blocked | Docker build could not connect to `unix:///Users/bryan/.docker/run/docker.sock`; cleanup hit the same socket blocker.                                                                 |
+| `pnpm e2e:docker`                            | Blocked | Workspace package builds completed first, then Docker-backed Redis/image setup failed on the missing Docker socket.                                                                   |
+| `pnpm format:check`                          | Pass    | All matched files used Prettier style in the final rerun.                                                                                                                             |
+| `pnpm docs:check`                            | Pass    | Documentation link validation passed in the final rerun.                                                                                                                              |
+| `pnpm policy:check`                          | Pass    | Secret scan, package manifest policy, dead-code, migration parity, OSS reuse, docs links, proof index, local-evidence `.dockerignore`, and boundary policy passed in the final rerun. |
+| `pnpm test`                                  | Pass    | Turbo package tests passed and script tests passed 63 tests across 13 suites.                                                                                                         |
+| `pnpm --filter @open-practice/web test`      | Pass    | 37 files and 201 tests passed.                                                                                                                                                        |
+| `pnpm --filter @open-practice/web typecheck` | Pass    | `tsc -p tsconfig.json --noEmit` passed.                                                                                                                                               |
+| `pnpm build`                                 | Pass    | Turbo build passed for all six workspaces.                                                                                                                                            |
+| `git diff --check`                           | Pass    | No whitespace errors in the final rerun.                                                                                                                                              |
+
+The residual-watch artifact status is `blocked`. It also surfaced two review candidates that should
+remain separate from this validation-only pass: `postgres-upstream-18-alpine-manifest`
+registry-manifest drift and a newer Mailpit source tag, `v1.30.2`. Because Docker app smoke and
+Docker E2E could not run against a working Docker daemon, this rerun is not release-handoff-ready.
+
 ## Production Boundary
 
 The default Compose file remains a local development and validation profile only. It uses

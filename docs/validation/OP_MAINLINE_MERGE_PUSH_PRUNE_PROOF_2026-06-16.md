@@ -389,3 +389,94 @@ Validation results:
 | `pnpm docs:check`   | Passed | Documentation link validation passed.                                                                                   |
 | `pnpm policy:check` | Passed | Secrets, package policy, dead-code, migration, OSS reuse, docs, proof index, Docker ignore, and boundary checks passed. |
 | `git diff --check`  | Passed | No whitespace errors.                                                                                                   |
+
+## Unpublished Mainline Delta Revalidation - 2026-06-17
+
+Before any push or release handoff, the current checkout was revalidated at
+`5f15fc87cec13b12143a4a5b3dc746b1534f5c9c`. The checkout was on
+`feature/op-t134-timer-draft-lock-proof`, with local `main` pointing at the same commit. The
+committed `origin/main...HEAD` and `origin/main..HEAD` path sets matched, and `origin/main` was an
+ancestor of `HEAD`.
+
+Final committed mainline path set used for selector input:
+
+```text
+.dockerignore
+.env.example
+CONTRIBUTING.md
+Dockerfile
+README.md
+apps/web/next.config.mjs
+docker-compose.yml
+docker/mailpit/Dockerfile
+docker/minio/Dockerfile
+docs/README.md
+docs/deployment-hardening.md
+docs/development/getting-started.md
+docs/planning-and-progress.md
+docs/testing/TESTING.md
+docs/validation/OP_DOCKER_APP_IMAGE_FOOTPRINT_COMPOSE_HARDENING_PROOF_2026-06-16.md
+docs/validation/OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-16.md
+docs/validation/README.md
+scripts/docker-app-smoke.mjs
+```
+
+Selector output:
+
+```bash
+pnpm verify:select -- --files .dockerignore .env.example CONTRIBUTING.md Dockerfile README.md apps/web/next.config.mjs docker-compose.yml docker/mailpit/Dockerfile docker/minio/Dockerfile docs/README.md docs/deployment-hardening.md docs/development/getting-started.md docs/planning-and-progress.md docs/testing/TESTING.md docs/validation/OP_DOCKER_APP_IMAGE_FOOTPRINT_COMPOSE_HARDENING_PROOF_2026-06-16.md docs/validation/OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-16.md docs/validation/README.md scripts/docker-app-smoke.mjs
+```
+
+```text
+Recommended validation commands:
+pnpm docker:residual-watch
+pnpm docker:app-smoke
+pnpm e2e:docker
+pnpm format:check
+pnpm docs:check
+pnpm policy:check
+pnpm test
+pnpm --filter @open-practice/web test
+pnpm --filter @open-practice/web typecheck
+pnpm build
+```
+
+Validation results:
+
+| Command                                      | Result  | Notes                                                                                                                                                                        |
+| -------------------------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm verify:select -- --files <18 paths>`   | Passed  | Output listed above.                                                                                                                                                         |
+| `pnpm docker:residual-watch`                 | Blocked | Artifact: `/tmp/codex-security-scans/open-practice/docker-residual-watch/2026-06-17T22-42-26Z`; Docker server/socket checks and Scout image scans were blocked.              |
+| `pnpm docker:app-smoke`                      | Blocked | Docker build and cleanup could not connect to `unix:///Users/bryan/.docker/run/docker.sock`.                                                                                 |
+| `pnpm e2e:docker`                            | Blocked | Workspace package builds completed first; Docker-backed Redis/image setup failed on the same missing Docker socket.                                                          |
+| `pnpm format:check`                          | Passed  | All matched files used Prettier style in the final rerun.                                                                                                                    |
+| `pnpm docs:check`                            | Passed  | Documentation link validation passed in the final rerun.                                                                                                                     |
+| `pnpm policy:check`                          | Passed  | Secret scan, package policy, dead-code, migration parity, OSS reuse, docs links, proof index, local-evidence `.dockerignore`, and boundary policy passed in the final rerun. |
+| `pnpm test`                                  | Passed  | Turbo package tests passed; script tests passed 63 tests across 13 suites.                                                                                                   |
+| `pnpm --filter @open-practice/web test`      | Passed  | 37 files and 201 tests passed.                                                                                                                                               |
+| `pnpm --filter @open-practice/web typecheck` | Passed  | TypeScript check passed.                                                                                                                                                     |
+| `pnpm build`                                 | Passed  | Turbo build passed for all six workspaces.                                                                                                                                   |
+| `git diff --check`                           | Passed  | No whitespace errors in the final rerun.                                                                                                                                     |
+
+The residual-watch artifact also reported two review candidates: Postgres
+`postgres-upstream-18-alpine-manifest` registry-manifest drift and Mailpit `v1.30.2` as a newer
+upstream source tag. This validation pass did not push or perform a release handoff. The current
+handoff is blocked on Docker daemon availability for app-smoke and Docker E2E proof, plus a separate
+review of the residual-watch candidates.
+
+After proof/index/workboard reconciliation, the working tree also contained unrelated OP-T134 dirty
+paths:
+
+```text
+apps/api/src/routes/billing.test.ts
+docs/improvement-opportunities.md
+docs/validation/OP-T134_TIME_EXPENSE_CAPTURE_PROOF_2026-05-31.md
+```
+
+The final selector was rerun over the 21-path union of the committed mainline delta plus those dirty
+paths. It added `pnpm --filter @open-practice/api test` and
+`pnpm --filter @open-practice/api typecheck` to the validation contract. Final non-Docker reruns
+passed: `pnpm format:check`, `pnpm docs:check`, `pnpm policy:check`, `pnpm test`,
+`pnpm --filter @open-practice/api test`, `pnpm --filter @open-practice/api typecheck`,
+`pnpm --filter @open-practice/web test`, `pnpm --filter @open-practice/web typecheck`,
+`pnpm build`, and `git diff --check`.
