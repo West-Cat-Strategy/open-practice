@@ -7,31 +7,40 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV TURBO_TELEMETRY_DISABLED=1
 
 FROM runtime-base AS build-base
+ARG PNPM_VERSION=11.5.3
+ARG TURBO_VERSION=2.9.18
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
-RUN npm install -g npm@11.16.0 pnpm@11.4.0 \
+RUN npm install -g npm@11.16.0 pnpm@${PNPM_VERSION} turbo@${TURBO_VERSION} \
   && pnpm config set store-dir /pnpm/store \
   && pnpm config set cache-dir /pnpm/cache \
   && pnpm config set fetch-retries 5 \
   && pnpm config set fetch-retry-maxtimeout 120000 \
   && pnpm config set fetch-timeout 300000
 
-FROM build-base AS deps
+FROM build-base AS pruner
 WORKDIR /app
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY apps/api/package.json apps/api/package.json
-COPY apps/web/package.json apps/web/package.json
-COPY apps/worker/package.json apps/worker/package.json
-COPY packages/database/package.json packages/database/package.json
-COPY packages/domain/package.json packages/domain/package.json
-COPY packages/providers/package.json packages/providers/package.json
+ARG APP_NAME
+COPY . .
+RUN turbo prune "${APP_NAME}" --docker
+
+FROM build-base AS installer
+WORKDIR /app
+COPY --from=pruner /app/out/json/ .
 RUN --mount=type=cache,id=open-practice-pnpm-store,target=/pnpm/store \
   --mount=type=cache,id=open-practice-pnpm-cache,target=/pnpm/cache \
   pnpm install --frozen-lockfile --prefer-offline
 
-FROM deps AS builder
+FROM installer AS source
 WORKDIR /app
-COPY . .
+COPY tsconfig.base.json ./
+COPY --from=pruner /app/out/full/ .
+
+FROM source AS migrator
+CMD ["pnpm", "--filter", "@open-practice/database", "db:migrate"]
+
+FROM source AS builder
+WORKDIR /app
 ARG APP_NAME
 ARG OPEN_PRACTICE_RELAXED_CSP=false
 ARG OPEN_PRACTICE_DOCKER_LOCAL_DEV=false
@@ -40,11 +49,14 @@ ENV OPEN_PRACTICE_RELAXED_CSP=${OPEN_PRACTICE_RELAXED_CSP}
 ENV OPEN_PRACTICE_DOCKER_LOCAL_DEV=${OPEN_PRACTICE_DOCKER_LOCAL_DEV}
 ENV OPEN_PRACTICE_IMAGE_PROFILE=${OPEN_PRACTICE_IMAGE_PROFILE}
 RUN --mount=type=cache,id=open-practice-turbo,target=/app/.turbo pnpm turbo build --filter=${APP_NAME}...
+
+FROM builder AS app-deploy
+ARG APP_NAME
 RUN --mount=type=cache,id=open-practice-pnpm-store,target=/pnpm/store \
   --mount=type=cache,id=open-practice-pnpm-cache,target=/pnpm/cache \
   pnpm --prefer-offline --filter=${APP_NAME} deploy --legacy --prod /prod
 
-FROM runtime-base AS runner
+FROM runtime-base AS app-runner
 WORKDIR /app
 
 # Don't run production as root
@@ -53,6 +65,29 @@ RUN adduser --system --uid 1001 nextjs
 RUN chown nextjs:nodejs /app
 USER nextjs
 
-COPY --from=builder --chown=nextjs:nodejs /prod .
+COPY --from=app-deploy --chown=nextjs:nodejs /prod .
 
 CMD ["node", "-e", "console.error('Open Practice runtime images require an explicit service command.'); process.exit(1);"]
+
+FROM app-runner AS api
+CMD ["node", "dist/server.js"]
+
+FROM app-runner AS worker
+CMD ["node", "dist/worker.js"]
+
+FROM runtime-base AS web
+WORKDIR /app
+ENV NODE_ENV=production
+ENV PORT=3000
+ENV HOSTNAME=0.0.0.0
+
+# Don't run production as root
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nextjs
+RUN chown nextjs:nodejs /app
+USER nextjs
+
+COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/static ./apps/web/.next/static
+
+CMD ["node", "apps/web/server.js"]

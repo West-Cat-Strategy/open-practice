@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1.7
+
 FROM golang:1.26.4-alpine3.23@sha256:f23e8b227fb4493eabe03bede4d5a32d04092da71962f1fb79b5f7d1e6c2a17f AS builder
 
 ARG MAILPIT_VERSION=v1.30.1
@@ -5,12 +7,15 @@ ARG MAILPIT_SHA256=bda226e88f828215fc3646258494e71ebfaf82074970ea28a319c91a64c06
 
 WORKDIR /src
 
-RUN apk add --no-cache npm \
+RUN --mount=type=cache,id=open-practice-mailpit-go-build,target=/root/.cache/go-build \
+  --mount=type=cache,id=open-practice-mailpit-go-mod,target=/go/pkg/mod \
+  --mount=type=cache,id=open-practice-mailpit-npm,target=/root/.npm \
+  apk add --no-cache npm \
   && wget -O mailpit.tar.gz "https://github.com/axllent/mailpit/archive/refs/tags/${MAILPIT_VERSION}.tar.gz" \
   && echo "${MAILPIT_SHA256}  mailpit.tar.gz" | sha256sum -c - \
   && tar -xzf mailpit.tar.gz --strip-components=1 \
   && rm mailpit.tar.gz \
-  && npm ci \
+  && npm ci --cache /root/.npm \
   && npm run package \
   && CGO_ENABLED=0 go build -ldflags "-s -w -X github.com/axllent/mailpit/config.Version=${MAILPIT_VERSION}" -o /mailpit
 

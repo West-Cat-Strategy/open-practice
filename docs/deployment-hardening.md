@@ -55,6 +55,9 @@
 - Run local dependency, secret, and license checks before deployment: `pnpm deps:audit`,
   `pnpm security:scan`, and `pnpm policy:check`. Container/image scanning remains a
   deployment-profile requirement when production images are published.
+- Treat app-image footprint measurements from `docker image inspect` as local validation evidence,
+  not production release evidence. A production image publication still needs the deployment profile's
+  image scan, SBOM, secret scan, provenance, and rollback/restore proof.
 
 ## Implementation Plan Notes
 
@@ -89,10 +92,11 @@ Environment variables must be treated as deployment inputs, not application defa
 - Public-consultation website origins configured in the API should be treated as route-specific:
   they are allowed only for public intake `POST`/preflight CORS and must not become credentialed CORS
   origins for authenticated dashboard routes.
-- Local Docker Compose host ports bind to `127.0.0.1` by default through scoped bind variables and
-  per-service host-port variables. `OPEN_PRACTICE_DOCKER_API_HOST_BIND` must stay loopback-bound
-  because the Compose API intentionally carries dev-only auth and setup flags. Do not reuse the local
-  Docker stack as a LAN or production API profile.
+- Local Docker Compose host ports are fixed to `127.0.0.1`; only the host port numbers and matching
+  `OPEN_PRACTICE_PUBLIC_WEB_ORIGIN` / `OPEN_PRACTICE_PUBLIC_API_ORIGIN` loopback origins are local
+  override inputs. Do not reuse the local Docker stack as a LAN or production API profile; the local
+  profile also carries development secrets, local object-storage endpoints, Mailpit capture, and the
+  local-dev web CSP posture.
 - `OPEN_PRACTICE_ALLOW_DOCKER_BRIDGE_SETUP` is a local Docker Compose-only bootstrap switch for
   first-run setup requests that arrive from the Docker bridge gateway. It must stay disabled in
   production and should not be paired with LAN-exposed setup ports.
