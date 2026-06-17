@@ -48,6 +48,55 @@ const reportingWorkspace: StaffReportingWorkspaceResponse = {
         storesRawReportBodies: false,
       },
     },
+    {
+      key: "aged_receivables",
+      name: "Aged receivables",
+      description: "Synthetic aged receivables report.",
+      category: "billing",
+      defaultGrouping: "client",
+      filters: [{ key: "asOf", label: "As of", type: "date", defaultValue: "generatedAt" }],
+      groupings: [
+        {
+          key: "client",
+          label: "Client",
+          description: "Synthetic client grouping.",
+        },
+        {
+          key: "invoice",
+          label: "Invoice",
+          description: "Synthetic invoice grouping.",
+        },
+        {
+          key: "aging_bucket",
+          label: "Aging bucket",
+          description: "Synthetic aging buckets.",
+        },
+      ],
+      exportProfileIds: ["summary_json"],
+      permissionScope: ["report:read", "report:export"],
+      source: "open_practice_builtin",
+      savedAt: generatedAt,
+      updatedAt: generatedAt,
+      scheduleReadiness: {
+        status: "manual_export_ready",
+        cadence: "not_scheduled",
+        manualExportReady: true,
+        scheduledRunReady: false,
+        scheduledEmailDelivery: false,
+        readinessReasons: ["saved_definition_available", "scheduled_delivery_not_enabled"],
+      },
+      builderPosture: {
+        status: "saved_definition_metadata",
+        supportedFilterCount: 1,
+        supportedGroupingCount: 3,
+        exportProfileCount: 1,
+        customSql: false,
+        biEmbed: false,
+        broadReportExecution: false,
+        mutableDefinitionBuilder: false,
+        storesRawReportBodies: false,
+      },
+    },
   ],
   exportProfiles: [
     {
@@ -96,12 +145,60 @@ const reportingWorkspace: StaffReportingWorkspaceResponse = {
         scheduledEmailDelivery: false,
       },
     },
+    {
+      definitionKey: "aged_receivables",
+      generatedAt,
+      groupingKey: "client",
+      filters: { asOf: generatedAt },
+      dimensionFilters: {},
+      rowCount: 1,
+      summary: {
+        totalRows: 1,
+        metrics: { invoiceCount: 1, totalReceivableCents: 13230 },
+        groups: [],
+      },
+      rows: [
+        {
+          id: "invoice-aged-001",
+          label: "INV-AR-001 Ada Morgan",
+          groupKey: "contact-ada",
+          groupLabel: "Ada Morgan",
+          status: "issued",
+          tone: "risk",
+          matterId: "matter-001",
+          matterNumber: "2026-0001",
+          metricCents: 13230,
+          dimensions: {
+            jurisdiction: "BC",
+            practiceArea: "Residential tenancy",
+            clinicProgramId: "clinic-program-tenancy-stability",
+            restrictedFundReviewStatus: "not_reviewed",
+          },
+          metadata: {
+            clientContactId: "contact-ada",
+            clientDisplayName: "Ada Morgan",
+            invoiceId: "invoice-aged-001",
+            invoiceNumber: "INV-AR-001",
+            bucketKey: "61_90",
+            bucketLabel: "61-90 days",
+            daysPastDue: 75,
+            balanceDueCents: 13230,
+          },
+        },
+      ],
+      projectionPolicy: {
+        customSql: false,
+        biEmbed: false,
+        rawBodiesStoredInJobMetadata: false,
+        scheduledEmailDelivery: false,
+      },
+    },
   ],
   history: [],
   scheduleReadinessSummary: {
-    totalDefinitions: 1,
-    manualExportReadyDefinitions: 1,
-    manualOnlyDefinitionKeys: ["invoice_aging"],
+    totalDefinitions: 2,
+    manualExportReadyDefinitions: 2,
+    manualOnlyDefinitionKeys: ["invoice_aging", "aged_receivables"],
     recentExportRequestCount: 0,
     scheduledDefinitionCount: 0,
     automaticExecution: false,
@@ -111,8 +208,8 @@ const reportingWorkspace: StaffReportingWorkspaceResponse = {
   reportBuilderPosture: {
     status: "metadata_only",
     savedDefinitionsOnly: true,
-    filterCount: 1,
-    groupingCount: 1,
+    filterCount: 2,
+    groupingCount: 4,
     exportProfileCount: 1,
     customSql: false,
     biEmbeds: false,
@@ -160,10 +257,17 @@ describe("ReportsSection", () => {
     expect(html).toContain("No BI embeds");
     expect(html).toContain("No scheduled email delivery");
     expect(html).toContain("No raw report bodies");
+    expect(html).toContain("Aged receivables");
+    expect(html).toContain("Ada Morgan");
+    expect(html).toContain("invoice INV-AR-001");
+    expect(html).toContain("61-90 days");
+    expect(html).toContain("75 days past due");
     expect(html).toContain("Residential tenancy");
     expect(html).toContain("clinic-program-tenancy-stability");
     expect(html).toContain("not reviewed");
     expect(html).not.toContain("custom SQL editor");
+    expect(html).not.toContain("ada@example.test");
+    expect(html).not.toContain("Initial tenancy dispute invoice");
     expect(html).not.toContain("Synthetic private productivity report body");
   });
 });

@@ -88,6 +88,16 @@ describe("staff reporting routes", () => {
             expect.objectContaining({ key: "restrictedFundReviewStatus" }),
           ]),
         }),
+        expect.objectContaining({
+          key: "aged_receivables",
+          defaultGrouping: "client",
+          groupings: expect.arrayContaining([
+            expect.objectContaining({ key: "client" }),
+            expect.objectContaining({ key: "matter" }),
+            expect.objectContaining({ key: "invoice" }),
+            expect.objectContaining({ key: "aging_bucket" }),
+          ]),
+        }),
       ]),
       exportProfiles: expect.arrayContaining([
         expect.objectContaining({
@@ -106,6 +116,19 @@ describe("staff reporting routes", () => {
             rawBodiesStoredInJobMetadata: false,
           }),
         }),
+        expect.objectContaining({
+          definitionKey: "aged_receivables",
+          groupingKey: "client",
+          rows: expect.arrayContaining([
+            expect.objectContaining({
+              metadata: expect.objectContaining({
+                clientDisplayName: "Ada Morgan",
+                invoiceNumber: "INV-2026-0001",
+                bucketKey: expect.any(String),
+              }),
+            }),
+          ]),
+        }),
       ]),
       history: [
         expect.objectContaining({
@@ -121,8 +144,8 @@ describe("staff reporting routes", () => {
         rawReportBodiesInJobMetadata: false,
       },
       scheduleReadinessSummary: expect.objectContaining({
-        totalDefinitions: 4,
-        manualExportReadyDefinitions: 4,
+        totalDefinitions: 5,
+        manualExportReadyDefinitions: 5,
         recentExportRequestCount: 1,
         scheduledDefinitionCount: 0,
         automaticExecution: false,
@@ -146,6 +169,7 @@ describe("staff reporting routes", () => {
       }),
     });
     expect(JSON.stringify(payload)).not.toContain("Synthetic private productivity");
+    expect(JSON.stringify(payload)).not.toContain("ada@example.test");
   });
 
   it("queues report exports, gates downloads, and keeps job metadata bounded", async () => {
@@ -318,6 +342,83 @@ describe("staff reporting routes", () => {
       },
     });
     expect(JSON.stringify(downloaded.json())).not.toContain("Synthetic operational note");
+  });
+
+  it("downloads aged receivables exports by client, matter, invoice, and aging bucket", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository });
+
+    for (const groupingKey of ["client", "matter", "invoice", "aging_bucket"] as const) {
+      const created = await server.inject({
+        method: "POST",
+        url: "/api/reports/export-requests",
+        payload: {
+          reportDefinitionKey: "aged_receivables",
+          exportProfileId: "summary_json",
+          groupingKey,
+          idempotencyKey: `staff-report-aged-receivables-${groupingKey}`,
+        },
+      });
+
+      expect(created.statusCode).toBe(202);
+      const exportRequest = created.json<{ exportRequest: { jobId: string } }>().exportRequest;
+      const [job] = (
+        await repository.listJobLifecycleRecords("firm-west-legal", {
+          queueName: "reports",
+        })
+      ).filter((candidate) => candidate.id === exportRequest.jobId);
+      expect(job).toMatchObject({
+        status: "completed",
+        metadata: expect.objectContaining({
+          reportDefinitionKey: "aged_receivables",
+          exportProfileId: "summary_json",
+          groupingKey,
+          requestedByUserId: "user-admin",
+        }),
+      });
+      expect(JSON.stringify(job?.metadata)).not.toContain("Ada Morgan");
+      expect(JSON.stringify(job?.metadata)).not.toContain("Initial tenancy dispute invoice");
+
+      const downloaded = await server.inject({
+        method: "GET",
+        url: `/api/reports/export-requests/${exportRequest.jobId}/download`,
+      });
+
+      expect(downloaded.statusCode).toBe(200);
+      const payload = downloaded.json();
+      expect(payload).toMatchObject({
+        export: {
+          report: expect.objectContaining({
+            definitionKey: "aged_receivables",
+            groupingKey,
+            summary: expect.objectContaining({
+              metrics: expect.objectContaining({
+                totalReceivableCents: 13230,
+                invoiceCount: 1,
+                clientCount: 1,
+              }),
+            }),
+            rows: expect.arrayContaining([
+              expect.objectContaining({
+                metadata: expect.objectContaining({
+                  clientContactId: "contact-ada",
+                  clientDisplayName: "Ada Morgan",
+                  invoiceId: "invoice-001",
+                  invoiceNumber: "INV-2026-0001",
+                  matterNumber: "2026-0001",
+                  bucketKey: expect.any(String),
+                  bucketLabel: expect.any(String),
+                  balanceDueCents: 13230,
+                }),
+              }),
+            ]),
+          }),
+        },
+      });
+      expect(JSON.stringify(payload)).not.toContain("ada@example.test");
+      expect(JSON.stringify(payload)).not.toContain("Initial tenancy dispute invoice");
+      expect(JSON.stringify(payload)).not.toContain("Reviewed tenancy branch materials");
+    }
   });
 
   it("replays matching report export idempotency keys without duplicate queue or audit work", async () => {

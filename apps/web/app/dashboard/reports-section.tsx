@@ -11,6 +11,7 @@ import type {
   StaffReportExportProfileId,
   StaffReportGroupingKey,
   StaffReportHistoryItem,
+  StaffReportProjectionRow,
 } from "@open-practice/domain";
 import type { StaffReportingWorkspaceResponse } from "../types";
 
@@ -36,6 +37,36 @@ function metricSummary(metrics: Record<string, string | number | boolean>): stri
     .slice(0, 3)
     .map(([key, value]) => `${compactReportText(key)} ${String(value)}`)
     .join(" · ");
+}
+
+function metadataText(
+  metadata: StaffReportProjectionRow["metadata"],
+  key: string,
+): string | undefined {
+  const value = metadata[key];
+  return typeof value === "string" && value.trim().length > 0 ? value : undefined;
+}
+
+function metadataNumber(
+  metadata: StaffReportProjectionRow["metadata"],
+  key: string,
+): number | undefined {
+  const value = metadata[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function agedReceivablesDetail(row: StaffReportProjectionRow): string | undefined {
+  const clientDisplayName = metadataText(row.metadata, "clientDisplayName");
+  const invoiceNumber = metadataText(row.metadata, "invoiceNumber");
+  const bucketLabel = metadataText(row.metadata, "bucketLabel");
+  const daysPastDue = metadataNumber(row.metadata, "daysPastDue");
+  const details = [
+    clientDisplayName,
+    invoiceNumber ? `invoice ${invoiceNumber}` : undefined,
+    bucketLabel,
+    daysPastDue !== undefined ? `${daysPastDue} days past due` : undefined,
+  ].filter((detail): detail is string => Boolean(detail));
+  return details.length > 0 ? details.join(" · ") : undefined;
 }
 
 export function ReportsSection({
@@ -216,41 +247,46 @@ export function ReportsSection({
       </div>
       <div className="party-list">
         {reportingWorkspace.reports.flatMap((report) =>
-          report.rows.slice(0, 3).map((row) => (
-            <div className="party-row" key={`${report.definitionKey}:${row.id}`}>
-              <span>
-                <strong>{row.label}</strong>
-                <small>
-                  {compactReportText(report.definitionKey)} · {row.groupLabel} ·{" "}
-                  {compactReportText(row.status)}
-                </small>
-                <small>
-                  {row.matterNumber ? `${row.matterNumber} · ` : ""}
-                  {row.dueAt
-                    ? `due ${compactDate(row.dueAt)}`
-                    : row.occurredAt
-                      ? compactDate(row.occurredAt)
-                      : "current projection"}
-                </small>
-                {row.dimensions ? (
+          report.rows.slice(0, 3).map((row) => {
+            const receivablesDetail =
+              report.definitionKey === "aged_receivables" ? agedReceivablesDetail(row) : undefined;
+            return (
+              <div className="party-row" key={`${report.definitionKey}:${row.id}`}>
+                <span>
+                  <strong>{row.label}</strong>
                   <small>
-                    {row.dimensions.jurisdiction} · {row.dimensions.practiceArea} ·{" "}
-                    {compactReportText(row.dimensions.clinicProgramId)} ·{" "}
-                    {compactReportText(row.dimensions.restrictedFundReviewStatus)}
+                    {compactReportText(report.definitionKey)} · {row.groupLabel} ·{" "}
+                    {compactReportText(row.status)}
                   </small>
-                ) : null}
-              </span>
-              <em className={row.tone === "risk" ? "risk" : undefined}>
-                {formatReportMetric({
-                  cents,
-                  minutes,
-                  metricCents: row.metricCents,
-                  metricMinutes: row.metricMinutes,
-                  metricCount: row.metricCount,
-                })}
-              </em>
-            </div>
-          )),
+                  <small>
+                    {row.matterNumber ? `${row.matterNumber} · ` : ""}
+                    {row.dueAt
+                      ? `due ${compactDate(row.dueAt)}`
+                      : row.occurredAt
+                        ? compactDate(row.occurredAt)
+                        : "current projection"}
+                  </small>
+                  {receivablesDetail ? <small>{receivablesDetail}</small> : null}
+                  {row.dimensions ? (
+                    <small>
+                      {row.dimensions.jurisdiction} · {row.dimensions.practiceArea} ·{" "}
+                      {compactReportText(row.dimensions.clinicProgramId)} ·{" "}
+                      {compactReportText(row.dimensions.restrictedFundReviewStatus)}
+                    </small>
+                  ) : null}
+                </span>
+                <em className={row.tone === "risk" ? "risk" : undefined}>
+                  {formatReportMetric({
+                    cents,
+                    minutes,
+                    metricCents: row.metricCents,
+                    metricMinutes: row.metricMinutes,
+                    metricCount: row.metricCount,
+                  })}
+                </em>
+              </div>
+            );
+          }),
         )}
         {reportingWorkspace.reports.every((report) => report.rows.length === 0) ? (
           <p className="inline-empty">No report rows are available in the current projection.</p>
