@@ -18,6 +18,13 @@ skipped-check context. The live workboard remains
 
 ## Current Handoff Notes
 
+The 2026-06-17 document retention and hold workflow design proof is recorded in
+[OP_DOCUMENT_RETENTION_HOLD_WORKFLOW_DESIGN_PROOF_2026-06-17.md](OP_DOCUMENT_RETENTION_HOLD_WORKFLOW_DESIGN_PROOF_2026-06-17.md).
+It covers the docs-first retention timeline model, hold-blocking rules, deletion-review gates, and
+records-disposition wording for future reviewed implementation planning while preserving the
+current no-runtime-change/no-deletion-automation/no-retention-deadline/no-legal-hold-override/no
+jurisdiction-certified-compliance posture.
+
 The 2026-06-16 Clio parity gap closure proof is recorded in
 [OP_CLIO_PARITY_GAP_CLOSURE_PROOF_2026-06-16.md](OP_CLIO_PARITY_GAP_CLOSURE_PROOF_2026-06-16.md).
 It covers the final workflow-depth closure for metadata-only document conversion review,

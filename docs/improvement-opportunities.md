@@ -224,8 +224,13 @@ surface.
     supersession, upload/checksum/scan state, and review state in the document-processing workbench;
     no deletion automation, retention deadline, retention-policy eligibility, or compliance claim was
     added.
-  - **Remaining gap:** Future work would need an explicit reviewed policy design before adding
-    retention timelines, deletion workflows, or jurisdiction-specific records-disposition claims.
+  - **Docs-first design:** The
+    [document retention and hold workflow design](document-retention-hold-workflow-design.md) now
+    records practice-configured review schedules, hold-blocking rules, deletion-review gates, and
+    records-disposition language for future reviewed implementation planning.
+  - **Remaining boundary:** Runtime deletion workflows, retention-deadline enforcement,
+    legal-hold override commands, and jurisdiction-certified records-disposition claims remain
+    deferred until separately reviewed.
   - **References:** `arkcase__arkcase`, `nextcloud__server`, and `paperless-ngx__paperless-ngx`.
   - **Reuse and snippets:** LGPL/AGPL/GPL/reference-only; no direct snippets.
 
