@@ -1,4 +1,8 @@
-import { billingTimerDraftPolicy, expenseCategoryProfileCues } from "@open-practice/domain";
+import {
+  billingExpenseCategoryProfileFromRecord,
+  billingTimerDraftPolicy,
+  defaultBillingExpenseCategoriesForFirm,
+} from "@open-practice/domain";
 import { apiGetOptional } from "../../_shared/server-api";
 import type { MatterSummary, SessionResponse } from "../../types";
 import type { BillingDashboardResponse } from "./models";
@@ -11,6 +15,11 @@ function buildBillingFallback(
   matters: MatterSummary[],
   session: SessionResponse,
 ): BillingDashboardResponse {
+  const expenseCategories = defaultBillingExpenseCategoriesForFirm({
+    firmId: session.user.firmId,
+    now: "2026-06-17T00:00:00.000Z",
+  });
+  const expenseCategoryProfiles = expenseCategories.map(billingExpenseCategoryProfileFromRecord);
   const billingMatters = matters.map((matter) => {
     const captureReviewTime = matter.timeEntries
       .filter((entry) => ["draft", "submitted"].includes(entry.billingStatus))
@@ -31,16 +40,15 @@ function buildBillingFallback(
     const captureReviewExpenses = matter.expenses
       .filter((entry) => ["draft", "submitted"].includes(entry.billingStatus))
       .map((entry) => {
-        const profile = expenseCategoryProfileCues.find(
-          (candidate) => candidate.category === entry.category,
-        );
+        const categoryCode = entry.categoryCode;
         return {
           id: entry.id,
           matterId: entry.matterId,
           incurredAt: entry.incurredAt,
           amountCents: entry.amountCents,
           category: entry.category,
-          categoryProfileKey: profile?.key,
+          categoryCode,
+          categoryProfileKey: categoryCode,
           description: entry.description,
           status: entry.billingStatus,
         };
@@ -69,6 +77,7 @@ function buildBillingFallback(
         incurredAt: entry.incurredAt,
         amountCents: entry.amountCents,
         category: entry.category,
+        categoryCode: entry.categoryCode,
         description: entry.description,
         status: "approved" as const,
       }));
@@ -108,7 +117,8 @@ function buildBillingFallback(
     periodLocks: [],
     rateRules: [],
     timerDraftPolicy: billingTimerDraftPolicy,
-    expenseCategoryProfiles: expenseCategoryProfileCues,
+    expenseCategories,
+    expenseCategoryProfiles,
     matters: billingMatters,
   };
 }
@@ -129,7 +139,8 @@ function emptyBillingAccessDeniedResponse(): BillingDashboardResponse {
     periodLocks: [],
     rateRules: [],
     timerDraftPolicy: billingTimerDraftPolicy,
-    expenseCategoryProfiles: expenseCategoryProfileCues,
+    expenseCategories: [],
+    expenseCategoryProfiles: [],
     matters: [],
   };
 }

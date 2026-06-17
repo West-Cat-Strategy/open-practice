@@ -2,12 +2,17 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import {
   assertBillingStatusTransition,
-  expenseCategoryProfileCues,
-  expenseCategoryProfileForKey,
+  billingExpenseCategoryAllowsReimbursable,
+  billingExpenseCategoryAppliesToMatter,
+  normalizeExpenseCategoryCode,
+  type BillingExpenseCategoryRecord,
   type ExpenseEntry,
+  type Matter,
 } from "@open-practice/domain";
 import { hasFirmWideLedgerAccess, requireStaffAccess } from "../../http/auth-guards.js";
+import { ApiHttpError } from "../../http/response.js";
 import { parseRequestPart } from "../../http/validation.js";
+import type { ApiAuthContext } from "../../server.js";
 import { appendRouteAuditEvent } from "../audit-events.js";
 import type { ApiRouteDependencies } from "../types.js";
 import {
@@ -17,29 +22,31 @@ import {
   idParamsSchema,
 } from "./shared.js";
 
-const expenseCategoryProfileKeySchema = z.enum(
-  expenseCategoryProfileCues.map((profile) => profile.key) as [
-    (typeof expenseCategoryProfileCues)[number]["key"],
-    ...(typeof expenseCategoryProfileCues)[number]["key"][],
-  ],
-);
+const expenseEntryBodySchema = z
+  .object({
+    id: z.string().min(1).optional(),
+    matterId: z.string().min(1),
+    incurredAt: z.string().datetime().optional(),
+    amountCents: z.number().int().positive(),
+    categoryCode: z.string().min(1),
+    description: z.string().min(1),
+    reimbursable: z.boolean().optional(),
+    billingStatus: z
+      .enum(["draft", "submitted", "approved", "billed", "written_off"])
+      .default("draft"),
+  })
+  .strict();
 
-const expenseEntryBodySchema = z.object({
-  id: z.string().min(1).optional(),
-  matterId: z.string().min(1),
-  incurredAt: z.string().datetime().optional(),
-  amountCents: z.number().int().positive(),
-  category: z.string().min(1),
-  description: z.string().min(1),
-  reimbursable: z.boolean().default(true),
-  billingStatus: z
-    .enum(["draft", "submitted", "approved", "billed", "written_off"])
-    .default("draft"),
-});
-
-const expenseEntryPatchBodySchema = expenseEntryBodySchema
-  .omit({ id: true, matterId: true })
-  .partial();
+const expenseEntryPatchBodySchema = z
+  .object({
+    incurredAt: z.string().datetime().optional(),
+    amountCents: z.number().int().positive().optional(),
+    categoryCode: z.string().min(1).optional(),
+    description: z.string().min(1).optional(),
+    reimbursable: z.boolean().optional(),
+    billingStatus: z.enum(["draft", "submitted", "approved", "billed", "written_off"]).optional(),
+  })
+  .strict();
 
 const expenseEntryReviewDraftBodySchema = z
   .object({
@@ -47,16 +54,75 @@ const expenseEntryReviewDraftBodySchema = z
     matterId: z.string().min(1),
     incurredAt: z.string().datetime().optional(),
     amountCents: z.number().int().positive(),
-    categoryProfileKey: expenseCategoryProfileKeySchema.optional(),
-    category: z.string().min(1).optional(),
+    categoryCode: z.string().min(1),
     description: z.string().min(1),
     reimbursable: z.boolean().optional(),
   })
-  .strict()
-  .refine((body) => Boolean(body.categoryProfileKey ?? body.category?.trim()), {
-    message: "Expense review draft requires a profile key or category",
-    path: ["category"],
-  });
+  .strict();
+
+type ExpenseCategoryRepository = Pick<
+  ApiRouteDependencies["repository"],
+  "getBillingExpenseCategoryByCode" | "listMattersForUser"
+>;
+
+async function resolveExpenseCategoryForMatter(
+  repository: ExpenseCategoryRepository,
+  auth: ApiAuthContext,
+  input: {
+    categoryCode: string;
+    matterId: string;
+    reimbursable?: boolean;
+    requireActive: boolean;
+  },
+): Promise<{
+  category: BillingExpenseCategoryRecord;
+  matter: Pick<Matter, "id" | "practiceArea" | "jurisdiction">;
+  reimbursable: boolean;
+}> {
+  const categoryCode = normalizeExpenseCategoryCode(input.categoryCode);
+  if (input.categoryCode !== categoryCode) {
+    throw new ApiHttpError(
+      400,
+      "EXPENSE_CATEGORY_CODE_NORMALIZED",
+      "Expense category code must be lowercase letters, numbers, and underscores",
+    );
+  }
+  const [category, matter] = await Promise.all([
+    repository.getBillingExpenseCategoryByCode(auth.firmId, categoryCode),
+    repository
+      .listMattersForUser(auth.user)
+      .then((matters) => matters.find((candidate) => candidate.id === input.matterId)),
+  ]);
+  if (!category) {
+    throw new ApiHttpError(
+      400,
+      "EXPENSE_CATEGORY_NOT_FOUND",
+      "Expense category code is not available for this firm",
+    );
+  }
+  if (input.requireActive && !category.active) {
+    throw new ApiHttpError(400, "EXPENSE_CATEGORY_INACTIVE", "Expense category is inactive");
+  }
+  if (!matter) {
+    throw new ApiHttpError(404, "MATTER_NOT_FOUND", "Matter was not found");
+  }
+  if (!billingExpenseCategoryAppliesToMatter(category, matter)) {
+    throw new ApiHttpError(
+      400,
+      "EXPENSE_CATEGORY_NOT_APPLICABLE",
+      "Expense category is not applicable to this matter",
+    );
+  }
+  const reimbursable = input.reimbursable ?? category.defaultReimbursable;
+  if (!billingExpenseCategoryAllowsReimbursable(category, reimbursable)) {
+    throw new ApiHttpError(
+      400,
+      "EXPENSE_CATEGORY_REIMBURSABLE_NOT_ALLOWED",
+      "Expense category cannot be marked reimbursable",
+    );
+  }
+  return { category, matter, reimbursable };
+}
 
 export function registerBillingExpenseRoutes(
   server: FastifyInstance,
@@ -104,15 +170,22 @@ export function registerBillingExpenseRoutes(
       incurredAt,
       "Expense entry",
     );
+    const resolvedCategory = await resolveExpenseCategoryForMatter(repository, request.auth, {
+      categoryCode: body.categoryCode,
+      matterId: body.matterId,
+      reimbursable: body.reimbursable,
+      requireActive: true,
+    });
     const entry: ExpenseEntry = {
       id: body.id ?? crypto.randomUUID(),
       firmId: request.auth.firmId,
       matterId: body.matterId,
       incurredAt,
       amountCents: body.amountCents,
-      category: body.category,
+      category: resolvedCategory.category.label,
+      categoryCode: resolvedCategory.category.code,
       description: body.description,
-      reimbursable: body.reimbursable,
+      reimbursable: resolvedCategory.reimbursable,
       billingStatus: body.billingStatus,
     };
     const created = await repository.createExpenseEntry(entry);
@@ -125,6 +198,7 @@ export function registerBillingExpenseRoutes(
         expenseEntryId: created.id,
         status: created.billingStatus,
         amountCents: created.amountCents,
+        categoryCode: created.categoryCode,
       },
     });
     return created;
@@ -144,24 +218,22 @@ export function registerBillingExpenseRoutes(
       incurredAt,
       "Expense entry",
     );
-    const profile = body.categoryProfileKey
-      ? expenseCategoryProfileForKey(body.categoryProfileKey)
-      : undefined;
-    const category = profile?.category ?? body.category?.trim();
-    if (!category) {
-      throw Object.assign(new Error("Expense review draft requires a category"), {
-        statusCode: 400,
-      });
-    }
+    const resolvedCategory = await resolveExpenseCategoryForMatter(repository, request.auth, {
+      categoryCode: body.categoryCode,
+      matterId: body.matterId,
+      reimbursable: body.reimbursable,
+      requireActive: true,
+    });
     const entry: ExpenseEntry = {
       id: body.id ?? crypto.randomUUID(),
       firmId: request.auth.firmId,
       matterId: body.matterId,
       incurredAt,
       amountCents: body.amountCents,
-      category,
+      category: resolvedCategory.category.label,
+      categoryCode: resolvedCategory.category.code,
       description: body.description,
-      reimbursable: body.reimbursable ?? profile?.defaultReimbursable ?? true,
+      reimbursable: resolvedCategory.reimbursable,
       billingStatus: "draft",
     };
     const created = await repository.createExpenseEntry(entry);
@@ -174,8 +246,7 @@ export function registerBillingExpenseRoutes(
         expenseEntryId: created.id,
         status: created.billingStatus,
         captureSource: "expense_profile_review",
-        categoryProfileKey: profile?.key,
-        category: created.category,
+        categoryCode: created.categoryCode,
         amountCents: created.amountCents,
         reimbursable: created.reimbursable,
       },
@@ -213,7 +284,29 @@ export function registerBillingExpenseRoutes(
         "Expense entry",
       );
     }
-    const updated = await repository.updateExpenseEntry(request.auth.firmId, params.id, body);
+    let updates: Parameters<typeof repository.updateExpenseEntry>[2] = body;
+    if (body.categoryCode) {
+      const resolvedCategory = await resolveExpenseCategoryForMatter(repository, request.auth, {
+        categoryCode: body.categoryCode,
+        matterId: existing.matterId,
+        reimbursable: body.reimbursable ?? existing.reimbursable,
+        requireActive: true,
+      });
+      updates = {
+        ...body,
+        category: resolvedCategory.category.label,
+        categoryCode: resolvedCategory.category.code,
+        reimbursable: resolvedCategory.reimbursable,
+      };
+    } else if (body.reimbursable === true && existing.categoryCode) {
+      await resolveExpenseCategoryForMatter(repository, request.auth, {
+        categoryCode: existing.categoryCode,
+        matterId: existing.matterId,
+        reimbursable: true,
+        requireActive: false,
+      });
+    }
+    const updated = await repository.updateExpenseEntry(request.auth.firmId, params.id, updates);
     await appendRouteAuditEvent(repository, request.auth, {
       action: "expense_entry.updated",
       resourceType: "expense_entry",
@@ -224,6 +317,7 @@ export function registerBillingExpenseRoutes(
         previousStatus: existing.billingStatus,
         status: updated.billingStatus,
         amountCents: updated.amountCents,
+        categoryCode: updated.categoryCode,
       },
     });
     return updated;

@@ -1,4 +1,5 @@
 import { CheckCircle2, Clock3, FileText, Plus, Save } from "lucide-react";
+import type { BillingExpenseCategoryRecord } from "@open-practice/domain";
 
 import {
   describePaymentSettlementReview,
@@ -21,7 +22,7 @@ interface BillingSectionProps {
   activeCaptureReviewTime: BillingTimeItem[];
   activeInvoices: BillingInvoiceSummary[];
   activeManualPayments: BillingPaymentSummary[];
-  activeMatter: Pick<MatterSummary, "number">;
+  activeMatter: Pick<MatterSummary, "id" | "number" | "practiceArea" | "jurisdiction">;
   activePaymentRequests: BillingPaymentRequestSummary[];
   activeSettlementReviewSummary: PaymentSettlementReviewSummary;
   activeUnbilledExpenseCents: number;
@@ -32,9 +33,11 @@ interface BillingSectionProps {
   canCreateDraftInvoice: boolean;
   cents: (value: number) => string;
   createDraftInvoice: () => Promise<void>;
+  createExpenseCategory: () => Promise<void>;
   createExpenseDraft: () => Promise<void>;
   createTimerDraft: () => Promise<void>;
   creatingDraftInvoice: boolean;
+  creatingExpenseCategory: boolean;
   creatingExpenseDraft: boolean;
   creatingTimerDraft: boolean;
   draftInvoiceDueAt: string;
@@ -48,6 +51,15 @@ interface BillingSectionProps {
   expenseDraftProfileKey: string;
   expenseDraftReimbursable: boolean;
   expenseDraftStatus: string;
+  expenseCategoryCode: string;
+  expenseCategoryDefaultReimbursable: boolean;
+  expenseCategoryJurisdictions: string;
+  expenseCategoryLabel: string;
+  expenseCategoryMatterScoped: boolean;
+  expenseCategoryPracticeAreas: string;
+  expenseCategoryReimbursableAllowed: boolean;
+  expenseCategoryReviewCue: string;
+  expenseCategoryStatus: string;
   manualPaymentReconciliationStatus: string;
   minutes: (value: number) => string;
   onReconcileManualPayment: (payment: BillingPaymentSummary) => Promise<void>;
@@ -55,6 +67,14 @@ interface BillingSectionProps {
   setDraftInvoiceDueAt: (value: string) => void;
   setDraftInvoiceTaxName: (value: string) => void;
   setDraftInvoiceTaxRate: (value: string) => void;
+  setExpenseCategoryCode: (value: string) => void;
+  setExpenseCategoryDefaultReimbursable: (value: boolean) => void;
+  setExpenseCategoryJurisdictions: (value: string) => void;
+  setExpenseCategoryLabel: (value: string) => void;
+  setExpenseCategoryMatterScoped: (value: boolean) => void;
+  setExpenseCategoryPracticeAreas: (value: string) => void;
+  setExpenseCategoryReimbursableAllowed: (value: boolean) => void;
+  setExpenseCategoryReviewCue: (value: string) => void;
   setExpenseDraftAmount: (value: string) => void;
   setExpenseDraftCategory: (value: string) => void;
   setExpenseDraftDate: (value: string) => void;
@@ -68,6 +88,8 @@ interface BillingSectionProps {
   setTimerDraftStoppedAt: (value: string) => void;
   startTimerDraft: () => void;
   stopTimerDraft: () => void;
+  toggleExpenseCategoryActive: (category: BillingExpenseCategoryRecord) => Promise<void>;
+  updatingExpenseCategoryId?: string;
   timerDraftBillable: boolean;
   timerDraftNarrative: string;
   timerDraftRate: string;
@@ -94,9 +116,11 @@ export function BillingSection({
   canCreateDraftInvoice,
   cents,
   createDraftInvoice,
+  createExpenseCategory,
   createExpenseDraft,
   createTimerDraft,
   creatingDraftInvoice,
+  creatingExpenseCategory,
   creatingExpenseDraft,
   creatingTimerDraft,
   draftInvoiceDueAt,
@@ -110,6 +134,15 @@ export function BillingSection({
   expenseDraftProfileKey,
   expenseDraftReimbursable,
   expenseDraftStatus,
+  expenseCategoryCode,
+  expenseCategoryDefaultReimbursable,
+  expenseCategoryJurisdictions,
+  expenseCategoryLabel,
+  expenseCategoryMatterScoped,
+  expenseCategoryPracticeAreas,
+  expenseCategoryReimbursableAllowed,
+  expenseCategoryReviewCue,
+  expenseCategoryStatus,
   manualPaymentReconciliationStatus,
   minutes,
   onReconcileManualPayment,
@@ -117,6 +150,14 @@ export function BillingSection({
   setDraftInvoiceDueAt,
   setDraftInvoiceTaxName,
   setDraftInvoiceTaxRate,
+  setExpenseCategoryCode,
+  setExpenseCategoryDefaultReimbursable,
+  setExpenseCategoryJurisdictions,
+  setExpenseCategoryLabel,
+  setExpenseCategoryMatterScoped,
+  setExpenseCategoryPracticeAreas,
+  setExpenseCategoryReimbursableAllowed,
+  setExpenseCategoryReviewCue,
   setExpenseDraftAmount,
   setExpenseDraftCategory,
   setExpenseDraftDate,
@@ -130,6 +171,8 @@ export function BillingSection({
   setTimerDraftStoppedAt,
   startTimerDraft,
   stopTimerDraft,
+  toggleExpenseCategoryActive,
+  updatingExpenseCategoryId = "",
   timerDraftBillable,
   timerDraftNarrative,
   timerDraftRate,
@@ -137,8 +180,17 @@ export function BillingSection({
   timerDraftStatus,
   timerDraftStoppedAt,
 }: BillingSectionProps) {
-  const selectedExpenseProfile = billingDashboard.expenseCategoryProfiles.find(
-    (profile) => profile.key === expenseDraftProfileKey,
+  const activeApplicableExpenseCategories = billingDashboard.expenseCategories.filter(
+    (category) =>
+      category.active &&
+      (!category.matterId || category.matterId === activeMatter.id) &&
+      (category.practiceAreas.length === 0 ||
+        category.practiceAreas.includes(activeMatter.practiceArea)) &&
+      (category.jurisdictions.length === 0 ||
+        category.jurisdictions.includes(activeMatter.jurisdiction)),
+  );
+  const selectedExpenseCategory = billingDashboard.expenseCategories.find(
+    (category) => category.code === expenseDraftProfileKey,
   );
 
   return (
@@ -315,27 +367,40 @@ export function BillingSection({
 
         <section className="billing-capture-panel" aria-label="Expense review draft">
           <div className="section-title compact">
-            <h4>Expense profile</h4>
-            <span>{selectedExpenseProfile?.label ?? "Custom"}</span>
+            <h4>Expense category</h4>
+            <span>{selectedExpenseCategory?.code ?? "No active category"}</span>
           </div>
           <div className="billing-action-row">
             <label className="search-field compact">
-              <span>Profile</span>
+              <span>Category</span>
               <select
                 disabled={creatingExpenseDraft}
                 onChange={(event) => {
-                  const profile = billingDashboard.expenseCategoryProfiles.find(
-                    (candidate) => candidate.key === event.target.value,
+                  const category = billingDashboard.expenseCategories.find(
+                    (candidate) => candidate.code === event.target.value,
                   );
                   setExpenseDraftProfileKey(event.target.value);
-                  if (profile) setExpenseDraftReimbursable(profile.defaultReimbursable);
+                  if (category) {
+                    setExpenseDraftCategory(category.label);
+                    setExpenseDraftReimbursable(category.defaultReimbursable);
+                  }
                 }}
                 value={expenseDraftProfileKey}
               >
-                <option value="">Custom</option>
-                {billingDashboard.expenseCategoryProfiles.map((profile) => (
-                  <option key={profile.key} value={profile.key}>
-                    {profile.label}
+                {selectedExpenseCategory &&
+                !activeApplicableExpenseCategories.some(
+                  (category) => category.code === selectedExpenseCategory.code,
+                ) ? (
+                  <option value={selectedExpenseCategory.code}>
+                    {selectedExpenseCategory.label}
+                  </option>
+                ) : null}
+                {activeApplicableExpenseCategories.length === 0 ? (
+                  <option value="">No active categories</option>
+                ) : null}
+                {activeApplicableExpenseCategories.map((category) => (
+                  <option key={category.id} value={category.code}>
+                    {category.label}
                   </option>
                 ))}
               </select>
@@ -364,12 +429,12 @@ export function BillingSection({
           </div>
           <div className="billing-action-row">
             <label className="search-field compact">
-              <span>Category</span>
+              <span>Label snapshot</span>
               <input
-                disabled={creatingExpenseDraft || Boolean(expenseDraftProfileKey)}
+                disabled
                 onChange={(event) => setExpenseDraftCategory(event.target.value)}
-                placeholder={selectedExpenseProfile?.category ?? "Custom category"}
-                value={expenseDraftCategory}
+                placeholder={selectedExpenseCategory?.label ?? "Select a category"}
+                value={selectedExpenseCategory?.label ?? expenseDraftCategory}
               />
             </label>
             <label className="search-field compact">
@@ -402,10 +467,135 @@ export function BillingSection({
           </button>
           <p aria-atomic="true" aria-live="polite" className="inline-empty" role="status">
             {expenseDraftStatus}{" "}
-            {selectedExpenseProfile
-              ? selectedExpenseProfile.reviewCue
-              : "Custom expense drafts stay in draft review."}
+            {selectedExpenseCategory?.reviewCue ?? "Expense drafts stay in draft review."}
           </p>
+        </section>
+
+        <section className="billing-capture-panel" aria-label="Expense category controls">
+          <div className="section-title compact">
+            <h4>Category controls</h4>
+            <span>{billingDashboard.expenseCategories.length} codes</span>
+          </div>
+          <div className="billing-action-row">
+            <label className="search-field compact">
+              <span>Code</span>
+              <input
+                disabled={creatingExpenseCategory}
+                onChange={(event) => setExpenseCategoryCode(event.target.value)}
+                placeholder="filing_service"
+                value={expenseCategoryCode}
+              />
+            </label>
+            <label className="search-field compact">
+              <span>Label</span>
+              <input
+                disabled={creatingExpenseCategory}
+                onChange={(event) => setExpenseCategoryLabel(event.target.value)}
+                placeholder="Filing and service"
+                value={expenseCategoryLabel}
+              />
+            </label>
+            <label className="search-field compact">
+              <span>Review cue</span>
+              <input
+                disabled={creatingExpenseCategory}
+                onChange={(event) => setExpenseCategoryReviewCue(event.target.value)}
+                placeholder="Receipt required"
+                value={expenseCategoryReviewCue}
+              />
+            </label>
+          </div>
+          <div className="billing-action-row">
+            <label className="search-field compact">
+              <span>Practice areas</span>
+              <input
+                disabled={creatingExpenseCategory}
+                onChange={(event) => setExpenseCategoryPracticeAreas(event.target.value)}
+                placeholder="Residential tenancy"
+                value={expenseCategoryPracticeAreas}
+              />
+            </label>
+            <label className="search-field compact">
+              <span>Jurisdictions</span>
+              <input
+                disabled={creatingExpenseCategory}
+                onChange={(event) => setExpenseCategoryJurisdictions(event.target.value)}
+                placeholder="BC, ON"
+                value={expenseCategoryJurisdictions}
+              />
+            </label>
+            <label className="billing-toggle-field">
+              <input
+                checked={expenseCategoryMatterScoped}
+                disabled={creatingExpenseCategory}
+                onChange={(event) => setExpenseCategoryMatterScoped(event.target.checked)}
+                type="checkbox"
+              />
+              <span>Current matter</span>
+            </label>
+          </div>
+          <div className="billing-action-row">
+            <label className="billing-toggle-field">
+              <input
+                checked={expenseCategoryReimbursableAllowed}
+                disabled={creatingExpenseCategory}
+                onChange={(event) => {
+                  setExpenseCategoryReimbursableAllowed(event.target.checked);
+                  if (!event.target.checked) setExpenseCategoryDefaultReimbursable(false);
+                }}
+                type="checkbox"
+              />
+              <span>Reimbursable allowed</span>
+            </label>
+            <label className="billing-toggle-field">
+              <input
+                checked={expenseCategoryDefaultReimbursable}
+                disabled={creatingExpenseCategory || !expenseCategoryReimbursableAllowed}
+                onChange={(event) => setExpenseCategoryDefaultReimbursable(event.target.checked)}
+                type="checkbox"
+              />
+              <span>Default reimbursable</span>
+            </label>
+            <button
+              className="primary-button"
+              disabled={creatingExpenseCategory}
+              onClick={() => void createExpenseCategory()}
+              type="button"
+            >
+              <Plus size={16} />
+              {creatingExpenseCategory ? "Creating..." : "Create category"}
+            </button>
+          </div>
+          <p aria-atomic="true" aria-live="polite" className="inline-empty" role="status">
+            {expenseCategoryStatus}
+          </p>
+          <div className="party-list">
+            {billingDashboard.expenseCategories.map((category) => (
+              <div className="party-row" key={category.id}>
+                <span>
+                  <strong>{category.label}</strong>
+                  <small>
+                    {category.code} · {category.active ? "active" : "inactive"} ·{" "}
+                    {category.matterId ? "matter" : "firm"}
+                    {category.practiceAreas.length > 0
+                      ? ` · ${category.practiceAreas.length} practice`
+                      : ""}
+                    {category.jurisdictions.length > 0
+                      ? ` · ${category.jurisdictions.join(", ")}`
+                      : ""}
+                  </small>
+                </span>
+                <button
+                  className="secondary-button"
+                  disabled={updatingExpenseCategoryId === category.id}
+                  onClick={() => void toggleExpenseCategoryActive(category)}
+                  type="button"
+                >
+                  {category.active ? "Deactivate" : "Activate"}
+                </button>
+              </div>
+            ))}
+          </div>
         </section>
       </div>
       <div className="party-list">
@@ -426,7 +616,7 @@ export function BillingSection({
               <strong>{entry.description}</strong>
               <small>
                 {entry.status} · {entry.category}
-                {entry.categoryProfileKey ? ` · ${entry.categoryProfileKey}` : ""}
+                {entry.categoryCode ? ` · ${entry.categoryCode}` : ""}
               </small>
             </span>
             <em>{cents(entry.amountCents)}</em>

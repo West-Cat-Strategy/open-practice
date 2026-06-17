@@ -310,10 +310,12 @@ surface.
     Keep OP export serialization original.
 
 - **Expense accounting category registry**
-  - **First slice:** Add a firm-managed `billing_expense_categories` registry plus validation for
-    new expense entries while leaving legacy free-text rows readable.
-  - **Local gap / shipped boundary:** Expense category is currently free text, with no managed codes
-    or applicability rules.
+  - **Shipped slice:** Firm-managed `billing_expense_categories` now provide managed category codes,
+    labels, reimbursable defaults/allowance, and matter/practice/jurisdiction applicability for new
+    expense entries while legacy free-text rows stay readable.
+  - **Local gap / shipped boundary:** Category deactivation blocks future use without mutating
+    existing expense rows, invoices, payment evidence, or trust records. A future accounting-export
+    slice can still map these local codes to external accounting packages.
   - **References:** `opencollective__opencollective-api` accounting category and rule concepts.
   - **Reuse and snippets:** MIT/architecture-only; no direct code without a reuse decision.
 

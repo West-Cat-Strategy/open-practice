@@ -1,5 +1,6 @@
 import {
   billingRuleScope,
+  type BillingExpenseCategoryRecord,
   type BillingPeriodLockRecord,
   type BillingRateRuleRecord,
 } from "@open-practice/domain";
@@ -12,12 +13,13 @@ type DrizzleDb = ConstructorParameters<typeof DrizzleOpenPracticeRepository>[0];
 
 function drizzleRepositoryWithRows(rows: Record<string, unknown>[]) {
   const inserts: unknown[] = [];
+  const whereResult = Object.assign(Promise.resolve(rows), {
+    orderBy: async () => rows,
+  });
   const db = {
     select: () => ({
       from: () => ({
-        where: () => ({
-          orderBy: async () => rows,
-        }),
+        where: () => whereResult,
       }),
     }),
     insert: () => ({
@@ -36,6 +38,20 @@ function billingPeriodLockRow(lock: BillingPeriodLockRecord): Record<string, unk
     periodEnd: new Date(lock.periodEnd),
     reason: lock.reason ?? null,
     lockedAt: new Date(lock.lockedAt),
+  };
+}
+
+function billingExpenseCategoryRow(
+  category: BillingExpenseCategoryRecord,
+): Record<string, unknown> {
+  return {
+    ...category,
+    matterId: category.matterId ?? null,
+    reviewCue: category.reviewCue ?? null,
+    createdByUserId: category.createdByUserId ?? null,
+    updatedByUserId: category.updatedByUserId ?? null,
+    createdAt: new Date(category.createdAt),
+    updatedAt: new Date(category.updatedAt),
   };
 }
 
@@ -87,6 +103,25 @@ function syntheticRateRule(
     createdAt: now,
     updatedAt: now,
   };
+}
+
+function syntheticExpenseCategory(id: string, code = "synthetic_registry_fee") {
+  return {
+    id,
+    firmId: "firm-west-legal",
+    code,
+    label: "Synthetic registry fee",
+    active: true,
+    defaultReimbursable: true,
+    reimbursableAllowed: true,
+    practiceAreas: ["Residential tenancy"],
+    jurisdictions: ["BC"],
+    reviewCue: "Synthetic receipt review.",
+    createdByUserId: "user-admin",
+    updatedByUserId: "user-admin",
+    createdAt: now,
+    updatedAt: now,
+  } satisfies BillingExpenseCategoryRecord;
 }
 
 describe("repository billing controls", () => {
@@ -164,5 +199,45 @@ describe("repository billing controls", () => {
       },
     );
     expect(drizzleAdjacent.inserts).toHaveLength(1);
+  });
+
+  it("enforces unique immutable expense category codes in memory and Drizzle repositories", async () => {
+    const category = syntheticExpenseCategory("expense-category-synthetic");
+    const memory = new InMemoryOpenPracticeRepository();
+
+    await expect(memory.createBillingExpenseCategory(category)).resolves.toMatchObject({
+      code: "synthetic_registry_fee",
+    });
+    await expect(
+      memory.createBillingExpenseCategory({
+        ...syntheticExpenseCategory("expense-category-duplicate"),
+        code: "synthetic_registry_fee",
+      }),
+    ).rejects.toThrow("Billing expense category code already exists");
+    await expect(
+      memory.updateBillingExpenseCategory("firm-west-legal", category.id, {
+        label: "Synthetic registry filing",
+        active: false,
+        updatedAt: "2026-06-17T12:00:00.000Z",
+      }),
+    ).resolves.toMatchObject({
+      code: "synthetic_registry_fee",
+      label: "Synthetic registry filing",
+      active: false,
+    });
+
+    const drizzleDuplicate = drizzleRepositoryWithRows([billingExpenseCategoryRow(category)]);
+    await expect(
+      drizzleDuplicate.repository.createBillingExpenseCategory(category),
+    ).rejects.toThrow("Billing expense category code already exists");
+    expect(drizzleDuplicate.inserts).toHaveLength(0);
+
+    const drizzleCreated = drizzleRepositoryWithRows([]);
+    await expect(
+      drizzleCreated.repository.createBillingExpenseCategory(
+        syntheticExpenseCategory("expense-category-drizzle", "synthetic_courier"),
+      ),
+    ).resolves.toMatchObject({ code: "synthetic_courier" });
+    expect(drizzleCreated.inserts).toHaveLength(1);
   });
 });

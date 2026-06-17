@@ -468,7 +468,7 @@ describe("billing routes", () => {
         matterId: "matter-001",
         incurredAt: "2026-04-15T16:00:00.000Z",
         amountCents: 1200,
-        category: "Courier",
+        categoryCode: "courier_postage",
         description: "Synthetic locked expense.",
       },
     });
@@ -698,7 +698,7 @@ describe("billing routes", () => {
         matterId: "matter-001",
         incurredAt: "2026-05-05T11:00:00.000Z",
         amountCents: 4200,
-        categoryProfileKey: "filing_service",
+        categoryCode: "filing_service",
         description: "Synthetic filing status override.",
         billingStatus: "approved",
       },
@@ -713,7 +713,7 @@ describe("billing routes", () => {
         matterId: "matter-001",
         incurredAt: "2026-05-05T11:00:00.000Z",
         amountCents: 4200,
-        categoryProfileKey: "filing_service",
+        categoryCode: "filing_service",
         description: "Synthetic filing disbursement for review.",
       },
     });
@@ -722,6 +722,7 @@ describe("billing routes", () => {
       id: "expense-review-profile-draft",
       amountCents: 4200,
       category: "Filing and service",
+      categoryCode: "filing_service",
       reimbursable: true,
       billingStatus: "draft",
     });
@@ -734,7 +735,7 @@ describe("billing routes", () => {
         matterId: "matter-001",
         incurredAt: "2026-05-05T12:30:00.000Z",
         amountCents: 1900,
-        categoryProfileKey: "research_database",
+        categoryCode: "research_database",
         description: "Synthetic private non-reimbursable expense.",
         reimbursable: false,
       },
@@ -743,6 +744,7 @@ describe("billing routes", () => {
     expect(nonReimbursableExpenseDraft.json()).toMatchObject({
       id: "expense-review-non-reimbursable-draft",
       category: "Research database",
+      categoryCode: "research_database",
       reimbursable: false,
       billingStatus: "draft",
     });
@@ -773,6 +775,7 @@ describe("billing routes", () => {
         lockBypassAllowed: false;
       };
       expenseCategoryProfiles: Array<{ key: string; reviewOnly: boolean }>;
+      expenseCategories: Array<{ code: string; active: boolean }>;
       matters: Array<{
         matterId: string;
         unbilledTime: Array<{ id: string }>;
@@ -818,9 +821,144 @@ describe("billing routes", () => {
         expect.objectContaining({ key: "filing_service", reviewOnly: true }),
       ]),
     );
+    expect(dashboardBody.expenseCategories).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: "filing_service", active: true })]),
+    );
     const serializedAudit = JSON.stringify(await auditEvents(repository));
     expect(serializedAudit).not.toContain("Synthetic private non-billable timer capture");
     expect(serializedAudit).not.toContain("Synthetic private non-reimbursable expense");
+  });
+
+  it("manages firm expense categories and validates new expense entry codes", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository });
+
+    const categories = await server.inject({
+      method: "GET",
+      url: "/api/billing/expense-categories",
+    });
+    expect(categories.statusCode).toBe(200);
+    expect(categories.json<{ categories: Array<{ code: string }> }>().categories).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: "filing_service" })]),
+    );
+
+    const freeTextCreate = await server.inject({
+      method: "POST",
+      url: "/api/expense-entries",
+      payload: {
+        id: "expense-free-text-rejected",
+        matterId: "matter-001",
+        amountCents: 900,
+        category: "Synthetic legacy free text",
+        description: "Synthetic free-text expense attempt.",
+      },
+    });
+    expect(freeTextCreate.statusCode).toBe(400);
+
+    const createdCategory = await server.inject({
+      method: "POST",
+      url: "/api/billing/expense-categories",
+      payload: {
+        id: "expense-category-bc-registry",
+        code: "bc_registry_fee",
+        label: "BC registry fee",
+        defaultReimbursable: true,
+        reimbursableAllowed: true,
+        practiceAreas: ["Residential tenancy"],
+        jurisdictions: ["BC"],
+        reviewCue: "Synthetic receipt review.",
+      },
+    });
+    expect(createdCategory.statusCode).toBe(200);
+    expect(createdCategory.json()).toMatchObject({
+      id: "expense-category-bc-registry",
+      code: "bc_registry_fee",
+      active: true,
+    });
+
+    const codedExpense = await server.inject({
+      method: "POST",
+      url: "/api/expense-entries",
+      payload: {
+        id: "expense-coded-category",
+        matterId: "matter-001",
+        amountCents: 900,
+        categoryCode: "bc_registry_fee",
+        description: "Synthetic coded registry fee.",
+      },
+    });
+    expect(codedExpense.statusCode).toBe(200);
+    expect(codedExpense.json()).toMatchObject({
+      id: "expense-coded-category",
+      category: "BC registry fee",
+      categoryCode: "bc_registry_fee",
+      reimbursable: true,
+    });
+
+    const onOnlyCategory = await server.inject({
+      method: "POST",
+      url: "/api/billing/expense-categories",
+      payload: {
+        id: "expense-category-on-registry",
+        code: "on_registry_fee",
+        label: "ON registry fee",
+        defaultReimbursable: true,
+        reimbursableAllowed: true,
+        jurisdictions: ["ON"],
+      },
+    });
+    expect(onOnlyCategory.statusCode).toBe(200);
+    const wrongJurisdictionExpense = await server.inject({
+      method: "POST",
+      url: "/api/expense-entries",
+      payload: {
+        id: "expense-wrong-jurisdiction",
+        matterId: "matter-001",
+        amountCents: 900,
+        categoryCode: "on_registry_fee",
+        description: "Synthetic wrong-jurisdiction expense.",
+      },
+    });
+    expect(wrongJurisdictionExpense.statusCode).toBe(400);
+    expect(wrongJurisdictionExpense.json()).toMatchObject({
+      message: "Expense category is not applicable to this matter",
+    });
+
+    const deactivated = await server.inject({
+      method: "PATCH",
+      url: "/api/billing/expense-categories/expense-category-bc-registry",
+      payload: { active: false },
+    });
+    expect(deactivated.statusCode).toBe(200);
+    expect(deactivated.json()).toMatchObject({ active: false });
+    const blockedInactiveExpense = await server.inject({
+      method: "POST",
+      url: "/api/expense-entries",
+      payload: {
+        id: "expense-inactive-category",
+        matterId: "matter-001",
+        amountCents: 900,
+        categoryCode: "bc_registry_fee",
+        description: "Synthetic inactive category expense.",
+      },
+    });
+    expect(blockedInactiveExpense.statusCode).toBe(400);
+    expect(blockedInactiveExpense.json()).toMatchObject({
+      message: "Expense category is inactive",
+    });
+
+    const legacyEdit = await server.inject({
+      method: "PATCH",
+      url: "/api/expense-entries/expense-coded-category",
+      payload: { amountCents: 950 },
+    });
+    expect(legacyEdit.statusCode).toBe(200);
+    expect(legacyEdit.json()).toMatchObject({ amountCents: 950, categoryCode: "bc_registry_fee" });
+
+    const serializedAudit = JSON.stringify(await auditEvents(repository));
+    expect(serializedAudit).toContain("billing_expense_category.created");
+    expect(serializedAudit).toContain("billing_expense_category.updated");
+    expect(serializedAudit).not.toContain("Synthetic receipt review.");
   });
 
   it("creates a draft invoice from approved billing dashboard sources without trust ledger postings", async () => {
@@ -847,7 +985,7 @@ describe("billing routes", () => {
         id: "expense-dashboard-draft-invoice",
         matterId: "matter-001",
         amountCents: 1200,
-        category: "Courier",
+        categoryCode: "courier_postage",
         description: "Synthetic courier disbursement.",
         billingStatus: "approved",
       },
@@ -1499,7 +1637,7 @@ describe("billing routes", () => {
         id: "expense-approve-access-test",
         matterId: "matter-001",
         amountCents: 500,
-        category: "Courier",
+        categoryCode: "courier_postage",
         description: "Synthetic expense approval access test.",
       },
     });
@@ -2178,7 +2316,7 @@ describe("billing routes", () => {
         id: "expense-audit-route-test",
         matterId: "matter-001",
         amountCents: 2500,
-        category: "Filing",
+        categoryCode: "filing_service",
         description: "Synthetic billing audit expense.",
       },
     });
@@ -2207,7 +2345,7 @@ describe("billing routes", () => {
         id: "expense-writeoff-audit-route-test",
         matterId: "matter-001",
         amountCents: 1100,
-        category: "Courier",
+        categoryCode: "courier_postage",
         description: "Synthetic write-off expense.",
       },
     });

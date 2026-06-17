@@ -49,8 +49,7 @@ export interface ExpenseReviewDraftPayload {
   matterId: string;
   incurredAt?: string;
   amountCents: number;
-  categoryProfileKey?: string;
-  category?: string;
+  categoryCode: string;
   description: string;
   reimbursable: boolean;
 }
@@ -245,8 +244,7 @@ export function buildExpenseReviewDraftPayload(input: {
   matter: Pick<MatterSummary, "id"> | undefined;
   amount: string;
   incurredAtDate: string;
-  categoryProfileKey: string;
-  customCategory: string;
+  categoryCode: string;
   description: string;
   reimbursable: boolean;
   locks?: BillingPeriodLockRecord[];
@@ -266,17 +264,14 @@ export function buildExpenseReviewDraftPayload(input: {
   if (lockCue) return { error: lockCue };
   const description = input.description.trim();
   if (!description) return { error: "Expense description is required." };
-  const customCategory = input.customCategory.trim();
-  if (!input.categoryProfileKey && !customCategory) {
-    return { error: "Expense category or profile is required." };
-  }
+  const categoryCode = input.categoryCode.trim();
+  if (!categoryCode) return { error: "Expense category is required." };
   return {
     payload: {
       matterId: input.matter.id,
       amountCents,
       ...(incurredAt ? { incurredAt } : {}),
-      ...(input.categoryProfileKey ? { categoryProfileKey: input.categoryProfileKey } : {}),
-      ...(!input.categoryProfileKey && customCategory ? { category: customCategory } : {}),
+      categoryCode,
       description,
       reimbursable: input.reimbursable,
     },
@@ -421,6 +416,8 @@ function expenseDraftDashboardItem(
     incurredAt: entry.incurredAt,
     amountCents: entry.amountCents,
     category: entry.category,
+    categoryCode: entry.categoryCode,
+    categoryProfileKey: entry.categoryCode,
     description: entry.description,
     status: entry.billingStatus,
   };

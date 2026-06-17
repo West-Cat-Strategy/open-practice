@@ -1,5 +1,5 @@
 import type { LedgerAccount, LedgerEntry } from "./ledger.js";
-import type { ExpenseEntry, TimeEntry } from "./models.js";
+import type { ExpenseEntry, Matter, Province, TimeEntry } from "./models.js";
 
 export type BillingStatus = "draft" | "submitted" | "approved" | "billed" | "written_off";
 
@@ -20,6 +20,15 @@ export const billingTimerDraftPolicy: BillingTimerDraftPolicy = {
   autoApproveEnabled: false,
   lockBypassAllowed: false,
 };
+
+export interface ExpenseCategoryProfileCue {
+  key: string;
+  label: string;
+  category: string;
+  defaultReimbursable: boolean;
+  reviewCue: string;
+  reviewOnly: true;
+}
 
 export const expenseCategoryProfileCues = [
   {
@@ -54,10 +63,27 @@ export const expenseCategoryProfileCues = [
     reviewCue: "Review policy, purpose, and receipts before approval.",
     reviewOnly: true,
   },
-] as const;
+] as const satisfies readonly ExpenseCategoryProfileCue[];
 
-export type ExpenseCategoryProfileCue = (typeof expenseCategoryProfileCues)[number];
 export type ExpenseCategoryProfileKey = ExpenseCategoryProfileCue["key"];
+
+export interface BillingExpenseCategoryRecord {
+  id: string;
+  firmId: string;
+  code: string;
+  label: string;
+  active: boolean;
+  defaultReimbursable: boolean;
+  reimbursableAllowed: boolean;
+  matterId?: string;
+  practiceAreas: string[];
+  jurisdictions: Province[];
+  reviewCue?: string;
+  createdByUserId?: string;
+  updatedByUserId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
 
 export type ManualPaymentMethod = "cash" | "cheque" | "card" | "eft" | "other";
 
@@ -621,6 +647,92 @@ export function validateBillingRateRule(record: BillingRateRuleRecord): void {
       throw new Error("Billing rate rule effectiveUntil must be after effectiveFrom");
     }
   }
+}
+
+export const billingExpenseCategoryCodePattern = /^[a-z0-9_]+$/;
+
+export function normalizeExpenseCategoryCode(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replaceAll(/[\s-]+/g, "_");
+}
+
+export function validateBillingExpenseCategory(record: BillingExpenseCategoryRecord): void {
+  if (!record.firmId.trim()) throw new Error("Billing expense category requires a firm id");
+  if (!billingExpenseCategoryCodePattern.test(record.code)) {
+    throw new Error(
+      "Billing expense category code must use lowercase letters, numbers, and underscores",
+    );
+  }
+  if (!record.label.trim()) throw new Error("Billing expense category label is required");
+  if (!record.reimbursableAllowed && record.defaultReimbursable) {
+    throw new Error("Default reimbursable cannot be true when reimbursable is not allowed");
+  }
+  if (Number.isNaN(Date.parse(record.createdAt))) {
+    throw new Error("Billing expense category createdAt must be a valid timestamp");
+  }
+  if (Number.isNaN(Date.parse(record.updatedAt))) {
+    throw new Error("Billing expense category updatedAt must be a valid timestamp");
+  }
+}
+
+export function billingExpenseCategoryAppliesToMatter(
+  category: Pick<BillingExpenseCategoryRecord, "matterId" | "practiceAreas" | "jurisdictions">,
+  matter: Pick<Matter, "id" | "practiceArea" | "jurisdiction">,
+): boolean {
+  return (
+    (!category.matterId || category.matterId === matter.id) &&
+    (category.practiceAreas.length === 0 || category.practiceAreas.includes(matter.practiceArea)) &&
+    (category.jurisdictions.length === 0 || category.jurisdictions.includes(matter.jurisdiction))
+  );
+}
+
+export function billingExpenseCategoryAllowsReimbursable(
+  category: Pick<BillingExpenseCategoryRecord, "reimbursableAllowed">,
+  reimbursable: boolean,
+): boolean {
+  return !reimbursable || category.reimbursableAllowed;
+}
+
+export function billingExpenseCategoryProfileFromRecord(
+  category: Pick<
+    BillingExpenseCategoryRecord,
+    "code" | "label" | "defaultReimbursable" | "reviewCue"
+  >,
+): ExpenseCategoryProfileCue {
+  return {
+    key: category.code,
+    label: category.label,
+    category: category.label,
+    defaultReimbursable: category.defaultReimbursable,
+    reviewCue: category.reviewCue ?? "Review expense support before billing approval.",
+    reviewOnly: true,
+  };
+}
+
+export function defaultBillingExpenseCategoriesForFirm(input: {
+  firmId: string;
+  createdByUserId?: string;
+  now?: string;
+}): BillingExpenseCategoryRecord[] {
+  const now = input.now ?? new Date().toISOString();
+  return expenseCategoryProfileCues.map((profile) => ({
+    id: `${input.firmId}:expense-category:${profile.key}`,
+    firmId: input.firmId,
+    code: profile.key,
+    label: profile.label,
+    active: true,
+    defaultReimbursable: profile.defaultReimbursable,
+    reimbursableAllowed: true,
+    practiceAreas: [],
+    jurisdictions: [],
+    reviewCue: profile.reviewCue,
+    createdByUserId: input.createdByUserId,
+    updatedByUserId: input.createdByUserId,
+    createdAt: now,
+    updatedAt: now,
+  }));
 }
 
 export function billingDateFallsInsideLock(

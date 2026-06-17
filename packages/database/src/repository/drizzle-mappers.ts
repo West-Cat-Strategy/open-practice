@@ -28,6 +28,7 @@ import {
   type CalendarGuestLinkRecord,
   type CalendarMeetingSessionRecord,
   type CalendarSchedulingRequestRecord,
+  type BillingExpenseCategoryRecord,
   type BillingPeriodLockRecord,
   type BillingRateRuleRecord,
   type ConflictCheckRecord,
@@ -2735,9 +2736,46 @@ export function mapExpenseEntryRow(row: typeof schema.expenseEntries.$inferSelec
     incurredAt: row.incurredAt.toISOString(),
     amountCents: row.amountCents,
     category: row.category,
+    categoryCode: row.categoryCode ?? undefined,
     description: row.description,
     reimbursable: row.reimbursable,
     billingStatus: row.billingStatus as ExpenseEntry["billingStatus"],
+  };
+}
+
+export function mapBillingExpenseCategoryRow(
+  row: typeof schema.billingExpenseCategories.$inferSelect,
+): BillingExpenseCategoryRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    code: row.code,
+    label: row.label,
+    active: row.active,
+    defaultReimbursable: row.defaultReimbursable,
+    reimbursableAllowed: row.reimbursableAllowed,
+    matterId: row.matterId ?? undefined,
+    practiceAreas: row.practiceAreas,
+    jurisdictions: row.jurisdictions,
+    reviewCue: row.reviewCue ?? undefined,
+    createdByUserId: row.createdByUserId ?? undefined,
+    updatedByUserId: row.updatedByUserId ?? undefined,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+export function billingExpenseCategoryInsert(
+  category: BillingExpenseCategoryRecord,
+): typeof schema.billingExpenseCategories.$inferInsert {
+  return {
+    ...category,
+    matterId: category.matterId ?? null,
+    reviewCue: category.reviewCue ?? null,
+    createdByUserId: category.createdByUserId ?? null,
+    updatedByUserId: category.updatedByUserId ?? null,
+    createdAt: new Date(category.createdAt),
+    updatedAt: new Date(category.updatedAt),
   };
 }
 

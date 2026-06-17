@@ -1,9 +1,16 @@
-import type { ExpenseEntry, TimeEntry } from "@open-practice/domain";
+import {
+  normalizeExpenseCategoryCode,
+  validateBillingExpenseCategory,
+  type BillingExpenseCategoryRecord,
+  type ExpenseEntry,
+  type TimeEntry,
+} from "@open-practice/domain";
 import { clone } from "../contracts.js";
 
 export interface MemoryBillingEntriesStore {
   timeEntries: TimeEntry[];
   expenseEntries: ExpenseEntry[];
+  billingExpenseCategories: BillingExpenseCategoryRecord[];
 }
 
 export function listMemoryTimeEntries(
@@ -100,6 +107,80 @@ export function updateMemoryExpenseEntry(
   const updated = { ...store.expenseEntries[index]!, ...updates };
   store.expenseEntries = store.expenseEntries.map((entry, candidateIndex) =>
     candidateIndex === index ? updated : entry,
+  );
+  return clone(updated);
+}
+
+export function listMemoryBillingExpenseCategories(
+  store: MemoryBillingEntriesStore,
+  firmId: string,
+  options: { activeOnly?: boolean; matterId?: string } = {},
+): BillingExpenseCategoryRecord[] {
+  return clone(
+    store.billingExpenseCategories
+      .filter(
+        (category) =>
+          category.firmId === firmId &&
+          (!options.activeOnly || category.active) &&
+          (!options.matterId || !category.matterId || category.matterId === options.matterId),
+      )
+      .sort((left, right) => left.code.localeCompare(right.code)),
+  );
+}
+
+export function getMemoryBillingExpenseCategory(
+  store: MemoryBillingEntriesStore,
+  firmId: string,
+  categoryId: string,
+): BillingExpenseCategoryRecord | undefined {
+  return clone(
+    store.billingExpenseCategories.find(
+      (category) => category.firmId === firmId && category.id === categoryId,
+    ),
+  );
+}
+
+export function getMemoryBillingExpenseCategoryByCode(
+  store: MemoryBillingEntriesStore,
+  firmId: string,
+  code: string,
+): BillingExpenseCategoryRecord | undefined {
+  const normalizedCode = normalizeExpenseCategoryCode(code);
+  return clone(
+    store.billingExpenseCategories.find(
+      (category) => category.firmId === firmId && category.code === normalizedCode,
+    ),
+  );
+}
+
+export function createMemoryBillingExpenseCategory(
+  store: MemoryBillingEntriesStore,
+  category: BillingExpenseCategoryRecord,
+): BillingExpenseCategoryRecord {
+  validateBillingExpenseCategory(category);
+  const duplicate = store.billingExpenseCategories.some(
+    (candidate) => candidate.firmId === category.firmId && candidate.code === category.code,
+  );
+  if (duplicate) throw new Error("Billing expense category code already exists");
+  store.billingExpenseCategories = [...store.billingExpenseCategories, clone(category)];
+  return clone(category);
+}
+
+export function updateMemoryBillingExpenseCategory(
+  store: MemoryBillingEntriesStore,
+  firmId: string,
+  categoryId: string,
+  updates: Partial<BillingExpenseCategoryRecord>,
+): BillingExpenseCategoryRecord {
+  const index = store.billingExpenseCategories.findIndex(
+    (category) => category.firmId === firmId && category.id === categoryId,
+  );
+  if (index === -1) throw new Error("Billing expense category was not found");
+  const existing = store.billingExpenseCategories[index]!;
+  const updated = { ...existing, ...updates, code: existing.code };
+  validateBillingExpenseCategory(updated);
+  store.billingExpenseCategories = store.billingExpenseCategories.map((category, candidateIndex) =>
+    candidateIndex === index ? updated : category,
   );
   return clone(updated);
 }
