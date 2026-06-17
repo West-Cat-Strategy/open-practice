@@ -1,8 +1,16 @@
-import { BarChart3, CalendarClock, Download, History, SlidersHorizontal } from "lucide-react";
+import {
+  BarChart3,
+  CalendarClock,
+  Download,
+  History,
+  RefreshCcw,
+  SlidersHorizontal,
+} from "lucide-react";
 import type {
   StaffReportDefinitionKey,
   StaffReportExportProfileId,
   StaffReportGroupingKey,
+  StaffReportHistoryItem,
 } from "@open-practice/domain";
 import type { StaffReportingWorkspaceResponse } from "../types";
 
@@ -36,6 +44,8 @@ export function ReportsSection({
   exportingReportKey,
   exportStatus,
   minutes,
+  onDownloadReportExport,
+  onPollReportExport,
   onRequestReportExport,
   reportingWorkspace,
 }: {
@@ -49,6 +59,8 @@ export function ReportsSection({
     exportProfileId: StaffReportExportProfileId,
     groupingKey: StaffReportGroupingKey,
   ) => void;
+  onPollReportExport: (item: StaffReportHistoryItem) => void;
+  onDownloadReportExport: (item: StaffReportHistoryItem) => void;
   reportingWorkspace: StaffReportingWorkspaceResponse;
 }) {
   const reportByDefinition = new Map(
@@ -220,6 +232,13 @@ export function ReportsSection({
                       ? compactDate(row.occurredAt)
                       : "current projection"}
                 </small>
+                {row.dimensions ? (
+                  <small>
+                    {row.dimensions.jurisdiction} · {row.dimensions.practiceArea} ·{" "}
+                    {compactReportText(row.dimensions.clinicProgramId)} ·{" "}
+                    {compactReportText(row.dimensions.restrictedFundReviewStatus)}
+                  </small>
+                ) : null}
               </span>
               <em className={row.tone === "risk" ? "risk" : undefined}>
                 {formatReportMetric({
@@ -261,6 +280,34 @@ export function ReportsSection({
             >
               <History size={15} aria-hidden="true" /> {compactReportText(item.status)}
             </em>
+            <span className="row-actions">
+              <button
+                aria-label={`Refresh ${compactReportText(
+                  item.reportDefinitionKey ?? "staff report",
+                )} export`}
+                className="secondary-button compact-button row-button"
+                disabled={exportingReportKey === `poll:${item.jobId}`}
+                onClick={() => onPollReportExport(item)}
+                type="button"
+              >
+                <RefreshCcw aria-hidden="true" size={14} />
+                {exportingReportKey === `poll:${item.jobId}` ? "Refreshing" : "Refresh"}
+              </button>
+              <button
+                aria-label={`Download ${compactReportText(
+                  item.reportDefinitionKey ?? "staff report",
+                )} export`}
+                className="secondary-button compact-button row-button"
+                disabled={
+                  item.status !== "completed" || exportingReportKey === `download:${item.jobId}`
+                }
+                onClick={() => onDownloadReportExport(item)}
+                type="button"
+              >
+                <Download aria-hidden="true" size={14} />
+                {exportingReportKey === `download:${item.jobId}` ? "Preparing" : "Download"}
+              </button>
+            </span>
           </div>
         ))}
         {reportingWorkspace.history.length === 0 ? (

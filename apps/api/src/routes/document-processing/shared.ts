@@ -4,6 +4,7 @@ import type {
   DocumentRecord,
   DocumentTextExtractionRecord,
   JobLifecycleRecord,
+  LegalResearchArtifactRecord,
   ProviderSettingRecord,
 } from "@open-practice/domain";
 import {
@@ -18,6 +19,7 @@ import { providerStatus } from "../job-status.js";
 import type { ApiRouteDependencies } from "../types.js";
 
 export const idParamsSchema = z.object({ id: z.string().min(1) });
+export const documentIdParamsSchema = z.object({ documentId: z.string().min(1) });
 
 const documentClassificationSchema = z.enum([
   "general",
@@ -58,6 +60,10 @@ export const workbenchQuerySchema = z.object({
 export const queueDocumentProcessingBodySchema = z.object({
   task: z.enum(["ocr"]).default("ocr"),
   language: z.enum(allowedOcrLanguages).default("eng"),
+});
+
+export const conversionReviewJobBodySchema = z.object({
+  idempotencyKey: z.string().trim().min(1).max(180).optional(),
 });
 
 export const ocrProviderBodySchema = z.object({ enabled: z.boolean() });
@@ -118,6 +124,46 @@ export interface QueueDocumentOcrResult {
     language: string;
     idempotencyKeyPresent: boolean;
   };
+}
+
+export const documentConversionReviewJobName = "document_conversion_review" as const;
+
+export const documentConversionReviewPolicy = {
+  metadataOnly: true,
+  reviewOnly: true,
+  rawOcrTextStored: false,
+  rawMarkdownStored: false,
+  annotationBodiesStored: false,
+  chunksStored: false,
+  embeddingsStored: false,
+  providerPayloadsStored: false,
+} as const;
+
+export const documentConversionReviewSummaryPosture = "op_authored_metadata_only" as const;
+
+export type DocumentConversionReviewPosture =
+  | "blocked"
+  | "not_requested"
+  | "queued"
+  | "ready_for_review"
+  | "failed";
+
+export interface DocumentConversionReviewCounts {
+  sourceTextLength: number;
+  wordCount?: number;
+  lineCount?: number;
+  nonEmptyLineCount?: number;
+  pageBreakCount?: number;
+  estimatedPageCount?: number;
+}
+
+export interface DocumentConversionReviewSummary {
+  posture: DocumentConversionReviewPosture;
+  summaryPosture: typeof documentConversionReviewSummaryPosture;
+  jobId?: string;
+  artifactId?: string;
+  counts?: DocumentConversionReviewCounts;
+  policy: typeof documentConversionReviewPolicy;
 }
 
 export function assertDocumentProcessingAccess(
@@ -186,15 +232,25 @@ function latestByTimestamp<T>(
 export function latestDocumentJob(
   document: DocumentRecord,
   jobs: JobLifecycleRecord[],
+  jobNames?: string[],
 ): JobLifecycleRecord | undefined {
+  const allowedJobNames = jobNames ? new Set(jobNames) : undefined;
   return latestByTimestamp(
     jobs.filter(
       (job) =>
-        job.targetResourceId === document.id ||
-        (typeof job.metadata.documentId === "string" && job.metadata.documentId === document.id),
+        (!allowedJobNames || allowedJobNames.has(job.jobName)) &&
+        (job.targetResourceId === document.id ||
+          (typeof job.metadata.documentId === "string" && job.metadata.documentId === document.id)),
     ),
     (job) => job.queuedAt,
   );
+}
+
+export function latestDocumentConversionReviewJob(
+  document: DocumentRecord,
+  jobs: JobLifecycleRecord[],
+): JobLifecycleRecord | undefined {
+  return latestDocumentJob(document, jobs, [documentConversionReviewJobName]);
 }
 
 export function sanitizeTextExtraction(extraction: DocumentTextExtractionRecord | undefined) {
@@ -218,6 +274,145 @@ export function latestTextExtraction(
     extractions,
     (extraction) => extraction.completedAt ?? extraction.createdAt,
   );
+}
+
+export function latestCompletedTextExtraction(
+  extractions: DocumentTextExtractionRecord[],
+): DocumentTextExtractionRecord | undefined {
+  return latestTextExtraction(
+    extractions.filter((extraction) => extraction.status === "completed"),
+  );
+}
+
+function metadataNumber(value: unknown): number | undefined {
+  return Number.isInteger(value) && typeof value === "number" && value >= 0 ? value : undefined;
+}
+
+export function documentExtractionTextLength(
+  extraction: DocumentTextExtractionRecord | undefined,
+): number {
+  if (!extraction) return 0;
+  if (typeof extraction.extractedText === "string") return extraction.extractedText.length;
+  const textLength = metadataNumber(extraction.metadata.textLength);
+  if (textLength !== undefined) return textLength;
+  const sourceTextLength = metadataNumber(extraction.metadata.sourceTextLength);
+  if (sourceTextLength !== undefined) return sourceTextLength;
+  return 0;
+}
+
+function conversionReviewCountsFromMetadata(
+  metadata: Record<string, unknown> | undefined,
+): DocumentConversionReviewCounts | undefined {
+  const counts = metadata?.counts;
+  const record =
+    counts && typeof counts === "object" && !Array.isArray(counts)
+      ? (counts as Record<string, unknown>)
+      : metadata;
+  if (!record) return undefined;
+  const sourceTextLength = metadataNumber(record.sourceTextLength);
+  if (sourceTextLength === undefined) return undefined;
+  return {
+    sourceTextLength,
+    wordCount: metadataNumber(record.wordCount),
+    lineCount: metadataNumber(record.lineCount),
+    nonEmptyLineCount: metadataNumber(record.nonEmptyLineCount),
+    pageBreakCount: metadataNumber(record.pageBreakCount),
+    estimatedPageCount: metadataNumber(record.estimatedPageCount),
+  };
+}
+
+function conversionReviewCountsFromJob(
+  job: JobLifecycleRecord | undefined,
+): DocumentConversionReviewCounts | undefined {
+  return conversionReviewCountsFromMetadata(job?.metadata);
+}
+
+export function conversionReviewArtifactForDocument(
+  document: DocumentRecord,
+  artifacts: LegalResearchArtifactRecord[],
+): LegalResearchArtifactRecord | undefined {
+  return latestByTimestamp(
+    artifacts.filter(
+      (artifact) =>
+        artifact.kind === "document_analysis_status" &&
+        artifact.matterId === document.matterId &&
+        artifact.documentAnalysis?.documentId === document.id,
+    ),
+    (artifact) => artifact.updatedAt,
+  );
+}
+
+export function buildDocumentConversionReviewSummary(input: {
+  document: DocumentRecord;
+  latestExtraction?: DocumentTextExtractionRecord;
+  latestJob?: JobLifecycleRecord;
+  artifact?: LegalResearchArtifactRecord;
+}): DocumentConversionReviewSummary {
+  const artifactCounts = conversionReviewCountsFromMetadata(input.artifact?.metadata);
+  if (input.artifact && input.artifact.status !== "rejected") {
+    return {
+      posture: "ready_for_review",
+      summaryPosture: documentConversionReviewSummaryPosture,
+      jobId:
+        typeof input.artifact.metadata.jobId === "string"
+          ? input.artifact.metadata.jobId
+          : input.latestJob?.id,
+      artifactId: input.artifact.id,
+      counts: artifactCounts,
+      policy: documentConversionReviewPolicy,
+    };
+  }
+
+  if (input.latestJob?.status === "queued" || input.latestJob?.status === "active") {
+    return {
+      posture: "queued",
+      summaryPosture: documentConversionReviewSummaryPosture,
+      jobId: input.latestJob.id,
+      counts: conversionReviewCountsFromJob(input.latestJob),
+      policy: documentConversionReviewPolicy,
+    };
+  }
+  if (input.latestJob?.status === "failed" || input.latestJob?.status === "dead_letter") {
+    return {
+      posture: "failed",
+      summaryPosture: documentConversionReviewSummaryPosture,
+      jobId: input.latestJob.id,
+      counts: conversionReviewCountsFromJob(input.latestJob),
+      policy: documentConversionReviewPolicy,
+    };
+  }
+  if (input.latestJob?.status === "completed") {
+    return {
+      posture: "ready_for_review",
+      summaryPosture: documentConversionReviewSummaryPosture,
+      jobId: input.latestJob.id,
+      counts: conversionReviewCountsFromJob(input.latestJob),
+      policy: documentConversionReviewPolicy,
+    };
+  }
+
+  if (
+    input.document.uploadStatus !== "verified" ||
+    (input.document.checksumStatus !== "verified" &&
+      input.document.checksumStatus !== "duplicate") ||
+    !documentScanSafeForOcr(input.document) ||
+    input.latestExtraction?.status !== "completed"
+  ) {
+    return {
+      posture: "blocked",
+      summaryPosture: documentConversionReviewSummaryPosture,
+      policy: documentConversionReviewPolicy,
+    };
+  }
+
+  return {
+    posture: "not_requested",
+    summaryPosture: documentConversionReviewSummaryPosture,
+    counts: {
+      sourceTextLength: documentExtractionTextLength(input.latestExtraction),
+    },
+    policy: documentConversionReviewPolicy,
+  };
 }
 
 export function queueEligibility(input: {

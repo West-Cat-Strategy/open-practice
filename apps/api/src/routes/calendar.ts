@@ -4,8 +4,8 @@ import {
   assertValidCalendarEventRange,
   buildCalendarSchedulingRequestSummaries,
 } from "@open-practice/domain";
-import type { CalendarEventRecord } from "@open-practice/domain";
-import { requireAccess } from "../http/auth-guards.js";
+import type { CalendarEventRecord, CalendarSchedulingRequestRecord } from "@open-practice/domain";
+import { requireAccess, requireStaffAccess } from "../http/auth-guards.js";
 import { createSessionToken } from "../http/auth-helpers.js";
 import { ApiHttpError } from "../http/response.js";
 import { parseRequestPart } from "../http/validation.js";
@@ -76,6 +76,62 @@ const calendarEventRescheduleBodySchema = z.object({
   status: z.enum(["confirmed", "tentative", "cancelled"]).optional(),
 });
 
+const calendarSchedulingRequestParamsSchema = z.object({
+  requestId: z.string().min(1),
+});
+
+const calendarSchedulingRequestBodySchema = z
+  .object({
+    matterId: z.string().min(1),
+    kind: z
+      .enum(["deadline_review", "event_scheduling", "reminder_review"])
+      .default("event_scheduling"),
+    title: z.string().trim().min(1).max(160),
+    taskId: z.string().min(1).optional(),
+    calendarEventId: z.string().min(1).optional(),
+    calendarReminderId: z.string().min(1).optional(),
+    ownerUserId: z.string().min(1).optional(),
+    sourceType: z
+      .enum(["task_deadline", "calendar_event", "calendar_reminder", "manual"])
+      .default("manual"),
+    sourceId: z.string().trim().min(1).max(160).optional(),
+    sourceLabel: z.string().trim().min(1).max(160).optional(),
+    requestedDueAt: z.string().datetime().optional(),
+    requestedStartsAt: z.string().datetime().optional(),
+    requestedEndsAt: z.string().datetime().optional(),
+    reminderPosture: z
+      .enum(["none", "dashboard_pending", "delivery_opt_in_available"])
+      .default("none"),
+    privacy: z.enum(["staff_only", "matter_team"]).default("staff_only"),
+    timeCaptureCue: z
+      .object({
+        posture: z.enum(["none", "draft_available", "captured"]).default("none"),
+        suggestedMinutes: z.number().int().positive().max(1440).optional(),
+        existingTimeEntryCount: z.number().int().min(0).default(0),
+        billable: z.boolean().default(false),
+      })
+      .default({
+        posture: "none",
+        existingTimeEntryCount: 0,
+        billable: false,
+      }),
+  })
+  .refine((value) => Boolean(value.requestedStartsAt) === Boolean(value.requestedEndsAt), {
+    message: "Scheduling requests require both requestedStartsAt and requestedEndsAt",
+    path: ["requestedEndsAt"],
+  });
+
+const calendarSchedulingReviewBodySchema = z
+  .object({
+    matterId: z.string().min(1),
+    status: z.enum(["reviewed", "dismissed", "scheduled"]),
+    calendarEventId: z.string().min(1).optional(),
+  })
+  .refine((value) => value.status === "scheduled" || !value.calendarEventId, {
+    message: "Only scheduled requests may link calendarEventId",
+    path: ["calendarEventId"],
+  });
+
 function canReadTimeCapture(context: ApiAuthContext, matterId: string): boolean {
   return requireAccess(context, {
     resource: "time_entry",
@@ -108,6 +164,38 @@ function calendarEventAuditMetadata(event: CalendarEventRecord): Record<string, 
     attendeeCount: event.attendees?.length ?? 0,
     reminderCount: event.reminders?.length ?? 0,
   };
+}
+
+function schedulingRequestAuditMetadata(
+  request: CalendarSchedulingRequestRecord,
+): Record<string, unknown> {
+  return {
+    matterId: request.matterId,
+    requestId: request.id,
+    status: request.status,
+    kind: request.kind,
+    sourceType: request.sourceType,
+    ownerUserId: request.ownerUserId,
+    privacy: request.privacy,
+    hasRequestedDueAt: Boolean(request.requestedDueAt),
+    hasRequestedStartsAt: Boolean(request.requestedStartsAt),
+    hasRequestedEndsAt: Boolean(request.requestedEndsAt),
+    taskId: request.taskId,
+    calendarEventId: request.calendarEventId,
+    calendarReminderId: request.calendarReminderId,
+  };
+}
+
+async function schedulingRequestSummaryForResponse(input: {
+  request: CalendarSchedulingRequestRecord;
+  events: CalendarEventRecord[];
+  includeTimeCapture: boolean;
+}): Promise<unknown> {
+  return buildCalendarSchedulingRequestSummaries({
+    requests: [input.request],
+    events: input.events,
+    includeTimeCapture: input.includeTimeCapture,
+  })[0];
 }
 
 function sortCalendarEvents(events: CalendarEventRecord[]): CalendarEventRecord[] {
@@ -239,6 +327,192 @@ export function registerCalendarRoutes(
       guestSessions: [],
       schedulingRequests: [],
       ...matterlessCalendarLinks(),
+    };
+  });
+
+  server.post("/api/calendar/scheduling-requests", async (request, reply) => {
+    const staffAccess = requireStaffAccess(request.auth);
+    if (!staffAccess.ok) throw staffAccess.error;
+    const body = parseRequestPart(calendarSchedulingRequestBodySchema, request.body, "body");
+    await assertCalendarScopeAccess(
+      repository,
+      request.auth,
+      calendarScopeTarget({ scope: "matter", matterId: body.matterId }),
+      "create",
+    );
+    if (body.requestedStartsAt && body.requestedEndsAt) {
+      assertCalendarEventRangeForRequest(body.requestedStartsAt, body.requestedEndsAt);
+    }
+    if (body.calendarEventId) {
+      const event = await repository.getCalendarEvent(
+        request.auth.firmId,
+        body.matterId,
+        body.calendarEventId,
+      );
+      if (!event) {
+        throw new ApiHttpError(404, "CALENDAR_EVENT_NOT_FOUND", "Calendar event not found", {
+          eventId: body.calendarEventId,
+        });
+      }
+    }
+    if (body.taskId) {
+      const task = await repository.getTaskDeadline(request.auth.firmId, body.taskId, {
+        includeArchived: true,
+      });
+      if (!task || task.matterId !== body.matterId) {
+        throw new ApiHttpError(404, "CALENDAR_TASK_NOT_FOUND", "Calendar task link not found", {
+          taskId: body.taskId,
+        });
+      }
+    }
+    if (body.calendarReminderId) {
+      const reminders = await repository.listCalendarEventReminders(
+        request.auth.firmId,
+        body.matterId,
+        body.calendarEventId!,
+      );
+      if (!reminders.some((reminder) => reminder.id === body.calendarReminderId)) {
+        throw new ApiHttpError(
+          404,
+          "CALENDAR_REMINDER_NOT_FOUND",
+          "Calendar reminder link not found",
+          { reminderId: body.calendarReminderId },
+        );
+      }
+    }
+    if (body.ownerUserId) {
+      const owner = await repository.getUser(request.auth.firmId, body.ownerUserId);
+      if (!owner) {
+        throw new ApiHttpError(
+          404,
+          "CALENDAR_SCHEDULING_OWNER_NOT_FOUND",
+          "Scheduling request owner not found",
+          { ownerUserId: body.ownerUserId },
+        );
+      }
+      const ownerAccess = requireAccess(
+        { firmId: request.auth.firmId, user: owner },
+        { resource: "calendar_event", action: "read", matterId: body.matterId },
+      );
+      if (!ownerAccess.ok) throw ownerAccess.error;
+    }
+    const now = new Date().toISOString();
+    const schedulingRequest: CalendarSchedulingRequestRecord = {
+      id: `calendar-request-${createSessionToken().slice(0, 16)}`,
+      firmId: request.auth.firmId,
+      matterId: body.matterId,
+      kind: body.kind,
+      status: "needs_review",
+      title: body.title,
+      taskId: body.taskId,
+      calendarEventId: body.calendarEventId,
+      calendarReminderId: body.calendarReminderId,
+      ownerUserId: body.ownerUserId ?? request.auth.user.id,
+      sourceType: body.sourceType,
+      sourceId: body.sourceId,
+      sourceLabel: body.sourceLabel ?? body.sourceType,
+      requestedDueAt: body.requestedDueAt,
+      requestedStartsAt: body.requestedStartsAt,
+      requestedEndsAt: body.requestedEndsAt,
+      reminderPosture: body.reminderPosture,
+      privacy: body.privacy,
+      timeCaptureCue: body.timeCaptureCue,
+      createdAt: now,
+      updatedAt: now,
+      createdByUserId: request.auth.user.id,
+      updatedByUserId: request.auth.user.id,
+    };
+    const created = await repository.createCalendarSchedulingRequest(schedulingRequest);
+    await recordCalendarAuditEvent(repository, {
+      firmId: request.auth.firmId,
+      actorId: request.auth.user.id,
+      action: "calendar.scheduling_request.created",
+      resourceType: "calendar_scheduling_request",
+      resourceId: created.id,
+      occurredAt: now,
+      metadata: schedulingRequestAuditMetadata(created),
+    });
+    const events = await repository.listCalendarEvents(request.auth.firmId, {
+      matterId: body.matterId,
+    });
+    return reply.code(201).send({
+      schedulingRequest: await schedulingRequestSummaryForResponse({
+        request: created,
+        events,
+        includeTimeCapture: canReadTimeCapture(request.auth, body.matterId),
+      }),
+    });
+  });
+
+  server.patch("/api/calendar/scheduling-requests/:requestId/review", async (request, reply) => {
+    const staffAccess = requireStaffAccess(request.auth);
+    if (!staffAccess.ok) throw staffAccess.error;
+    const params = parseRequestPart(
+      calendarSchedulingRequestParamsSchema,
+      request.params,
+      "params",
+    );
+    const body = parseRequestPart(calendarSchedulingReviewBodySchema, request.body, "body");
+    await assertCalendarScopeAccess(
+      repository,
+      request.auth,
+      calendarScopeTarget({ scope: "matter", matterId: body.matterId }),
+      "update",
+    );
+    const existing = await repository.getCalendarSchedulingRequest(
+      request.auth.firmId,
+      body.matterId,
+      params.requestId,
+    );
+    if (!existing) {
+      return reply.code(404).send({ error: "NotFound", message: "Scheduling request not found" });
+    }
+    let linkedEvent: CalendarEventRecord | undefined;
+    const linkedEventId =
+      body.status === "scheduled" ? (body.calendarEventId ?? existing.calendarEventId) : undefined;
+    if (linkedEventId) {
+      linkedEvent = await repository.getCalendarEvent(
+        request.auth.firmId,
+        body.matterId,
+        linkedEventId,
+      );
+      if (!linkedEvent || linkedEvent.status === "cancelled") {
+        throw new ApiHttpError(404, "CALENDAR_EVENT_NOT_FOUND", "Calendar event not found", {
+          eventId: linkedEventId,
+        });
+      }
+    }
+    const now = new Date().toISOString();
+    const updated = await repository.updateCalendarSchedulingRequestReview({
+      firmId: request.auth.firmId,
+      matterId: body.matterId,
+      requestId: existing.id,
+      status: body.status,
+      reviewedAt: now,
+      reviewedByUserId: request.auth.user.id,
+      calendarEventId: body.status === "scheduled" ? (linkedEvent?.id ?? null) : null,
+    });
+    if (!updated) {
+      return reply.code(404).send({ error: "NotFound", message: "Scheduling request not found" });
+    }
+    await recordCalendarAuditEvent(repository, {
+      firmId: request.auth.firmId,
+      actorId: request.auth.user.id,
+      action: "calendar.scheduling_request.reviewed",
+      resourceType: "calendar_scheduling_request",
+      resourceId: updated.id,
+      occurredAt: now,
+      metadata: schedulingRequestAuditMetadata(updated),
+    });
+    const events = await repository.listCalendarEvents(request.auth.firmId, {
+      matterId: body.matterId,
+    });
+    return {
+      schedulingRequest: await schedulingRequestSummaryForResponse({
+        request: updated,
+        events,
+        includeTimeCapture: canReadTimeCapture(request.auth, body.matterId),
+      }),
     };
   });
 

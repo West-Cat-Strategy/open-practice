@@ -116,6 +116,27 @@ function buildSyntheticDocumentProcessingWorkbench(): DocumentProcessingWorkbenc
           pageCount: 2,
           confidence: 0.91,
         },
+        conversionReview: {
+          posture: "ready_for_review",
+          summaryPosture: "op_authored_metadata_only",
+          jobId: "job_conversion_review_synthetic",
+          artifactId: "artifact_conversion_review_synthetic",
+          counts: {
+            sourceTextLength: 1800,
+            wordCount: 260,
+            estimatedPageCount: 1,
+          },
+          policy: {
+            metadataOnly: true,
+            reviewOnly: true,
+            rawOcrTextStored: false,
+            rawMarkdownStored: false,
+            annotationBodiesStored: false,
+            chunksStored: false,
+            embeddingsStored: false,
+            providerPayloadsStored: false,
+          },
+        },
         reviewSuggestions: {
           reviewerOnly: true,
           mutating: false,
@@ -285,6 +306,9 @@ describe("DocumentsSection", () => {
     expect(html).toContain("Portal visibility for Ada Morgan");
     expect(html).toContain("Revoke portal");
     expect(html).toContain("Ready to process");
+    expect(html).toContain(
+      "Conversion review ready for review · 1800 chars · 260 words · 1 estimated pages · artifact ready · OP-authored metadata only · metadata only",
+    );
     expect(html).toContain("Reviewer suggestions");
     expect(html).toContain("Extraction suggests financial");
     expect(html).toContain("Queue OCR");

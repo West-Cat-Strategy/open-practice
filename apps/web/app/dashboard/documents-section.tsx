@@ -17,6 +17,7 @@ import {
   compactDocumentMetadataTag,
   compactDocumentProcessingReason,
   describeDocumentQueueAction,
+  describeDocumentConversionReview,
   describeDocumentReviewSuggestion,
   describeLatestDocumentJob,
   describeLatestExtraction,
@@ -384,6 +385,9 @@ export function DocumentsSection({
                       <small>
                         Job {job.label} · {describeLatestExtraction(item.latestExtraction)}
                         {item.latestJob?.errorSummary ? ` · ${item.latestJob.errorSummary}` : ""}
+                      </small>
+                      <small>
+                        Conversion review {describeDocumentConversionReview(item.conversionReview)}
                       </small>
                       {item.metadataTags?.length ? (
                         <small>

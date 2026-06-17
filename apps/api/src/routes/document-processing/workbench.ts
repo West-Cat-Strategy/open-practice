@@ -18,8 +18,12 @@ import {
 import type { ApiRouteDependencies } from "../types.js";
 import {
   assertDocumentProcessingAccess,
+  buildDocumentConversionReviewSummary,
+  conversionReviewArtifactForDocument,
   documentReviewQueueSummary,
   documentWorkbenchGroup,
+  latestCompletedTextExtraction,
+  latestDocumentConversionReviewJob,
   latestDocumentJob,
   latestTextExtraction,
   queueEligibility,
@@ -60,6 +64,13 @@ export function registerDocumentProcessingWorkbenchRoutes(
       (queue) => queue.queueName === "ocr" && queue.status === "configured",
     );
     const documents = await repository.listMatterDocuments(request.auth.firmId, query.matterId);
+    const conversionReviewArtifacts = await repository.listLegalResearchArtifacts(
+      request.auth.firmId,
+      {
+        matterId: query.matterId,
+        kind: "document_analysis_status",
+      },
+    );
     const documentIds = new Set(documents.map((document) => document.id));
     const jobs = (await repository.listJobLifecycleRecords(request.auth.firmId)).filter(
       (job) =>
@@ -75,7 +86,8 @@ export function registerDocumentProcessingWorkbenchRoutes(
 
     const documentEntries = await Promise.all(
       documents.map(async (document) => {
-        const latestJob = latestDocumentJob(document, jobs);
+        const latestJob = latestDocumentJob(document, jobs, ["extract_document_text"]);
+        const latestConversionJob = latestDocumentConversionReviewJob(document, jobs);
         const eligibility = queueEligibility({
           document,
           latestJob,
@@ -83,9 +95,18 @@ export function registerDocumentProcessingWorkbenchRoutes(
           ocrStorageConfigured: Boolean(s3),
           ocrProviderStatus: ocrProviderState,
         });
-        const latestExtraction = latestTextExtraction(
-          await repository.getDocumentTextExtractions(request.auth.firmId, document.id),
+        const textExtractions = await repository.getDocumentTextExtractions(
+          request.auth.firmId,
+          document.id,
         );
+        const latestExtraction = latestTextExtraction(textExtractions);
+        const latestCompletedExtraction = latestCompletedTextExtraction(textExtractions);
+        const conversionReview = buildDocumentConversionReviewSummary({
+          document,
+          latestExtraction: latestCompletedExtraction,
+          latestJob: latestConversionJob,
+          artifact: conversionReviewArtifactForDocument(document, conversionReviewArtifacts),
+        });
         const reviewSuggestions = buildDocumentReviewSuggestions({
           document,
           sameMatterDocuments: documents,
@@ -108,6 +129,7 @@ export function registerDocumentProcessingWorkbenchRoutes(
             latestExtraction: sanitizeTextExtraction(latestExtraction),
             reviewSuggestions,
             metadataTags,
+            conversionReview,
           },
           searchEntry: {
             document: sanitizedDocument,

@@ -121,10 +121,10 @@ function parserJob(overrides: Partial<JobLifecycleRecord> = {}): JobLifecycleRec
       source: "mailgun.raw_mime_webhook",
       resourceType: "inbound_email_raw",
       resourceId: "synthetic-token-hash",
-      rawStorageKey:
-        "inbound-email/firm-west-legal/raw/provider-webhooks/mailgun/raw-mime/message.eml",
-      rawBody: "From: client@example.test\n\nSynthetic body must stay private",
-      webhookSigningKey: "synthetic-mailgun-signing-key",
+      tokenHash: "synthetic-token-hash",
+      rawStorageKeyPresent: true,
+      rawContentSha256: "b".repeat(64),
+      rawSizeBytes: 128,
     },
     ...overrides,
   };
@@ -283,7 +283,7 @@ describe("inbound email routes", () => {
         idempotencyKeyPresent: true,
       },
     });
-    expect(response.body).not.toContain("rawStorageKey");
+    expect(response.body).not.toMatch(/"rawStorageKey"\s*:/);
     expect(response.body).not.toContain("Synthetic body");
     expect(response.body).not.toContain("synthetic-mailgun-signing-key");
 
@@ -323,9 +323,11 @@ describe("inbound email routes", () => {
       metadata: {
         provider: "mailgun",
         source: "mailgun.raw_mime_webhook",
-        rawStorageKey: putInput.Key,
+        rawStorageKeyPresent: true,
       },
     });
+    expect(job.metadata).not.toHaveProperty("rawStorageKey");
+    expect(JSON.stringify(job.metadata)).not.toContain(putInput.Key);
   });
 
   it("accepts legacy plaintext Mailgun provider signing secrets", async () => {
@@ -574,7 +576,7 @@ describe("inbound email routes", () => {
           "Job failed. Error details are redacted; review server logs for privileged diagnostics.",
       },
     });
-    expect(response.body).not.toContain("rawStorageKey");
+    expect(response.body).not.toMatch(/"rawStorageKey"\s*:/);
     expect(response.body).not.toContain("message.eml");
     expect(response.body).not.toContain("Synthetic body");
     expect(response.body).not.toContain("synthetic-mailgun-signing-key");
@@ -590,7 +592,11 @@ describe("inbound email routes", () => {
     });
     expect(
       (inboundQueue.jobs[0]!.data as { metadata: Record<string, unknown> }).metadata.rawStorageKey,
-    ).toBe("inbound-email/firm-west-legal/raw/provider-webhooks/mailgun/raw-mime/message.eml");
+    ).toBe(
+      `inbound-email/firm-west-legal/raw/provider-webhooks/mailgun/raw-mime/synthetic-token-hash-${"b".repeat(
+        64,
+      )}.eml`,
+    );
 
     const jobs = await repository.listJobLifecycleRecords(firmId, { queueName: "inbound_email" });
     expect(jobs).toHaveLength(2);
@@ -601,10 +607,15 @@ describe("inbound email routes", () => {
       status: "queued",
       metadata: expect.objectContaining({
         retryOfJobId: "job-inbound-parser-failed",
-        rawStorageKey:
-          "inbound-email/firm-west-legal/raw/provider-webhooks/mailgun/raw-mime/message.eml",
+        rawStorageKeyPresent: true,
       }),
     });
+    expect(jobs.find((job) => job.id === response.json().job.id)?.metadata).not.toHaveProperty(
+      "rawStorageKey",
+    );
+    expect(
+      JSON.stringify(jobs.find((job) => job.id === response.json().job.id)?.metadata),
+    ).not.toContain("message.eml");
 
     const audit = await repository.listAuditEvents(firmId);
     expect(audit.events.at(-1)).toMatchObject({
@@ -626,7 +637,41 @@ describe("inbound email routes", () => {
       },
     });
     expect(JSON.stringify(audit.events.at(-1))).not.toContain("rawStorageKey");
-    expect(JSON.stringify(audit.events.at(-1))).not.toContain("message.eml");
+    expect(JSON.stringify(audit.events.at(-1))).not.toContain(".eml");
+
+    await repository.updateJobLifecycleRecord(firmId, response.json().job.id, {
+      status: "failed",
+      failedAt: "2026-04-29T10:05:00.000Z",
+      errorMessage: "Synthetic retry parser failure.",
+    });
+    const retryAgain = await server.inject({
+      method: "POST",
+      url: `/api/inbound-email/parser-jobs/${response.json().job.id}/retry`,
+      payload: {
+        idempotencyKey: "operator-retry-002",
+        confirmation: {
+          confirmed: true,
+          action: "retry",
+          jobId: response.json().job.id,
+          expectedStatus: "failed",
+        },
+      },
+    });
+    expect(retryAgain.statusCode).toBe(202);
+    expect(inboundQueue.jobs).toHaveLength(2);
+    expect(
+      (inboundQueue.jobs[1]!.data as { metadata: Record<string, unknown> }).metadata.rawStorageKey,
+    ).toBe(
+      `inbound-email/firm-west-legal/raw/provider-webhooks/mailgun/raw-mime/synthetic-token-hash-${"b".repeat(
+        64,
+      )}.eml`,
+    );
+    const retriedAgainJobs = await repository.listJobLifecycleRecords(firmId, {
+      queueName: "inbound_email",
+    });
+    expect(
+      retriedAgainJobs.find((job) => job.id === retryAgain.json().job.id)?.metadata,
+    ).not.toHaveProperty("rawStorageKey");
   });
 
   it("keeps manual inbound parser retries idempotent by operator key", async () => {
@@ -898,7 +943,7 @@ describe("inbound email routes", () => {
       status: "dead_lettered",
       job: { id: "job-inbound-parser-stalled-active", status: "dead_letter" },
     });
-    expect(failed.body).not.toContain("rawStorageKey");
+    expect(failed.body).not.toMatch(/"rawStorageKey"\s*:/);
     expect(stalled.body).not.toContain("message.eml");
     expect(active.body).not.toContain("message.eml");
     const audit = await repository.listAuditEvents(firmId);

@@ -6,6 +6,7 @@ import {
   isStaffReportDefinitionKey,
   isStaffReportExportProfileId,
   isStaffReportGroupingKey,
+  type StaffReportDimensionFilters,
 } from "@open-practice/domain";
 import { compactMetadata, metadataString } from "./metadata.js";
 import type { WorkerJobEnvelope, WorkerJobResult } from "./types.js";
@@ -30,6 +31,17 @@ function metadataStaffReportExportProfileId(metadata: Record<string, unknown>) {
 function metadataStaffReportGroupingKey(metadata: Record<string, unknown>) {
   const value = metadataString(metadata, "groupingKey");
   return value && isStaffReportGroupingKey(value) ? value : undefined;
+}
+
+function metadataStaffReportDimensionFilters(
+  metadata: Record<string, unknown>,
+): StaffReportDimensionFilters {
+  return compactMetadata({
+    jurisdiction: metadataJurisdiction(metadata),
+    practiceArea: metadataString(metadata, "practiceArea"),
+    clinicProgramId: metadataString(metadata, "clinicProgramId"),
+    restrictedFundReviewStatus: metadataString(metadata, "restrictedFundReviewStatus"),
+  }) as StaffReportDimensionFilters;
 }
 
 function visibleMatterIds(
@@ -141,6 +153,7 @@ export async function processReportJob(input: {
     }
     const definition = getStaffSavedReportDefinition(reportDefinitionKey);
     const groupingKey = metadataStaffReportGroupingKey(metadata) ?? definition.defaultGrouping;
+    const dimensionFilters = metadataStaffReportDimensionFilters(metadata);
     const overview = await repository.getOverview(data.firmId);
     const firmWideMatterReader =
       overview.users.find((user) => user.role === "owner_admin") ??
@@ -155,15 +168,23 @@ export async function processReportJob(input: {
         repository.listTimeEntries(data.firmId),
         repository.listTaskDeadlines(data.firmId, { includeCompleted: true }),
       ]);
+    const legalClinicMatterProfiles = (
+      await Promise.all(
+        matters.map((matter) => repository.getLegalClinicMatterProfile(data.firmId, matter.id)),
+      )
+    ).filter((profile): profile is NonNullable<typeof profile> => Boolean(profile));
     const projection = buildStaffReportProjection({
       firmId: data.firmId,
       definitionKey: reportDefinitionKey,
       groupingKey,
+      dimensionFilters,
       matters,
       users: overview.users,
       invoices,
       ledgerAccounts: ledger.accounts,
+      ledgerEntries: ledger.entries,
       reconciliations,
+      legalClinicMatterProfiles,
       timeEntries,
       taskDeadlines,
     });
@@ -177,6 +198,10 @@ export async function processReportJob(input: {
         reportDefinitionKey,
         exportProfileId,
         groupingKey,
+        jurisdiction: dimensionFilters.jurisdiction,
+        practiceArea: dimensionFilters.practiceArea,
+        clinicProgramId: dimensionFilters.clinicProgramId,
+        restrictedFundReviewStatus: dimensionFilters.restrictedFundReviewStatus,
         rowCount: projection.rowCount,
         generatedAt: projection.generatedAt,
       }),

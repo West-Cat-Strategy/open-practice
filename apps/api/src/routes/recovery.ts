@@ -7,6 +7,7 @@ import { sessionCookie } from "../http/auth-helpers.js";
 import { parseRequestPart } from "../http/validation.js";
 import { createEmbeddedAuthService, recoveryCodeHash } from "../services/auth-service.js";
 import { randomBytes } from "node:crypto";
+import { appendRepositoryAuditEvent, appendRouteAuditEvent } from "./audit-events.js";
 
 export function registerRecoveryRoutes(
   server: FastifyInstance,
@@ -51,6 +52,15 @@ export function registerRecoveryRoutes(
         request.auth.user.id,
         records,
       );
+      await appendRouteAuditEvent(options.repository, request.auth, {
+        action: "auth_credential.recovery_codes.generated",
+        resourceType: "auth_credential",
+        resourceId: request.auth.user.id,
+        metadata: {
+          userId: request.auth.user.id,
+          codeCount: records.length,
+        },
+      });
 
       return { codes };
     },
@@ -79,6 +89,17 @@ export function registerRecoveryRoutes(
       );
 
       const result = await authService.verifyRecoveryCode(body);
+      await appendRepositoryAuditEvent(options.repository, {
+        firmId: result.user.firmId,
+        actorId: result.user.id,
+        action: "auth_credential.recovery_code.used",
+        resourceType: "auth_credential",
+        resourceId: result.user.id,
+        metadata: {
+          userId: result.user.id,
+          method: "recovery_code",
+        },
+      });
       reply.header(
         "set-cookie",
         sessionCookie(result.token, result.session.expiresAt, options.nodeEnv === "production"),

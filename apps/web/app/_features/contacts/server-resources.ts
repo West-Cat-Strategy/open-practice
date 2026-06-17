@@ -9,6 +9,7 @@ function emptyContactReviewQueue(totalContacts: number): ContactReviewQueueRespo
       duplicateCandidateCount: 0,
       sensitivePartyCueCount: 0,
       revalidationPromptCount: 0,
+      retentionHoldCueCount: 0,
     },
     items: [],
   };

@@ -10,7 +10,9 @@ import type {
   TaskDeadlineBucket,
   TaskDeadlineProjection,
   TaskDeadlineRecord,
+  TaskSourceType,
 } from "./models.js";
+import type { LegalClinicCadenceSignal } from "./legal-clinics.js";
 
 export interface TaskDeadlineCounterSet {
   overdue: number;
@@ -130,7 +132,7 @@ export interface TaskFollowUpSuggestion {
   priority: TaskDeadlineReviewPriority;
   dueAt?: string;
   source: {
-    type: "calendar_scheduling";
+    type: TaskSourceType;
     id: string;
     label: string;
   };
@@ -509,11 +511,17 @@ export function buildContactTimelineTaskCues(input: {
 function buildSuggestedFollowUps(input: {
   tasks: TaskDeadlineProjection[];
   schedulingRequests?: CalendarSchedulingRequestRecord[];
+  legalClinicCadenceSignals?: LegalClinicCadenceSignal[];
   matters?: TaskReviewMatterLink[];
 }): TaskFollowUpSuggestion[] {
   const existingTaskIds = new Set(input.tasks.map((task) => task.id));
+  const existingTaskSources = new Set(
+    input.tasks
+      .filter((task) => task.sourceType && task.sourceId)
+      .map((task) => `${task.sourceType}:${task.sourceId}`),
+  );
   const mattersById = new Map((input.matters ?? []).map((matter) => [matter.id, matter]));
-  return (input.schedulingRequests ?? [])
+  const schedulingSuggestions = (input.schedulingRequests ?? [])
     .filter(
       (request) =>
         request.status === "needs_review" &&
@@ -542,12 +550,36 @@ function buildSuggestedFollowUps(input: {
         reviewBoundary: TASK_FOLLOW_UP_REVIEW_BOUNDARY,
       };
     })
-    .sort((left, right) => {
-      const leftDue = left.dueAt ? Date.parse(left.dueAt) : Number.POSITIVE_INFINITY;
-      const rightDue = right.dueAt ? Date.parse(right.dueAt) : Number.POSITIVE_INFINITY;
-      if (leftDue !== rightDue) return leftDue - rightDue;
-      return left.id.localeCompare(right.id);
+    .filter(
+      (suggestion) => !existingTaskSources.has(`${suggestion.source.type}:${suggestion.source.id}`),
+    );
+
+  const legalClinicSuggestions = (input.legalClinicCadenceSignals ?? [])
+    .filter((signal) => !existingTaskSources.has(`operational_view:${signal.sourceId}`))
+    .map((signal): TaskFollowUpSuggestion => {
+      const matter = mattersById.get(signal.matterId);
+      return {
+        id: `legal-clinic-cadence:${signal.profileId}:${signal.signal}`,
+        matterId: signal.matterId,
+        title: signal.title,
+        reason: `${matter?.number ?? signal.matterId} ${signal.reason}`,
+        priority: signal.priority,
+        dueAt: signal.dueAt,
+        source: {
+          type: "operational_view",
+          id: signal.sourceId,
+          label: "Legal clinic cadence",
+        },
+        reviewBoundary: TASK_FOLLOW_UP_REVIEW_BOUNDARY,
+      };
     });
+
+  return [...schedulingSuggestions, ...legalClinicSuggestions].sort((left, right) => {
+    const leftDue = left.dueAt ? Date.parse(left.dueAt) : Number.POSITIVE_INFINITY;
+    const rightDue = right.dueAt ? Date.parse(right.dueAt) : Number.POSITIVE_INFINITY;
+    if (leftDue !== rightDue) return leftDue - rightDue;
+    return left.id.localeCompare(right.id);
+  });
 }
 
 export function buildTaskDeadlineWorkbench(input: {
@@ -555,6 +587,7 @@ export function buildTaskDeadlineWorkbench(input: {
   matterParties: MatterParty[];
   matters?: TaskReviewMatterLink[];
   schedulingRequests?: CalendarSchedulingRequestRecord[];
+  legalClinicCadenceSignals?: LegalClinicCadenceSignal[];
   userId: string;
   now?: Date;
 }): TaskDeadlineWorkbench {
@@ -673,6 +706,7 @@ export function buildTaskDeadlineWorkbench(input: {
       tasks: projections,
       matters: input.matters,
       schedulingRequests: input.schedulingRequests,
+      legalClinicCadenceSignals: input.legalClinicCadenceSignals,
     }),
   };
 }

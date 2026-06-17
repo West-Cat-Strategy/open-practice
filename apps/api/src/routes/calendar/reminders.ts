@@ -138,6 +138,15 @@ function calendarReminderAuditMetadata(
   };
 }
 
+function nextReminderUpdatedAt(current: CalendarEventReminderRecord): string {
+  const now = new Date();
+  const currentUpdatedAt = Date.parse(current.updatedAt);
+  if (Number.isFinite(currentUpdatedAt) && now.getTime() <= currentUpdatedAt) {
+    return new Date(currentUpdatedAt + 1).toISOString();
+  }
+  return now.toISOString();
+}
+
 async function recordReminderReconciliation(input: {
   repository: CalendarRouteDependencies["repository"];
   firmId: string;
@@ -317,7 +326,7 @@ export function registerCalendarReminderRoutes(
       }
       requireEmailDeliveryConfirmation(body.deliveryConfirmation, { recipientCount: 1 });
     }
-    const now = new Date().toISOString();
+    const now = nextReminderUpdatedAt(current);
     const reminder = await repository.upsertCalendarEventReminder({
       ...current,
       remindAt: body.remindAt ?? current.remindAt,

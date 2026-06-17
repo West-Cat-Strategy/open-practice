@@ -21,6 +21,7 @@ import type { InboundEmailRouteDependencies } from "./shared.js";
 
 const STALLED_QUEUED_JOB_MS = 60 * 60 * 1000;
 const STALLED_ACTIVE_JOB_MS = 30 * 60 * 1000;
+const IMAP_PROVIDER_KEY = "imap";
 
 const parserJobParamsSchema = z.object({ jobId: z.string().min(1) });
 const parserJobRetryConfirmationSchema = z
@@ -51,8 +52,7 @@ const parserJobDeadLetterBodySchema = z
   })
   .strict();
 
-function rawStorageKeyForParser(job: JobLifecycleRecord): string {
-  const rawStorageKey = job.metadata.rawStorageKey;
+function assertFirmScopedRawStorageKey(job: JobLifecycleRecord, rawStorageKey: string): string {
   if (typeof rawStorageKey !== "string" || !rawStorageKey.trim()) {
     throw new ApiHttpError(
       409,
@@ -74,6 +74,131 @@ function rawStorageKeyForParser(job: JobLifecycleRecord): string {
     );
   }
   return rawStorageKey;
+}
+
+function rawMetadataString(job: JobLifecycleRecord, key: string): string | undefined {
+  const value = job.metadata[key];
+  return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+function rawMetadataInteger(job: JobLifecycleRecord, key: string): number | undefined {
+  const value = job.metadata[key];
+  if (typeof value === "number" && Number.isInteger(value) && value >= 0) return value;
+  if (typeof value === "string" && /^\d+$/.test(value)) return Number(value);
+  return undefined;
+}
+
+function missingRawObjectProvenance(): ApiHttpError {
+  return new ApiHttpError(
+    409,
+    "INBOUND_EMAIL_RAW_STORAGE_KEY_MISSING",
+    "Inbound email parser job recovery requires bounded raw object provenance",
+  );
+}
+
+function rawStorageKeyForParser(job: JobLifecycleRecord): string {
+  const legacyRawStorageKey = job.metadata.rawStorageKey;
+  if (typeof legacyRawStorageKey === "string" && legacyRawStorageKey.trim()) {
+    return assertFirmScopedRawStorageKey(job, legacyRawStorageKey);
+  }
+
+  const rawContentSha256 = rawMetadataString(job, "rawContentSha256");
+  if (!rawContentSha256) throw missingRawObjectProvenance();
+
+  const provider = rawMetadataString(job, "provider");
+  const source = rawMetadataString(job, "source");
+  if (provider === MAILGUN_PROVIDER_KEY || source === "mailgun.raw_mime_webhook") {
+    const tokenHash = rawMetadataString(job, "tokenHash") ?? job.targetResourceId;
+    if (!tokenHash) throw missingRawObjectProvenance();
+    return assertFirmScopedRawStorageKey(
+      job,
+      [
+        "inbound-email",
+        job.firmId,
+        "raw",
+        "provider-webhooks",
+        MAILGUN_PROVIDER_KEY,
+        "raw-mime",
+        `${tokenHash}-${rawContentSha256}.eml`,
+      ].join("/"),
+    );
+  }
+
+  if (provider === IMAP_PROVIDER_KEY || source === "imap.mailbox_poll") {
+    const mailboxHash = rawMetadataString(job, "mailboxHash");
+    const uidValidity = rawMetadataInteger(job, "uidValidity");
+    const uid = rawMetadataInteger(job, "uid");
+    if (!mailboxHash || uidValidity === undefined || uid === undefined) {
+      throw missingRawObjectProvenance();
+    }
+    return assertFirmScopedRawStorageKey(
+      job,
+      [
+        "inbound-email",
+        job.firmId,
+        "raw",
+        "provider-polls",
+        IMAP_PROVIDER_KEY,
+        mailboxHash,
+        String(uidValidity),
+        `${uid}-${rawContentSha256}.eml`,
+      ].join("/"),
+    );
+  }
+
+  throw missingRawObjectProvenance();
+}
+
+function safeParserJobMetadata(metadata: Record<string, unknown>): Record<string, unknown> {
+  const safeKeys = new Set([
+    "bullJobId",
+    "domain",
+    "enqueueStatus",
+    "idempotencyFingerprint",
+    "idempotencyKeyPresent",
+    "mailboxHash",
+    "provider",
+    "rawContentSha256",
+    "rawSizeBytes",
+    "rawStorageKeyPresent",
+    "resourceId",
+    "resourceType",
+    "retryOfJobId",
+    "source",
+    "tokenHash",
+    "uid",
+    "uidValidity",
+  ]);
+  return Object.fromEntries(
+    Object.entries(metadata).filter(([key, value]) => safeKeys.has(key) && value !== undefined),
+  );
+}
+
+async function resolveRawStorageKeyForParser(input: {
+  repository: InboundEmailRouteDependencies["repository"];
+  firmId: string;
+  job: JobLifecycleRecord;
+  seenJobIds?: Set<string>;
+}): Promise<string> {
+  try {
+    return rawStorageKeyForParser(input.job);
+  } catch (error) {
+    const retryOfJobId = rawMetadataString(input.job, "retryOfJobId");
+    if (!retryOfJobId) throw error;
+    const seenJobIds = input.seenJobIds ?? new Set<string>();
+    if (seenJobIds.has(input.job.id) || retryOfJobId === input.job.id) throw error;
+    seenJobIds.add(input.job.id);
+    const sourceJob = (await input.repository.listJobLifecycleRecords(input.firmId)).find(
+      (candidate) => candidate.id === retryOfJobId,
+    );
+    if (!sourceJob || !isInboundParserJob(sourceJob)) throw error;
+    return resolveRawStorageKeyForParser({
+      repository: input.repository,
+      firmId: input.firmId,
+      job: sourceJob,
+      seenJobIds,
+    });
+  }
 }
 
 function isInboundParserJob(job: JobLifecycleRecord): boolean {
@@ -169,6 +294,7 @@ async function createParserRetryJob(input: {
     clientKey: input.clientKey,
   });
   const metadata = {
+    ...safeParserJobMetadata(input.sourceJob.metadata),
     ...idempotencyMetadata({
       provider:
         typeof input.sourceJob.metadata.provider === "string"
@@ -190,7 +316,7 @@ async function createParserRetryJob(input: {
     retryOfJobId: input.sourceJob.id,
     previousStatus: input.sourceJob.status,
     idempotencyKeyPresent: true,
-    rawStorageKey: input.rawStorageKey,
+    rawStorageKeyPresent: true,
   };
   try {
     const job = await input.repository.createJobLifecycleRecord({
@@ -242,7 +368,11 @@ export function registerInboundEmailParserJobRoutes(
       );
     }
 
-    const rawStorageKey = rawStorageKeyForParser(sourceJob);
+    const rawStorageKey = await resolveRawStorageKeyForParser({
+      repository,
+      firmId: request.auth.firmId,
+      job: sourceJob,
+    });
     const now = new Date().toISOString();
     const { job, created } = await createParserRetryJob({
       repository,
@@ -261,7 +391,7 @@ export function registerInboundEmailParserJobRoutes(
             firmId: request.auth.firmId,
             resourceType: "inbound_email_raw",
             resourceId: sourceJob.targetResourceId,
-            metadata: job.metadata,
+            metadata: { ...job.metadata, rawStorageKey },
           },
           { jobId: job.id },
         );
@@ -320,7 +450,7 @@ export function registerInboundEmailParserJobRoutes(
       failedAt: now,
       errorMessage: "Inbound email parser job manually moved to dead letter by owner review",
       metadata: {
-        ...job.metadata,
+        ...safeParserJobMetadata(job.metadata),
         manualRecoveryAction: "dead_letter",
         previousStatus: job.status,
         recoveredByUserId: request.auth.user.id,

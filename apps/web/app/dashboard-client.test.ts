@@ -468,6 +468,13 @@ function publicConsultationIntake(
   };
 }
 
+const emptyRetentionHoldReview = {
+  documentLegalHoldCount: 0,
+  documentReviewCount: 0,
+  lifecycleReviewCount: 0,
+  blockedLifecycleReviewCount: 0,
+};
+
 function contactDossierWithResolutionSignal(): ContactDossier {
   return {
     contact: {
@@ -490,6 +497,7 @@ function contactDossierWithResolutionSignal(): ContactDossier {
         confidential: false,
         portalActive: false,
         portalPermissions: [],
+        retentionHoldReview: emptyRetentionHoldReview,
       },
     ],
     portal: { activeGrantCount: 0, permissionLabels: [] },
@@ -501,6 +509,7 @@ function contactDossierWithResolutionSignal(): ContactDossier {
         duplicateCandidateCount: 1,
         sensitivePartyCueCount: 0,
         revalidationPromptCount: 0,
+        retentionHoldCueCount: 0,
       },
       signals: [
         {
@@ -2127,6 +2136,7 @@ describe("dashboard client behavior", () => {
             confidential: true,
             portalActive: true,
             portalPermissions: ["view_documents" as const],
+            retentionHoldReview: emptyRetentionHoldReview,
           },
         ],
         portal: { activeGrantCount: 1, permissionLabels: ["view_documents" as const] },
@@ -2144,6 +2154,7 @@ describe("dashboard client behavior", () => {
             duplicateCandidateCount: 0,
             sensitivePartyCueCount: 2,
             revalidationPromptCount: 0,
+            retentionHoldCueCount: 0,
           },
           signals: [
             {
@@ -2183,6 +2194,7 @@ describe("dashboard client behavior", () => {
             confidential: false,
             portalActive: false,
             portalPermissions: [],
+            retentionHoldReview: emptyRetentionHoldReview,
           },
         ],
         portal: { activeGrantCount: 0, permissionLabels: [] },
@@ -2222,6 +2234,7 @@ describe("dashboard client behavior", () => {
             duplicateCandidateCount: 1,
             sensitivePartyCueCount: 1,
             revalidationPromptCount: 1,
+            retentionHoldCueCount: 0,
           },
           signals: [
             {
@@ -2326,12 +2339,14 @@ describe("dashboard client behavior", () => {
           confidential: false,
           portalActive: false,
           portalPermissions: [],
+          retentionHoldReview: emptyRetentionHoldReview,
         },
       ],
       summary: {
         duplicateCandidateCount: 1,
         sensitivePartyCueCount: 1,
         revalidationPromptCount: 1,
+        retentionHoldCueCount: 0,
       },
       signals: [
         {
@@ -2400,6 +2415,7 @@ describe("dashboard client behavior", () => {
           confidential: false,
           portalActive: false,
           portalPermissions: [],
+          retentionHoldReview: emptyRetentionHoldReview,
         },
       ],
       portal: { activeGrantCount: 0, permissionLabels: [] },
@@ -2411,6 +2427,7 @@ describe("dashboard client behavior", () => {
           duplicateCandidateCount: 1,
           sensitivePartyCueCount: 1,
           revalidationPromptCount: 1,
+          retentionHoldCueCount: 0,
         },
         signals: [
           {
@@ -2602,7 +2619,7 @@ describe("dashboard client behavior", () => {
       contactHistoryExportReason: "Synthetic staff review",
       contactHistoryExportStatus: "Export generated 2026-05-01T20:00:00.000Z.",
       contactHistoryExportSummary:
-        "9 categories, 1 timeline cues, 1 matter links, 0 portal grants. Transient export; no server-side export body stored.",
+        "11 categories, 1 timeline cues, 1 matter links, 0 portal grants. Transient export; no server-side export body stored.",
       contactTimeline: [
         {
           id: "task-cue:contact-river:task-private-review",
@@ -2632,6 +2649,41 @@ describe("dashboard client behavior", () => {
       ],
       contactTimelineActivityFilter: "task_cues" as const,
       contactTimelineStatus: "1 timeline cue loaded.",
+      contactReviewQueue: {
+        summary: {
+          totalContacts: 1,
+          reviewItemCount: 1,
+          duplicateCandidateCount: 1,
+          sensitivePartyCueCount: 0,
+          revalidationPromptCount: 0,
+          retentionHoldCueCount: 0,
+        },
+        items: [
+          {
+            contact: {
+              id: dossier.contact.id,
+              kind: dossier.contact.kind,
+              displayName: dossier.contact.displayName,
+              aliasCount: dossier.contact.aliases.length,
+              identifierCount: dossier.contact.identifiers.length,
+            },
+            matters: dossier.matters,
+            summary: dossier.qualityReview.summary,
+            signals: [
+              {
+                kind: signal.kind,
+                severity: signal.severity,
+                reason: signal.reason,
+                relatedContactIds: signal.relatedContactIds,
+                matchedOn: signal.matchedOn,
+                matchedValueRedacted: true,
+                duplicateReview: signal.duplicateReview,
+              },
+            ],
+            auditSafe: true as const,
+          },
+        ],
+      },
       contactSearch: "",
       creatingContact: false,
       creatingMatterFromContactId: "",
@@ -2641,6 +2693,8 @@ describe("dashboard client behavior", () => {
       onContactCreateKindChange: () => {},
       onContactCreatePhoneChange: () => {},
       onContactHistoryExportReasonChange: () => {},
+      onPollContactHistoryExport: () => {},
+      onDownloadContactHistoryExport: () => {},
       onContactTimelineActivityFilterChange: () => {},
       onExportContactHistory: () => {},
       onCreateContact: () => {},
@@ -2672,6 +2726,7 @@ describe("dashboard client behavior", () => {
     expect(readOnlyHtml).toContain("Resolution history");
     expect(readOnlyHtml).toContain("Timeline activity");
     expect(readOnlyHtml).toContain("Activity filter");
+    expect(readOnlyHtml).toContain("Retention/hold cues");
     expect(readOnlyHtml).toContain("Task and follow-up cues");
     expect(readOnlyHtml).toContain("Task deadline cue");
     expect(readOnlyHtml).toContain("2026-0001");
@@ -3287,6 +3342,14 @@ describe("dashboard client behavior", () => {
     expect(emptyJurisdictionalTrustReport()).toEqual({
       summaries: [],
       compliancePosture: "operational_controls_only_not_jurisdiction_certified",
+      groupBy: "jurisdiction",
+      filters: {},
+      dimensionOptions: {
+        jurisdictions: [],
+        practiceAreas: [],
+        clinicProgramIds: [],
+        restrictedFundReviewStatuses: [],
+      },
     });
     expect(loaded).toBe(controls);
     expect(matterTrustBalanceCents(controls, "matter-001", 0)).toBe(150000);
@@ -3345,10 +3408,30 @@ describe("dashboard client behavior", () => {
       activeJurisdictionTrustReportSummary({
         matter: matter({ id: "matter-001", jurisdiction: "BC" }),
         report: {
+          groupBy: "jurisdiction",
+          filters: {},
+          dimensionOptions: {
+            jurisdictions: ["BC"],
+            practiceAreas: ["Residential tenancy"],
+            clinicProgramIds: ["clinic-program-synthetic"],
+            restrictedFundReviewStatuses: ["reviewed"],
+          },
           compliancePosture: "operational_controls_only_not_jurisdiction_certified",
           summaries: [
             {
               jurisdiction: "BC",
+              groupBy: "jurisdiction",
+              dimensionKey: "BC",
+              dimensionLabel: "BC",
+              dimensions: {
+                jurisdiction: "BC",
+                practiceArea: "Residential tenancy",
+                clinicProgramId: "clinic-program-synthetic",
+                restrictedFundReviewStatus: "reviewed",
+              },
+              practiceArea: "Residential tenancy",
+              clinicProgramId: "clinic-program-synthetic",
+              restrictedFundReviewStatus: "reviewed",
               matterCount: 2,
               trustBalanceCents: 149000,
               pendingApprovalCount: 1,

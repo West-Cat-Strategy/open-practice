@@ -194,6 +194,7 @@ const contactHistoryExportBodySchema = z
   .object({
     purpose: z.literal("staff_review"),
     reviewReason: z.string().trim().min(8).max(240),
+    matterId: z.string().trim().min(1).optional(),
   })
   .strict();
 
@@ -201,6 +202,7 @@ const contactHistoryExportRequestBodySchema = z
   .object({
     purpose: z.literal("staff_review"),
     reviewReason: z.string().trim().min(8).max(240),
+    matterId: z.string().trim().min(1).optional(),
     idempotencyKey: z.string().trim().min(1).max(160).optional(),
   })
   .strict();
@@ -319,6 +321,7 @@ const contactDataQualityResolutionDecisionsByKind: Record<
     "revalidation_completed",
     "needs_follow_up",
   ]),
+  retention_hold_review: new Set(["acknowledged", "needs_follow_up"]),
 };
 
 function redactSignalMatchedValue(signal: ContactDossierQualitySignal) {
@@ -430,6 +433,7 @@ function serializeContactDetail(dossier: ContactDossier, portalGrants: PortalGra
 type ContactTimelineEntry = Awaited<
   ReturnType<OpenPracticeRepository["listContactTimelineForUser"]>
 >[number];
+type SerializedContactDetail = ReturnType<typeof serializeContactDetail>;
 
 function compactMetadata(metadata: Record<string, unknown>): Record<string, unknown> {
   return Object.fromEntries(Object.entries(metadata).filter(([, value]) => value !== undefined));
@@ -497,10 +501,93 @@ function contactTimelineExportEntry(entry: ContactTimelineEntry) {
   };
 }
 
+function scopedPortalPermissions(
+  grants: SerializedContactDetail["portal"]["grants"],
+): SerializedContactDetail["portal"]["permissionLabels"] {
+  return Array.from(new Set(grants.flatMap((grant) => grant.permissions))).sort();
+}
+
+function scopeContactDetailToMatter(
+  detail: SerializedContactDetail,
+  matterId?: string,
+): SerializedContactDetail {
+  if (!matterId) return detail;
+  const grants = detail.portal.grants.filter((grant) => grant.matterId === matterId);
+  return {
+    ...detail,
+    matters: detail.matters.filter((matter) => matter.matterId === matterId),
+    relationships: detail.relationships
+      .filter((relationship) => relationship.visibleMatterIds.includes(matterId))
+      .map((relationship) => ({ ...relationship, visibleMatterIds: [matterId] })),
+    portal: {
+      ...detail.portal,
+      activeGrantCount: grants.filter((grant) => (grant.status ?? "active") === "active").length,
+      permissionLabels: scopedPortalPermissions(grants),
+      grants,
+    },
+    conflictCues: detail.conflictCues.filter((cue) => cue.matterId === matterId),
+    conflictHistory: detail.conflictHistory
+      .map((entry) => ({
+        ...entry,
+        visibleMatchedMatterIds: entry.visibleMatchedMatterIds.filter((id) => id === matterId),
+      }))
+      .filter((entry) => entry.visibleMatchedMatterIds.length > 0)
+      .map((entry) => ({
+        ...entry,
+        matchCount: entry.visibleMatchedMatterIds.length,
+      })),
+    qualityReview: {
+      ...detail.qualityReview,
+      summary: {
+        duplicateCandidateCount: detail.qualityReview.signals.filter(
+          (signal) => signal.kind === "duplicate_candidate" && signal.matterId === matterId,
+        ).length,
+        sensitivePartyCueCount: detail.qualityReview.signals.filter(
+          (signal) => signal.kind === "protected_party_cue" && signal.matterId === matterId,
+        ).length,
+        revalidationPromptCount: detail.qualityReview.signals.filter(
+          (signal) => signal.kind === "conflict_revalidation" && signal.matterId === matterId,
+        ).length,
+        retentionHoldCueCount: detail.qualityReview.signals.filter(
+          (signal) => signal.kind === "retention_hold_review" && signal.matterId === matterId,
+        ).length,
+      },
+      signals: detail.qualityReview.signals.filter((signal) => signal.matterId === matterId),
+    },
+  };
+}
+
+function scopeTimelineToMatter(
+  timeline: ContactTimelineEntry[],
+  matterId?: string,
+): ContactTimelineEntry[] {
+  return matterId ? timeline.filter((entry) => entry.matterId === matterId) : timeline;
+}
+
+function documentHoldReviewPosture(detail: SerializedContactDetail) {
+  return detail.matters.map((matter) => ({
+    matterId: matter.matterId,
+    matterStatus: matter.matterStatus,
+    documentLegalHoldCount: matter.retentionHoldReview.documentLegalHoldCount,
+    documentReviewCount: matter.retentionHoldReview.documentReviewCount,
+  }));
+}
+
+function retentionHoldReviewPosture(detail: SerializedContactDetail) {
+  const signals = detail.qualityReview.signals.filter(
+    (signal) => signal.kind === "retention_hold_review",
+  );
+  return {
+    summary: { retentionHoldCueCount: signals.length },
+    signals,
+  };
+}
+
 function buildContactHistoryExport(input: {
-  detail: ReturnType<typeof serializeContactDetail>;
+  detail: SerializedContactDetail;
   generatedAt: string;
   generatedByUserId: string;
+  matterId?: string;
   purpose: "staff_review";
   resolutions: ContactDataQualityResolutionRecord[];
   reviewReason: string;
@@ -590,12 +677,15 @@ function buildContactHistoryExport(input: {
         recordedAt: resolution.recordedAt,
       })),
     },
+    documentHoldReviewPosture: documentHoldReviewPosture(input.detail),
+    retentionHoldReviewPosture: retentionHoldReviewPosture(input.detail),
     timelineCues: input.timeline.map(contactTimelineExportEntry),
   };
   return {
     exportRequest: {
       purpose: input.purpose,
       contactId: contact.id,
+      matterId: input.matterId,
       generatedAt: input.generatedAt,
       generatedByUserId: input.generatedByUserId,
       reviewReasonPresent: Boolean(input.reviewReason.trim()),
@@ -608,6 +698,7 @@ function buildContactHistoryExport(input: {
       generatedAt: input.generatedAt,
       generatedByUserId: input.generatedByUserId,
       purpose: input.purpose,
+      matterId: input.matterId,
       policyBoundary: {
         rawPrivateContactHistory: false,
         exportBodyStoredInAuditMetadata: false,
@@ -627,36 +718,48 @@ async function loadContactHistoryExport(input: {
   user: Parameters<OpenPracticeRepository["listContactDossiersForUser"]>[0];
   contactId: string;
   generatedAt: string;
+  matterId?: string;
   purpose: "staff_review";
   reviewReason: string;
 }) {
   const dossiers = await input.repository.listContactDossiersForUser(input.user);
-  const dossier = findVisibleDossier(dossiers, input.contactId);
+  const dossier = assertContactHistoryExportScope(dossiers, {
+    contactId: input.contactId,
+    matterId: input.matterId,
+  });
   const [portalGrants, timeline, resolutions] = await Promise.all([
     input.repository.listContactPortalGrantsForUser(input.user, input.contactId),
     input.repository.listContactTimelineForUser(input.user, input.contactId),
     input.repository.listContactDataQualityResolutions(input.firmId, {
       contactId: input.contactId,
+      matterId: input.matterId,
     }),
   ]);
-  const detail = serializeContactDetail(dossier, portalGrants);
+  const detail = scopeContactDetailToMatter(
+    serializeContactDetail(dossier, portalGrants),
+    input.matterId,
+  );
+  const scopedTimeline = scopeTimelineToMatter(timeline, input.matterId);
   const visibleResolutions = filterVisibleResolutions(resolutions, dossiers).filter(
-    (resolution) => resolution.contactId === input.contactId,
+    (resolution) =>
+      resolution.contactId === input.contactId &&
+      (!input.matterId || resolution.matterId === input.matterId),
   );
   const payload = buildContactHistoryExport({
     detail,
     generatedAt: input.generatedAt,
     generatedByUserId: input.user.id,
+    matterId: input.matterId,
     purpose: input.purpose,
     resolutions: visibleResolutions,
     reviewReason: input.reviewReason,
-    timeline,
+    timeline: scopedTimeline,
   });
-  return { detail, payload, timeline };
+  return { detail, payload, timeline: scopedTimeline };
 }
 
 function contactHistoryExportCounts(input: {
-  detail: ReturnType<typeof serializeContactDetail>;
+  detail: SerializedContactDetail;
   payload: ReturnType<typeof buildContactHistoryExport>;
   timeline: ContactTimelineEntry[];
 }) {
@@ -666,6 +769,11 @@ function contactHistoryExportCounts(input: {
     matterAssociationCount: input.detail.matters.length,
     portalGrantCount: input.detail.portal.grants.length,
     conflictSummaryCount: input.detail.conflictHistory.length + input.detail.conflictCues.length,
+    documentHoldCueCount: input.detail.matters.reduce(
+      (total, matter) => total + matter.retentionHoldReview.documentLegalHoldCount,
+      0,
+    ),
+    retentionHoldCueCount: input.detail.qualityReview.summary.retentionHoldCueCount,
   };
 }
 
@@ -683,6 +791,7 @@ function contactHistoryExportMetadata(input: {
   downloadExpiresAt: string;
   enqueueStatus: "queued_for_local_report_worker" | "completed_inline";
   idempotencyKeyPresent: boolean;
+  matterId?: string;
   purpose: "staff_review";
   requestedByUserId: string;
   reviewReasonPresent: boolean;
@@ -691,6 +800,8 @@ function contactHistoryExportMetadata(input: {
     reportType: CONTACT_HISTORY_EXPORT_REPORT_TYPE,
     reportScope: CONTACT_HISTORY_EXPORT_REPORT_SCOPE,
     contactId: input.contactId,
+    matterId: input.matterId,
+    matterScoped: Boolean(input.matterId),
     purpose: input.purpose,
     requestedByUserId: input.requestedByUserId,
     reviewReasonPresent: input.reviewReasonPresent,
@@ -700,6 +811,8 @@ function contactHistoryExportMetadata(input: {
     matterAssociationCount: input.counts.matterAssociationCount,
     portalGrantCount: input.counts.portalGrantCount,
     conflictSummaryCount: input.counts.conflictSummaryCount,
+    documentHoldCueCount: input.counts.documentHoldCueCount,
+    retentionHoldCueCount: input.counts.retentionHoldCueCount,
     retentionPosture: CONTACT_HISTORY_EXPORT_RETENTION_POSTURE,
     legalHoldPosture: CONTACT_HISTORY_EXPORT_LEGAL_HOLD_POSTURE,
     privacyPosture: CONTACT_HISTORY_EXPORT_PRIVACY_POSTURE,
@@ -719,12 +832,19 @@ function contactHistoryExportContactId(job: JobLifecycleRecord): string | undefi
   return metadataString(job.metadata, "contactId");
 }
 
+function contactHistoryExportMatterId(job: JobLifecycleRecord): string | undefined {
+  return metadataString(job.metadata, "matterId");
+}
+
 function serializeContactHistoryExportRequest(job: JobLifecycleRecord, contactId: string) {
   const metadata = job.metadata;
+  const matterId = metadataString(metadata, "matterId");
   return {
     id: job.id,
     jobId: job.id,
     contactId,
+    matterId,
+    matterScoped: Boolean(matterId),
     purpose: "staff_review" as const,
     status: job.status,
     queuedAt: job.queuedAt,
@@ -744,6 +864,8 @@ function serializeContactHistoryExportRequest(job: JobLifecycleRecord, contactId
     matterAssociationCount: metadataNumber(metadata, "matterAssociationCount"),
     portalGrantCount: metadataNumber(metadata, "portalGrantCount"),
     conflictSummaryCount: metadataNumber(metadata, "conflictSummaryCount"),
+    documentHoldCueCount: metadataNumber(metadata, "documentHoldCueCount"),
+    retentionHoldCueCount: metadataNumber(metadata, "retentionHoldCueCount"),
     retentionPosture:
       metadataString(metadata, "retentionPosture") ?? CONTACT_HISTORY_EXPORT_RETENTION_POSTURE,
     legalHoldPosture:
@@ -825,6 +947,24 @@ function assertVisibleMatter(dossiers: ContactDossier[], matterId: string): void
   if (!visibleMatterIds(dossiers).has(matterId)) {
     throw new ApiHttpError(403, "CONTACT_MATTER_NOT_VISIBLE", "Matter is not visible");
   }
+}
+
+function assertContactHistoryExportScope(
+  dossiers: ContactDossier[],
+  input: { contactId: string; matterId?: string },
+): ContactDossier {
+  const dossier = findVisibleDossier(dossiers, input.contactId);
+  if (!input.matterId) return dossier;
+
+  assertVisibleMatter(dossiers, input.matterId);
+  if (!dossier.matters.some((matter) => matter.matterId === input.matterId)) {
+    throw new ApiHttpError(
+      403,
+      "CONTACT_EXPORT_MATTER_LINK_NOT_VISIBLE",
+      "Contact is not linked to the requested matter",
+    );
+  }
+  return dossier;
 }
 
 function assertVisibleRelatedContact(dossiers: ContactDossier[], contactId: string): void {
@@ -1045,6 +1185,10 @@ export function registerContactRoutes(
           (total, item) => total + item.summary.revalidationPromptCount,
           0,
         ),
+        retentionHoldCueCount: items.reduce(
+          (total, item) => total + item.summary.retentionHoldCueCount,
+          0,
+        ),
       },
       items,
     };
@@ -1156,6 +1300,7 @@ export function registerContactRoutes(
       user: request.auth.user,
       contactId: params.contactId,
       generatedAt,
+      matterId: body.matterId,
       purpose: body.purpose,
       reviewReason: body.reviewReason,
     });
@@ -1166,6 +1311,8 @@ export function registerContactRoutes(
       resourceId: params.contactId,
       metadata: {
         contactId: params.contactId,
+        matterId: body.matterId,
+        matterScoped: Boolean(body.matterId),
         purpose: body.purpose,
         reviewReasonPresent: Boolean(body.reviewReason.trim()),
         generatedCategoryCount: counts.generatedCategoryCount,
@@ -1173,6 +1320,8 @@ export function registerContactRoutes(
         matterAssociationCount: counts.matterAssociationCount,
         portalGrantCount: counts.portalGrantCount,
         conflictSummaryCount: counts.conflictSummaryCount,
+        documentHoldCueCount: counts.documentHoldCueCount,
+        retentionHoldCueCount: counts.retentionHoldCueCount,
         retentionPosture: payload.exportRequest.retentionPosture,
         legalHoldPosture: payload.exportRequest.legalHoldPosture,
         privacyPosture: payload.exportRequest.privacyPosture,
@@ -1195,6 +1344,7 @@ export function registerContactRoutes(
       user: request.auth.user,
       contactId: params.contactId,
       generatedAt: now,
+      matterId: body.matterId,
       purpose: body.purpose,
       reviewReason: body.reviewReason,
     });
@@ -1202,16 +1352,16 @@ export function registerContactRoutes(
     const queueConfigured = Boolean(options.reportJobQueue);
     const idempotencyKey =
       body.idempotencyKey ??
-      `${CONTACT_HISTORY_EXPORT_JOB_NAME}:${request.auth.user.id}:${params.contactId}:${body.purpose}:${now.slice(
-        0,
-        10,
-      )}`;
+      `${CONTACT_HISTORY_EXPORT_JOB_NAME}:${request.auth.user.id}:${params.contactId}:${
+        body.matterId ?? "all-visible"
+      }:${body.purpose}:${now.slice(0, 10)}`;
     const metadata = contactHistoryExportMetadata({
       contactId: params.contactId,
       counts: contactHistoryExportCounts({ detail, payload, timeline }),
       downloadExpiresAt,
       enqueueStatus: queueConfigured ? "queued_for_local_report_worker" : "completed_inline",
       idempotencyKeyPresent: Boolean(body.idempotencyKey),
+      matterId: body.matterId,
       purpose: body.purpose,
       requestedByUserId: request.auth.user.id,
       reviewReasonPresent: Boolean(body.reviewReason.trim()),
@@ -1252,6 +1402,8 @@ export function registerContactRoutes(
               reportType: CONTACT_HISTORY_EXPORT_REPORT_TYPE,
               reportScope: CONTACT_HISTORY_EXPORT_REPORT_SCOPE,
               contactId: params.contactId,
+              matterId: body.matterId,
+              matterScoped: Boolean(body.matterId),
               purpose: body.purpose,
               requestedByUserId: request.auth.user.id,
               reviewReasonPresent: Boolean(body.reviewReason.trim()),
@@ -1287,6 +1439,8 @@ export function registerContactRoutes(
         resourceId: params.contactId,
         metadata: compactMetadata({
           contactId: params.contactId,
+          matterId: body.matterId,
+          matterScoped: Boolean(body.matterId),
           jobId: job.id,
           purpose: body.purpose,
           reviewReasonPresent: Boolean(body.reviewReason.trim()),
@@ -1295,6 +1449,8 @@ export function registerContactRoutes(
           matterAssociationCount: metadataNumber(metadata, "matterAssociationCount"),
           portalGrantCount: metadataNumber(metadata, "portalGrantCount"),
           conflictSummaryCount: metadataNumber(metadata, "conflictSummaryCount"),
+          documentHoldCueCount: metadataNumber(metadata, "documentHoldCueCount"),
+          retentionHoldCueCount: metadataNumber(metadata, "retentionHoldCueCount"),
           downloadExpiresAt,
           enqueueStatus: queueConfigured ? "queued_for_local_report_worker" : "completed_inline",
           idempotencyKeyPresent: Boolean(body.idempotencyKey),
@@ -1325,7 +1481,6 @@ export function registerContactRoutes(
       "params",
     );
     const dossiers = await options.repository.listContactDossiersForUser(request.auth.user);
-    findVisibleDossier(dossiers, params.contactId);
     const job = await findContactHistoryExportJob({
       repository: options.repository,
       firmId: request.auth.firmId,
@@ -1339,6 +1494,10 @@ export function registerContactRoutes(
         "Contact-history export request was not found",
       );
     }
+    assertContactHistoryExportScope(dossiers, {
+      contactId: params.contactId,
+      matterId: contactHistoryExportMatterId(job),
+    });
     return {
       exportRequest: serializeContactHistoryExportRequest(job, params.contactId),
     };
@@ -1369,12 +1528,14 @@ export function registerContactRoutes(
       }
       const now = new Date().toISOString();
       assertContactHistoryDownloadReady(job, now);
+      const matterId = contactHistoryExportMatterId(job);
       const { payload } = await loadContactHistoryExport({
         repository: options.repository,
         firmId: request.auth.firmId,
         user: request.auth.user,
         contactId: params.contactId,
         generatedAt: now,
+        matterId,
         purpose: "staff_review",
         reviewReason: "Queued staff review reason present",
       });
@@ -1385,6 +1546,8 @@ export function registerContactRoutes(
         resourceId: params.contactId,
         metadata: compactMetadata({
           contactId: params.contactId,
+          matterId,
+          matterScoped: Boolean(matterId),
           jobId: job.id,
           purpose: "staff_review",
           downloadExpiresAt: exportRequest.downloadExpiresAt,
@@ -1501,7 +1664,11 @@ export function registerContactRoutes(
       action: "contact.updated",
       resourceType: "contact",
       resourceId: updated.id,
-      metadata: { contactId: updated.id, contactMethodAdded: method.type },
+      metadata: {
+        contactId: updated.id,
+        changedFields: ["contactMethods"],
+        status: updated.status ?? "active",
+      },
     });
     return reply
       .code(201)
@@ -1530,6 +1697,16 @@ export function registerContactRoutes(
       updates: { contactMethods, updatedByUserId: request.auth.user.id },
     });
     if (!updated) throw new ApiHttpError(404, "CONTACT_NOT_FOUND", "Contact was not found");
+    await appendRouteAuditEvent(options.repository, request.auth, {
+      action: "contact.updated",
+      resourceType: "contact",
+      resourceId: updated.id,
+      metadata: {
+        contactId: updated.id,
+        changedFields: ["contactMethods"],
+        status: updated.status ?? "active",
+      },
+    });
     return { contact: serializeContactSummary(updated) };
   });
 
@@ -1550,6 +1727,16 @@ export function registerContactRoutes(
       updates: { contactMethods, updatedByUserId: request.auth.user.id },
     });
     if (!updated) throw new ApiHttpError(404, "CONTACT_NOT_FOUND", "Contact was not found");
+    await appendRouteAuditEvent(options.repository, request.auth, {
+      action: "contact.updated",
+      resourceType: "contact",
+      resourceId: updated.id,
+      metadata: {
+        contactId: updated.id,
+        changedFields: ["contactMethods"],
+        status: updated.status ?? "active",
+      },
+    });
     return { contact: serializeContactSummary(updated) };
   });
 

@@ -1,8 +1,10 @@
 import type { BillingPeriodLockRecord, InvoiceRecord } from "./billing.js";
-import type { LedgerAccount, LedgerReconciliationRecord } from "./ledger.js";
+import type { LegalClinicMatterProfile } from "./legal-clinics.js";
+import type { LedgerAccount, LedgerEntry, LedgerReconciliationRecord } from "./ledger.js";
 import type {
   ActivityTimelineEntry,
   Matter,
+  Province,
   TaskDeadlineRecord,
   TimeEntry,
   User,
@@ -23,7 +25,11 @@ export type StaffReportGroupingKey =
   | "account"
   | "staff_member"
   | "priority"
-  | "matter";
+  | "matter"
+  | "jurisdiction"
+  | "practiceArea"
+  | "clinicProgramId"
+  | "restrictedFundReviewStatus";
 
 export type StaffReportExportProfileId = "summary_json" | "review_csv";
 
@@ -99,6 +105,7 @@ export interface StaffReportProjectionGroup {
   totalCents?: number;
   totalMinutes?: number;
   riskCount?: number;
+  dimensions?: Partial<StaffReportDimensions>;
 }
 
 export interface StaffReportProjectionSummary {
@@ -122,6 +129,7 @@ export interface StaffReportProjectionRow {
   metricCents?: number;
   metricMinutes?: number;
   metricCount?: number;
+  dimensions?: StaffReportDimensions;
   metadata: Record<string, string | number | boolean | undefined>;
 }
 
@@ -131,6 +139,7 @@ export interface StaffReportProjection {
   groupingKey: StaffReportGroupingKey;
   filters: Record<string, string | number | boolean>;
   rowCount: number;
+  dimensionFilters: StaffReportDimensionFilters;
   summary: StaffReportProjectionSummary;
   rows: StaffReportProjectionRow[];
   projectionPolicy: {
@@ -208,9 +217,31 @@ export interface StaffReportingWorkspace {
   };
 }
 
+export interface StaffReportDimensions {
+  jurisdiction: Province | "multiple";
+  practiceArea: string;
+  clinicProgramId: string;
+  restrictedFundReviewStatus: string;
+}
+
+export interface StaffReportDimensionFilters {
+  jurisdiction?: Province;
+  practiceArea?: string;
+  clinicProgramId?: string;
+  restrictedFundReviewStatus?: string;
+}
+
 export interface StaffReportMatterInput extends Pick<
   Matter,
-  "id" | "firmId" | "number" | "title" | "status" | "responsibleUserId" | "openedOn"
+  | "id"
+  | "firmId"
+  | "number"
+  | "title"
+  | "practiceArea"
+  | "status"
+  | "jurisdiction"
+  | "responsibleUserId"
+  | "openedOn"
 > {
   activity?: ActivityTimelineEntry[];
 }
@@ -224,7 +255,12 @@ export interface BuildStaffReportProjectionInput {
   users: User[];
   invoices: InvoiceRecord[];
   ledgerAccounts: LedgerAccount[];
+  ledgerEntries?: LedgerEntry[];
   reconciliations: LedgerReconciliationRecord[];
+  legalClinicMatterProfiles?: Array<
+    Pick<LegalClinicMatterProfile, "matterId" | "programId" | "metadata">
+  >;
+  dimensionFilters?: StaffReportDimensionFilters;
   billingPeriodLocks?: BillingPeriodLockRecord[];
   timeEntries: TimeEntry[];
   taskDeadlines: TaskDeadlineRecord[];
@@ -239,6 +275,51 @@ export interface BuildStaffReportingWorkspaceInput extends Omit<
 
 const savedDefinitionTimestamp = "2026-05-28T00:00:00.000Z";
 const dayMs = 86_400_000;
+const staffReportDimensionGroupingKeys = [
+  "jurisdiction",
+  "practiceArea",
+  "clinicProgramId",
+  "restrictedFundReviewStatus",
+] as const satisfies readonly StaffReportGroupingKey[];
+
+const STAFF_REPORT_DIMENSION_FILTERS: StaffReportFilterDefinition[] = [
+  {
+    key: "jurisdiction",
+    label: "Jurisdiction",
+    type: "enum",
+    options: ["BC", "ON", "CANADA", "OTHER"],
+  },
+  { key: "practiceArea", label: "Practice area", type: "enum" },
+  { key: "clinicProgramId", label: "Clinic program", type: "enum" },
+  {
+    key: "restrictedFundReviewStatus",
+    label: "Restricted fund review",
+    type: "enum",
+  },
+];
+
+const STAFF_REPORT_DIMENSION_GROUPINGS: StaffReportGroupingDefinition[] = [
+  {
+    key: "jurisdiction",
+    label: "Jurisdiction",
+    description: "Group rows by matter jurisdiction derived from existing matter records.",
+  },
+  {
+    key: "practiceArea",
+    label: "Practice area",
+    description: "Group rows by matter practice area without adding ledger dimension tables.",
+  },
+  {
+    key: "clinicProgramId",
+    label: "Clinic program",
+    description: "Group rows by the existing legal-clinic matter profile program ID.",
+  },
+  {
+    key: "restrictedFundReviewStatus",
+    label: "Restricted fund review",
+    description: "Group rows by staff-reviewed restricted-fund metadata on clinic profiles.",
+  },
+];
 
 type StaffSavedReportDefinitionInput = Omit<
   StaffSavedReportDefinition,
@@ -322,6 +403,7 @@ const STAFF_SAVED_REPORT_DEFINITION_INPUTS: StaffSavedReportDefinitionInput[] = 
         type: "status",
         options: ["issued", "partially_paid"],
       },
+      ...STAFF_REPORT_DIMENSION_FILTERS,
     ],
     groupings: [
       {
@@ -330,6 +412,7 @@ const STAFF_SAVED_REPORT_DEFINITION_INPUTS: StaffSavedReportDefinitionInput[] = 
         description: "Current, 1-30, 31-60, and 61+ days past due.",
       },
       { key: "matter", label: "Matter", description: "Group balances by matter number." },
+      ...STAFF_REPORT_DIMENSION_GROUPINGS,
     ],
     exportProfileIds: ["summary_json", "review_csv"],
     permissionScope: ["report:read", "report:export"],
@@ -351,10 +434,12 @@ const STAFF_SAVED_REPORT_DEFINITION_INPUTS: StaffSavedReportDefinitionInput[] = 
         type: "enum",
         options: ["trust_asset"],
       },
+      ...STAFF_REPORT_DIMENSION_FILTERS,
     ],
     groupings: [
       { key: "account", label: "Account", description: "Group by trust asset account." },
       { key: "priority", label: "Priority", description: "Group by freshness risk." },
+      ...STAFF_REPORT_DIMENSION_GROUPINGS,
     ],
     exportProfileIds: ["summary_json", "review_csv"],
     permissionScope: ["report:read", "report:export"],
@@ -376,10 +461,12 @@ const STAFF_SAVED_REPORT_DEFINITION_INPUTS: StaffSavedReportDefinitionInput[] = 
         type: "status",
         options: ["draft", "submitted", "approved", "billed", "written_off"],
       },
+      ...STAFF_REPORT_DIMENSION_FILTERS,
     ],
     groupings: [
       { key: "staff_member", label: "Staff member", description: "Group by assigned user." },
       { key: "matter", label: "Matter", description: "Group by matter for time entries." },
+      ...STAFF_REPORT_DIMENSION_GROUPINGS,
     ],
     exportProfileIds: ["summary_json", "review_csv"],
     permissionScope: ["report:read", "report:export"],
@@ -396,10 +483,12 @@ const STAFF_SAVED_REPORT_DEFINITION_INPUTS: StaffSavedReportDefinitionInput[] = 
     filters: [
       { key: "overdueAsOf", label: "Overdue as of", type: "date", defaultValue: "generatedAt" },
       { key: "staleAfterDays", label: "Stale after days", type: "number", defaultValue: 30 },
+      ...STAFF_REPORT_DIMENSION_FILTERS,
     ],
     groupings: [
       { key: "priority", label: "Priority", description: "High, medium, and low urgency." },
       { key: "matter", label: "Matter", description: "Group follow-up by matter." },
+      ...STAFF_REPORT_DIMENSION_GROUPINGS,
     ],
     exportProfileIds: ["summary_json", "review_csv"],
     permissionScope: ["report:read", "report:export"],
@@ -429,7 +518,17 @@ export function isStaffReportExportProfileId(value: string): value is StaffRepor
 }
 
 export function isStaffReportGroupingKey(value: string): value is StaffReportGroupingKey {
-  return ["aging_bucket", "account", "staff_member", "priority", "matter"].includes(value);
+  return [
+    "aging_bucket",
+    "account",
+    "staff_member",
+    "priority",
+    "matter",
+    "jurisdiction",
+    "practiceArea",
+    "clinicProgramId",
+    "restrictedFundReviewStatus",
+  ].includes(value);
 }
 
 function parseTime(value: string | undefined): number | undefined {
@@ -461,6 +560,132 @@ function userLabel(user: User | undefined, userId: string | undefined): string {
   return user?.displayName ?? userId ?? "Unassigned";
 }
 
+function legalClinicProfileByMatterId(
+  profiles: BuildStaffReportProjectionInput["legalClinicMatterProfiles"] = [],
+): Map<string, Pick<LegalClinicMatterProfile, "matterId" | "programId" | "metadata">> {
+  return new Map(profiles.map((profile) => [profile.matterId, profile]));
+}
+
+function stringMetadata(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function restrictedFundReviewStatus(
+  profile: Pick<LegalClinicMatterProfile, "metadata"> | undefined,
+): string {
+  const metadata = profile?.metadata;
+  const restrictedFund =
+    metadata && typeof metadata === "object" && !Array.isArray(metadata)
+      ? (metadata as Record<string, unknown>).restrictedFund
+      : undefined;
+  if (!restrictedFund || typeof restrictedFund !== "object" || Array.isArray(restrictedFund)) {
+    return "not_reviewed";
+  }
+  return stringMetadata((restrictedFund as Record<string, unknown>).reviewStatus) ?? "not_reviewed";
+}
+
+function dimensionsForMatter(
+  matter: StaffReportMatterInput | undefined,
+  profile: Pick<LegalClinicMatterProfile, "programId" | "metadata"> | undefined,
+): StaffReportDimensions {
+  return {
+    jurisdiction: matter?.jurisdiction ?? "OTHER",
+    practiceArea: matter?.practiceArea?.trim() || "Unspecified",
+    clinicProgramId: profile?.programId ?? "none",
+    restrictedFundReviewStatus: restrictedFundReviewStatus(profile),
+  };
+}
+
+function dimensionValue(
+  dimensions: StaffReportDimensions,
+  groupingKey: StaffReportGroupingKey,
+): string | undefined {
+  return staffReportDimensionGroupingKeys.includes(
+    groupingKey as (typeof staffReportDimensionGroupingKeys)[number],
+  )
+    ? String(dimensions[groupingKey as keyof StaffReportDimensions])
+    : undefined;
+}
+
+function dimensionLabel(groupingKey: StaffReportGroupingKey, value: string): string {
+  if (groupingKey === "clinicProgramId" && value === "none") return "No clinic program";
+  if (groupingKey === "restrictedFundReviewStatus" && value === "not_reviewed") {
+    return "Not reviewed";
+  }
+  if (value === "multiple") return "Multiple";
+  return value;
+}
+
+function dimensionGroup(
+  groupingKey: StaffReportGroupingKey,
+  dimensions: StaffReportDimensions,
+): { key: string; label: string } | undefined {
+  const value = dimensionValue(dimensions, groupingKey);
+  return value ? { key: value, label: dimensionLabel(groupingKey, value) } : undefined;
+}
+
+function dimensionsMatchFilters(
+  dimensions: StaffReportDimensions,
+  filters: StaffReportDimensionFilters | undefined,
+): boolean {
+  return (
+    (!filters?.jurisdiction || dimensions.jurisdiction === filters.jurisdiction) &&
+    (!filters?.practiceArea || dimensions.practiceArea === filters.practiceArea) &&
+    (!filters?.clinicProgramId || dimensions.clinicProgramId === filters.clinicProgramId) &&
+    (!filters?.restrictedFundReviewStatus ||
+      dimensions.restrictedFundReviewStatus === filters.restrictedFundReviewStatus)
+  );
+}
+
+function compactDimensionFilters(
+  filters: StaffReportDimensionFilters | undefined,
+): StaffReportDimensionFilters {
+  return Object.fromEntries(
+    Object.entries(filters ?? {}).filter(([, value]) => typeof value === "string" && value),
+  ) as StaffReportDimensionFilters;
+}
+
+function dimensionMetadata(
+  dimensions: StaffReportDimensions,
+): Record<string, string | number | boolean | undefined> {
+  return {
+    jurisdiction: dimensions.jurisdiction,
+    practiceArea: dimensions.practiceArea,
+    clinicProgramId: dimensions.clinicProgramId,
+    restrictedFundReviewStatus: dimensions.restrictedFundReviewStatus,
+  };
+}
+
+function singleOrMultiple<T extends string>(values: T[], fallback: T): T | "multiple" {
+  const unique = [...new Set(values.filter(Boolean))];
+  if (unique.length === 0) return fallback;
+  if (unique.length === 1) return unique[0]!;
+  return "multiple";
+}
+
+function aggregateDimensions(dimensions: StaffReportDimensions[]): StaffReportDimensions {
+  return {
+    jurisdiction: singleOrMultiple(
+      dimensions
+        .map((dimension) => dimension.jurisdiction)
+        .filter((jurisdiction): jurisdiction is Province => jurisdiction !== "multiple"),
+      "OTHER",
+    ),
+    practiceArea: singleOrMultiple(
+      dimensions.map((dimension) => dimension.practiceArea),
+      "Unspecified",
+    ),
+    clinicProgramId: singleOrMultiple(
+      dimensions.map((dimension) => dimension.clinicProgramId),
+      "none",
+    ),
+    restrictedFundReviewStatus: singleOrMultiple(
+      dimensions.map((dimension) => dimension.restrictedFundReviewStatus),
+      "not_reviewed",
+    ),
+  };
+}
+
 function groupRows(rows: StaffReportProjectionRow[]): StaffReportProjectionGroup[] {
   const groups = new Map<string, StaffReportProjectionGroup>();
   for (const row of rows) {
@@ -473,6 +698,7 @@ function groupRows(rows: StaffReportProjectionRow[]): StaffReportProjectionGroup
         totalCents: 0,
         totalMinutes: 0,
         riskCount: 0,
+        dimensions: row.dimensions,
       } satisfies StaffReportProjectionGroup);
     existing.rowCount += 1;
     existing.totalCents = (existing.totalCents ?? 0) + (row.metricCents ?? 0);
@@ -513,34 +739,44 @@ function buildInvoiceAgingProjection(
   groupingKey: StaffReportGroupingKey,
 ): StaffReportProjection {
   const matters = matterById(input.matters);
+  const profiles = legalClinicProfileByMatterId(input.legalClinicMatterProfiles);
   const rows = input.invoices
     .filter(
       (invoice) =>
         invoice.balanceDueCents > 0 && ["issued", "partially_paid"].includes(invoice.status),
     )
-    .map((invoice): StaffReportProjectionRow => {
+    .map((invoice): StaffReportProjectionRow | undefined => {
       const aging = invoiceAgingBucket(invoice, generatedAtMs);
       const matter = matters.get(invoice.matterId);
-      const groupKey = groupingKey === "matter" ? invoice.matterId : aging.key;
+      const dimensions = dimensionsForMatter(matter, profiles.get(invoice.matterId));
+      if (!dimensionsMatchFilters(dimensions, input.dimensionFilters)) return undefined;
+      const dimensionGrouping = dimensionGroup(groupingKey, dimensions);
+      const groupKey =
+        dimensionGrouping?.key ?? (groupingKey === "matter" ? invoice.matterId : aging.key);
       return {
         id: invoice.id,
         label: invoice.invoiceNumber,
         groupKey,
-        groupLabel: groupingKey === "matter" ? matterLabel(matter, invoice.matterId) : aging.label,
+        groupLabel:
+          dimensionGrouping?.label ??
+          (groupingKey === "matter" ? matterLabel(matter, invoice.matterId) : aging.label),
         status: invoice.status,
         tone: aging.tone,
         matterId: invoice.matterId,
         matterNumber: matter?.number,
         dueAt: invoice.dueAt,
         metricCents: invoice.balanceDueCents,
+        dimensions,
         metadata: {
           balanceDueCents: invoice.balanceDueCents,
           totalCents: invoice.totalCents,
           paidCents: invoice.paidCents,
           daysPastDue: aging.daysPastDue,
+          ...dimensionMetadata(dimensions),
         },
       };
     })
+    .filter((row): row is StaffReportProjectionRow => Boolean(row))
     .sort(sortRows);
 
   const totalBalanceDueCents = rows.reduce((sum, row) => sum + (row.metricCents ?? 0), 0);
@@ -551,7 +787,9 @@ function buildInvoiceAgingProjection(
     filters: {
       asOf: generatedAt,
       invoiceStatuses: "issued,partially_paid",
+      ...compactDimensionFilters(input.dimensionFilters),
     },
+    dimensionFilters: compactDimensionFilters(input.dimensionFilters),
     rows,
     metrics: {
       totalBalanceDueCents,
@@ -581,15 +819,23 @@ function buildReconciliationFreshnessProjection(
   generatedAtMs: number,
   groupingKey: StaffReportGroupingKey,
 ): StaffReportProjection {
+  const matters = matterById(input.matters);
+  const profiles = legalClinicProfileByMatterId(input.legalClinicMatterProfiles);
   const reconciliationsByAccount = new Map<string, LedgerReconciliationRecord[]>();
   for (const reconciliation of input.reconciliations) {
     const list = reconciliationsByAccount.get(reconciliation.accountId) ?? [];
     list.push(reconciliation);
     reconciliationsByAccount.set(reconciliation.accountId, list);
   }
+  const matterIdsByAccount = new Map<string, Set<string>>();
+  for (const entry of input.ledgerEntries ?? []) {
+    const matterIds = matterIdsByAccount.get(entry.accountId) ?? new Set<string>();
+    matterIds.add(entry.matterId);
+    matterIdsByAccount.set(entry.accountId, matterIds);
+  }
   const rows = input.ledgerAccounts
     .filter((account) => account.type === "trust_asset")
-    .map((account): StaffReportProjectionRow => {
+    .map((account): StaffReportProjectionRow | undefined => {
       const latest = (reconciliationsByAccount.get(account.id) ?? []).sort(
         (left, right) =>
           (parseTime(right.statementPeriodEnd) ?? 0) - (parseTime(left.statementPeriodEnd) ?? 0),
@@ -602,31 +848,56 @@ function buildReconciliationFreshnessProjection(
       const exceptionCount = (reconciliationsByAccount.get(account.id) ?? []).filter(
         (reconciliation) => reconciliation.status === "exception",
       ).length;
-      const groupKey = groupingKey === "priority" ? freshness.key : account.id;
+      const accountMatterDimensions = [...(matterIdsByAccount.get(account.id) ?? [])].map(
+        (matterId) => dimensionsForMatter(matters.get(matterId), profiles.get(matterId)),
+      );
+      const dimensions =
+        accountMatterDimensions.length > 0
+          ? aggregateDimensions(accountMatterDimensions)
+          : dimensionsForMatter(undefined, undefined);
+      const matchesFilters =
+        accountMatterDimensions.length > 0
+          ? accountMatterDimensions.some((candidate) =>
+              dimensionsMatchFilters(candidate, input.dimensionFilters),
+            )
+          : dimensionsMatchFilters(dimensions, input.dimensionFilters);
+      if (!matchesFilters) return undefined;
+      const dimensionGrouping = dimensionGroup(groupingKey, dimensions);
+      const groupKey =
+        dimensionGrouping?.key ?? (groupingKey === "priority" ? freshness.key : account.id);
       return {
         id: account.id,
         label: account.name,
         groupKey,
-        groupLabel: groupingKey === "priority" ? freshness.label : account.name,
+        groupLabel:
+          dimensionGrouping?.label ?? (groupingKey === "priority" ? freshness.label : account.name),
         status: latest?.status ?? "not_reconciled",
         tone: exceptionCount > 0 ? "risk" : freshness.tone,
         occurredAt: latest?.statementPeriodEnd,
         metricCount: exceptionCount,
+        dimensions,
         metadata: {
           latestReconciliationId: latest?.id,
           daysSinceStatementEnd: freshness.daysSince,
           exceptionCount,
           statementRowCount: latest?.statementRows.length ?? 0,
+          ...dimensionMetadata(dimensions),
         },
       };
     })
+    .filter((row): row is StaffReportProjectionRow => Boolean(row))
     .sort(sortRows);
 
   return projection({
     definitionKey: "reconciliation_freshness",
     generatedAt,
     groupingKey,
-    filters: { freshWithinDays: 30, accountTypes: "trust_asset" },
+    filters: {
+      freshWithinDays: 30,
+      accountTypes: "trust_asset",
+      ...compactDimensionFilters(input.dimensionFilters),
+    },
+    dimensionFilters: compactDimensionFilters(input.dimensionFilters),
     rows,
     metrics: {
       trustAssetAccountCount: rows.length,
@@ -643,15 +914,46 @@ function buildProductivityProjection(
 ): StaffReportProjection {
   const users = userById(input.users);
   const matterMap = matterById(input.matters);
+  const profiles = legalClinicProfileByMatterId(input.legalClinicMatterProfiles);
   const staffKeys = new Set<string>([
     ...input.users.map((user) => user.id),
     ...input.timeEntries.map((entry) => entry.userId),
     ...input.taskDeadlines.map((task) => task.assignedToUserId ?? "unassigned"),
   ]);
   const rows = [...staffKeys]
-    .map((userId): StaffReportProjectionRow => {
-      const staffTime = input.timeEntries.filter((entry) => entry.userId === userId);
-      const staffTasks = input.taskDeadlines.filter(
+    .map((userId): StaffReportProjectionRow | undefined => {
+      const staffTime = input.timeEntries.filter((entry) => {
+        if (entry.userId !== userId) return false;
+        const dimensions = dimensionsForMatter(
+          matterMap.get(entry.matterId),
+          profiles.get(entry.matterId),
+        );
+        return dimensionsMatchFilters(dimensions, input.dimensionFilters);
+      });
+      const staffTasks = input.taskDeadlines.filter((task) => {
+        const dimensions = dimensionsForMatter(
+          matterMap.get(task.matterId),
+          profiles.get(task.matterId),
+        );
+        return (
+          (task.assignedToUserId ?? "unassigned") === userId &&
+          dimensionsMatchFilters(dimensions, input.dimensionFilters)
+        );
+      });
+      const allMatterDimensions = [
+        ...staffTime.map((entry) =>
+          dimensionsForMatter(matterMap.get(entry.matterId), profiles.get(entry.matterId)),
+        ),
+        ...staffTasks.map((task) =>
+          dimensionsForMatter(matterMap.get(task.matterId), profiles.get(task.matterId)),
+        ),
+      ];
+      const dimensions =
+        allMatterDimensions.length > 0
+          ? aggregateDimensions(allMatterDimensions)
+          : dimensionsForMatter(undefined, undefined);
+      if (!dimensionsMatchFilters(dimensions, input.dimensionFilters)) return undefined;
+      const staffTasksForUser = staffTasks.filter(
         (task) => (task.assignedToUserId ?? "unassigned") === userId,
       );
       const billableMinutes = staffTime
@@ -660,25 +962,28 @@ function buildProductivityProjection(
       const approvedMinutes = staffTime
         .filter((entry) => entry.billingStatus === "approved" || entry.billingStatus === "billed")
         .reduce((sum, entry) => sum + entry.minutes, 0);
-      const openTaskCount = staffTasks.filter((task) => !task.completedAt).length;
-      const completedTaskCount = staffTasks.filter((task) => task.completedAt).length;
+      const openTaskCount = staffTasksForUser.filter((task) => !task.completedAt).length;
+      const completedTaskCount = staffTasksForUser.filter((task) => task.completedAt).length;
       const representativeMatter = staffTime[0]?.matterId
         ? matterMap.get(staffTime[0].matterId)
         : undefined;
+      const dimensionGrouping = dimensionGroup(groupingKey, dimensions);
       const groupKey =
-        groupingKey === "matter"
+        dimensionGrouping?.key ??
+        (groupingKey === "matter"
           ? (representativeMatter?.id ?? "unassigned_matter")
-          : userId || "unassigned";
+          : userId || "unassigned");
       return {
         id: `productivity-${userId}`,
         label: userLabel(users.get(userId), userId),
         groupKey,
         groupLabel:
-          groupingKey === "matter"
+          dimensionGrouping?.label ??
+          (groupingKey === "matter"
             ? representativeMatter
               ? matterLabel(representativeMatter, representativeMatter.id)
               : "Unassigned matter"
-            : userLabel(users.get(userId), userId),
+            : userLabel(users.get(userId), userId)),
         status: openTaskCount > 0 ? "active" : "clear",
         tone: openTaskCount > completedTaskCount ? "neutral" : "ready",
         userId: userId === "unassigned" ? undefined : userId,
@@ -686,15 +991,18 @@ function buildProductivityProjection(
         matterNumber: representativeMatter?.number,
         metricMinutes: billableMinutes,
         metricCount: completedTaskCount,
+        dimensions,
         metadata: {
           billableMinutes,
           approvedMinutes,
           timeEntryCount: staffTime.length,
           openTaskCount,
           completedTaskCount,
+          ...dimensionMetadata(dimensions),
         },
       };
     })
+    .filter((row): row is StaffReportProjectionRow => Boolean(row))
     .filter((row) => row.metricMinutes || row.metricCount || row.metadata.openTaskCount)
     .sort(sortRows);
 
@@ -705,7 +1013,9 @@ function buildProductivityProjection(
     filters: {
       period: "all_loaded_records",
       timeEntryStatuses: "draft,submitted,approved,billed,written_off",
+      ...compactDimensionFilters(input.dimensionFilters),
     },
+    dimensionFilters: compactDimensionFilters(input.dimensionFilters),
     rows,
     metrics: {
       staffCount: rows.length,
@@ -728,19 +1038,26 @@ function buildOperationalFollowUpProjection(
   groupingKey: StaffReportGroupingKey,
 ): StaffReportProjection {
   const matters = matterById(input.matters);
+  const profiles = legalClinicProfileByMatterId(input.legalClinicMatterProfiles);
   const taskRows = input.taskDeadlines
     .filter((task) => !task.completedAt)
-    .map((task): StaffReportProjectionRow => {
+    .map((task): StaffReportProjectionRow | undefined => {
       const dueMs = parseTime(task.dueAt);
       const overdue = dueMs !== undefined && dueMs < generatedAtMs;
       const matter = matters.get(task.matterId);
+      const dimensions = dimensionsForMatter(matter, profiles.get(task.matterId));
+      if (!dimensionsMatchFilters(dimensions, input.dimensionFilters)) return undefined;
+      const dimensionGrouping = dimensionGroup(groupingKey, dimensions);
       const priorityKey = overdue ? "high" : dueMs ? "medium" : "low";
-      const groupKey = groupingKey === "matter" ? task.matterId : priorityKey;
+      const groupKey =
+        dimensionGrouping?.key ?? (groupingKey === "matter" ? task.matterId : priorityKey);
       return {
         id: task.id,
         label: task.title,
         groupKey,
-        groupLabel: groupingKey === "matter" ? matterLabel(matter, task.matterId) : priorityKey,
+        groupLabel:
+          dimensionGrouping?.label ??
+          (groupingKey === "matter" ? matterLabel(matter, task.matterId) : priorityKey),
         status: overdue ? "overdue" : dueMs ? "upcoming" : "unscheduled",
         tone: overdue ? "risk" : "neutral",
         matterId: task.matterId,
@@ -748,24 +1065,32 @@ function buildOperationalFollowUpProjection(
         userId: task.assignedToUserId,
         dueAt: task.dueAt,
         metricCount: 1,
+        dimensions,
         metadata: {
           assignedToUserId: task.assignedToUserId,
           daysPastDue: overdue ? daysBetween(generatedAtMs, dueMs) : undefined,
+          ...dimensionMetadata(dimensions),
         },
       };
-    });
+    })
+    .filter((row): row is StaffReportProjectionRow => Boolean(row));
   const staleMatterRows = input.matters
     .filter((matter) => matter.status === "open" || matter.status === "intake")
     .map((matter): StaffReportProjectionRow | undefined => {
       const latest = latestMatterActivityAt(matter);
       const inactiveDays = daysBetween(generatedAtMs, parseTime(latest));
       if (inactiveDays !== undefined && inactiveDays < 30) return undefined;
+      const dimensions = dimensionsForMatter(matter, profiles.get(matter.id));
+      if (!dimensionsMatchFilters(dimensions, input.dimensionFilters)) return undefined;
+      const dimensionGrouping = dimensionGroup(groupingKey, dimensions);
       const priorityKey = matter.status === "intake" ? "medium" : "low";
       return {
         id: `stale-${matter.id}`,
         label: matter.title,
-        groupKey: groupingKey === "matter" ? matter.id : priorityKey,
-        groupLabel: groupingKey === "matter" ? matterLabel(matter, matter.id) : priorityKey,
+        groupKey: dimensionGrouping?.key ?? (groupingKey === "matter" ? matter.id : priorityKey),
+        groupLabel:
+          dimensionGrouping?.label ??
+          (groupingKey === "matter" ? matterLabel(matter, matter.id) : priorityKey),
         status: "stale_matter",
         tone: matter.status === "intake" ? "neutral" : "ready",
         matterId: matter.id,
@@ -773,10 +1098,12 @@ function buildOperationalFollowUpProjection(
         userId: matter.responsibleUserId,
         occurredAt: latest,
         metricCount: 1,
+        dimensions,
         metadata: {
           inactiveDays,
           matterStatus: matter.status,
           responsibleUserId: matter.responsibleUserId,
+          ...dimensionMetadata(dimensions),
         },
       };
     })
@@ -790,7 +1117,9 @@ function buildOperationalFollowUpProjection(
     filters: {
       overdueAsOf: generatedAt,
       staleAfterDays: 30,
+      ...compactDimensionFilters(input.dimensionFilters),
     },
+    dimensionFilters: compactDimensionFilters(input.dimensionFilters),
     rows,
     metrics: {
       openFollowUpCount: rows.length,
@@ -805,6 +1134,7 @@ function projection(input: {
   generatedAt: string;
   groupingKey: StaffReportGroupingKey;
   filters: Record<string, string | number | boolean>;
+  dimensionFilters: StaffReportDimensionFilters;
   rows: StaffReportProjectionRow[];
   metrics: Record<string, string | number | boolean>;
 }): StaffReportProjection {
@@ -814,6 +1144,7 @@ function projection(input: {
     groupingKey: input.groupingKey,
     filters: input.filters,
     rowCount: input.rows.length,
+    dimensionFilters: input.dimensionFilters,
     summary: {
       totalRows: input.rows.length,
       metrics: input.metrics,

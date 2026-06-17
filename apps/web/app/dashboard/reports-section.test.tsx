@@ -66,9 +66,29 @@ const reportingWorkspace: StaffReportingWorkspaceResponse = {
       generatedAt,
       groupingKey: "aging_bucket",
       filters: { asOf: generatedAt },
-      rowCount: 0,
-      summary: { totalRows: 0, metrics: { invoiceCount: 0 }, groups: [] },
-      rows: [],
+      dimensionFilters: {},
+      rowCount: 1,
+      summary: { totalRows: 1, metrics: { invoiceCount: 1 }, groups: [] },
+      rows: [
+        {
+          id: "invoice-row-001",
+          label: "INV-2026-0001",
+          groupKey: "clinic-program-tenancy-stability",
+          groupLabel: "Tenancy Stability Clinic",
+          status: "issued",
+          tone: "risk",
+          matterId: "matter-001",
+          matterNumber: "2026-0001",
+          metricCents: 13230,
+          dimensions: {
+            jurisdiction: "BC",
+            practiceArea: "Residential tenancy",
+            clinicProgramId: "clinic-program-tenancy-stability",
+            restrictedFundReviewStatus: "not_reviewed",
+          },
+          metadata: {},
+        },
+      ],
       projectionPolicy: {
         customSql: false,
         biEmbed: false,
@@ -126,6 +146,8 @@ describe("ReportsSection", () => {
         exportingReportKey: "",
         exportStatus: "No report export requested in this session.",
         minutes: (value: number) => `${value}m`,
+        onPollReportExport: () => {},
+        onDownloadReportExport: () => {},
         onRequestReportExport: () => {},
         reportingWorkspace,
       }),
@@ -138,6 +160,9 @@ describe("ReportsSection", () => {
     expect(html).toContain("No BI embeds");
     expect(html).toContain("No scheduled email delivery");
     expect(html).toContain("No raw report bodies");
+    expect(html).toContain("Residential tenancy");
+    expect(html).toContain("clinic-program-tenancy-stability");
+    expect(html).toContain("not reviewed");
     expect(html).not.toContain("custom SQL editor");
     expect(html).not.toContain("Synthetic private productivity report body");
   });

@@ -144,6 +144,35 @@ export interface DocumentProcessingLatestExtraction {
   errorSummary?: string;
 }
 
+export interface DocumentConversionReviewCounts {
+  sourceTextLength: number;
+  wordCount?: number;
+  lineCount?: number;
+  nonEmptyLineCount?: number;
+  pageBreakCount?: number;
+  estimatedPageCount?: number;
+}
+
+export interface DocumentConversionReviewPolicy {
+  metadataOnly: true;
+  reviewOnly: true;
+  rawOcrTextStored: false;
+  rawMarkdownStored: false;
+  annotationBodiesStored: false;
+  chunksStored: false;
+  embeddingsStored: false;
+  providerPayloadsStored: false;
+}
+
+export interface DocumentConversionReviewSummary {
+  posture: "blocked" | "not_requested" | "queued" | "ready_for_review" | "failed" | string;
+  summaryPosture: "op_authored_metadata_only" | string;
+  jobId?: string;
+  artifactId?: string;
+  counts?: DocumentConversionReviewCounts;
+  policy: DocumentConversionReviewPolicy;
+}
+
 export type DocumentReviewSuggestionGroup =
   | "classification"
   | "duplicate_or_supersession"
@@ -243,6 +272,7 @@ export interface DocumentProcessingWorkbenchItem {
   };
   latestJob?: DocumentProcessingLatestJob;
   latestExtraction?: DocumentProcessingLatestExtraction;
+  conversionReview?: DocumentConversionReviewSummary;
   reviewSuggestions?: DocumentReviewSuggestions;
   metadataTags?: DocumentMetadataTag[];
 }

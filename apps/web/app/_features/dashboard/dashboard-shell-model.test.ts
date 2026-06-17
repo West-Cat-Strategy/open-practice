@@ -40,6 +40,7 @@ const baseCapabilitySections: DashboardSectionCapability[] = [
   capability("contacts"),
   capability("funds"),
   capability("documents"),
+  capability("research"),
   capability("drafting"),
   capability("tasks"),
   capability("calendar"),
@@ -107,6 +108,10 @@ describe("dashboard shell navigation model", () => {
       enabled: true,
       availability: "mixed",
     });
+    expect(model.navigationSections.find((section) => section.key === "research")).toMatchObject({
+      enabled: true,
+      availability: "mixed",
+    });
     expect(model.navigationSections.find((section) => section.key === "funds")).toMatchObject({
       enabled: true,
       availability: "mixed",
@@ -147,6 +152,7 @@ describe("dashboard shell navigation model", () => {
       "funds",
       "billing",
       "documents",
+      "research",
       "shares",
       "externalUploads",
       "drafting",

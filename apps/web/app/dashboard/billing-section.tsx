@@ -1,4 +1,4 @@
-import { Clock3, FileText, Plus, Save } from "lucide-react";
+import { CheckCircle2, Clock3, FileText, Plus, Save } from "lucide-react";
 
 import {
   describePaymentSettlementReview,
@@ -48,7 +48,10 @@ interface BillingSectionProps {
   expenseDraftProfileKey: string;
   expenseDraftReimbursable: boolean;
   expenseDraftStatus: string;
+  manualPaymentReconciliationStatus: string;
   minutes: (value: number) => string;
+  onReconcileManualPayment: (payment: BillingPaymentSummary) => Promise<void>;
+  reconcilingManualPaymentId?: string;
   setDraftInvoiceDueAt: (value: string) => void;
   setDraftInvoiceTaxName: (value: string) => void;
   setDraftInvoiceTaxRate: (value: string) => void;
@@ -107,7 +110,10 @@ export function BillingSection({
   expenseDraftProfileKey,
   expenseDraftReimbursable,
   expenseDraftStatus,
+  manualPaymentReconciliationStatus,
   minutes,
+  onReconcileManualPayment,
+  reconcilingManualPaymentId = "",
   setDraftInvoiceDueAt,
   setDraftInvoiceTaxName,
   setDraftInvoiceTaxRate,
@@ -644,12 +650,28 @@ export function BillingSection({
                 ? "Pending reconciliation"
                 : cents(payment.amountCents)}
             </em>
+            {payment.status === "pending_reconciliation" ? (
+              <span className="row-actions">
+                <button
+                  className="secondary-button compact-button row-button"
+                  disabled={reconcilingManualPaymentId === payment.id}
+                  onClick={() => void onReconcileManualPayment(payment)}
+                  type="button"
+                >
+                  <CheckCircle2 size={14} aria-hidden="true" />
+                  {reconcilingManualPaymentId === payment.id ? "Reconciling" : "Reconcile"}
+                </button>
+              </span>
+            ) : null}
           </div>
         ))}
         {activeManualPayments.length === 0 ? (
           <p className="inline-empty">No manual payments have been recorded for this matter.</p>
         ) : null}
       </div>
+      <p aria-atomic="true" aria-live="polite" className="inline-empty" role="status">
+        {manualPaymentReconciliationStatus}
+      </p>
     </>
   );
 }

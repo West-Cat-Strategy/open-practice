@@ -1,6 +1,7 @@
 import type {
   ActivityTimelineEntry,
   Contact,
+  DocumentRecord,
   ContactRoleCategory,
   ContactStatus,
   Matter,
@@ -8,6 +9,7 @@ import type {
   PortalGrant,
 } from "./models.js";
 import type { IntakeVariableProposal } from "./intake.js";
+import type { MatterLifecycleTransitionRecord } from "./matter-lifecycle.js";
 import {
   normalizeConflictToken,
   type ConflictCheckRecord,
@@ -36,12 +38,21 @@ export interface ContactDossierMatterLink {
   conflictCheckIncluded?: boolean;
   portalActive: boolean;
   portalPermissions: PortalGrant["permissions"];
+  retentionHoldReview: ContactDossierMatterRetentionHoldReview;
 }
 
 export interface ContactDossierConflictCue {
   severity: "blocker" | "review" | "info";
   reason: string;
   matterId?: string;
+}
+
+export interface ContactDossierMatterRetentionHoldReview {
+  documentLegalHoldCount: number;
+  documentReviewCount: number;
+  lifecycleReviewCount: number;
+  blockedLifecycleReviewCount: number;
+  latestLifecycleReviewedAt?: string;
 }
 
 export type ContactRelationshipKind =
@@ -206,12 +217,14 @@ export const contactRoleCategories = [
 export type ContactDossierQualitySignalKind =
   | "duplicate_candidate"
   | "protected_party_cue"
-  | "conflict_revalidation";
+  | "conflict_revalidation"
+  | "retention_hold_review";
 
 export const contactDossierQualitySignalKinds = [
   "duplicate_candidate",
   "protected_party_cue",
   "conflict_revalidation",
+  "retention_hold_review",
 ] as const satisfies ContactDossierQualitySignalKind[];
 
 export const contactDataQualityResolutionDecisions = [
@@ -299,6 +312,7 @@ export interface ContactDossierQualitySignal {
   matchedOn?: "name" | "alias" | "former_name" | "identifier" | "contact_method" | "address";
   matchedValue?: string;
   duplicateReview?: ContactDuplicateReviewCue;
+  retentionHoldReview?: ContactRetentionHoldReviewCue;
   sourceRecordId?: string;
   changedAt?: string;
 }
@@ -328,11 +342,30 @@ export interface ContactDuplicateReviewCue {
   reviewSeverity: "review";
 }
 
+export interface ContactRetentionHoldReviewCue extends ContactDossierMatterRetentionHoldReview {
+  contactStatus: ContactStatus;
+  matterStatus: Matter["status"];
+  partyStatus: MatterParty["status"] | "active";
+  portalActive: boolean;
+  cueReasons: Array<
+    | "contact_lifecycle"
+    | "matter_party_posture"
+    | "linked_matter_status"
+    | "portal_grant_posture"
+    | "document_legal_hold"
+    | "document_review"
+    | "matter_lifecycle_review"
+  >;
+  cueCount: number;
+  reviewSeverity: "blocker" | "review";
+}
+
 export interface ContactDossierQualityReview {
   summary: {
     duplicateCandidateCount: number;
     sensitivePartyCueCount: number;
     revalidationPromptCount: number;
+    retentionHoldCueCount: number;
   };
   signals: ContactDossierQualitySignal[];
 }
@@ -348,6 +381,7 @@ const contactDataQualityResolutionDecisionsByKind: Record<
     "revalidation_completed",
     "needs_follow_up",
   ]),
+  retention_hold_review: new Set(["acknowledged", "needs_follow_up"]),
 };
 
 export function validateContactDataQualityResolutionRecord(
@@ -403,10 +437,45 @@ export interface BuildContactDossiersInput {
   matters: Matter[];
   matterParties: MatterParty[];
   portalGrants: PortalGrant[];
+  matterRetentionHoldReviews?: ContactDossierMatterRetentionHoldReviewInput[];
   contactRelationships?: ContactRelationshipRecord[];
   intakeVariableProposals?: IntakeVariableProposal[];
   conflictChecks?: ConflictCheckRecord[];
   now?: string;
+}
+
+export interface ContactDossierMatterRetentionHoldReviewInput extends ContactDossierMatterRetentionHoldReview {
+  matterId: string;
+}
+
+const retentionHoldDocumentReviewStatuses = new Set<DocumentRecord["reviewStatus"]>([
+  "pending_review",
+  "needs_metadata",
+  "retry_requested",
+]);
+
+export function summarizeContactDossierMatterRetentionHoldReview(input: {
+  matterId: string;
+  documents: Pick<DocumentRecord, "legalHold" | "reviewStatus">[];
+  lifecycleTransitions: Pick<MatterLifecycleTransitionRecord, "readiness" | "reviewedAt">[];
+}): ContactDossierMatterRetentionHoldReviewInput {
+  const latestLifecycleReviewedAt = input.lifecycleTransitions
+    .map((transition) => transition.reviewedAt)
+    .filter(Boolean)
+    .sort((left, right) => right.localeCompare(left))[0];
+
+  return {
+    matterId: input.matterId,
+    documentLegalHoldCount: input.documents.filter((document) => document.legalHold).length,
+    documentReviewCount: input.documents.filter((document) =>
+      retentionHoldDocumentReviewStatuses.has(document.reviewStatus),
+    ).length,
+    lifecycleReviewCount: input.lifecycleTransitions.length,
+    blockedLifecycleReviewCount: input.lifecycleTransitions.filter(
+      (transition) => transition.readiness === "blocked",
+    ).length,
+    latestLifecycleReviewedAt,
+  };
 }
 
 function isActiveGrant(grant: PortalGrant, now: string): boolean {
@@ -1104,6 +1173,95 @@ function buildRevalidationSignals(
     }));
 }
 
+const retentionHoldContactStatuses = new Set<ContactStatus>([
+  "inactive",
+  "archived",
+  "former",
+  "restricted",
+]);
+const retentionHoldMatterStatuses = new Set<Matter["status"]>(["paused", "closed", "archived"]);
+
+const emptyRetentionHoldReview: ContactDossierMatterRetentionHoldReview = {
+  documentLegalHoldCount: 0,
+  documentReviewCount: 0,
+  lifecycleReviewCount: 0,
+  blockedLifecycleReviewCount: 0,
+};
+
+function stripMatterIdFromRetentionHoldReview(
+  review: ContactDossierMatterRetentionHoldReviewInput | undefined,
+): ContactDossierMatterRetentionHoldReview {
+  if (!review) return emptyRetentionHoldReview;
+  const { matterId, ...counts } = review;
+  void matterId;
+  return counts;
+}
+
+function retentionHoldReviewReasons(input: {
+  contact: Contact;
+  link: ContactDossierMatterLink;
+}): ContactRetentionHoldReviewCue["cueReasons"] {
+  const reasons: ContactRetentionHoldReviewCue["cueReasons"] = [];
+  const review = input.link.retentionHoldReview;
+  if (retentionHoldContactStatuses.has(input.contact.status ?? "active")) {
+    reasons.push("contact_lifecycle");
+  }
+  if ((input.link.status ?? "active") !== "active" || Boolean(input.link.endedOn)) {
+    reasons.push("matter_party_posture");
+  }
+  if (retentionHoldMatterStatuses.has(input.link.matterStatus)) {
+    reasons.push("linked_matter_status");
+  }
+  if (input.link.portalActive) {
+    reasons.push("portal_grant_posture");
+  }
+  if (review.documentLegalHoldCount > 0) {
+    reasons.push("document_legal_hold");
+  }
+  if (review.documentReviewCount > 0) {
+    reasons.push("document_review");
+  }
+  if (review.lifecycleReviewCount > 0) {
+    reasons.push("matter_lifecycle_review");
+  }
+  return reasons;
+}
+
+function buildRetentionHoldReviewSignals(
+  contact: Contact,
+  links: ContactDossierMatterLink[],
+): ContactDossierQualitySignal[] {
+  return links.flatMap((link): ContactDossierQualitySignal[] => {
+    const cueReasons = retentionHoldReviewReasons({ contact, link });
+    if (cueReasons.length === 0) return [];
+
+    const reviewSeverity =
+      link.retentionHoldReview.documentLegalHoldCount > 0 ||
+      link.retentionHoldReview.blockedLifecycleReviewCount > 0
+        ? "blocker"
+        : "review";
+
+    return [
+      {
+        kind: "retention_hold_review",
+        severity: reviewSeverity,
+        reason: "Retention and legal-hold posture needs staff review",
+        matterId: link.matterId,
+        retentionHoldReview: {
+          ...link.retentionHoldReview,
+          contactStatus: contact.status ?? "active",
+          matterStatus: link.matterStatus,
+          partyStatus: link.status ?? "active",
+          portalActive: link.portalActive,
+          cueReasons,
+          cueCount: cueReasons.length,
+          reviewSeverity,
+        },
+      },
+    ];
+  });
+}
+
 const severityRank: Record<ConflictSeverity, number> = { info: 0, review: 1, blocker: 2 };
 
 function maxSeverity(severities: ConflictSeverity[]): ConflictSeverity {
@@ -1170,6 +1328,7 @@ function buildQualityReview(input: {
     input.intakeVariableProposals,
     input.visibleMatterIds,
   );
+  const retentionHoldSignals = buildRetentionHoldReviewSignals(input.contact, input.links);
   const duplicateContactIds = new Set(
     duplicateSignals.flatMap((signal) => signal.relatedContactIds ?? []),
   );
@@ -1178,8 +1337,14 @@ function buildQualityReview(input: {
       duplicateCandidateCount: duplicateContactIds.size,
       sensitivePartyCueCount: sensitivePartySignals.length,
       revalidationPromptCount: revalidationSignals.length,
+      retentionHoldCueCount: retentionHoldSignals.length,
     },
-    signals: [...duplicateSignals, ...sensitivePartySignals, ...revalidationSignals],
+    signals: [
+      ...duplicateSignals,
+      ...sensitivePartySignals,
+      ...revalidationSignals,
+      ...retentionHoldSignals,
+    ],
   };
 }
 
@@ -1202,6 +1367,11 @@ export function buildContactDossiers(input: BuildContactDossiersInput): ContactD
       grant.firmId === input.firmId &&
       visibleMatterById.has(grant.matterId) &&
       isActiveGrant(grant, now),
+  );
+  const retentionHoldReviewsByMatterId = new Map(
+    (input.matterRetentionHoldReviews ?? [])
+      .filter((review) => review.matterId && visibleMatterById.has(review.matterId))
+      .map((review) => [review.matterId, review] as const),
   );
 
   const linksByContactId = new Map<string, ContactDossierMatterLink[]>();
@@ -1233,6 +1403,9 @@ export function buildContactDossiers(input: BuildContactDossiersInput): ContactD
       conflictCheckIncluded: party.conflictCheckIncluded ?? true,
       portalActive: grants.length > 0,
       portalPermissions: uniquePermissions(grants),
+      retentionHoldReview: stripMatterIdFromRetentionHoldReview(
+        retentionHoldReviewsByMatterId.get(matter.id),
+      ),
     });
     linksByContactId.set(party.contactId, links);
   }

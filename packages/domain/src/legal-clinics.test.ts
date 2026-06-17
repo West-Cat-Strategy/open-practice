@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildFiscalHostWorkflowSelector } from "./fiscal-host-workflows.js";
 import {
   assertLegalClinicMatterProfileScope,
+  buildLegalClinicCadenceSignals,
   isLegalClinicProgramActive,
   legalClinicProfileNeedsReview,
 } from "./legal-clinics.js";
@@ -41,6 +42,48 @@ describe("legal clinic domain helpers", () => {
         now: "2026-04-09T17:00:00.000Z",
       }),
     ).toBe(false);
+  });
+
+  it("derives review-first cadence signals from safe legal clinic posture fields", () => {
+    const [program] = sampleLegalClinicPrograms;
+    const [profile] = sampleLegalClinicMatterProfiles;
+
+    const signals = buildLegalClinicCadenceSignals({
+      programs: [program!],
+      profiles: [
+        {
+          ...profile!,
+          id: "legal-clinic-profile-cadence",
+          matterId: "matter-001",
+          programId: program!.id,
+          eligibilityStatus: "needs_review",
+          referralStatus: "referral_needed",
+          referralDate: "2026-04-20T12:00:00.000Z",
+          nextReviewDate: "2026-05-01T17:00:00.000Z",
+          notes: "Synthetic private notes must not be copied.",
+        },
+      ],
+      now: "2026-05-02T12:00:00.000Z",
+    });
+
+    expect(signals).toEqual([
+      expect.objectContaining({
+        signal: "eligibility_review",
+        sourceId: "legal_clinic_cadence:legal-clinic-profile-cadence:eligibility_review",
+        priority: "high",
+      }),
+      expect.objectContaining({
+        signal: "next_review_due",
+        sourceId: "legal_clinic_cadence:legal-clinic-profile-cadence:next_review_due",
+        dueAt: "2026-05-01T17:00:00.000Z",
+      }),
+      expect.objectContaining({
+        signal: "referral_follow_up",
+        sourceId: "legal_clinic_cadence:legal-clinic-profile-cadence:referral_follow_up",
+        priority: "high",
+      }),
+    ]);
+    expect(JSON.stringify(signals)).not.toContain("Synthetic private notes");
   });
 
   it("guards matter profile scope", () => {

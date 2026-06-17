@@ -224,6 +224,49 @@ describe("repository calendar and tasks", () => {
         sourceLabel: "Confirm corporate records request",
       }),
     ]);
+
+    await expect(
+      repository.getCalendarSchedulingRequest(
+        "firm-west-legal",
+        "matter-002",
+        "calendar-scheduling-request-test",
+      ),
+    ).resolves.toMatchObject({
+      id: "calendar-scheduling-request-test",
+      matterId: "matter-002",
+      status: "needs_review",
+    });
+
+    await expect(
+      repository.updateCalendarSchedulingRequestReview({
+        firmId: "firm-west-legal",
+        matterId: "matter-002",
+        requestId: "calendar-scheduling-request-test",
+        status: "scheduled",
+        calendarEventId: "calendar-event-003",
+        reviewedAt: "2026-05-02T18:00:00.000Z",
+        reviewedByUserId: "user-admin",
+      }),
+    ).resolves.toMatchObject({
+      status: "scheduled",
+      calendarEventId: "calendar-event-003",
+      reviewedByUserId: "user-admin",
+    });
+
+    await expect(
+      repository.updateCalendarSchedulingRequestReview({
+        firmId: "firm-west-legal",
+        matterId: "matter-002",
+        requestId: "calendar-scheduling-request-test",
+        status: "dismissed",
+        calendarEventId: null,
+        reviewedAt: "2026-05-02T19:00:00.000Z",
+        reviewedByUserId: "user-admin",
+      }),
+    ).resolves.toMatchObject({
+      status: "dismissed",
+      calendarEventId: undefined,
+    });
   });
 
   it("creates, updates, soft-deletes, and replaces calendar event attendees", async () => {

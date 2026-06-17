@@ -7,7 +7,9 @@ import {
 } from "./reports.js";
 import {
   sampleInvoices,
+  sampleLegalClinicMatterProfiles,
   sampleLedgerAccounts,
+  sampleLedgerEntries,
   sampleMatters,
   sampleTaskDeadlines,
   sampleTimeEntries,
@@ -55,7 +57,9 @@ describe("staff reporting workspace", () => {
       users: sampleUsers,
       invoices: sampleInvoices,
       ledgerAccounts: sampleLedgerAccounts,
+      ledgerEntries: sampleLedgerEntries,
       reconciliations,
+      legalClinicMatterProfiles: sampleLegalClinicMatterProfiles,
       timeEntries: sampleTimeEntries,
       taskDeadlines: sampleTaskDeadlines,
     });
@@ -70,8 +74,19 @@ describe("staff reporting workspace", () => {
       expect.arrayContaining([
         expect.objectContaining({
           key: "invoice_aging",
-          filters: expect.arrayContaining([expect.objectContaining({ key: "asOf" })]),
-          groupings: expect.arrayContaining([expect.objectContaining({ key: "aging_bucket" })]),
+          filters: expect.arrayContaining([
+            expect.objectContaining({ key: "asOf" }),
+            expect.objectContaining({ key: "practiceArea" }),
+            expect.objectContaining({ key: "clinicProgramId" }),
+            expect.objectContaining({ key: "restrictedFundReviewStatus" }),
+          ]),
+          groupings: expect.arrayContaining([
+            expect.objectContaining({ key: "aging_bucket" }),
+            expect.objectContaining({ key: "jurisdiction" }),
+            expect.objectContaining({ key: "practiceArea" }),
+            expect.objectContaining({ key: "clinicProgramId" }),
+            expect.objectContaining({ key: "restrictedFundReviewStatus" }),
+          ]),
           exportProfileIds: ["summary_json", "review_csv"],
         }),
       ]),
@@ -110,8 +125,8 @@ describe("staff reporting workspace", () => {
     expect(workspace.reportBuilderPosture).toMatchObject({
       status: "metadata_only",
       savedDefinitionsOnly: true,
-      filterCount: 8,
-      groupingCount: 8,
+      filterCount: 24,
+      groupingCount: 24,
       exportProfileCount: 2,
       customSql: false,
       biEmbeds: false,
@@ -152,7 +167,9 @@ describe("staff reporting workspace", () => {
       users: sampleUsers,
       invoices: sampleInvoices,
       ledgerAccounts: sampleLedgerAccounts,
+      ledgerEntries: sampleLedgerEntries,
       reconciliations,
+      legalClinicMatterProfiles: sampleLegalClinicMatterProfiles,
       timeEntries: sampleTimeEntries,
       taskDeadlines: sampleTaskDeadlines,
     });
@@ -164,7 +181,9 @@ describe("staff reporting workspace", () => {
       users: sampleUsers,
       invoices: sampleInvoices,
       ledgerAccounts: sampleLedgerAccounts,
+      ledgerEntries: sampleLedgerEntries,
       reconciliations,
+      legalClinicMatterProfiles: sampleLegalClinicMatterProfiles,
       timeEntries: sampleTimeEntries,
       taskDeadlines: sampleTaskDeadlines,
     });
@@ -176,7 +195,9 @@ describe("staff reporting workspace", () => {
       users: sampleUsers,
       invoices: sampleInvoices,
       ledgerAccounts: sampleLedgerAccounts,
+      ledgerEntries: sampleLedgerEntries,
       reconciliations,
+      legalClinicMatterProfiles: sampleLegalClinicMatterProfiles,
       timeEntries: sampleTimeEntries,
       taskDeadlines: sampleTaskDeadlines,
     });
@@ -188,7 +209,9 @@ describe("staff reporting workspace", () => {
       users: sampleUsers,
       invoices: sampleInvoices,
       ledgerAccounts: sampleLedgerAccounts,
+      ledgerEntries: sampleLedgerEntries,
       reconciliations,
+      legalClinicMatterProfiles: sampleLegalClinicMatterProfiles,
       timeEntries: sampleTimeEntries,
       taskDeadlines: sampleTaskDeadlines,
     });
@@ -197,6 +220,12 @@ describe("staff reporting workspace", () => {
     expect(invoiceAging.rows[0]).toMatchObject({
       label: "INV-2026-0001",
       tone: "risk",
+      dimensions: expect.objectContaining({
+        jurisdiction: "BC",
+        practiceArea: "Residential tenancy",
+        clinicProgramId: "clinic-program-tenancy-stability",
+        restrictedFundReviewStatus: "not_reviewed",
+      }),
       metadata: expect.objectContaining({ daysPastDue: expect.any(Number) }),
     });
     expect(reconciliationFreshness.rows[0]).toMatchObject({
@@ -210,6 +239,49 @@ describe("staff reporting workspace", () => {
     );
     expect(JSON.stringify([invoiceAging, reconciliationFreshness, productivity])).not.toContain(
       "rawBody",
+    );
+  });
+
+  it("groups and filters staff report projections by derived read-only dimensions", () => {
+    const projection = buildStaffReportProjection({
+      firmId: "firm-west-legal",
+      generatedAt,
+      definitionKey: "invoice_aging",
+      groupingKey: "clinicProgramId",
+      dimensionFilters: { restrictedFundReviewStatus: "not_reviewed" },
+      matters: sampleMatters,
+      users: sampleUsers,
+      invoices: sampleInvoices,
+      ledgerAccounts: sampleLedgerAccounts,
+      ledgerEntries: sampleLedgerEntries,
+      reconciliations,
+      legalClinicMatterProfiles: sampleLegalClinicMatterProfiles,
+      timeEntries: sampleTimeEntries,
+      taskDeadlines: sampleTaskDeadlines,
+    });
+
+    expect(projection).toMatchObject({
+      groupingKey: "clinicProgramId",
+      dimensionFilters: { restrictedFundReviewStatus: "not_reviewed" },
+      filters: expect.objectContaining({ restrictedFundReviewStatus: "not_reviewed" }),
+      summary: {
+        groups: [
+          expect.objectContaining({
+            key: "clinic-program-tenancy-stability",
+            label: "clinic-program-tenancy-stability",
+          }),
+        ],
+      },
+    });
+    expect(projection.rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          dimensions: expect.objectContaining({
+            clinicProgramId: "clinic-program-tenancy-stability",
+            restrictedFundReviewStatus: "not_reviewed",
+          }),
+        }),
+      ]),
     );
   });
 });

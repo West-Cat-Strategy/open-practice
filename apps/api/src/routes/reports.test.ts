@@ -77,8 +77,16 @@ describe("staff reporting routes", () => {
       definitions: expect.arrayContaining([
         expect.objectContaining({
           key: "invoice_aging",
-          filters: expect.arrayContaining([expect.objectContaining({ key: "asOf" })]),
-          groupings: expect.arrayContaining([expect.objectContaining({ key: "aging_bucket" })]),
+          filters: expect.arrayContaining([
+            expect.objectContaining({ key: "asOf" }),
+            expect.objectContaining({ key: "clinicProgramId" }),
+            expect.objectContaining({ key: "restrictedFundReviewStatus" }),
+          ]),
+          groupings: expect.arrayContaining([
+            expect.objectContaining({ key: "aging_bucket" }),
+            expect.objectContaining({ key: "clinicProgramId" }),
+            expect.objectContaining({ key: "restrictedFundReviewStatus" }),
+          ]),
         }),
       ]),
       exportProfiles: expect.arrayContaining([
@@ -93,6 +101,7 @@ describe("staff reporting routes", () => {
         expect.objectContaining({
           definitionKey: "invoice_aging",
           rowCount: expect.any(Number),
+          dimensionFilters: {},
           projectionPolicy: expect.objectContaining({
             rawBodiesStoredInJobMetadata: false,
           }),
@@ -252,6 +261,63 @@ describe("staff reporting routes", () => {
       jobs: await repository.listJobLifecycleRecords("firm-west-legal"),
     });
     expect(serializedAuditAndJobs).not.toContain("Synthetic private productivity");
+  });
+
+  it("downloads staff report exports with derived dimension grouping and filters", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository });
+
+    const created = await server.inject({
+      method: "POST",
+      url: "/api/reports/export-requests",
+      payload: {
+        reportDefinitionKey: "invoice_aging",
+        exportProfileId: "summary_json",
+        groupingKey: "clinicProgramId",
+        dimensionFilters: { restrictedFundReviewStatus: "not_reviewed" },
+        idempotencyKey: "staff-report-export-dimension-route-test",
+      },
+    });
+
+    expect(created.statusCode).toBe(202);
+    const exportRequest = created.json<{ exportRequest: { jobId: string } }>().exportRequest;
+    const [job] = await repository.listJobLifecycleRecords("firm-west-legal", {
+      queueName: "reports",
+    });
+    expect(job).toMatchObject({
+      id: exportRequest.jobId,
+      status: "completed",
+      metadata: expect.objectContaining({
+        reportDefinitionKey: "invoice_aging",
+        groupingKey: "clinicProgramId",
+        restrictedFundReviewStatus: "not_reviewed",
+      }),
+    });
+
+    const downloaded = await server.inject({
+      method: "GET",
+      url: `/api/reports/export-requests/${exportRequest.jobId}/download`,
+    });
+
+    expect(downloaded.statusCode).toBe(200);
+    expect(downloaded.json()).toMatchObject({
+      export: {
+        report: expect.objectContaining({
+          definitionKey: "invoice_aging",
+          groupingKey: "clinicProgramId",
+          dimensionFilters: { restrictedFundReviewStatus: "not_reviewed" },
+          rows: expect.arrayContaining([
+            expect.objectContaining({
+              dimensions: expect.objectContaining({
+                clinicProgramId: "clinic-program-tenancy-stability",
+                restrictedFundReviewStatus: "not_reviewed",
+              }),
+            }),
+          ]),
+        }),
+      },
+    });
+    expect(JSON.stringify(downloaded.json())).not.toContain("Synthetic operational note");
   });
 
   it("replays matching report export idempotency keys without duplicate queue or audit work", async () => {

@@ -159,6 +159,25 @@ const taskWorkbench: TaskDeadlineWorkbenchResponse = {
         queueDelivery: false,
       },
     },
+    {
+      id: "legal-clinic-cadence:clinic-profile-synthetic:next_review_due",
+      matterId: "matter_synthetic",
+      title: "Review legal clinic cadence",
+      reason: "OP-2026-001 Legal clinic next review date is due for staff review.",
+      priority: "high",
+      dueAt: "2026-06-18T17:00:00.000Z",
+      source: {
+        type: "operational_view",
+        id: "legal_clinic_cadence:clinic-profile-synthetic:next_review_due",
+        label: "Legal clinic cadence",
+      },
+      reviewBoundary: {
+        automaticTaskCreation: false,
+        automaticDeadlineMutation: false,
+        automaticReminderChanges: false,
+        queueDelivery: false,
+      },
+    },
   ],
 };
 
@@ -194,6 +213,8 @@ describe("TasksSection", () => {
     expect(html).toContain("Archive");
     expect(html).toContain("Suggested follow-ups");
     expect(html).toContain("Follow up on synthetic scheduling request");
+    expect(html).toContain("Review legal clinic cadence");
+    expect(html).toContain("Legal clinic cadence");
     expect(html).toContain("Create task");
     expect(html).not.toContain("Archived synthetic task");
     expect(html).not.toContain("Synthetic Client");

@@ -4,6 +4,7 @@ import {
   ClipboardCheck,
   Download,
   Plus,
+  RefreshCcw,
   Search,
   UserPlus,
 } from "lucide-react";
@@ -24,6 +25,7 @@ import type {
   ContactDataQualityResolutionRecord,
   ContactDossier,
   ContactDossiersResponse,
+  ContactHistoryExportRequest,
   ContactTimelineActivityFilter,
   ContactTimelineResponse,
   ContactReviewQueueResponse,
@@ -87,6 +89,7 @@ export function ContactsSection({
   contactDataQualityStatus,
   contactDossiers,
   contactHistoryExportReason,
+  contactHistoryExportRequest,
   contactHistoryExportStatus,
   contactHistoryExportSummary,
   contactTimeline,
@@ -104,6 +107,8 @@ export function ContactsSection({
   onContactCreatePhoneChange,
   onContactCreateRoleCategoryChange = () => undefined,
   onContactHistoryExportReasonChange,
+  onDownloadContactHistoryExport,
+  onPollContactHistoryExport,
   onContactTimelineActivityFilterChange,
   onExportContactHistory,
   onCreateContact,
@@ -116,6 +121,7 @@ export function ContactsSection({
   onSelectMatter,
   recordingContactResolutionKey,
   exportingContactHistory,
+  contactHistoryExportAction = "",
 }: {
   activeContactDossier?: ContactDossier;
   canRecordContactDataQualityResolution: boolean;
@@ -134,6 +140,7 @@ export function ContactsSection({
   contactDataQualityStatus: string;
   contactDossiers: ContactDossiersResponse;
   contactHistoryExportReason: string;
+  contactHistoryExportRequest?: ContactHistoryExportRequest | null;
   contactHistoryExportStatus: string;
   contactHistoryExportSummary: string;
   contactTimeline: ContactTimelineResponse["timeline"];
@@ -151,6 +158,8 @@ export function ContactsSection({
   onContactCreatePhoneChange: (value: string) => void;
   onContactCreateRoleCategoryChange?: (value: string) => void;
   onContactHistoryExportReasonChange: (value: string) => void;
+  onPollContactHistoryExport: () => void;
+  onDownloadContactHistoryExport: () => void;
   onContactTimelineActivityFilterChange: (value: ContactTimelineActivityFilter) => void;
   onExportContactHistory: () => void;
   onCreateContact: () => void;
@@ -166,6 +175,7 @@ export function ContactsSection({
   onSelectMatter: (matterId: string) => void;
   recordingContactResolutionKey: string;
   exportingContactHistory: boolean;
+  contactHistoryExportAction?: "poll" | "download" | "";
 }) {
   const timelineEntries = contactTimeline.slice(0, 6);
   const matterNumberById = new Map(
@@ -326,6 +336,10 @@ export function ContactsSection({
             <div>
               <span className="field-label">Conflict rechecks</span>
               <strong>{contactReviewQueue.summary.revalidationPromptCount}</strong>
+            </div>
+            <div>
+              <span className="field-label">Retention/hold cues</span>
+              <strong>{contactReviewQueue.summary.retentionHoldCueCount}</strong>
             </div>
           </div>
           <div className="party-list contact-dossier-list">
@@ -937,6 +951,33 @@ export function ContactsSection({
                     >
                       <Download size={16} aria-hidden="true" />
                       Queue export
+                    </button>
+                    <button
+                      className="secondary-button"
+                      disabled={
+                        !contactHistoryExportRequest ||
+                        exportingContactHistory ||
+                        contactHistoryExportAction === "poll"
+                      }
+                      onClick={onPollContactHistoryExport}
+                      type="button"
+                    >
+                      <RefreshCcw size={16} aria-hidden="true" />
+                      {contactHistoryExportAction === "poll" ? "Refreshing" : "Refresh"}
+                    </button>
+                    <button
+                      className="secondary-button"
+                      disabled={
+                        !contactHistoryExportRequest ||
+                        contactHistoryExportRequest.status !== "completed" ||
+                        exportingContactHistory ||
+                        contactHistoryExportAction === "download"
+                      }
+                      onClick={onDownloadContactHistoryExport}
+                      type="button"
+                    >
+                      <Download size={16} aria-hidden="true" />
+                      {contactHistoryExportAction === "download" ? "Preparing" : "Download"}
                     </button>
                   </div>
                   {contactHistoryExportSummary ? (

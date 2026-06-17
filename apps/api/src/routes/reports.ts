@@ -10,6 +10,7 @@ import {
   STAFF_REPORT_EXPORT_PROFILES,
   type JobLifecycleRecord,
   type StaffReportDefinitionKey,
+  type StaffReportDimensionFilters,
   type StaffReportExportProfileId,
   type StaffReportGroupingKey,
   type StaffReportHistoryItem,
@@ -31,13 +32,33 @@ const reportDefinitionKeySchema = z.enum([
 
 const exportProfileIdSchema = z.enum(["summary_json", "review_csv"]);
 
-const groupingKeySchema = z.enum(["aging_bucket", "account", "staff_member", "priority", "matter"]);
+const groupingKeySchema = z.enum([
+  "aging_bucket",
+  "account",
+  "staff_member",
+  "priority",
+  "matter",
+  "jurisdiction",
+  "practiceArea",
+  "clinicProgramId",
+  "restrictedFundReviewStatus",
+]);
+
+const dimensionFiltersSchema = z
+  .object({
+    jurisdiction: z.enum(["BC", "ON", "CANADA", "OTHER"]).optional(),
+    practiceArea: z.string().trim().min(1).max(120).optional(),
+    clinicProgramId: z.string().trim().min(1).max(120).optional(),
+    restrictedFundReviewStatus: z.string().trim().min(1).max(120).optional(),
+  })
+  .strict();
 
 const reportExportRequestBodySchema = z
   .object({
     reportDefinitionKey: reportDefinitionKeySchema,
     exportProfileId: exportProfileIdSchema.default("summary_json"),
     groupingKey: groupingKeySchema.optional(),
+    dimensionFilters: dimensionFiltersSchema.optional(),
     idempotencyKey: z.string().min(1).max(160).optional(),
   })
   .strict();
@@ -67,6 +88,7 @@ function reportRequestFingerprint(input: {
   definitionKey: StaffReportDefinitionKey;
   exportProfileId: StaffReportExportProfileId;
   groupingKey: StaffReportGroupingKey;
+  dimensionFilters?: StaffReportDimensionFilters;
 }): string {
   return [
     "staff-report",
@@ -75,6 +97,10 @@ function reportRequestFingerprint(input: {
     input.definitionKey,
     input.exportProfileId,
     input.groupingKey,
+    input.dimensionFilters?.jurisdiction ?? "all",
+    input.dimensionFilters?.practiceArea ?? "all",
+    input.dimensionFilters?.clinicProgramId ?? "all",
+    input.dimensionFilters?.restrictedFundReviewStatus ?? "all",
   ].join(":");
 }
 
@@ -96,6 +122,20 @@ function metadataGroupingKey(job: JobLifecycleRecord): StaffReportGroupingKey | 
 function metadataNumber(job: JobLifecycleRecord, key: string): number | undefined {
   const value = job.metadata[key];
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function metadataString(job: JobLifecycleRecord, key: string): string | undefined {
+  const value = job.metadata[key];
+  return typeof value === "string" && value.trim().length > 0 ? value : undefined;
+}
+
+function metadataDimensionFilters(job: JobLifecycleRecord): StaffReportDimensionFilters {
+  return compactMetadata({
+    jurisdiction: metadataString(job, "jurisdiction"),
+    practiceArea: metadataString(job, "practiceArea"),
+    clinicProgramId: metadataString(job, "clinicProgramId"),
+    restrictedFundReviewStatus: metadataString(job, "restrictedFundReviewStatus"),
+  }) as StaffReportDimensionFilters;
 }
 
 function serializeReportExportRequest(job: JobLifecycleRecord): StaffReportHistoryItem {
@@ -149,6 +189,13 @@ async function loadStaffReportProjectionInput(input: {
   const visibleMatterIds = new Set(matters.map((matter) => matter.id));
   const canViewFirmWideLedgerReports =
     input.auth.user.role === "owner_admin" || input.auth.user.role === "auditor";
+  const legalClinicMatterProfiles = (
+    await Promise.all(
+      matters.map((matter) =>
+        input.repository.getLegalClinicMatterProfile(input.auth.firmId, matter.id),
+      ),
+    )
+  ).filter((profile): profile is NonNullable<typeof profile> => Boolean(profile));
 
   return {
     firmId: input.auth.firmId,
@@ -156,7 +203,9 @@ async function loadStaffReportProjectionInput(input: {
     users: overview.users,
     invoices: invoices.filter((invoice) => visibleMatterIds.has(invoice.matterId)),
     ledgerAccounts: canViewFirmWideLedgerReports ? ledger.accounts : [],
+    ledgerEntries: canViewFirmWideLedgerReports ? ledger.entries : [],
     reconciliations: canViewFirmWideLedgerReports ? reconciliations : [],
+    legalClinicMatterProfiles,
     timeEntries: timeEntries.filter((entry) => visibleMatterIds.has(entry.matterId)),
     taskDeadlines: taskDeadlines.filter((task) => visibleMatterIds.has(task.matterId)),
   };
@@ -200,21 +249,36 @@ export function registerReportRoutes(
         "Report grouping is not available for this definition",
       );
     }
+    const dimensionFilters = compactMetadata(
+      body.dimensionFilters ?? {},
+    ) as StaffReportDimensionFilters;
 
     const jobId = staffReportExportJobId();
     const queueConfigured = Boolean(reportJobQueue);
     const now = new Date().toISOString();
     const idempotencyKey =
       body.idempotencyKey ??
-      `staff-report-export:${request.auth.user.id}:${body.reportDefinitionKey}:${body.exportProfileId}:${groupingKey}:${now.slice(
-        0,
-        10,
-      )}`;
+      [
+        "staff-report-export",
+        request.auth.user.id,
+        body.reportDefinitionKey,
+        body.exportProfileId,
+        groupingKey,
+        dimensionFilters.jurisdiction ?? "all",
+        dimensionFilters.practiceArea ?? "all",
+        dimensionFilters.clinicProgramId ?? "all",
+        dimensionFilters.restrictedFundReviewStatus ?? "all",
+        now.slice(0, 10),
+      ].join(":");
     const metadata = compactMetadata({
       reportType: "staff_reporting",
       reportDefinitionKey: body.reportDefinitionKey,
       exportProfileId: body.exportProfileId,
       groupingKey,
+      jurisdiction: dimensionFilters.jurisdiction,
+      practiceArea: dimensionFilters.practiceArea,
+      clinicProgramId: dimensionFilters.clinicProgramId,
+      restrictedFundReviewStatus: dimensionFilters.restrictedFundReviewStatus,
       requestedByUserId: request.auth.user.id,
       enqueueStatus: queueConfigured ? "queued_for_local_report_worker" : "completed_inline",
       idempotencyFingerprint: reportRequestFingerprint({
@@ -222,6 +286,7 @@ export function registerReportRoutes(
         definitionKey: body.reportDefinitionKey,
         exportProfileId: body.exportProfileId,
         groupingKey,
+        dimensionFilters,
       }),
     });
 
@@ -261,6 +326,10 @@ export function registerReportRoutes(
               reportDefinitionKey: body.reportDefinitionKey,
               exportProfileId: body.exportProfileId,
               groupingKey,
+              jurisdiction: dimensionFilters.jurisdiction,
+              practiceArea: dimensionFilters.practiceArea,
+              clinicProgramId: dimensionFilters.clinicProgramId,
+              restrictedFundReviewStatus: dimensionFilters.restrictedFundReviewStatus,
               requestedByUserId: request.auth.user.id,
             }),
           },
@@ -287,6 +356,10 @@ export function registerReportRoutes(
           reportDefinitionKey: body.reportDefinitionKey,
           exportProfileId: body.exportProfileId,
           groupingKey,
+          jurisdiction: dimensionFilters.jurisdiction,
+          practiceArea: dimensionFilters.practiceArea,
+          clinicProgramId: dimensionFilters.clinicProgramId,
+          restrictedFundReviewStatus: dimensionFilters.restrictedFundReviewStatus,
           idempotencyKeyPresent: Boolean(body.idempotencyKey),
           enqueueStatus: queueConfigured ? "queued_for_local_report_worker" : "completed_inline",
         }),
@@ -332,6 +405,7 @@ export function registerReportRoutes(
     }
     const definition = getStaffSavedReportDefinition(reportDefinitionKey);
     const groupingKey = metadataGroupingKey(job) ?? definition.defaultGrouping;
+    const dimensionFilters = metadataDimensionFilters(job);
     const projectionInput = await loadStaffReportProjectionInput({
       repository,
       auth: request.auth,
@@ -349,6 +423,7 @@ export function registerReportRoutes(
           ...projectionInput,
           definitionKey: reportDefinitionKey,
           groupingKey,
+          dimensionFilters,
         }),
       },
     };

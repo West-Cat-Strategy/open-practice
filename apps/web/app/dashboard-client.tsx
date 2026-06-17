@@ -31,6 +31,7 @@ import type {
   StaffReportDefinitionKey,
   StaffReportExportProfileId,
   StaffReportGroupingKey,
+  StaffReportProjection,
 } from "@open-practice/domain";
 import type { CalendarMeetingLinkMode } from "@open-practice/domain/calendar-models";
 import {
@@ -328,6 +329,7 @@ import {
   type ContactDataQualityResolutionRecord,
   type ContactDataQualityResolutionsResponse,
   type ContactDossiersResponse,
+  type ContactHistoryExportRequest,
   type ContactHistoryExportRequestResponse,
   type ContactHistoryExportResponse,
   type ContactTimelineActivityFilter,
@@ -336,6 +338,7 @@ import {
 } from "./_features/contacts/models";
 import type {
   BillingDashboardResponse,
+  BillingPaymentSummary,
   JurisdictionalTrustReportResponse,
   TrustControlsDashboardResponse,
 } from "./_features/billing/models";
@@ -417,6 +420,7 @@ import type {
   SessionResponse,
   SetupStatusResponse,
   SignatureRequestsResponse,
+  StaffReportExportDownloadResponse,
   StaffReportExportRequestResponse,
   StaffReportingWorkspaceResponse,
   TaskDeadlineWorkbenchResponse,
@@ -463,6 +467,58 @@ function parseEmailTemplateRecipientHints(value: string): string[] {
     .split(",")
     .map((hint) => hint.trim())
     .filter(Boolean);
+}
+
+function csvCell(value: string | number | boolean | undefined): string {
+  if (value === undefined) return "";
+  const text = String(value);
+  return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+function staffReportProjectionCsv(report: StaffReportProjection): string {
+  const headers = [
+    "id",
+    "label",
+    "group",
+    "status",
+    "tone",
+    "matterId",
+    "matterNumber",
+    "userId",
+    "dueAt",
+    "occurredAt",
+    "metricCents",
+    "metricMinutes",
+    "metricCount",
+    "jurisdiction",
+    "practiceArea",
+    "clinicProgramId",
+    "restrictedFundReviewStatus",
+  ];
+  const rows = report.rows.map((row) =>
+    [
+      row.id,
+      row.label,
+      row.groupLabel,
+      row.status,
+      row.tone,
+      row.matterId,
+      row.matterNumber,
+      row.userId,
+      row.dueAt,
+      row.occurredAt,
+      row.metricCents,
+      row.metricMinutes,
+      row.metricCount,
+      row.dimensions?.jurisdiction,
+      row.dimensions?.practiceArea,
+      row.dimensions?.clinicProgramId,
+      row.dimensions?.restrictedFundReviewStatus,
+    ]
+      .map(csvCell)
+      .join(","),
+  );
+  return [headers.join(","), ...rows].join("\n");
 }
 
 interface DashboardClientProps {
@@ -1076,6 +1132,11 @@ export default function DashboardClient({
   );
   const [contactHistoryExportSummary, setContactHistoryExportSummary] = useState("");
   const [exportingContactHistory, setExportingContactHistory] = useState(false);
+  const [contactHistoryExportRequest, setContactHistoryExportRequest] =
+    useState<ContactHistoryExportRequest | null>(null);
+  const [contactHistoryExportAction, setContactHistoryExportAction] = useState<
+    "poll" | "download" | ""
+  >("");
   const [recordingContactResolutionKey, setRecordingContactResolutionKey] = useState("");
   const [conflictName, setConflictName] = useState("");
   const [conflictAliases, setConflictAliases] = useState("");
@@ -1110,6 +1171,10 @@ export default function DashboardClient({
   );
   const [expenseDraftStatus, setExpenseDraftStatus] = useState("No expense draft created.");
   const [creatingExpenseDraft, setCreatingExpenseDraft] = useState(false);
+  const [manualPaymentReconciliationStatus, setManualPaymentReconciliationStatus] = useState(
+    "No manual payment reconciled in this session.",
+  );
+  const [reconcilingManualPaymentId, setReconcilingManualPaymentId] = useState("");
   const [draftsByMatterId, setDraftsByMatterId] = useState(drafting.draftsByMatterId);
   const [creatingTemplateId, setCreatingTemplateId] = useState("");
   const [draftStatus, setDraftStatus] = useState("No draft created in this session.");
@@ -1201,6 +1266,7 @@ export default function DashboardClient({
   const [trustControlsStatus, setTrustControlsStatus] = useState(
     matters[0] ? "Trust controls loaded." : "No matter selected.",
   );
+  const [postingRequestActionKey, setPostingRequestActionKey] = useState("");
   const [externalUploadMaxUploads, setExternalUploadMaxUploads] = useState("1");
   const [externalUploadExpiresAt, setExternalUploadExpiresAt] = useState("");
   const [externalUploadToken, setExternalUploadToken] = useState("");
@@ -2055,6 +2121,67 @@ export default function DashboardClient({
     };
   }, [activeMatter, apiBaseUrl, devHeaders, trustControlsByMatterId]);
 
+  async function reviewPostingRequest(
+    postingRequest: TrustControlsDashboardResponse["postingRequests"][number],
+    decision: "approved" | "rejected",
+  ): Promise<void> {
+    if (!activeMatter) return;
+    const actionKey = `${decision}:${postingRequest.id}`;
+    setPostingRequestActionKey(actionKey);
+    setTrustControlsStatus(
+      decision === "approved"
+        ? `Approving posting request ${postingRequest.id}...`
+        : `Rejecting posting request ${postingRequest.id}...`,
+    );
+    try {
+      const updated = await requestDashboardJson<
+        TrustControlsDashboardResponse["postingRequests"][number]
+      >(
+        apiBaseUrl,
+        `/api/ledger/posting-requests/${encodeURIComponent(postingRequest.id)}/${
+          decision === "approved" ? "approve" : "reject"
+        }`,
+        {
+          method: "POST",
+          headers: devHeaders,
+          payload:
+            decision === "approved"
+              ? { reviewNotes: "Approved in Trust Controls dashboard review." }
+              : {
+                  rejectionReason: "Rejected in Trust Controls dashboard review.",
+                  reviewNotes: "Rejected in Trust Controls dashboard review.",
+                },
+        },
+      );
+      setTrustControlsByMatterId((current) => {
+        const controls = current[activeMatter.id] ?? activeTrustControls;
+        return trustControlsForMatter(current, activeMatter.id, {
+          ...controls,
+          postingRequests: controls.postingRequests.map((candidate) =>
+            candidate.id === updated.id ? updated : candidate,
+          ),
+        });
+      });
+      const refreshed = await requestDashboardJson<TrustControlsDashboardResponse>(
+        apiBaseUrl,
+        buildTrustControlsPath(activeMatter.id),
+        { headers: devHeaders },
+      );
+      setTrustControlsByMatterId((current) =>
+        trustControlsForMatter(current, activeMatter.id, refreshed),
+      );
+      setTrustControlsStatus(
+        decision === "approved"
+          ? "Posting request approved and posted through checker review."
+          : "Posting request rejected through checker review.",
+      );
+    } catch (error) {
+      setTrustControlsStatus(`Posting request review failed: ${dashboardApiStatus(error)}`);
+    } finally {
+      setPostingRequestActionKey("");
+    }
+  }
+
   useEffect(() => {
     if (!activeMatter) return;
     let cancelled = false;
@@ -2752,6 +2879,43 @@ export default function DashboardClient({
     }
   }
 
+  async function reconcileManualPayment(payment: BillingPaymentSummary): Promise<void> {
+    setReconcilingManualPaymentId(payment.id);
+    setManualPaymentReconciliationStatus(`Reconciling ${payment.reference ?? payment.id}...`);
+    try {
+      await requestDashboardJson(
+        apiBaseUrl,
+        `/api/payments/${encodeURIComponent(payment.id)}/reconcile`,
+        {
+          method: "POST",
+          headers: devHeaders,
+          payload: {
+            notes: "Manual payment reconciled from Billing dashboard review.",
+            evidence: {
+              reviewSource: "billing_dashboard",
+              invoiceId: payment.invoiceId,
+            },
+          },
+        },
+      );
+      const refreshed = await requestDashboardJson<BillingDashboardResponse>(
+        apiBaseUrl,
+        "/api/billing/dashboard",
+        { headers: devHeaders },
+      );
+      setBillingDashboard(refreshed);
+      setManualPaymentReconciliationStatus(
+        `${payment.reference ?? payment.id} reconciled; invoice allocation refreshed.`,
+      );
+    } catch (error) {
+      setManualPaymentReconciliationStatus(
+        `Manual payment reconciliation failed: ${dashboardApiStatus(error)}`,
+      );
+    } finally {
+      setReconcilingManualPaymentId("");
+    }
+  }
+
   async function runConflictCheck() {
     const payloadResult = buildConflictCheckPayload({
       prospectiveName: conflictName,
@@ -2893,6 +3057,28 @@ export default function DashboardClient({
     URL.revokeObjectURL(url);
   }
 
+  function downloadReportExport(payload: StaffReportExportDownloadResponse): void {
+    if (typeof document === "undefined" || typeof URL === "undefined") return;
+    const encodedDefinitionKey = payload.export.report.definitionKey.replace(/[^a-z0-9_-]+/gi, "-");
+    const exportFormat = payload.export.exportProfile?.format ?? "json";
+    const blob =
+      exportFormat === "csv"
+        ? new Blob([staffReportProjectionCsv(payload.export.report)], {
+            type: "text/csv;charset=utf-8",
+          })
+        : new Blob([JSON.stringify(payload, null, 2)], {
+            type: "application/json",
+          });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `staff-report-${encodedDefinitionKey}-${payload.exportRequest.jobId}.${exportFormat}`;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
   async function exportContactHistory(): Promise<void> {
     const reason = contactHistoryExportReason.trim();
     if (!activeContactDossier || !canExportSelectedContactHistory || reason.length < 8) return;
@@ -2912,6 +3098,8 @@ export default function DashboardClient({
         },
       );
       const request = requestPayload.exportRequest;
+      setContactHistoryExportRequest(request);
+      setActiveContactId(request.contactId);
       if (request.status !== "completed") {
         setContactHistoryExportStatus(
           `Export request ${request.status}; download link expires ${compactDate(
@@ -2939,7 +3127,7 @@ export default function DashboardClient({
       );
       setContactHistoryExportSummary(
         `${categoryCount} categories, ${timelineCount} timeline cues, ${matterCount} matter links, ${portalGrantCount} portal grants. Download link expires ${compactDate(
-          request.downloadExpiresAt,
+          payload.exportRequest.downloadExpiresAt ?? request.downloadExpiresAt,
         )}; no server-side export body stored.`,
       );
     } catch (error) {
@@ -2947,6 +3135,80 @@ export default function DashboardClient({
       setContactHistoryExportSummary("");
     } finally {
       setExportingContactHistory(false);
+    }
+  }
+
+  async function pollContactHistoryExport(): Promise<ContactHistoryExportRequest | undefined> {
+    const requestToPoll =
+      contactHistoryExportRequest?.contactId === activeContactDossier?.contact.id
+        ? contactHistoryExportRequest
+        : undefined;
+    if (!requestToPoll) return undefined;
+    setContactHistoryExportAction("poll");
+    setContactHistoryExportStatus("Refreshing contact-history export request...");
+    try {
+      const payload = await requestDashboardJson<ContactHistoryExportRequestResponse>(
+        apiBaseUrl,
+        requestToPoll.pollUrl,
+        { headers: devHeaders },
+      );
+      const request = payload.exportRequest;
+      setContactHistoryExportRequest(request);
+      setContactHistoryExportStatus(
+        `Export request ${request.status}; download link expires ${compactDate(
+          request.downloadExpiresAt,
+        )}.`,
+      );
+      setContactHistoryExportSummary(
+        request.status === "completed"
+          ? "Export is ready; download regenerates the authorized projection without storing a server-side body."
+          : "Queued request stores status, counts, and posture metadata only. No server-side export body is stored.",
+      );
+      return request;
+    } catch (error) {
+      setContactHistoryExportStatus(`Contact-history refresh failed: ${dashboardApiStatus(error)}`);
+      return undefined;
+    } finally {
+      setContactHistoryExportAction("");
+    }
+  }
+
+  async function downloadLatestContactHistoryExport(): Promise<void> {
+    const request =
+      contactHistoryExportRequest?.contactId === activeContactDossier?.contact.id
+        ? contactHistoryExportRequest
+        : undefined;
+    if (!request || request.status !== "completed") return;
+    setContactHistoryExportAction("download");
+    setContactHistoryExportStatus("Preparing contact-history export download...");
+    try {
+      const payload = await requestDashboardJson<ContactHistoryExportResponse>(
+        apiBaseUrl,
+        request.downloadUrl,
+        { headers: devHeaders },
+      );
+      setContactHistoryExportRequest({
+        ...request,
+        ...payload.exportRequest,
+        status: "completed",
+      });
+      downloadContactHistoryExport(payload);
+      const categoryCount = Object.keys(payload.export.categories).length;
+      const timelineCount = payload.export.categories.timelineCues.length;
+      const matterCount = payload.export.categories.matterPartyPosture.length;
+      const portalGrantCount = payload.export.categories.portalAccessPosture.grants?.length ?? 0;
+      setContactHistoryExportStatus("Export request completed; JSON download prepared.");
+      setContactHistoryExportSummary(
+        `${categoryCount} categories, ${timelineCount} timeline cues, ${matterCount} matter links, ${portalGrantCount} portal grants. Download link expires ${compactDate(
+          payload.exportRequest.downloadExpiresAt ?? request.downloadExpiresAt,
+        )}; no server-side export body stored.`,
+      );
+    } catch (error) {
+      setContactHistoryExportStatus(
+        `Contact-history download failed: ${dashboardApiStatus(error)}`,
+      );
+    } finally {
+      setContactHistoryExportAction("");
     }
   }
 
@@ -5514,6 +5776,62 @@ export default function DashboardClient({
     }
   }
 
+  async function pollReportExport(
+    item: StaffReportingWorkspaceResponse["history"][number],
+  ): Promise<void> {
+    setExportingReportKey(`poll:${item.jobId}`);
+    setReportExportStatus(`Refreshing ${item.jobId}...`);
+    try {
+      const payload = await requestDashboardJson<StaffReportExportRequestResponse>(
+        apiBaseUrl,
+        item.pollUrl,
+        { headers: devHeaders },
+      );
+      setReportingWorkspace((current) => ({
+        ...current,
+        history: [
+          payload.exportRequest,
+          ...current.history.filter((historyItem) => historyItem.jobId !== item.jobId),
+        ],
+      }));
+      setReportExportStatus(`Report export ${payload.exportRequest.status}.`);
+    } catch (error) {
+      setReportExportStatus(`Report export refresh failed: ${dashboardApiStatus(error)}`);
+    } finally {
+      setExportingReportKey("");
+    }
+  }
+
+  async function downloadReportExportRequest(
+    item: StaffReportingWorkspaceResponse["history"][number],
+  ): Promise<void> {
+    if (item.status !== "completed") return;
+    setExportingReportKey(`download:${item.jobId}`);
+    setReportExportStatus(`Preparing ${item.jobId} download...`);
+    try {
+      const payload = await requestDashboardJson<StaffReportExportDownloadResponse>(
+        apiBaseUrl,
+        item.downloadUrl,
+        { headers: devHeaders },
+      );
+      setReportingWorkspace((current) => ({
+        ...current,
+        history: [
+          payload.exportRequest,
+          ...current.history.filter((historyItem) => historyItem.jobId !== item.jobId),
+        ],
+      }));
+      downloadReportExport(payload);
+      setReportExportStatus(
+        `Report export downloaded; ${payload.export.report.rowCount} rows regenerated.`,
+      );
+    } catch (error) {
+      setReportExportStatus(`Report export download failed: ${dashboardApiStatus(error)}`);
+    } finally {
+      setExportingReportKey("");
+    }
+  }
+
   if (!activeMatter) {
     return (
       <main className="app-shell dashboard-shell legal-ops-shell" aria-labelledby="dashboard-title">
@@ -5594,8 +5912,23 @@ export default function DashboardClient({
                   contactDataQualityStatus={contactDataQualityStatus}
                   contactReviewQueue={contactReviewQueue}
                   contactHistoryExportReason={contactHistoryExportReason}
-                  contactHistoryExportStatus={contactHistoryExportStatus}
-                  contactHistoryExportSummary={contactHistoryExportSummary}
+                  contactHistoryExportRequest={
+                    contactHistoryExportRequest?.contactId === activeContactDossier?.contact.id
+                      ? contactHistoryExportRequest
+                      : null
+                  }
+                  contactHistoryExportStatus={
+                    contactHistoryExportRequest &&
+                    contactHistoryExportRequest.contactId !== activeContactDossier?.contact.id
+                      ? "No contact-history export requested for this contact in this session."
+                      : contactHistoryExportStatus
+                  }
+                  contactHistoryExportSummary={
+                    contactHistoryExportRequest &&
+                    contactHistoryExportRequest.contactId !== activeContactDossier?.contact.id
+                      ? ""
+                      : contactHistoryExportSummary
+                  }
                   contactTimeline={activeContactTimeline}
                   contactTimelineActivityFilter={contactTimelineActivityFilter}
                   contactTimelineStatus={contactTimelineStatus}
@@ -5610,6 +5943,8 @@ export default function DashboardClient({
                   onContactCreatePhoneChange={setContactCreatePhone}
                   onContactCreateRoleCategoryChange={setContactCreateRoleCategory}
                   onContactHistoryExportReasonChange={setContactHistoryExportReason}
+                  onPollContactHistoryExport={() => void pollContactHistoryExport()}
+                  onDownloadContactHistoryExport={() => void downloadLatestContactHistoryExport()}
                   onContactTimelineActivityFilterChange={setContactTimelineActivityFilter}
                   onExportContactHistory={() => void exportContactHistory()}
                   onCreateContact={() => void createContact()}
@@ -5622,6 +5957,7 @@ export default function DashboardClient({
                   onSelectMatter={selectMatter}
                   recordingContactResolutionKey={recordingContactResolutionKey}
                   exportingContactHistory={exportingContactHistory}
+                  contactHistoryExportAction={contactHistoryExportAction}
                 />
               </article>
             ) : null}
@@ -5931,6 +6267,8 @@ export default function DashboardClient({
                   exportingReportKey={exportingReportKey}
                   exportStatus={reportExportStatus}
                   minutes={minutes}
+                  onPollReportExport={(item) => void pollReportExport(item)}
+                  onDownloadReportExport={(item) => void downloadReportExportRequest(item)}
                   onRequestReportExport={(definitionKey, exportProfileId, groupingKey) =>
                     void requestReportExport(definitionKey, exportProfileId, groupingKey)
                   }
@@ -6227,8 +6565,23 @@ export default function DashboardClient({
                   contactDataQualityStatus={contactDataQualityStatus}
                   contactReviewQueue={contactReviewQueue}
                   contactHistoryExportReason={contactHistoryExportReason}
-                  contactHistoryExportStatus={contactHistoryExportStatus}
-                  contactHistoryExportSummary={contactHistoryExportSummary}
+                  contactHistoryExportRequest={
+                    contactHistoryExportRequest?.contactId === activeContactDossier?.contact.id
+                      ? contactHistoryExportRequest
+                      : null
+                  }
+                  contactHistoryExportStatus={
+                    contactHistoryExportRequest &&
+                    contactHistoryExportRequest.contactId !== activeContactDossier?.contact.id
+                      ? "No contact-history export requested for this contact in this session."
+                      : contactHistoryExportStatus
+                  }
+                  contactHistoryExportSummary={
+                    contactHistoryExportRequest &&
+                    contactHistoryExportRequest.contactId !== activeContactDossier?.contact.id
+                      ? ""
+                      : contactHistoryExportSummary
+                  }
                   contactTimeline={activeContactTimeline}
                   contactTimelineActivityFilter={contactTimelineActivityFilter}
                   contactTimelineStatus={contactTimelineStatus}
@@ -6243,6 +6596,8 @@ export default function DashboardClient({
                   onContactCreatePhoneChange={setContactCreatePhone}
                   onContactCreateRoleCategoryChange={setContactCreateRoleCategory}
                   onContactHistoryExportReasonChange={setContactHistoryExportReason}
+                  onPollContactHistoryExport={() => void pollContactHistoryExport()}
+                  onDownloadContactHistoryExport={() => void downloadLatestContactHistoryExport()}
                   onContactTimelineActivityFilterChange={setContactTimelineActivityFilter}
                   onExportContactHistory={() => void exportContactHistory()}
                   onCreateContact={() => void createContact()}
@@ -6255,6 +6610,7 @@ export default function DashboardClient({
                   onSelectMatter={selectMatter}
                   recordingContactResolutionKey={recordingContactResolutionKey}
                   exportingContactHistory={exportingContactHistory}
+                  contactHistoryExportAction={contactHistoryExportAction}
                 />
               ) : null}
 
@@ -6267,6 +6623,10 @@ export default function DashboardClient({
                   compactDate={compactDate}
                   compactStatus={compactStatus}
                   formatCurrency={cents}
+                  onReviewPostingRequest={(postingRequest, decision) =>
+                    void reviewPostingRequest(postingRequest, decision)
+                  }
+                  postingRequestActionKey={postingRequestActionKey}
                   trustControlsStatus={trustControlsStatus}
                   trustReviewSummary={trustReviewSummary}
                 />
@@ -6308,7 +6668,10 @@ export default function DashboardClient({
                     expenseDraftProfileKey={expenseDraftProfileKey}
                     expenseDraftReimbursable={expenseDraftReimbursable}
                     expenseDraftStatus={expenseDraftStatus}
+                    manualPaymentReconciliationStatus={manualPaymentReconciliationStatus}
                     minutes={minutes}
+                    onReconcileManualPayment={reconcileManualPayment}
+                    reconcilingManualPaymentId={reconcilingManualPaymentId}
                     setDraftInvoiceDueAt={setDraftInvoiceDueAt}
                     setDraftInvoiceTaxName={setDraftInvoiceTaxName}
                     setDraftInvoiceTaxRate={setDraftInvoiceTaxRate}
@@ -6727,6 +7090,8 @@ export default function DashboardClient({
                   exportingReportKey={exportingReportKey}
                   exportStatus={reportExportStatus}
                   minutes={minutes}
+                  onPollReportExport={(item) => void pollReportExport(item)}
+                  onDownloadReportExport={(item) => void downloadReportExportRequest(item)}
                   onRequestReportExport={(definitionKey, exportProfileId, groupingKey) =>
                     void requestReportExport(definitionKey, exportProfileId, groupingKey)
                   }

@@ -115,6 +115,24 @@ describe("IMAP inbound email polling worker", () => {
       firmId: "firm-west-legal",
       metadata: { rawStorageKey: expect.stringContaining("/11-") },
     });
+    const parserJobs = (
+      await repository.listJobLifecycleRecords("firm-west-legal", {
+        queueName: "inbound_email",
+      })
+    )
+      .filter((job) => job.jobName === INBOUND_EMAIL_PARSE_JOB_NAME)
+      .sort((left, right) => Number(left.metadata.uid) - Number(right.metadata.uid));
+    expect(parserJobs).toHaveLength(2);
+    expect(parserJobs[0]?.metadata).toMatchObject({
+      rawStorageKeyPresent: true,
+      mailboxHash: expect.any(String),
+      uidValidity: 7,
+      uid: 11,
+      rawContentSha256: expect.any(String),
+      rawSizeBytes: expect.any(Number),
+    });
+    expect(parserJobs.every((job) => !("rawStorageKey" in job.metadata))).toBe(true);
+    expect(JSON.stringify(parserJobs.map((job) => job.metadata))).not.toContain(".eml");
 
     const provider = (
       await repository.listProviderSettings("firm-west-legal", { kind: "inbound_email" })

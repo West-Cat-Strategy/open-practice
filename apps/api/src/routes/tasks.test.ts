@@ -99,6 +99,12 @@ describe("task routes", () => {
         myOverdueTaskIds: string[];
         teamTodayTaskIds: string[];
       };
+      suggestedFollowUps: Array<{
+        id: string;
+        matterId: string;
+        title: string;
+        source: { type: string; id: string; label: string };
+      }>;
     }>();
 
     expect(response.statusCode).toBe(200);
@@ -128,6 +134,20 @@ describe("task routes", () => {
       myOverdueTaskIds: ["task-deadline-001"],
       teamTodayTaskIds: ["task-deadline-002"],
     });
+    expect(payload.suggestedFollowUps).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "legal-clinic-cadence:clinic-profile-matter-001:next_review_due",
+          matterId: "matter-001",
+          title: "Review legal clinic cadence",
+          source: {
+            type: "operational_view",
+            id: "legal_clinic_cadence:clinic-profile-matter-001:next_review_due",
+            label: "Legal clinic cadence",
+          },
+        }),
+      ]),
+    );
     expect(payload.taskReview.summary).toMatchObject({
       total: 3,
       highPriority: 1,
@@ -167,6 +187,9 @@ describe("task routes", () => {
     expect(JSON.stringify(payload.taskReview)).not.toContain("matter-002");
     expect(JSON.stringify(payload.taskReview)).not.toContain("contact-ada");
     expect(JSON.stringify(payload.taskReview)).not.toContain("trustBalanceCents");
+    expect(JSON.stringify(payload.suggestedFollowUps)).not.toContain(
+      "Synthetic operational note for clinic screening",
+    );
   });
 
   it("honors includeCompleted=false query parsing", async () => {

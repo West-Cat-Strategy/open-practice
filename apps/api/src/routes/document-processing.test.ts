@@ -443,6 +443,219 @@ describe("document processing routes", () => {
     expect(auditMetadata).not.toHaveProperty("scanStatus");
   });
 
+  it("queues metadata-only document conversion review jobs from completed OCR extraction", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const { queue, jobs } = fakeOcrQueue();
+    await repository.createDocumentUploadIntent({
+      id: "doc-conversion-review",
+      firmId,
+      matterId: "matter-001",
+      title: "Synthetic conversion review evidence.pdf",
+      storageKey: "matters/matter-001/conversion-review-evidence.pdf",
+      checksumSha256: "8".repeat(64),
+      classification: "general",
+      legalHold: false,
+    });
+    await repository.completeDocumentUpload({
+      firmId,
+      documentId: "doc-conversion-review",
+      checksumSha256: "8".repeat(64),
+      scanStatus: "passed",
+    });
+    await repository.createDocumentTextExtraction({
+      id: "extraction-conversion-review-doc",
+      firmId,
+      documentId: "doc-conversion-review",
+      engine: "tesseract",
+      status: "completed",
+      language: "eng",
+      confidence: 0.91,
+      extractedText: "Synthetic OCR text for conversion review.\nSecond line.",
+      metadata: {
+        textLength: 54,
+        providerPayload: { private: true },
+        rawMarkdown: "# must not survive",
+      },
+      createdAt: "2026-06-16T12:00:00.000Z",
+      completedAt: "2026-06-16T12:01:00.000Z",
+    });
+
+    const response = await testServer({ repository, ocrJobQueue: queue }).inject({
+      method: "POST",
+      url: "/api/document-processing/documents/doc-conversion-review/conversion-review/jobs",
+      payload: { idempotencyKey: "synthetic-conversion-review-doc" },
+    });
+    const workbench = await testServer({ repository, ocrJobQueue: queue }).inject({
+      method: "GET",
+      url: "/api/document-processing/workbench?matterId=matter-001",
+    });
+
+    expect(response.statusCode).toBe(202);
+    const payload = response.json();
+    expect(payload).toMatchObject({
+      status: "queued",
+      task: "document_conversion_review",
+      documentId: "doc-conversion-review",
+      job: {
+        queueName: "ocr",
+        jobName: "document_conversion_review",
+        status: "queued",
+        targetResourceType: "document",
+        targetResourceId: "doc-conversion-review",
+        idempotencyKeyPresent: true,
+      },
+      conversionReview: {
+        posture: "queued",
+        summaryPosture: "op_authored_metadata_only",
+        jobId: expect.any(String),
+        counts: { sourceTextLength: 54 },
+        policy: expect.objectContaining({
+          metadataOnly: true,
+          reviewOnly: true,
+          rawOcrTextStored: false,
+          rawMarkdownStored: false,
+          annotationBodiesStored: false,
+          chunksStored: false,
+          embeddingsStored: false,
+          providerPayloadsStored: false,
+        }),
+      },
+    });
+    expect(payload).not.toHaveProperty("document");
+    expect(jobs).toEqual([
+      {
+        name: "document_conversion_review",
+        data: expect.objectContaining({
+          firmId,
+          resourceType: "document",
+          resourceId: "doc-conversion-review",
+          metadata: expect.objectContaining({
+            matterId: "matter-001",
+            documentId: "doc-conversion-review",
+            extractionId: "extraction-conversion-review-doc",
+            jobId: payload.job.id,
+            requestedByUserId: "user-owner_admin",
+            summaryPosture: "op_authored_metadata_only",
+            idempotencyKeyPresent: true,
+          }),
+        }),
+        jobId: payload.job.id,
+      },
+    ]);
+    await expect(repository.listJobLifecycleRecords(firmId, { queueName: "ocr" })).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: payload.job.id,
+          jobName: "document_conversion_review",
+          status: "queued",
+          metadata: expect.objectContaining({
+            matterId: "matter-001",
+            documentId: "doc-conversion-review",
+            task: "document_conversion_review",
+            extractionId: "extraction-conversion-review-doc",
+            sourceTextLength: 54,
+            summaryPosture: "op_authored_metadata_only",
+            requestedByUserId: "user-owner_admin",
+          }),
+        }),
+      ]),
+    );
+    expect(JSON.stringify(jobs[0]?.data)).not.toContain("Synthetic OCR text");
+    expect(JSON.stringify(jobs[0]?.data)).not.toContain("rawMarkdown");
+    expect(JSON.stringify(payload)).not.toContain("Synthetic OCR text");
+    expect(workbench.json().documents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          document: expect.objectContaining({ id: "doc-conversion-review" }),
+          conversionReview: expect.objectContaining({
+            posture: "queued",
+            summaryPosture: "op_authored_metadata_only",
+            jobId: payload.job.id,
+            counts: { sourceTextLength: 54 },
+          }),
+        }),
+      ]),
+    );
+    const audit = await repository.listAuditEvents(firmId);
+    const conversionAudit = audit.events.find(
+      (event) => event.action === "document_processing.conversion_review.queued",
+    );
+    expect(conversionAudit).toMatchObject({
+      resourceType: "document",
+      resourceId: "doc-conversion-review",
+      metadata: expect.objectContaining({
+        matterId: "matter-001",
+        documentId: "doc-conversion-review",
+        extractionId: "extraction-conversion-review-doc",
+        sourceTextLength: 54,
+        summaryPosture: "op_authored_metadata_only",
+        workflowStatus: "queued",
+      }),
+    });
+    expect(JSON.stringify(conversionAudit?.metadata)).not.toContain("Synthetic OCR text");
+  });
+
+  it("returns completed document conversion review posture from existing artifacts", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createDocumentTextExtraction({
+      id: "extraction-conversion-review-completed",
+      firmId,
+      documentId: "doc-001",
+      engine: "tesseract",
+      status: "completed",
+      language: "eng",
+      extractedText: "Synthetic completed OCR text stays private.",
+      metadata: {},
+      createdAt: "2026-06-16T12:00:00.000Z",
+      completedAt: "2026-06-16T12:01:00.000Z",
+    });
+    await repository.createLegalResearchArtifact({
+      id: "artifact-conversion-review-doc-001",
+      firmId,
+      matterId: "matter-001",
+      kind: "document_analysis_status",
+      status: "ready_for_review",
+      title: "Document conversion review posture",
+      sourceReferences: [],
+      contextLinks: [{ resourceType: "document", resourceId: "doc-001", label: "Source document" }],
+      documentAnalysis: {
+        documentId: "doc-001",
+        status: "ready_for_review",
+        extractionStatus: "completed",
+        artifactStatus: "metadata_only",
+        sourceTextLength: 42,
+      },
+      createdByUserId: "user-owner_admin",
+      createdAt: "2026-06-16T12:02:00.000Z",
+      updatedAt: "2026-06-16T12:02:00.000Z",
+      reviewOnly: true,
+      metadata: {
+        jobId: "job-conversion-review-completed",
+        counts: { sourceTextLength: 42, wordCount: 5, lineCount: 1 },
+      },
+    });
+
+    const response = await testServer({ repository, ocrJobQueue: undefined }).inject({
+      method: "POST",
+      url: "/api/document-processing/documents/doc-001/conversion-review/jobs",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      status: "completed",
+      task: "document_conversion_review",
+      documentId: "doc-001",
+      conversionReview: {
+        posture: "ready_for_review",
+        summaryPosture: "op_authored_metadata_only",
+        jobId: "job-conversion-review-completed",
+        artifactId: "artifact-conversion-review-doc-001",
+        counts: { sourceTextLength: 42, wordCount: 5, lineCount: 1 },
+      },
+    });
+    expect(JSON.stringify(response.json())).not.toContain("Synthetic completed OCR text");
+  });
+
   it("returns a matter-scoped sanitized document processing workbench", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     await repository.upsertProviderSetting({

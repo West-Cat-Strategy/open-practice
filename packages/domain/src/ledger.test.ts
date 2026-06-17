@@ -11,6 +11,7 @@ import {
   ledgerControlsDiagnostics,
   ledgerPostingRequestFromTransaction,
   ledgerPostingRequestReviewSummary,
+  ledgerReconciliationFreshnessReview,
   ledgerReconciliationReviewSummary,
   ledgerTransactionFromPostingRequest,
   postLedgerTransaction,
@@ -466,11 +467,55 @@ describe("ledger controls diagnostics", () => {
     expect(diagnostics.rejectedApprovalTransactionIds).toEqual(["tx-rejected"]);
   });
 
+  it("projects reconciliation freshness rows without mutating ledger state", () => {
+    const freshness = ledgerReconciliationFreshnessReview({
+      accounts: [
+        ...accounts,
+        {
+          id: "acct-never-reconciled",
+          firmId: "firm-west-legal",
+          name: "Synthetic never reconciled trust",
+          type: "trust_asset",
+        },
+      ],
+      reconciliations,
+      generatedAt: "2026-08-15T00:00:00.000Z",
+    });
+
+    expect(freshness.reviewOnly).toBe(true);
+    expect(freshness.summary).toMatchObject({
+      accountCount: 2,
+      freshCount: 0,
+      watchCount: 0,
+      staleCount: 1,
+      neverReconciledCount: 1,
+      exceptionCount: 1,
+      unmatchedStatementRowCount: 1,
+      reviewOnly: true,
+    });
+    expect(freshness.rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          accountId: "acct-trust-bank",
+          posture: "stale",
+          latestReviewedStatementPeriodEnd: "2026-05-31T23:59:59.000Z",
+          exceptionCount: 1,
+          unmatchedStatementRowCount: 1,
+        }),
+        expect.objectContaining({
+          accountId: "acct-never-reconciled",
+          posture: "never_reconciled",
+          staleDayCount: 0,
+        }),
+      ]),
+    );
+  });
+
   it("builds cautious jurisdictional trust report summaries from existing controls", () => {
     const report = buildJurisdictionalTrustReport({
       matters: [
-        { id: "matter-001", jurisdiction: "BC" },
-        { id: "matter-002", jurisdiction: "ON" },
+        { id: "matter-001", jurisdiction: "BC", practiceArea: "Residential tenancy" },
+        { id: "matter-002", jurisdiction: "ON", practiceArea: "Notarial services" },
       ],
       ledger: {
         accounts,
@@ -497,9 +542,21 @@ describe("ledger controls diagnostics", () => {
     });
 
     expect(report.compliancePosture).toBe("operational_controls_only_not_jurisdiction_certified");
+    expect(report).toMatchObject({
+      groupBy: "jurisdiction",
+      filters: {},
+      dimensionOptions: {
+        jurisdictions: ["BC", "ON"],
+        practiceAreas: ["Notarial services", "Residential tenancy"],
+      },
+    });
     expect(report.summaries).toEqual([
-      {
+      expect.objectContaining({
         jurisdiction: "BC",
+        dimensionKey: "BC",
+        practiceArea: "Residential tenancy",
+        clinicProgramId: "none",
+        restrictedFundReviewStatus: "not_reviewed",
         matterCount: 1,
         trustBalanceCents: 5000,
         pendingApprovalCount: 1,
@@ -512,9 +569,13 @@ describe("ledger controls diagnostics", () => {
         unreconciledAccountCount: 1,
         overdrawnBalanceCount: 0,
         compliancePosture: "operational_controls_only_not_jurisdiction_certified",
-      },
-      {
+      }),
+      expect.objectContaining({
         jurisdiction: "ON",
+        dimensionKey: "ON",
+        practiceArea: "Notarial services",
+        clinicProgramId: "none",
+        restrictedFundReviewStatus: "not_reviewed",
         matterCount: 1,
         trustBalanceCents: -1000,
         pendingApprovalCount: 0,
@@ -527,7 +588,7 @@ describe("ledger controls diagnostics", () => {
         unreconciledAccountCount: 0,
         overdrawnBalanceCount: 1,
         compliancePosture: "operational_controls_only_not_jurisdiction_certified",
-      },
+      }),
     ]);
   });
 
@@ -552,8 +613,12 @@ describe("ledger controls diagnostics", () => {
     });
 
     expect(report.summaries).toEqual([
-      {
+      expect.objectContaining({
         jurisdiction: "OTHER",
+        dimensionKey: "OTHER",
+        practiceArea: "Unspecified",
+        clinicProgramId: "none",
+        restrictedFundReviewStatus: "not_reviewed",
         matterCount: 0,
         trustBalanceCents: 0,
         pendingApprovalCount: 0,
@@ -566,8 +631,64 @@ describe("ledger controls diagnostics", () => {
         unreconciledAccountCount: 0,
         overdrawnBalanceCount: 0,
         compliancePosture: "operational_controls_only_not_jurisdiction_certified",
-      },
+      }),
     ]);
+  });
+
+  it("groups jurisdictional trust reports by derived clinic and restricted-fund dimensions", () => {
+    const report = buildJurisdictionalTrustReport({
+      matters: [
+        { id: "matter-001", jurisdiction: "BC", practiceArea: "Housing" },
+        { id: "matter-002", jurisdiction: "BC", practiceArea: "Housing" },
+      ],
+      legalClinicMatterProfiles: [
+        {
+          matterId: "matter-001",
+          programId: "clinic-program-housing",
+          metadata: { restrictedFund: { reviewStatus: "reviewed" } },
+        },
+        {
+          matterId: "matter-002",
+          programId: "clinic-program-housing",
+          metadata: { restrictedFund: { reviewStatus: "reviewed" } },
+        },
+      ],
+      ledger: {
+        accounts,
+        entries,
+        trustBalances: {
+          "contact-ada:matter-001": 5000,
+          "contact-northstar:matter-002": -1000,
+        },
+      },
+      approvals,
+      reconciliations,
+      diagnostics: ledgerControlsDiagnostics({
+        ledger: {
+          accounts,
+          entries,
+          trustBalances: {},
+        },
+        approvals,
+        reconciliations,
+      }),
+      filters: { restrictedFundReviewStatus: "reviewed" },
+      groupBy: "clinicProgramId",
+    });
+
+    expect(report).toMatchObject({
+      groupBy: "clinicProgramId",
+      filters: { restrictedFundReviewStatus: "reviewed" },
+      summaries: [
+        expect.objectContaining({
+          dimensionKey: "clinic-program-housing",
+          clinicProgramId: "clinic-program-housing",
+          restrictedFundReviewStatus: "reviewed",
+          practiceArea: "Housing",
+          matterCount: 2,
+        }),
+      ],
+    });
   });
 
   it("validates statement-row review decisions and variance explanations", () => {

@@ -4,6 +4,7 @@ import type {
   EmailTemplateDraftListResponse,
   EmailTemplatePreviewSnapshotListResponse,
 } from "./models";
+import type { MatterSummary } from "../../types";
 
 export function buildEmailTemplateDraftsPath(): string {
   return "/api/email/template-drafts";
@@ -21,18 +22,49 @@ export function buildEmailTemplatePreviewSnapshotsPath(
 
 export async function loadEmailTemplateDashboardData(input: {
   listTemplateDrafts: () => Promise<EmailTemplateDraftListResponse>;
+  listPreviewSnapshots?: (
+    templateDraftId: string,
+    matterId: string,
+  ) => Promise<EmailTemplatePreviewSnapshotListResponse>;
+  recentMatterIds?: string[];
 }): Promise<EmailTemplateDashboardResponse> {
   const response = await input.listTemplateDrafts();
+  const previewSnapshotsByMatterId: EmailTemplateDashboardResponse["previewSnapshotsByMatterId"] =
+    {};
+  const draftIds = response.templateDrafts
+    .filter((draft) => draft.status !== "archived")
+    .slice(0, 5)
+    .map((draft) => draft.id);
+  const matterIds = (input.recentMatterIds ?? []).filter(Boolean).slice(0, 3);
+
+  if (input.listPreviewSnapshots && draftIds.length > 0 && matterIds.length > 0) {
+    await Promise.all(
+      matterIds.map(async (matterId) => {
+        const snapshots = (
+          await Promise.all(
+            draftIds.map((draftId) => input.listPreviewSnapshots!(draftId, matterId)),
+          )
+        ).flatMap((snapshotResponse) => snapshotResponse.previewSnapshots);
+        const byId = new Map(snapshots.map((snapshot) => [snapshot.id, snapshot] as const));
+        previewSnapshotsByMatterId[matterId] = [...byId.values()]
+          .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt))
+          .slice(0, 5);
+      }),
+    );
+  }
+
   return {
     templateDrafts: response.templateDrafts,
-    previewSnapshotsByMatterId: {},
+    previewSnapshotsByMatterId,
   };
 }
 
 export async function loadEmailTemplateDashboardResources(input: {
   headers: Record<string, string>;
+  matters?: Pick<MatterSummary, "id">[];
 }): Promise<EmailTemplateDashboardResponse> {
   return loadEmailTemplateDashboardData({
+    recentMatterIds: input.matters?.map((matter) => matter.id),
     listTemplateDrafts: () =>
       apiGetOptional<EmailTemplateDraftListResponse>(
         buildEmailTemplateDraftsPath(),
@@ -40,9 +72,12 @@ export async function loadEmailTemplateDashboardResources(input: {
         input.headers,
         { templateDrafts: [] },
       ),
+    listPreviewSnapshots: (templateDraftId, matterId) =>
+      apiGetOptional<EmailTemplatePreviewSnapshotListResponse>(
+        buildEmailTemplatePreviewSnapshotsPath(templateDraftId, matterId),
+        { previewSnapshots: [] },
+        input.headers,
+        { previewSnapshots: [] },
+      ),
   });
 }
-
-export const emptyEmailTemplatePreviewSnapshotResponse: EmailTemplatePreviewSnapshotListResponse = {
-  previewSnapshots: [],
-};

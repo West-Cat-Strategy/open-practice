@@ -1,10 +1,12 @@
 import {
   AlertTriangle,
   Banknote,
+  Check,
   ClipboardCheck,
   Clock3,
   FileText,
   ShieldCheck,
+  XCircle,
 } from "lucide-react";
 
 import type { FinancialCommandJournalEntry, FinancialCommandJournalFamily } from "../types";
@@ -26,6 +28,11 @@ interface TrustControlsSectionProps {
   compactDate: (value: string) => string;
   compactStatus: (value: string) => string;
   formatCurrency: (value: number) => string;
+  onReviewPostingRequest: (
+    postingRequest: TrustControlsDashboardResponse["postingRequests"][number],
+    decision: "approved" | "rejected",
+  ) => void;
+  postingRequestActionKey?: string;
   trustControlsStatus: string;
   trustReviewSummary: TrustReviewSummary;
 }
@@ -109,6 +116,8 @@ export function TrustControlsSection({
   compactDate,
   compactStatus,
   formatCurrency,
+  onReviewPostingRequest,
+  postingRequestActionKey = "",
   trustControlsStatus,
   trustReviewSummary,
 }: TrustControlsSectionProps) {
@@ -116,6 +125,25 @@ export function TrustControlsSection({
   const accountingSummary = accountingReview.summary;
   const bankFeedReviewSummary = accountingReview.bankFeedReviewSummary;
   const bankFeedImportBatches = accountingReview.importBatches;
+  const reconciliationFreshness = activeTrustControls.reconciliationFreshness ?? {
+    generatedAt: "",
+    freshWithinDays: 30,
+    watchWithinDays: 60,
+    rows: [],
+    summary: {
+      accountCount: 0,
+      freshCount: 0,
+      watchCount: 0,
+      staleCount: 0,
+      neverReconciledCount: 0,
+      totalStaleDayCount: 0,
+      maxStaleDayCount: 0,
+      exceptionCount: 0,
+      unmatchedStatementRowCount: 0,
+      reviewOnly: true,
+    },
+    reviewOnly: true,
+  };
   const financialCommandJournal = activeTrustControls.financialCommandJournal;
   const financialCommandEntries = financialCommandJournal.entries.slice(0, 6);
   const protectedAccountingProfiles = accountingReview.accountingProfiles.filter(
@@ -136,6 +164,9 @@ export function TrustControlsSection({
     }),
   );
   const postingRequests = activeTrustControls.postingRequests.slice(0, 5);
+  const freshnessRows = reconciliationFreshness.rows
+    .filter((row) => row.posture !== "fresh" || row.exceptionCount > 0)
+    .slice(0, 4);
 
   return (
     <>
@@ -216,6 +247,79 @@ export function TrustControlsSection({
         </div>
       </div>
 
+      {reconciliationFreshness ? (
+        <>
+          <div className="section-title">
+            <h3>Reconciliation freshness</h3>
+            <span>
+              {reconciliationFreshness.summary.freshCount} fresh ·{" "}
+              {reconciliationFreshness.summary.watchCount} watch ·{" "}
+              {reconciliationFreshness.summary.staleCount} stale ·{" "}
+              {reconciliationFreshness.summary.neverReconciledCount} never reconciled
+            </span>
+          </div>
+          <div className="activity-grid two-column">
+            <div className="activity-card">
+              <ShieldCheck size={18} />
+              <strong>{reconciliationFreshness.summary.freshCount} fresh accounts</strong>
+              <span>within {reconciliationFreshness.freshWithinDays} days · review only</span>
+            </div>
+            <div className="activity-card">
+              <Clock3 size={18} />
+              <strong>{reconciliationFreshness.summary.watchCount} watch accounts</strong>
+              <span>within {reconciliationFreshness.watchWithinDays} days</span>
+            </div>
+            <div className="activity-card">
+              <AlertTriangle size={18} />
+              <strong>{reconciliationFreshness.summary.staleCount} stale accounts</strong>
+              <span>
+                {reconciliationFreshness.summary.totalStaleDayCount} stale days · max{" "}
+                {reconciliationFreshness.summary.maxStaleDayCount}
+              </span>
+            </div>
+            <div className="activity-card">
+              <FileText size={18} />
+              <strong>
+                {reconciliationFreshness.summary.latestReviewedStatementPeriodEnd
+                  ? compactDate(reconciliationFreshness.summary.latestReviewedStatementPeriodEnd)
+                  : "No reviewed period"}
+              </strong>
+              <span>
+                {reconciliationFreshness.summary.unmatchedStatementRowCount} unmatched rows ·{" "}
+                {reconciliationFreshness.summary.exceptionCount} exceptions
+              </span>
+            </div>
+          </div>
+          <div className="party-list">
+            {freshnessRows.map((row) => (
+              <div className="party-row" key={row.accountId}>
+                <span>
+                  <strong>{row.accountName}</strong>
+                  <small>
+                    {row.latestReviewedStatementPeriodEnd
+                      ? `reviewed through ${compactDate(row.latestReviewedStatementPeriodEnd)}`
+                      : "no reviewed reconciliation"}
+                  </small>
+                  <small>
+                    {row.unmatchedStatementRowCount} unmatched · {row.exceptionCount} exceptions ·{" "}
+                    {row.staleDayCount} stale days
+                  </small>
+                </span>
+                <em className={row.posture === "stale" ? "risk" : undefined}>
+                  {row.posture.replaceAll("_", " ")}
+                </em>
+              </div>
+            ))}
+            {freshnessRows.length === 0 ? (
+              <p className="inline-empty">
+                No stale, unreconciled, or exception freshness rows are present in the current
+                controls payload.
+              </p>
+            ) : null}
+          </div>
+        </>
+      ) : null}
+
       <div className="section-title">
         <h3>Financial command journal</h3>
         <span>
@@ -293,6 +397,32 @@ export function TrustControlsSection({
             <em className={postingRequest.status === "rejected" ? "risk" : undefined}>
               {compactStatus(postingRequest.status)}
             </em>
+            {postingRequest.status === "pending_approval" ? (
+              <span className="row-actions">
+                <button
+                  className="secondary-button compact-button row-button"
+                  disabled={postingRequestActionKey === `approved:${postingRequest.id}`}
+                  onClick={() => onReviewPostingRequest(postingRequest, "approved")}
+                  type="button"
+                >
+                  <Check size={14} aria-hidden="true" />
+                  {postingRequestActionKey === `approved:${postingRequest.id}`
+                    ? "Approving"
+                    : "Approve"}
+                </button>
+                <button
+                  className="secondary-button compact-button row-button"
+                  disabled={postingRequestActionKey === `rejected:${postingRequest.id}`}
+                  onClick={() => onReviewPostingRequest(postingRequest, "rejected")}
+                  type="button"
+                >
+                  <XCircle size={14} aria-hidden="true" />
+                  {postingRequestActionKey === `rejected:${postingRequest.id}`
+                    ? "Rejecting"
+                    : "Reject"}
+                </button>
+              </span>
+            ) : null}
           </div>
         ))}
         {postingRequests.length === 0 ? (

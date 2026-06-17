@@ -62,6 +62,16 @@ export interface CalendarSchedulingRequestListOptions {
   ownerUserId?: string;
 }
 
+export interface CalendarSchedulingRequestUpdateInput {
+  firmId: string;
+  matterId: string;
+  requestId: string;
+  status: CalendarSchedulingRequestRecord["status"];
+  reviewedAt: string;
+  reviewedByUserId: string;
+  calendarEventId?: string | null;
+}
+
 export interface CalendarEventReminderDeleteInput {
   firmId: string;
   scope?: CalendarEventScope;
@@ -166,6 +176,14 @@ export interface CalendarEventsRepository {
   createCalendarSchedulingRequest(
     request: CalendarSchedulingRequestRecord,
   ): Promise<CalendarSchedulingRequestRecord>;
+  getCalendarSchedulingRequest(
+    firmId: string,
+    matterId: string,
+    requestId: string,
+  ): Promise<CalendarSchedulingRequestRecord | undefined>;
+  updateCalendarSchedulingRequestReview(
+    input: CalendarSchedulingRequestUpdateInput,
+  ): Promise<CalendarSchedulingRequestRecord | undefined>;
   listCalendarSchedulingRequests(
     firmId: string,
     options?: CalendarSchedulingRequestListOptions,

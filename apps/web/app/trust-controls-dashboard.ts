@@ -50,9 +50,31 @@ export function buildTrustControlsPath(matterId: string): string {
   return `/api/ledger/controls?matterId=${encodeURIComponent(matterId)}`;
 }
 
-export function buildJurisdictionalTrustReportPath(jurisdiction?: string): string {
+export function buildJurisdictionalTrustReportPath(
+  filters:
+    | string
+    | {
+        jurisdiction?: string;
+        practiceArea?: string;
+        clinicProgramId?: string;
+        restrictedFundReviewStatus?: string;
+        groupBy?: string;
+      } = {},
+): string {
   const basePath = "/api/ledger/reports/jurisdictional-trust";
-  return jurisdiction ? `${basePath}?jurisdiction=${encodeURIComponent(jurisdiction)}` : basePath;
+  const normalizedFilters = typeof filters === "string" ? { jurisdiction: filters } : filters;
+  const params = new URLSearchParams();
+  if (normalizedFilters.jurisdiction) params.set("jurisdiction", normalizedFilters.jurisdiction);
+  if (normalizedFilters.practiceArea) params.set("practiceArea", normalizedFilters.practiceArea);
+  if (normalizedFilters.clinicProgramId) {
+    params.set("clinicProgramId", normalizedFilters.clinicProgramId);
+  }
+  if (normalizedFilters.restrictedFundReviewStatus) {
+    params.set("restrictedFundReviewStatus", normalizedFilters.restrictedFundReviewStatus);
+  }
+  if (normalizedFilters.groupBy) params.set("groupBy", normalizedFilters.groupBy);
+  const query = params.toString();
+  return query ? `${basePath}?${query}` : basePath;
 }
 
 export function emptyTrustControlsDashboard(): TrustControlsDashboardResponse {
@@ -72,6 +94,25 @@ export function emptyTrustControlsDashboard(): TrustControlsDashboardResponse {
       totalCount: 0,
     },
     reconciliations: [],
+    reconciliationFreshness: {
+      generatedAt: new Date(0).toISOString(),
+      freshWithinDays: 30,
+      watchWithinDays: 60,
+      rows: [],
+      summary: {
+        accountCount: 0,
+        freshCount: 0,
+        watchCount: 0,
+        staleCount: 0,
+        neverReconciledCount: 0,
+        totalStaleDayCount: 0,
+        maxStaleDayCount: 0,
+        exceptionCount: 0,
+        unmatchedStatementRowCount: 0,
+        reviewOnly: true,
+      },
+      reviewOnly: true,
+    },
     accountingReview: {
       importBatches: [],
       matchRuleProfiles: [],
@@ -152,6 +193,14 @@ export function emptyTrustControlsDashboard(): TrustControlsDashboardResponse {
 
 export function emptyJurisdictionalTrustReport(): JurisdictionalTrustReportResponse {
   return {
+    groupBy: "jurisdiction",
+    filters: {},
+    dimensionOptions: {
+      jurisdictions: [],
+      practiceAreas: [],
+      clinicProgramIds: [],
+      restrictedFundReviewStatuses: [],
+    },
     summaries: [],
     compliancePosture: "operational_controls_only_not_jurisdiction_certified",
   };

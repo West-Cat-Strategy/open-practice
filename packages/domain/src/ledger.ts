@@ -1,3 +1,4 @@
+import type { LegalClinicMatterProfile } from "./legal-clinics.js";
 import type { Matter, Province } from "./models.js";
 
 export type LedgerAccountType =
@@ -389,8 +390,85 @@ export interface LedgerBankFeedReconciliationReviewSummary {
   reviewOnly: true;
 }
 
+export const ledgerReconciliationFreshnessPostures = [
+  "fresh",
+  "watch",
+  "stale",
+  "never_reconciled",
+] as const;
+
+export type LedgerReconciliationFreshnessPosture =
+  (typeof ledgerReconciliationFreshnessPostures)[number];
+
+export interface LedgerReconciliationFreshnessRow {
+  accountId: string;
+  accountName: string;
+  posture: LedgerReconciliationFreshnessPosture;
+  daysSinceLatestReviewedStatementPeriod?: number;
+  staleDayCount: number;
+  latestReconciliationId?: string;
+  latestReconciliationStatus?: LedgerReconciliationStatus;
+  latestReviewedStatementPeriodStart?: string;
+  latestReviewedStatementPeriodEnd?: string;
+  exceptionCount: number;
+  importedStatementRowCount: number;
+  matchedStatementRowCount: number;
+  unmatchedStatementRowCount: number;
+  reviewOnly: true;
+}
+
+export interface LedgerReconciliationFreshnessSummary {
+  accountCount: number;
+  freshCount: number;
+  watchCount: number;
+  staleCount: number;
+  neverReconciledCount: number;
+  totalStaleDayCount: number;
+  maxStaleDayCount: number;
+  latestReviewedStatementPeriodEnd?: string;
+  exceptionCount: number;
+  unmatchedStatementRowCount: number;
+  reviewOnly: true;
+}
+
+export interface LedgerReconciliationFreshnessReview {
+  generatedAt: string;
+  freshWithinDays: number;
+  watchWithinDays: number;
+  rows: LedgerReconciliationFreshnessRow[];
+  summary: LedgerReconciliationFreshnessSummary;
+  reviewOnly: true;
+}
+
+export type LedgerReportDimensionGroupKey =
+  | "jurisdiction"
+  | "practiceArea"
+  | "clinicProgramId"
+  | "restrictedFundReviewStatus";
+
+export interface LedgerReportDimensionFilters {
+  jurisdiction?: Province;
+  practiceArea?: string;
+  clinicProgramId?: string;
+  restrictedFundReviewStatus?: string;
+}
+
+export interface LedgerReportDimensions {
+  jurisdiction: Province | "multiple";
+  practiceArea: string;
+  clinicProgramId: string;
+  restrictedFundReviewStatus: string;
+}
+
 export interface JurisdictionalTrustReportSummary {
   jurisdiction: Province;
+  groupBy: LedgerReportDimensionGroupKey;
+  dimensionKey: string;
+  dimensionLabel: string;
+  dimensions: LedgerReportDimensions;
+  practiceArea: string;
+  clinicProgramId: string;
+  restrictedFundReviewStatus: string;
   matterCount: number;
   trustBalanceCents: number;
   pendingApprovalCount: number;
@@ -406,6 +484,14 @@ export interface JurisdictionalTrustReportSummary {
 }
 
 export interface JurisdictionalTrustReport {
+  groupBy: LedgerReportDimensionGroupKey;
+  filters: LedgerReportDimensionFilters;
+  dimensionOptions: {
+    jurisdictions: Province[];
+    practiceAreas: string[];
+    clinicProgramIds: string[];
+    restrictedFundReviewStatuses: string[];
+  };
   summaries: JurisdictionalTrustReportSummary[];
   compliancePosture: "operational_controls_only_not_jurisdiction_certified";
 }
@@ -957,6 +1043,130 @@ export function ledgerBankFeedReconciliationReviewSummary(input: {
   };
 }
 
+export function ledgerReconciliationFreshnessReview(input: {
+  accounts: LedgerAccount[];
+  reconciliations: LedgerReconciliationRecord[];
+  generatedAt?: string;
+  freshWithinDays?: number;
+  watchWithinDays?: number;
+}): LedgerReconciliationFreshnessReview {
+  const generatedAt = input.generatedAt ?? new Date().toISOString();
+  const generatedAtMs = parseTimestamp(generatedAt) ?? Date.now();
+  const freshWithinDays = input.freshWithinDays ?? 30;
+  const watchWithinDays = input.watchWithinDays ?? 60;
+  const reviewedStatuses = new Set<LedgerReconciliationStatus>([
+    "matched",
+    "exception",
+    "reviewed",
+  ]);
+  const reconciliationsByAccountId = new Map<string, LedgerReconciliationRecord[]>();
+  for (const reconciliation of input.reconciliations) {
+    const current = reconciliationsByAccountId.get(reconciliation.accountId) ?? [];
+    current.push(reconciliation);
+    reconciliationsByAccountId.set(reconciliation.accountId, current);
+  }
+
+  const rows = input.accounts
+    .filter((account) => account.type === "trust_asset")
+    .map((account): LedgerReconciliationFreshnessRow => {
+      const accountReconciliations = reconciliationsByAccountId.get(account.id) ?? [];
+      const latestReviewed = accountReconciliations
+        .filter((reconciliation) => reviewedStatuses.has(reconciliation.status))
+        .sort(
+          (left, right) =>
+            (parseTimestamp(right.statementPeriodEnd) ?? 0) -
+            (parseTimestamp(left.statementPeriodEnd) ?? 0),
+        )[0];
+      const daysSinceLatestReviewedStatementPeriod = wholeDaysSince(
+        generatedAtMs,
+        latestReviewed?.statementPeriodEnd,
+      );
+      const posture = reconciliationFreshnessPosture({
+        daysSinceLatestReviewedStatementPeriod,
+        freshWithinDays,
+        watchWithinDays,
+      });
+      const staleDayCount =
+        posture === "stale" && daysSinceLatestReviewedStatementPeriod !== undefined
+          ? Math.max(daysSinceLatestReviewedStatementPeriod - watchWithinDays, 0)
+          : 0;
+      const summary = accountReconciliations.reduce(
+        (current, reconciliation) => {
+          const reconciliationSummary = ledgerReconciliationReviewSummary(reconciliation);
+          current.exceptionCount += reconciliation.status === "exception" ? 1 : 0;
+          current.importedStatementRowCount += reconciliationSummary.importedStatementRowCount;
+          current.matchedStatementRowCount += reconciliationSummary.matchedStatementRowCount;
+          current.unmatchedStatementRowCount += reconciliationSummary.unmatchedStatementRowCount;
+          return current;
+        },
+        {
+          exceptionCount: 0,
+          importedStatementRowCount: 0,
+          matchedStatementRowCount: 0,
+          unmatchedStatementRowCount: 0,
+        },
+      );
+
+      return {
+        accountId: account.id,
+        accountName: account.name,
+        posture,
+        daysSinceLatestReviewedStatementPeriod,
+        staleDayCount,
+        latestReconciliationId: latestReviewed?.id,
+        latestReconciliationStatus: latestReviewed?.status,
+        latestReviewedStatementPeriodStart: latestReviewed?.statementPeriodStart,
+        latestReviewedStatementPeriodEnd: latestReviewed?.statementPeriodEnd,
+        exceptionCount: summary.exceptionCount,
+        importedStatementRowCount: summary.importedStatementRowCount,
+        matchedStatementRowCount: summary.matchedStatementRowCount,
+        unmatchedStatementRowCount: summary.unmatchedStatementRowCount,
+        reviewOnly: true,
+      };
+    })
+    .sort((left, right) => {
+      const postureRank: Record<LedgerReconciliationFreshnessPosture, number> = {
+        stale: 0,
+        never_reconciled: 1,
+        watch: 2,
+        fresh: 3,
+      };
+      if (postureRank[left.posture] !== postureRank[right.posture]) {
+        return postureRank[left.posture] - postureRank[right.posture];
+      }
+      return (
+        right.staleDayCount - left.staleDayCount ||
+        left.accountName.localeCompare(right.accountName)
+      );
+    });
+
+  return {
+    generatedAt,
+    freshWithinDays,
+    watchWithinDays,
+    rows,
+    summary: {
+      accountCount: rows.length,
+      freshCount: rows.filter((row) => row.posture === "fresh").length,
+      watchCount: rows.filter((row) => row.posture === "watch").length,
+      staleCount: rows.filter((row) => row.posture === "stale").length,
+      neverReconciledCount: rows.filter((row) => row.posture === "never_reconciled").length,
+      totalStaleDayCount: rows.reduce((sum, row) => sum + row.staleDayCount, 0),
+      maxStaleDayCount: rows.reduce((max, row) => Math.max(max, row.staleDayCount), 0),
+      latestReviewedStatementPeriodEnd: latestIso(
+        rows.map((row) => row.latestReviewedStatementPeriodEnd),
+      ),
+      exceptionCount: rows.reduce((sum, row) => sum + row.exceptionCount, 0),
+      unmatchedStatementRowCount: rows.reduce(
+        (sum, row) => sum + row.unmatchedStatementRowCount,
+        0,
+      ),
+      reviewOnly: true,
+    },
+    reviewOnly: true,
+  };
+}
+
 export function previewLedgerStatementImport(input: {
   accountId: string;
   statementRows: LedgerStatementImportPreviewRowInput[];
@@ -1026,17 +1236,39 @@ export function buildLedgerReconciliationExceptionResolutionStatementRow(
 }
 
 export function buildJurisdictionalTrustReport(input: {
-  matters: Array<Pick<Matter, "id" | "jurisdiction">>;
+  matters: Array<Pick<Matter, "id" | "jurisdiction"> & Partial<Pick<Matter, "practiceArea">>>;
+  legalClinicMatterProfiles?: Array<
+    Pick<LegalClinicMatterProfile, "matterId" | "programId" | "metadata">
+  >;
   ledger: LedgerControlsLedgerSnapshot;
   approvals: LedgerTransactionApprovalRecord[];
   reconciliations: LedgerReconciliationRecord[];
   diagnostics: LedgerControlsDiagnostics;
   jurisdiction?: Province;
+  filters?: LedgerReportDimensionFilters;
+  groupBy?: LedgerReportDimensionGroupKey;
 }): JurisdictionalTrustReport {
   const mattersById = new Map(input.matters.map((matter) => [matter.id, matter]));
-  const jurisdictions = input.jurisdiction
-    ? [input.jurisdiction]
-    : uniqueInOrder(input.matters.map((matter) => matter.jurisdiction)).sort();
+  const filters: LedgerReportDimensionFilters = {
+    ...input.filters,
+    jurisdiction: input.jurisdiction ?? input.filters?.jurisdiction,
+  };
+  const groupBy = input.groupBy ?? "jurisdiction";
+  const matterProfilesByMatterId = new Map(
+    (input.legalClinicMatterProfiles ?? []).map((profile) => [profile.matterId, profile]),
+  );
+  const dimensionedMatters = input.matters.map((matter) => ({
+    matter,
+    dimensions: ledgerReportDimensionsForMatter(matter, matterProfilesByMatterId.get(matter.id)),
+  }));
+  const filteredMatters = dimensionedMatters.filter(({ dimensions }) =>
+    ledgerReportDimensionsMatch(dimensions, filters),
+  );
+  const groupKeys = reportGroupKeys({
+    groupBy,
+    filters,
+    matters: filteredMatters,
+  });
   const entriesByTransactionId = groupEntriesBy(
     input.ledger.entries,
     (entry) => entry.transactionId,
@@ -1052,13 +1284,34 @@ export function buildJurisdictionalTrustReport(input: {
   }
 
   return {
+    groupBy,
+    filters,
+    dimensionOptions: {
+      jurisdictions: uniqueInOrder(input.matters.map((matter) => matter.jurisdiction)).sort(),
+      practiceAreas: uniqueInOrder(
+        dimensionedMatters.map(({ dimensions }) => dimensions.practiceArea),
+      ).sort(),
+      clinicProgramIds: uniqueInOrder(
+        dimensionedMatters.map(({ dimensions }) => dimensions.clinicProgramId),
+      ).sort(),
+      restrictedFundReviewStatuses: uniqueInOrder(
+        dimensionedMatters.map(({ dimensions }) => dimensions.restrictedFundReviewStatus),
+      ).sort(),
+    },
     compliancePosture: "operational_controls_only_not_jurisdiction_certified",
-    summaries: jurisdictions.map((jurisdiction) => {
-      const matterIds = new Set(
-        input.matters
-          .filter((matter) => matter.jurisdiction === jurisdiction)
-          .map((matter) => matter.id),
+    summaries: groupKeys.map((dimensionKey) => {
+      const groupMatters = filteredMatters.filter(
+        ({ dimensions }) => ledgerReportDimensionValue(dimensions, groupBy) === dimensionKey,
       );
+      const matterIds = new Set(groupMatters.map(({ matter }) => matter.id));
+      const aggregateDimensions = ledgerReportAggregateDimensions(
+        groupMatters.map(({ dimensions }) => dimensions),
+      );
+      const dimensions = ledgerReportDimensionsForGroup({
+        aggregateDimensions,
+        groupBy,
+        dimensionKey,
+      });
       const jurisdictionTransactionIds = transactionIdsForMatterSet(
         input.ledger.entries,
         matterIds,
@@ -1085,7 +1338,14 @@ export function buildJurisdictionalTrustReport(input: {
       );
 
       return {
-        jurisdiction,
+        jurisdiction: dimensions.jurisdiction === "multiple" ? "CANADA" : dimensions.jurisdiction,
+        groupBy,
+        dimensionKey,
+        dimensionLabel: ledgerReportDimensionLabel(groupBy, dimensionKey),
+        dimensions,
+        practiceArea: dimensions.practiceArea,
+        clinicProgramId: dimensions.clinicProgramId,
+        restrictedFundReviewStatus: dimensions.restrictedFundReviewStatus,
         matterCount: matterIds.size,
         trustBalanceCents: trustBalanceForMatterSet(input.ledger.trustBalances, matterIds),
         pendingApprovalCount: input.diagnostics.pendingApprovalTransactionIds.filter(
@@ -1320,6 +1580,163 @@ export function validateLedgerAccountingReviewProfileRecord(
 
 function uniqueInOrder<T extends string>(values: T[]): T[] {
   return [...new Set(values)];
+}
+
+const ledgerDayMs = 86_400_000;
+
+function parseTimestamp(value: string | undefined): number | undefined {
+  if (!value) return undefined;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function wholeDaysSince(laterMs: number, earlier: string | undefined): number | undefined {
+  const earlierMs = parseTimestamp(earlier);
+  if (earlierMs === undefined) return undefined;
+  return Math.max(Math.floor((laterMs - earlierMs) / ledgerDayMs), 0);
+}
+
+function latestIso(values: Array<string | undefined>): string | undefined {
+  const latest = values.reduce<number | undefined>((current, value) => {
+    const parsed = parseTimestamp(value);
+    if (parsed === undefined) return current;
+    return current === undefined || parsed > current ? parsed : current;
+  }, undefined);
+  return latest === undefined ? undefined : new Date(latest).toISOString();
+}
+
+function reconciliationFreshnessPosture(input: {
+  daysSinceLatestReviewedStatementPeriod: number | undefined;
+  freshWithinDays: number;
+  watchWithinDays: number;
+}): LedgerReconciliationFreshnessPosture {
+  if (input.daysSinceLatestReviewedStatementPeriod === undefined) return "never_reconciled";
+  if (input.daysSinceLatestReviewedStatementPeriod <= input.freshWithinDays) return "fresh";
+  if (input.daysSinceLatestReviewedStatementPeriod <= input.watchWithinDays) return "watch";
+  return "stale";
+}
+
+function stringMetadata(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function restrictedFundReviewStatus(
+  profile: Pick<LegalClinicMatterProfile, "metadata"> | undefined,
+): string {
+  const metadata = profile?.metadata;
+  const restrictedFund =
+    metadata && typeof metadata === "object" && !Array.isArray(metadata)
+      ? (metadata as Record<string, unknown>).restrictedFund
+      : undefined;
+  if (!restrictedFund || typeof restrictedFund !== "object" || Array.isArray(restrictedFund)) {
+    return "not_reviewed";
+  }
+  return stringMetadata((restrictedFund as Record<string, unknown>).reviewStatus) ?? "not_reviewed";
+}
+
+function ledgerReportDimensionsForMatter(
+  matter: Pick<Matter, "jurisdiction"> & Partial<Pick<Matter, "practiceArea">>,
+  profile: Pick<LegalClinicMatterProfile, "programId" | "metadata"> | undefined,
+): LedgerReportDimensions {
+  return {
+    jurisdiction: matter.jurisdiction,
+    practiceArea: matter.practiceArea?.trim() || "Unspecified",
+    clinicProgramId: profile?.programId ?? "none",
+    restrictedFundReviewStatus: restrictedFundReviewStatus(profile),
+  };
+}
+
+function ledgerReportDimensionValue(
+  dimensions: LedgerReportDimensions,
+  groupBy: LedgerReportDimensionGroupKey,
+): string {
+  return String(dimensions[groupBy]);
+}
+
+function ledgerReportDimensionsMatch(
+  dimensions: LedgerReportDimensions,
+  filters: LedgerReportDimensionFilters,
+): boolean {
+  return (
+    (!filters.jurisdiction || dimensions.jurisdiction === filters.jurisdiction) &&
+    (!filters.practiceArea || dimensions.practiceArea === filters.practiceArea) &&
+    (!filters.clinicProgramId || dimensions.clinicProgramId === filters.clinicProgramId) &&
+    (!filters.restrictedFundReviewStatus ||
+      dimensions.restrictedFundReviewStatus === filters.restrictedFundReviewStatus)
+  );
+}
+
+function reportGroupKeys(input: {
+  groupBy: LedgerReportDimensionGroupKey;
+  filters: LedgerReportDimensionFilters;
+  matters: Array<{ dimensions: LedgerReportDimensions }>;
+}): string[] {
+  const explicitFilter = input.filters[input.groupBy];
+  if (explicitFilter) return [String(explicitFilter)];
+  return uniqueInOrder(
+    input.matters.map(({ dimensions }) => ledgerReportDimensionValue(dimensions, input.groupBy)),
+  ).sort();
+}
+
+function ledgerReportDimensionLabel(
+  groupBy: LedgerReportDimensionGroupKey,
+  dimensionKey: string,
+): string {
+  if (groupBy === "clinicProgramId" && dimensionKey === "none") return "No clinic program";
+  if (groupBy === "restrictedFundReviewStatus" && dimensionKey === "not_reviewed") {
+    return "Not reviewed";
+  }
+  if (dimensionKey === "multiple") return "Multiple";
+  return dimensionKey;
+}
+
+function singleOrMultiple<T extends string>(values: T[], fallback: T): T | "multiple" {
+  const unique = uniqueInOrder(values.filter(Boolean));
+  if (unique.length === 0) return fallback;
+  if (unique.length === 1) return unique[0]!;
+  return "multiple";
+}
+
+function ledgerReportAggregateDimensions(
+  dimensions: LedgerReportDimensions[],
+): LedgerReportDimensions {
+  return {
+    jurisdiction: singleOrMultiple(
+      dimensions
+        .map((dimension) => dimension.jurisdiction)
+        .filter((jurisdiction): jurisdiction is Province => jurisdiction !== "multiple"),
+      "CANADA",
+    ),
+    practiceArea: singleOrMultiple(
+      dimensions.map((dimension) => dimension.practiceArea),
+      "Unspecified",
+    ),
+    clinicProgramId: singleOrMultiple(
+      dimensions.map((dimension) => dimension.clinicProgramId),
+      "none",
+    ),
+    restrictedFundReviewStatus: singleOrMultiple(
+      dimensions.map((dimension) => dimension.restrictedFundReviewStatus),
+      "not_reviewed",
+    ),
+  };
+}
+
+function ledgerReportDimensionsForGroup(input: {
+  aggregateDimensions: LedgerReportDimensions;
+  groupBy: LedgerReportDimensionGroupKey;
+  dimensionKey: string;
+}): LedgerReportDimensions {
+  if (input.groupBy === "jurisdiction") {
+    return {
+      ...input.aggregateDimensions,
+      jurisdiction: input.dimensionKey as Province,
+    };
+  }
+  return {
+    ...input.aggregateDimensions,
+    [input.groupBy]: input.dimensionKey,
+  };
 }
 
 function statementRowDuplicateKey(row: LedgerStatementImportPreviewRowInput): string {

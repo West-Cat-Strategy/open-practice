@@ -40,12 +40,21 @@ scheduled-reporting/report-builder posture, payment settlement/reconciliation re
 reconciliation review, legal-research provider job boundary, and scoped developer API/webhook
 replay boundary slices and should not be re-proposed here as future work.
 
-The live workboard has no active core-suite Clio parity candidate after OP-T144 through OP-T152.
+The 2026-06-16 Clio parity closure branch treats Open Practice as broad-category parity across the
+remaining core workflow-depth gaps. It closes safety-first audit redaction issues, queued
+report/contact export UX gaps, pending trust-posting review controls, pending manual-payment
+reconciliation UI, email-template preview hydration, research shell-model coverage, metadata-only
+document conversion review, staff-reviewed scheduling requests, CRM retention-hold cues and
+matter-scoped exports, reconciliation freshness, accounting/report dimensions, and legal-clinic
+cadence signals without adding live payment, bank-feed, SMS, legal-research-provider, mobile,
+e-filing, automatic trust-posting, public booking, retained export bodies, raw document-text storage,
+or provider side-effect behavior.
 
-Any future candidate must compare against shipped proof before implementation so it deepens the
-relevant workflow without duplicating the completed shell, review-only, or projection slices.
-Enterprise-only Operate/Docket, native mobile apps, e-filing, and practice-specific add-ons remain
-watch items outside this core-suite pass.
+The live workboard has no active core-suite Clio parity candidate after this closure. Any future
+candidate must compare against shipped proof before implementation so it deepens the relevant
+workflow without duplicating completed shell, review-only, projection, metadata-only, or
+bounded-command slices. Enterprise-only Operate/Docket, native mobile apps, e-filing, and
+practice-specific add-ons remain watch items outside this core-suite pass.
 
 ### Reference Review Candidates - 2026-05-22
 
@@ -99,17 +108,18 @@ surface.
     snippets without a reuse decision.
 
 - **Private document conversion and annotation research spike**
-  - **Status:** Docs-first boundary shipped on 2026-06-16; keep future work focused on a separately
-    reviewed local-only prototype.
-  - **Shipped boundary:** Open Practice now documents that conversion, annotation, chunking,
-    Markdown extraction, and semantic review remain deferred beyond OCR. Future retained state may
-    include only OP-authored redacted summaries, counts, statuses, and posture metadata; raw client
-    text, raw converted Markdown, raw annotations, provider payloads, prompts, sensitive chunks,
-    embeddings, storage keys, object bodies, and private excerpts must not enter job metadata,
-    audit metadata, API posture, or proof notes.
-  - **Remaining gap:** OCR extraction exists, but no runtime conversion, annotation, redaction,
-    chunking, Markdown conversion, or semantic-review API, worker, schema, provider integration, or
-    dashboard surface has shipped.
+  - **Status:** Metadata-only conversion review shipped on 2026-06-16; keep future work focused on
+    provider-backed conversion or annotation only after a separate reviewed design.
+  - **Shipped boundary:** Open Practice now queues `document_conversion_review` jobs after verified
+    upload, safe scan posture, and completed OCR extraction, then surfaces posture in Documents and
+    Research through `document_analysis_status` artifacts. Retained state is limited to OP-authored
+    redacted posture, `summaryPosture: op_authored_metadata_only`, counts, lengths, statuses,
+    policy flags, and review metadata; raw client text, raw converted Markdown, raw annotations,
+    provider payloads, prompts, sensitive chunks, embeddings, storage keys, object bodies, free-form
+    generated summaries, and private excerpts must not enter job metadata, audit metadata, API
+    posture, artifacts, or proof notes.
+  - **Remaining boundary:** Provider-backed conversion, annotation bodies, chunk storage,
+    embeddings, and external semantic-review providers remain out of scope.
   - **References:** `unstructured-io__unstructured`, `microsoft__markitdown`,
     `getomni-ai__zerox`, `open-source-legal__opencontracts`, `paperless-ngx__paperless-ngx`, and
     `papermerge__papermerge-core`.
@@ -122,7 +132,8 @@ surface.
 
 - **Structured email template drafts**
   - **Shipped slice:** OP-T158 adds provider-neutral firm-scoped saved email template drafts and
-    matter-scoped persisted preview snapshots.
+    matter-scoped persisted preview snapshots. The 2026-06-16 parity closure hydrates recent matter
+    preview snapshots into dashboard resources and removes the unused empty preview placeholder.
   - **Remaining gap / future boundary:** Campaign automation, bulk sends, subscription management,
     provider delivery side effects, queue/send jobs, and live delivery from template management
     remain future work. `/api/email/previews` stays render-only.
@@ -140,10 +151,12 @@ surface.
     unless a file-level review excludes enterprise-only material.
 
 - **Meeting availability request review**
-  - **First slice:** Add staff-reviewed availability/request records for meeting scheduling without
-    public room URLs, native media, signaling, chat, recordings, or provider sync.
-  - **Local gap / shipped boundary:** OP-T102 and OP-T113 shipped hosted guest-session controls and
-    status-only admitted handoff, not availability booking or public scheduling.
+  - **Shipped slice:** Staff-reviewed availability/request records now live in
+    `calendar_scheduling_requests`, with explicit review decisions and optional links to existing
+    staff-created events.
+  - **Remaining boundary:** Public booking rooms, public room URLs, native media, signaling, chat,
+    recordings, automatic event creation, and provider sync remain out of scope unless a future
+    design explicitly widens scheduling.
   - **References:** `calcom__cal.diy` and `jitsi__jitsi-meet`.
   - **Reuse and snippets:** Cal.diy is MIT/adapt-with-attribution and Jitsi is Apache-2.0
     adopt-selectively; keep this as behavior-level planning unless implementation scope opens reuse.
@@ -191,15 +204,17 @@ surface.
     the synchronous single-contact `staff_review` export route plus the queued request/poll/
     short-lived authenticated download-link path, both under existing `contact:export`; the
     timeline now also has an authorized/redacted `activity` filter for safe dashboard review.
-  - **Remaining gap:** Future work should focus on matter-scoped exports, approval/hold workflows,
-    and jurisdiction-reviewed
-    retention/privacy policies. The
+  - **Shipped retention/export depth:** The 2026-06-16 parity closure adds `retention_hold_review`
+    dossier cues, contact data-quality resolution support, `retentionHoldCueCount`, and optional
+    strict `matterId` scoping for synchronous and queued contact-history exports. The
     [contact-history export, retention, and privacy decision packet](contact-history-export-retention-privacy-decision-packet.md)
     now records the selected single-contact runtime posture: `staff_review` JSON generated from
     authorized projections with a required review reason, and queued/download metadata that stores
     no retained export body.
     Review-only duplicate assistance now derives safe contact dossier/review-queue cues without
     automatic merges or contact mutation.
+  - **Remaining boundary:** Deletion workflows, legal-hold overrides, jurisdiction-certified
+    retention deadlines, and retained export bodies remain out of scope.
   - **References:** `civicrm__civicrm-core`, `espocrm__espocrm`, `suitecrm__suitecrm`,
     `twenty__twenty`, `jlawyerorg__j-lawyer-org`, and `arkcase__arkcase`.
   - **Reuse and snippets:** AGPL/LGPL/high-risk reference-only; no direct snippets.
@@ -215,10 +230,12 @@ surface.
   - **Reuse and snippets:** LGPL/AGPL/GPL/reference-only; no direct snippets.
 
 - **Legal clinic referral cadence**
-  - **First slice:** Generate review checklist/task signals from legal-clinic profiles with
-    audit-safe referral handoff metadata.
-  - **Local gap / shipped boundary:** Legal-clinic profiles include review/referral dates and tasks
-    exist separately, but there is no cadence/checklist bridge.
+  - **Shipped slice:** The task workbench now derives legal-clinic cadence signals from referral and
+    review dates, eligibility/referral status, and program/profile posture. Staff-created tasks use
+    existing `operational_view` sources with `legal_clinic_cadence:<profileId>:<signal>` IDs.
+  - **Remaining boundary:** Cadence signals stay review-only until staff explicitly create normal
+    tasks; no migration, automatic task creation, provider sync, or client-visible cadence workflow
+    was added.
   - **References:** `primeroims__primero`, `avniproject__avni-server`, and
     `avniproject__avni-webapp`.
   - **Reuse and snippets:** Reference-only/architecture-only; no direct snippets.
@@ -239,7 +256,8 @@ surface.
 - **Pre-post trust posting approval commands**
   - **Shipped first slice:** `trust_posting_requests` now provide prepare/list/approve/reject
     semantics so selected trust postings can be prepared by one staff user and posted only after
-    checker approval.
+    checker approval. The 2026-06-16 parity closure wires pending requests into Trust Controls
+    approve/reject UI actions without changing posting semantics.
   - **Remaining boundary:** Direct trust transactions still post immediately for non-selected
     postings. The posting-request commands reuse the existing ledger transaction posting path at
     approval time, stay separate from the shipped trust-transfer approve/reject/link flow, and do not
@@ -250,10 +268,11 @@ surface.
 
 - **Reconciliation freshness report expansion**
   - **Shipped slices:** Trust/accounting diagnostics and reporting surfaces now expose review-only
-    reconciliation depth and staff reporting cues.
-  - **Remaining gap:** A future slice could add account-level freshness aging with stale-days, last
-    statement period, last matched/reviewed reconciliation, and exception counts without changing
-    posting behavior.
+    reconciliation depth, account-level freshness aging, stale-days, last reviewed statement period,
+    exception counts, unmatched-row counts, and staff reporting cues without changing posting
+    behavior.
+  - **Remaining boundary:** Automatic reconciliation, live bank feeds, certified trust-accounting
+    claims, and posting automation remain out of scope.
   - **References:** `ledgersmb__ledgersmb` aging/reporting vocabulary and `blnkfinance__blnk`
     reconciliation progress concepts.
   - **Reuse and snippets:** LedgerSMB is GPL/reference-only; no snippets. Blnk patterns may inform
@@ -270,7 +289,9 @@ surface.
 
 - **Manual payment reconciliation gate**
   - **Shipped first slice:** Manual payments now start in `pending_reconciliation` with reviewer
-    evidence required before an effective allocation can change invoice paid/balance status.
+    evidence required before an effective allocation can change invoice paid/balance status. The
+    2026-06-16 parity closure adds Billing dashboard reconciliation controls for pending manual
+    payments while preserving review-only evidence boundaries.
   - **Remaining boundary:** Future payment-processor imports, deposit matching, refunds,
     chargebacks, and trust posting remain separate future work.
   - **References:** `opencollective__opencollective-api` settlement/reconciliation concepts and
@@ -315,11 +336,11 @@ surface.
   - **Reuse and snippets:** AGPL/reference-only; no direct snippets.
 
 - **Accounting dimension filters for trust and fiscal-host reports**
-  - **First slice:** Add optional read-only dimensions such as jurisdiction, program, restricted-fund
-    cue, and matter profile to report filters without changing postings.
-  - **Local gap / shipped boundary:** Fiscal-host cues are operational summaries only, and
-    jurisdictional trust reports are cautious aggregates; dimensions are not a first-class report
-    filter model.
+  - **Shipped slice:** Jurisdictional trust and staff reporting payloads now expose derived
+    read-only dimensions for jurisdiction, practice area, clinic program, and restricted-fund review
+    status, with filters/grouping and export metadata but no posting changes.
+  - **Remaining boundary:** These dimensions are projections over existing matter/profile data, not
+    new ledger-dimension tables or certified accounting classifications.
   - **References:** `opencollective__opencollective-api`, `frappe__erpnext`, and
     `apache__fineract`.
   - **Reuse and snippets:** Open Collective is MIT architecture-only; Frappe/ERPNext carries higher

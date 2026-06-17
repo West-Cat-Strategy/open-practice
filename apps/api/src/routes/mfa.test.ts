@@ -178,12 +178,59 @@ describe("MFA and Recovery Flows", () => {
     });
     expect(deleteCred.statusCode).toBe(200);
 
-    // 10. Verify list is empty
+    // 10. Disable MFA after the credential has been removed.
+    const disableMfa = await server.inject({
+      method: "POST",
+      url: "/api/auth/mfa/disable",
+      headers: { "x-open-practice-session": recoveryLogin.json().token },
+    });
+    expect(disableMfa.statusCode).toBe(200);
+
+    // 11. Verify list is empty
     const listCreds2 = await server.inject({
       method: "GET",
       url: "/api/auth/credentials",
       headers: { "x-open-practice-session": recoveryLogin.json().token },
     });
     expect(listCreds2.json()).toHaveLength(0);
+
+    const audit = await repository.listAuditEvents(firmId);
+    expect(audit.events.map((event) => event.action)).toEqual(
+      expect.arrayContaining([
+        "auth_credential.mfa.enabled",
+        "auth_credential.recovery_codes.generated",
+        "auth_credential.recovery_code.used",
+        "auth_credential.passkey.deleted",
+        "auth_credential.mfa.disabled",
+      ]),
+    );
+    expect(audit.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          action: "auth_credential.mfa.enabled",
+          metadata: { userId, passkeyCount: 1 },
+        }),
+        expect.objectContaining({
+          action: "auth_credential.recovery_codes.generated",
+          metadata: { userId, codeCount: 10 },
+        }),
+        expect.objectContaining({
+          action: "auth_credential.recovery_code.used",
+          metadata: { userId, method: "recovery_code" },
+        }),
+        expect.objectContaining({
+          action: "auth_credential.passkey.deleted",
+          metadata: { userId, credentialId: "cred-1" },
+        }),
+        expect.objectContaining({
+          action: "auth_credential.mfa.disabled",
+          metadata: { userId },
+        }),
+      ]),
+    );
+    const serializedAudit = JSON.stringify(audit.events);
+    expect(serializedAudit).not.toContain(codes[0]);
+    expect(serializedAudit).not.toContain("codeHash");
+    expect(serializedAudit).not.toContain("pk-1");
   });
 });

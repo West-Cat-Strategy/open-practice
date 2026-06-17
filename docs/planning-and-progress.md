@@ -8,19 +8,30 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 ## At a Glance
 
-| Snapshot              | Value                                                                      |
-| --------------------- | -------------------------------------------------------------------------- |
-| Current focus         | Eight validated 2026-06-16 follow-up lanes are merged, pushed, and pruned. |
-| Next recommended pick | Pick the next candidate from the durable roadmap/backlog.                  |
-| Ready rows            | 0                                                                          |
-| Candidate rows        | 0                                                                          |
-| In progress rows      | 0                                                                          |
-| Review rows           | 0                                                                          |
-| Blocked rows          | 0                                                                          |
-| Archive               | Historical snapshots and proof live in [Archive](archive/README.md).       |
-| Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`           |
+| Snapshot              | Value                                                                    |
+| --------------------- | ------------------------------------------------------------------------ |
+| Current focus         | Clio parity workflow-depth closure is implemented and locally validated. |
+| Next recommended pick | Pick from the durable roadmap/backlog after reviewing shipped proof.     |
+| Ready rows            | 0                                                                        |
+| Candidate rows        | 0                                                                        |
+| In progress rows      | 0                                                                        |
+| Review rows           | 0                                                                        |
+| Blocked rows          | 0                                                                        |
+| Archive               | Historical snapshots and proof live in [Archive](archive/README.md).     |
+| Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`         |
 
 ## Current Handoff Notes
+
+The 2026-06-16 Clio parity workflow-depth closure branch closes the remaining core gaps with
+metadata-only document conversion review, staff-reviewed scheduling requests, legal-clinic cadence
+signals, CRM retention-hold cues plus matter-scoped exports, ledger reconciliation freshness, and
+trust/reporting dimension filters. It also preserves the earlier safety-first audit metadata,
+queued export controls, trust posting review UI, Billing manual-payment reconciliation, and
+email-template preview hydration work. Local selector-driven validation is green. It preserves
+clean-room reference boundaries, synthetic data, matter-scoped access, no-live-settlement, no
+automatic trust posting, no retained raw export bodies, no public booking, no provider-side effects,
+and no raw private metadata in audit or job lifecycle records. Proof is recorded in
+[Clio parity gap closure proof](validation/OP_CLIO_PARITY_GAP_CLOSURE_PROOF_2026-06-16.md).
 
 OP-T158 provider-neutral email template drafts are done in
 [OP-T158 email template drafts proof](validation/OP-T158_EMAIL_TEMPLATE_DRAFTS_PROOF_2026-06-16.md).
@@ -40,14 +51,17 @@ dashboard shows the compact journal, empty state, and audit-chain-invalid warnin
 in
 [Financial command approval journal proof](validation/OP_FINANCIAL_COMMAND_APPROVAL_JOURNAL_PROOF_2026-06-16.md).
 
-The 2026-06-16 private document conversion and annotation boundary branch records docs-first
-policy for future local-only conversion, annotation, chunking, and semantic-review prototypes. It
-keeps OCR as the only actionable document-processing queue today and requires any future retained
-state to be OP-authored, redacted summaries, counts, statuses, and posture metadata only. Raw client
-text, raw converted Markdown, raw annotations, provider payloads, prompts, sensitive chunks,
-embeddings, storage keys, object bodies, and private excerpts must stay out of job metadata, audit
-metadata, API posture, and proof notes. No API, database, worker, provider, route, dependency,
-schema, runtime prototype, or reference-derived source was added. Proof is recorded in
+The 2026-06-16 private document conversion and annotation boundary proof remains the historical
+docs-first policy record. The current local-only follow-up now adds metadata-only
+`document_conversion_review` jobs after verified upload, safe scan posture, and completed OCR
+extraction, using the existing OCR queue plus `document_analysis_status` artifacts. Retained state is
+limited to IDs, counts, lengths, statuses, `summaryPosture: op_authored_metadata_only`, policy flags,
+and review posture. Raw client text, raw converted Markdown, raw annotations, provider payloads,
+prompts, sensitive chunks, embeddings, storage keys, object bodies, free-form generated summaries,
+and private excerpts must stay out of job metadata, audit metadata, API posture, artifacts, and
+proof notes. Proof is recorded in
+[document conversion review runtime prototype proof](validation/OP_DOCUMENT_CONVERSION_REVIEW_RUNTIME_PROTOTYPE_PROOF_2026-06-16.md);
+the original boundary proof is recorded in
 [private document conversion and annotation boundary proof](validation/OP_PRIVATE_DOCUMENT_CONVERSION_ANNOTATION_BOUNDARY_PROOF_2026-06-16.md).
 
 The 2026-06-16 staff intake QA scenario matrix branch extends OP-T157's visual branch-rule

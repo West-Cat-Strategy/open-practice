@@ -266,6 +266,23 @@ describe("ledger routes", () => {
           status: "exception",
         },
       ],
+      reconciliationFreshness: {
+        summary: {
+          accountCount: 1,
+          exceptionCount: 1,
+          unmatchedStatementRowCount: 0,
+          reviewOnly: true,
+        },
+        rows: [
+          expect.objectContaining({
+            accountId: "acct-trust-bank",
+            latestReviewedStatementPeriodEnd: "2026-04-30T23:59:59.000Z",
+            exceptionCount: 1,
+            reviewOnly: true,
+          }),
+        ],
+        reviewOnly: true,
+      },
       diagnostics: {
         pendingApprovalTransactionIds: ["trust-retainer"],
         rejectedApprovalTransactionIds: ["matter-002-retainer"],
@@ -607,10 +624,22 @@ describe("ledger routes", () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({
+      groupBy: "jurisdiction",
+      filters: { jurisdiction: "BC" },
+      dimensionOptions: expect.objectContaining({
+        jurisdictions: ["BC"],
+        practiceAreas: expect.arrayContaining(["Residential tenancy"]),
+        clinicProgramIds: expect.arrayContaining(["clinic-program-tenancy-stability"]),
+        restrictedFundReviewStatuses: expect.arrayContaining(["not_reviewed"]),
+      }),
       compliancePosture: "operational_controls_only_not_jurisdiction_certified",
       summaries: [
         {
           jurisdiction: "BC",
+          dimensionKey: "BC",
+          practiceArea: "multiple",
+          clinicProgramId: "multiple",
+          restrictedFundReviewStatus: "not_reviewed",
           matterCount: 2,
           trustBalanceCents: 152500,
           pendingApprovalCount: 1,
@@ -628,6 +657,37 @@ describe("ledger routes", () => {
     });
     expect(response.json()).not.toHaveProperty("reconciliations");
     expect(JSON.stringify(response.json())).not.toContain("synthetic-april-trust.pdf");
+  });
+
+  it("groups jurisdictional trust reports by existing clinic dimensions", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await seedMatterTwoLedgerControls(repository);
+
+    const response = await testServer({ repository }).inject({
+      method: "GET",
+      url: "/api/ledger/reports/jurisdictional-trust?groupBy=clinicProgramId&restrictedFundReviewStatus=not_reviewed",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      groupBy: "clinicProgramId",
+      filters: { restrictedFundReviewStatus: "not_reviewed" },
+      summaries: expect.arrayContaining([
+        expect.objectContaining({
+          dimensionKey: "clinic-program-tenancy-stability",
+          clinicProgramId: "clinic-program-tenancy-stability",
+          restrictedFundReviewStatus: "not_reviewed",
+          matterCount: 1,
+        }),
+        expect.objectContaining({
+          dimensionKey: "clinic-program-records-access",
+          clinicProgramId: "clinic-program-records-access",
+          restrictedFundReviewStatus: "not_reviewed",
+          matterCount: 1,
+        }),
+      ]),
+    });
+    expect(JSON.stringify(response.json())).not.toContain("Synthetic operational note");
   });
 
   it("queues jurisdictional trust exports and downloads only after worker completion", async () => {

@@ -6,6 +6,7 @@ import {
   buildFinancialCommandJournal,
   ledgerControlsDiagnostics,
   ledgerPostingRequestReviewSummary,
+  ledgerReconciliationFreshnessReview,
 } from "@open-practice/domain";
 import { hasFirmWideLedgerAccess } from "../../http/auth-guards.js";
 import { parseRequestPart } from "../../http/validation.js";
@@ -76,6 +77,7 @@ export function registerLedgerReadRoutes(
       reconciliations,
       includeReconciliationDiagnostics: hasFirmWideAccess,
     });
+    const generatedAt = new Date().toISOString();
 
     return {
       ledger,
@@ -83,6 +85,11 @@ export function registerLedgerReadRoutes(
       postingRequests,
       postingRequestSummary: ledgerPostingRequestReviewSummary(postingRequests),
       reconciliations,
+      reconciliationFreshness: ledgerReconciliationFreshnessReview({
+        accounts: hasFirmWideAccess ? ledger.accounts : [],
+        reconciliations: hasFirmWideAccess ? reconciliations : [],
+        generatedAt,
+      }),
       diagnostics,
       accountingReview: {
         importBatches,

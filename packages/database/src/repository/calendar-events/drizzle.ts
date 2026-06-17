@@ -30,6 +30,7 @@ import {
   type CalendarMeetingSessionListOptions,
   type CalendarMeetingSessionStatusUpdateInput,
   type CalendarSchedulingRequestListOptions,
+  type CalendarSchedulingRequestUpdateInput,
 } from "../calendar-events-contracts.js";
 import { isPostgresUniqueViolation } from "../contracts.js";
 import {
@@ -595,6 +596,50 @@ export async function listDrizzleCalendarSchedulingRequests(
       asc(schema.calendarSchedulingRequests.id),
     );
   return rows.map(mapCalendarSchedulingRequestRow);
+}
+
+export async function getDrizzleCalendarSchedulingRequest(
+  db: OpenPracticeDatabase,
+  firmId: string,
+  matterId: string,
+  requestId: string,
+): Promise<CalendarSchedulingRequestRecord | undefined> {
+  const [row] = await db
+    .select()
+    .from(schema.calendarSchedulingRequests)
+    .where(
+      and(
+        eq(schema.calendarSchedulingRequests.firmId, firmId),
+        eq(schema.calendarSchedulingRequests.matterId, matterId),
+        eq(schema.calendarSchedulingRequests.id, requestId),
+      ),
+    );
+  return row ? mapCalendarSchedulingRequestRow(row) : undefined;
+}
+
+export async function updateDrizzleCalendarSchedulingRequestReview(
+  db: OpenPracticeDatabase,
+  input: CalendarSchedulingRequestUpdateInput,
+): Promise<CalendarSchedulingRequestRecord | undefined> {
+  const [row] = await db
+    .update(schema.calendarSchedulingRequests)
+    .set({
+      status: input.status,
+      calendarEventId: input.calendarEventId === undefined ? undefined : input.calendarEventId,
+      reviewedAt: new Date(input.reviewedAt),
+      reviewedByUserId: input.reviewedByUserId,
+      updatedAt: new Date(input.reviewedAt),
+      updatedByUserId: input.reviewedByUserId,
+    })
+    .where(
+      and(
+        eq(schema.calendarSchedulingRequests.firmId, input.firmId),
+        eq(schema.calendarSchedulingRequests.matterId, input.matterId),
+        eq(schema.calendarSchedulingRequests.id, input.requestId),
+      ),
+    )
+    .returning();
+  return row ? mapCalendarSchedulingRequestRow(row) : undefined;
 }
 
 export async function deleteDrizzleCalendarEventReminder(

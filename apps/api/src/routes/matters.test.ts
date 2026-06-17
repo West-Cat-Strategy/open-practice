@@ -499,7 +499,8 @@ describe("matter routes", () => {
   });
 
   it("redacts conflict-check details for non firm-wide reviewers", async () => {
-    const response = await testServer(user("licensee", ["matter-001"])).inject({
+    const repository = new InMemoryOpenPracticeRepository();
+    const response = await testServer(user("licensee", ["matter-001"]), repository).inject({
       method: "POST",
       url: "/api/conflicts/check",
       payload: {
@@ -521,6 +522,20 @@ describe("matter routes", () => {
     expect(JSON.stringify(response.json())).not.toContain("contact-");
     expect(JSON.stringify(response.json())).not.toContain("matter-");
     expect(JSON.stringify(response.json())).not.toContain("ada@example.test");
+
+    const audit = await repository.listAuditEvents("firm-west-legal");
+    const conflictAudit = audit.events.find((event) => event.action === "conflict_check.completed");
+    expect(conflictAudit).toMatchObject({
+      resourceType: "conflict_check",
+      metadata: {
+        resultCount: expect.any(Number),
+        includeClosedMatters: true,
+      },
+    });
+    const serializedAudit = JSON.stringify(conflictAudit);
+    expect(serializedAudit).not.toContain("Ada Morgan");
+    expect(serializedAudit).not.toContain("ada@example.test");
+    expect(serializedAudit).not.toContain("matchCount");
   });
 
   it("keeps full conflict-check details for firm-wide reviewers", async () => {

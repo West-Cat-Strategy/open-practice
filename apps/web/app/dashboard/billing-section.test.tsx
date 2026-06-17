@@ -262,7 +262,10 @@ describe("BillingSection", () => {
         expenseDraftProfileKey: "filing_service",
         expenseDraftReimbursable: true,
         expenseDraftStatus: "Expense draft ready.",
+        manualPaymentReconciliationStatus: "No manual payment reconciled.",
         minutes: formatMinutes,
+        onReconcileManualPayment: async () => {},
+        reconcilingManualPaymentId: "",
         setDraftInvoiceDueAt: () => {},
         setDraftInvoiceTaxName: () => {},
         setDraftInvoiceTaxRate: () => {},
@@ -298,5 +301,7 @@ describe("BillingSection", () => {
     expect(html).toContain("No automatic reconciliation");
     expect(html).toContain("Synthetic EFT");
     expect(html).toContain("Pending reconciliation");
+    expect(html).toContain("Reconcile");
+    expect(html).toContain("No manual payment reconciled.");
   });
 });

@@ -57,6 +57,7 @@ export interface ContactReviewQueueResponse {
     duplicateCandidateCount: number;
     sensitivePartyCueCount: number;
     revalidationPromptCount: number;
+    retentionHoldCueCount: number;
   };
   items: ContactReviewQueueItem[];
 }
@@ -86,6 +87,10 @@ export interface ContactHistoryExportRequest {
   matterAssociationCount?: number;
   portalGrantCount?: number;
   conflictSummaryCount?: number;
+  documentHoldCueCount?: number;
+  retentionHoldCueCount?: number;
+  matterId?: string;
+  matterScoped?: boolean;
   retentionPosture: string;
   legalHoldPosture: string;
   privacyPosture: string;
@@ -127,6 +132,8 @@ export interface ContactHistoryExportResponse {
       portalAccessPosture: { grants?: unknown[]; [key: string]: unknown };
       conflictReviewPosture: Record<string, unknown>;
       dataQualityAndDuplicateReviewPosture: Record<string, unknown>;
+      documentHoldReviewPosture: unknown[];
+      retentionHoldReviewPosture: Record<string, unknown>;
       timelineCues: unknown[];
     };
   };

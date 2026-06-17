@@ -170,7 +170,7 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
   });
   const emailDeliveryHistory: EmailDeliveryDashboardResponse =
     await loadEmailDeliveryDashboardResources({ headers, matters });
-  const emailTemplates = await loadEmailTemplateDashboardResources({ headers });
+  const emailTemplates = await loadEmailTemplateDashboardResources({ headers, matters });
   const communicationsInbox = await loadCommunicationsInboxResources({ headers, matters });
   const documentProcessing: DocumentProcessingDashboardResponse = canViewDocuments
     ? await loadDocumentProcessingDashboardData({

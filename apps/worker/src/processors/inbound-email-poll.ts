@@ -26,12 +26,10 @@ function sha256Hex(value: Buffer): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
-function safePathPart(value: string): string {
-  const normalized = value
-    .trim()
-    .replace(/[^A-Za-z0-9._-]/g, "_")
-    .slice(0, 120);
-  return normalized || "INBOX";
+function mailboxHash(mailbox: string): string {
+  return createHash("sha256")
+    .update(`imap-mailbox:${mailbox.trim() || "INBOX"}`)
+    .digest("hex");
 }
 
 function s3EncryptionOptions(s3: WorkerS3Storage) {
@@ -51,7 +49,7 @@ function rawStorageKey(input: {
     "raw",
     "provider-polls",
     IMAP_INBOUND_PROVIDER_KEY,
-    safePathPart(input.mailbox),
+    mailboxHash(input.mailbox),
     String(input.uidValidity),
     `${input.uid}-${input.rawContentSha256}.eml`,
   ].join("/");
@@ -65,6 +63,7 @@ async function createParserJob(input: {
   repository: OpenPracticeRepository;
   firmId: string;
   rawStorageKey: string;
+  mailboxHash: string;
   uidValidity: number;
   uid: number;
   rawContentSha256: string;
@@ -81,7 +80,10 @@ async function createParserJob(input: {
     resourceType: "inbound_email_raw",
     resourceId: `${input.uidValidity}:${input.uid}`,
     idempotencyKeyPresent: true,
-    rawStorageKey: input.rawStorageKey,
+    rawStorageKeyPresent: true,
+    mailboxHash: input.mailboxHash,
+    uidValidity: input.uidValidity,
+    uid: input.uid,
     rawContentSha256: input.rawContentSha256,
     rawSizeBytes: input.rawSizeBytes,
   };
@@ -107,6 +109,7 @@ async function enqueueParserJob(input: {
   inboundEmailJobQueue: WorkerJobQueue;
   firmId: string;
   job: JobLifecycleRecord;
+  rawStorageKey: string;
 }): Promise<JobLifecycleRecord> {
   const bullJob = await input.inboundEmailJobQueue.add(
     INBOUND_EMAIL_PARSE_JOB_NAME,
@@ -114,7 +117,7 @@ async function enqueueParserJob(input: {
       firmId: input.firmId,
       resourceType: input.job.targetResourceType,
       resourceId: input.job.targetResourceId,
-      metadata: input.job.metadata,
+      metadata: { ...input.job.metadata, rawStorageKey: input.rawStorageKey },
     },
     { jobId: input.job.id },
   );
@@ -226,6 +229,7 @@ export async function processInboundEmailPollJob(input: {
       repository,
       firmId: data.firmId,
       rawStorageKey: key,
+      mailboxHash: mailboxHash(config.mailbox),
       uidValidity: poll.uidValidity,
       uid: message.uid,
       rawContentSha256,
@@ -237,6 +241,7 @@ export async function processInboundEmailPollJob(input: {
         inboundEmailJobQueue: input.inboundEmailJobQueue,
         firmId: data.firmId,
         job,
+        rawStorageKey: key,
       });
       queuedParserJobCount += 1;
     }

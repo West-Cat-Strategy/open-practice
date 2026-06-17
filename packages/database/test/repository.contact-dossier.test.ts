@@ -246,8 +246,8 @@ describe("repository contact dossier quality review", () => {
     );
     expect(dossiers.find((dossier) => dossier.contact.id === "contact-ada")).toMatchObject({
       qualityReview: {
-        summary: { revalidationPromptCount: 1 },
-        signals: [
+        summary: { revalidationPromptCount: 1, retentionHoldCueCount: 1 },
+        signals: expect.arrayContaining([
           expect.objectContaining({
             kind: "protected_party_cue",
             matterId: "matter-001",
@@ -261,7 +261,11 @@ describe("repository contact dossier quality review", () => {
             sourceRecordId: "proposal-accessible-contact-name",
             matterId: "matter-001",
           }),
-        ],
+          expect.objectContaining({
+            kind: "retention_hold_review",
+            matterId: "matter-001",
+          }),
+        ]),
       },
     });
     const river = dossiers.find((dossier) => dossier.contact.id === "contact-river")!;

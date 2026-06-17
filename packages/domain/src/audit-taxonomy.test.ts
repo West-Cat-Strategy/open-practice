@@ -38,6 +38,104 @@ describe("audit event taxonomy", () => {
     expect(classification.metadataHints.matter).toEqual(["matterId"]);
   });
 
+  it("classifies calendar scheduling request audit metadata as redacted review hints", () => {
+    const classification = classifyAuditEvent(
+      auditEvent({
+        action: "calendar.scheduling_request.reviewed",
+        resourceType: "calendar_scheduling_request",
+        resourceId: "calendar-request-001",
+        metadata: {
+          matterId: "matter-001",
+          requestId: "calendar-request-001",
+          status: "scheduled",
+          kind: "event_scheduling",
+          sourceType: "manual",
+          ownerUserId: "user-licensee",
+          privacy: "staff_only",
+          hasRequestedDueAt: false,
+          hasRequestedStartsAt: true,
+          hasRequestedEndsAt: true,
+          calendarEventId: "calendar-event-001",
+        },
+      }),
+    );
+
+    expect(classification).toMatchObject({
+      category: "calendar",
+      known: true,
+      matterScope: "matter",
+      resourceTypeMatches: true,
+    });
+    expect(classification.metadataHints.resource).toEqual(
+      expect.arrayContaining([
+        "requestId",
+        "status",
+        "kind",
+        "sourceType",
+        "ownerUserId",
+        "privacy",
+        "hasRequestedDueAt",
+        "hasRequestedStartsAt",
+        "hasRequestedEndsAt",
+        "calendarEventId",
+      ]),
+    );
+    expect(classification.metadataHints.resource).not.toEqual(
+      expect.arrayContaining(["title", "sourceLabel", "requestedStartsAt", "hasRequestedWindow"]),
+    );
+  });
+
+  it("classifies conflict checks without raw prospective-party metadata", () => {
+    const classification = classifyAuditEvent(
+      auditEvent({
+        action: "conflict_check.completed",
+        resourceType: "conflict_check",
+        resourceId: "conflict-check-001",
+        metadata: {
+          resultCount: 1,
+          includeClosedMatters: true,
+          partyRole: "prospective_client",
+        },
+      }),
+    );
+
+    expect(classification).toMatchObject({
+      category: "conflicts",
+      known: true,
+      matterScope: "optional_matter",
+      resourceTypeMatches: true,
+    });
+    expect(classification.metadataHints.resource).toEqual(
+      expect.arrayContaining(["resultCount", "includeClosedMatters", "partyRole"]),
+    );
+    expect(classification.metadataHints.resource).not.toContain("prospectiveName");
+    expect(classification.metadataHints.resource).not.toContain("matchCount");
+  });
+
+  it("classifies credential mutations without secrets, tokens, or raw credentials", () => {
+    const classification = classifyAuditEvent(
+      auditEvent({
+        action: "auth_credential.recovery_codes.generated",
+        resourceType: "auth_credential",
+        resourceId: "user-001",
+        metadata: { userId: "user-001", codeCount: 10 },
+      }),
+    );
+
+    expect(classification).toMatchObject({
+      category: "access",
+      known: true,
+      matterScope: "firm",
+      resourceTypeMatches: true,
+    });
+    expect(classification.metadataHints.resource).toEqual(
+      expect.arrayContaining(["userId", "codeCount"]),
+    );
+    expect(classification.metadataHints.resource).not.toContain("code");
+    expect(classification.metadataHints.resource).not.toContain("token");
+    expect(classification.metadataHints.resource).not.toContain("credential");
+  });
+
   it("treats matter resources as matter-scoped without requiring matter metadata", () => {
     const classification = classifyAuditEvent(
       auditEvent({
@@ -295,14 +393,18 @@ describe("audit event taxonomy", () => {
         resourceId: "contact-ada",
         metadata: {
           contactId: "contact-ada",
+          matterId: "matter-001",
+          matterScoped: true,
           jobId: "contact-history-export-job",
           purpose: "staff_review",
           reviewReasonPresent: true,
-          generatedCategoryCount: 9,
+          generatedCategoryCount: 11,
           timelineEntryCount: 4,
           matterAssociationCount: 1,
           portalGrantCount: 1,
           conflictSummaryCount: 2,
+          documentHoldCueCount: 1,
+          retentionHoldCueCount: 1,
           downloadExpiresAt: "2026-06-17T12:00:00.000Z",
           enqueueStatus: "queued_for_local_report_worker",
           idempotencyKeyPresent: true,
@@ -327,6 +429,8 @@ describe("audit event taxonomy", () => {
     expect(classification.metadataHints.resource).toEqual(
       expect.arrayContaining([
         "contactId",
+        "matterId",
+        "matterScoped",
         "jobId",
         "purpose",
         "reviewReasonPresent",
@@ -335,6 +439,8 @@ describe("audit event taxonomy", () => {
         "matterAssociationCount",
         "portalGrantCount",
         "conflictSummaryCount",
+        "documentHoldCueCount",
+        "retentionHoldCueCount",
         "downloadExpiresAt",
         "enqueueStatus",
         "idempotencyKeyPresent",
@@ -368,6 +474,8 @@ describe("audit event taxonomy", () => {
         resourceId: "contact-ada",
         metadata: {
           contactId: "contact-ada",
+          matterId: "matter-001",
+          matterScoped: true,
           jobId: "contact-history-export-job",
           purpose: "staff_review",
           downloadExpiresAt: "2026-06-17T12:00:00.000Z",
@@ -392,6 +500,8 @@ describe("audit event taxonomy", () => {
     expect(classification.metadataHints.resource).toEqual(
       expect.arrayContaining([
         "contactId",
+        "matterId",
+        "matterScoped",
         "jobId",
         "purpose",
         "downloadExpiresAt",

@@ -13,6 +13,20 @@ function compactMetadata(metadata: RouteAuditMetadata = {}): RouteAuditMetadata 
   return Object.fromEntries(Object.entries(metadata).filter(([, value]) => value !== undefined));
 }
 
+export async function appendRepositoryAuditEvent(
+  repository: OpenPracticeRepository,
+  event: Omit<NewAuditEvent, "id" | "occurredAt"> & {
+    occurredAt?: string;
+  },
+): Promise<void> {
+  await repository.appendAuditEvent({
+    id: crypto.randomUUID(),
+    ...event,
+    occurredAt: event.occurredAt ?? new Date().toISOString(),
+    metadata: compactMetadata(event.metadata),
+  });
+}
+
 export async function appendRouteAuditEvent(
   repository: OpenPracticeRepository,
   auth: ApiAuthContext,
@@ -20,15 +34,14 @@ export async function appendRouteAuditEvent(
     occurredAt?: string;
   },
 ): Promise<void> {
-  await repository.appendAuditEvent({
-    id: crypto.randomUUID(),
+  await appendRepositoryAuditEvent(repository, {
     firmId: auth.firmId,
     actorId: auth.user.id,
-    occurredAt: event.occurredAt ?? new Date().toISOString(),
     action: event.action,
     resourceType: event.resourceType,
     resourceId: event.resourceId,
-    metadata: compactMetadata(event.metadata),
+    occurredAt: event.occurredAt,
+    metadata: event.metadata,
   });
 }
 

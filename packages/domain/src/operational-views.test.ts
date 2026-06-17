@@ -229,6 +229,7 @@ describe("built-in operational views", () => {
               duplicateCandidateCount: 0,
               sensitivePartyCueCount: 1,
               revalidationPromptCount: 0,
+              retentionHoldCueCount: 0,
             },
             signals: [],
           },

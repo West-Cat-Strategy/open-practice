@@ -2201,6 +2201,149 @@ describe("worker processors", () => {
     );
   });
 
+  it("creates metadata-only document conversion review artifacts from completed OCR text", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const privateOcrText =
+      "Synthetic conversion review text.\nSecond line for counts.\fThird page marker.";
+    await repository.createDocumentTextExtraction({
+      id: "extraction-conversion-worker",
+      firmId: "firm-west-legal",
+      documentId: "doc-001",
+      engine: "tesseract",
+      status: "completed",
+      language: "eng",
+      confidence: 0.92,
+      extractedText: privateOcrText,
+      metadata: {
+        providerPayload: { private: true },
+        rawMarkdown: "## must not persist",
+      },
+      createdAt: "2026-06-16T12:00:00.000Z",
+      completedAt: "2026-06-16T12:01:00.000Z",
+    });
+    await repository.createJobLifecycleRecord({
+      id: "job-conversion-review-worker",
+      firmId: "firm-west-legal",
+      queueName: "ocr",
+      jobName: "document_conversion_review",
+      status: "queued",
+      targetResourceType: "document",
+      targetResourceId: "doc-001",
+      attemptsMade: 0,
+      maxAttempts: 2,
+      queuedAt: "2026-06-16T12:02:00.000Z",
+      metadata: {
+        matterId: "matter-001",
+        documentId: "doc-001",
+        extractionId: "extraction-conversion-worker",
+        requestedByUserId: "user-admin",
+        rawMarkdown: "## must not persist",
+        extractedText: privateOcrText,
+      },
+    });
+
+    const result = await processOpenPracticeJob({
+      queueName: "ocr",
+      jobName: "document_conversion_review",
+      data: {
+        firmId: "firm-west-legal",
+        resourceType: "document",
+        resourceId: "doc-001",
+        metadata: {
+          matterId: "matter-001",
+          documentId: "doc-001",
+          extractionId: "extraction-conversion-worker",
+          jobId: "job-conversion-review-worker",
+          requestedByUserId: "user-admin",
+          rawMarkdown: "## must not persist",
+          extractedText: privateOcrText,
+        },
+      },
+      jobLifecycleId: "job-conversion-review-worker",
+      attemptsMade: 0,
+      maxAttempts: 2,
+      repository,
+      s3: {
+        bucket: "open-practice-documents",
+        client: {} as S3Client,
+      },
+      ocrProvider: {} as never,
+      mailSender: {} as never,
+      inboundEmailParser: {} as never,
+    });
+
+    expect(result).toMatchObject({
+      status: "completed",
+      metadata: {
+        firmId: "firm-west-legal",
+        matterId: "matter-001",
+        documentId: "doc-001",
+        extractionId: "extraction-conversion-worker",
+        artifactKind: "document_analysis_status",
+        sourceTextLength: privateOcrText.length,
+        lineCount: 2,
+        pageBreakCount: 1,
+        conversionReviewPosture: "ready_for_review",
+        summaryPosture: "op_authored_metadata_only",
+        metadataOnly: true,
+        reviewOnly: true,
+      },
+    });
+    const [artifact] = await repository.listLegalResearchArtifacts("firm-west-legal", {
+      matterId: "matter-001",
+      kind: "document_analysis_status",
+    });
+    expect(artifact).toMatchObject({
+      kind: "document_analysis_status",
+      status: "ready_for_review",
+      title: "Document conversion review posture",
+      documentAnalysis: {
+        documentId: "doc-001",
+        status: "ready_for_review",
+        extractionStatus: "completed",
+        artifactStatus: "metadata_only",
+        sourceTextLength: privateOcrText.length,
+      },
+      reviewOnly: true,
+      metadata: expect.objectContaining({
+        source: "document_conversion_review",
+        jobId: "job-conversion-review-worker",
+        extractionId: "extraction-conversion-worker",
+        metadataOnly: true,
+        reviewOnly: true,
+        conversionReviewPosture: "ready_for_review",
+        summaryPosture: "op_authored_metadata_only",
+        counts: expect.objectContaining({
+          sourceTextLength: privateOcrText.length,
+          lineCount: 2,
+          pageBreakCount: 1,
+        }),
+      }),
+    });
+    const [job] = await repository.listJobLifecycleRecords("firm-west-legal", { queueName: "ocr" });
+    expect(job).toMatchObject({
+      id: "job-conversion-review-worker",
+      status: "completed",
+      metadata: expect.objectContaining({
+        documentId: "doc-001",
+        extractionId: "extraction-conversion-worker",
+        artifactId: artifact?.id,
+        sourceTextLength: privateOcrText.length,
+        lineCount: 2,
+        pageBreakCount: 1,
+        conversionReviewPosture: "ready_for_review",
+        summaryPosture: "op_authored_metadata_only",
+        metadataOnly: true,
+        reviewOnly: true,
+      }),
+    });
+    expect(JSON.stringify(artifact)).not.toContain(privateOcrText);
+    expect(JSON.stringify(artifact)).not.toContain("## must not persist");
+    expect(JSON.stringify(artifact)).not.toContain('"private":true');
+    expect(JSON.stringify(job)).not.toContain(privateOcrText);
+    expect(JSON.stringify(job)).not.toContain("rawMarkdown");
+  });
+
   it("skips OCR jobs before reading storage when document scanning has not passed", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     await repository.createDocumentUploadIntent({

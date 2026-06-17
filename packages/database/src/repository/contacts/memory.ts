@@ -1,6 +1,7 @@
 import {
   buildContactTimelineTaskCues,
   buildContactDossiers,
+  summarizeContactDossierMatterRetentionHoldReview,
   validateContactRecord,
   validateContactDataQualityResolutionRecord,
   validateContactRelationshipRecord,
@@ -92,6 +93,13 @@ export async function listMemoryContactDossiersForUser(
     matters,
     matterParties,
     portalGrants: store.portalGrants,
+    matterRetentionHoldReviews: matters.map((matter) =>
+      summarizeContactDossierMatterRetentionHoldReview({
+        matterId: matter.id,
+        documents: matter.documents,
+        lifecycleTransitions: matter.lifecycleTransitions,
+      }),
+    ),
     contactRelationships: store.contactRelationships,
     intakeVariableProposals,
     conflictChecks: store.conflictChecks,

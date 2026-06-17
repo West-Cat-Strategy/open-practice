@@ -13,6 +13,7 @@ import { sessionCookie, verifyPassword } from "../http/auth-helpers.js";
 import { requireFreshAuth } from "../http/fresh-auth.js";
 import { parseRequestPart } from "../http/validation.js";
 import { createEmbeddedAuthService } from "../services/auth-service.js";
+import { appendRouteAuditEvent } from "./audit-events.js";
 
 const registrationVerifySchema = z.object({
   challengeHash: z.string().min(1),
@@ -292,7 +293,7 @@ export function registerWebAuthnRoutes(
           verification.registrationInfo;
         const { id: credentialID, publicKey, counter } = credential;
 
-        await options.repository.registerWebAuthnCredential({
+        const storedCredential = await options.repository.registerWebAuthnCredential({
           id: crypto.randomUUID(),
           firmId: request.auth.firmId,
           userId: request.auth.user.id,
@@ -308,6 +309,17 @@ export function registerWebAuthnRoutes(
           challenge.challengeHash,
           now.toISOString(),
         );
+        await appendRouteAuditEvent(options.repository, request.auth, {
+          action: "auth_credential.passkey.created",
+          resourceType: "auth_credential",
+          resourceId: storedCredential.id,
+          metadata: {
+            userId: request.auth.user.id,
+            credentialId: storedCredential.id,
+            deviceType: storedCredential.deviceType,
+            backedUp: storedCredential.backedUp,
+          },
+        });
 
         return { verified: true };
       }
@@ -470,6 +482,15 @@ export function registerWebAuthnRoutes(
         request.auth.user.id,
         params.id,
       );
+      await appendRouteAuditEvent(options.repository, request.auth, {
+        action: "auth_credential.passkey.deleted",
+        resourceType: "auth_credential",
+        resourceId: params.id,
+        metadata: {
+          userId: request.auth.user.id,
+          credentialId: params.id,
+        },
+      });
       return { ok: true };
     },
   );
@@ -498,6 +519,15 @@ export function registerWebAuthnRoutes(
       }
 
       await options.repository.updateUserMfaStatus(request.auth.firmId, request.auth.user.id, true);
+      await appendRouteAuditEvent(options.repository, request.auth, {
+        action: "auth_credential.mfa.enabled",
+        resourceType: "auth_credential",
+        resourceId: request.auth.user.id,
+        metadata: {
+          userId: request.auth.user.id,
+          passkeyCount: credentials.filter((credential) => !credential.disabledAt).length,
+        },
+      });
       return { ok: true };
     },
   );
@@ -520,6 +550,14 @@ export function registerWebAuthnRoutes(
         request.auth.user.id,
         false,
       );
+      await appendRouteAuditEvent(options.repository, request.auth, {
+        action: "auth_credential.mfa.disabled",
+        resourceType: "auth_credential",
+        resourceId: request.auth.user.id,
+        metadata: {
+          userId: request.auth.user.id,
+        },
+      });
       return { ok: true };
     },
   );

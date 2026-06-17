@@ -1,6 +1,11 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
-import { buildTaskDeadlineWorkbench, projectTaskDeadline } from "@open-practice/domain";
+import {
+  buildLegalClinicCadenceSignals,
+  buildTaskDeadlineWorkbench,
+  projectTaskDeadline,
+} from "@open-practice/domain";
+import type { LegalClinicMatterProfile } from "@open-practice/domain";
 import type { ApiAuthContext } from "../server.js";
 import { requireAccess, requireStaffAccess } from "../http/auth-guards.js";
 import { ApiHttpError } from "../http/response.js";
@@ -238,6 +243,20 @@ export function registerTaskRoutes(
             )
           ).flat()
         : [];
+    const legalClinicProfiles =
+      matterIds.length > 0
+        ? (
+            await Promise.all(
+              matterIds.map((matterId) =>
+                repository.getLegalClinicMatterProfile(request.auth.firmId, matterId),
+              ),
+            )
+          ).filter((profile): profile is LegalClinicMatterProfile => Boolean(profile))
+        : [];
+    const legalClinicPrograms =
+      legalClinicProfiles.length > 0
+        ? await repository.listLegalClinicPrograms(request.auth.firmId)
+        : [];
 
     return buildTaskDeadlineWorkbench({
       tasks,
@@ -248,6 +267,10 @@ export function registerTaskRoutes(
         title: matter.title,
       })),
       schedulingRequests,
+      legalClinicCadenceSignals: buildLegalClinicCadenceSignals({
+        profiles: legalClinicProfiles,
+        programs: legalClinicPrograms,
+      }),
       userId: request.auth.user.id,
     });
   });

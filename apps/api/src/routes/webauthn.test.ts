@@ -229,6 +229,22 @@ describe("WebAuthn routes", () => {
     await expect(repository.getWebAuthnChallenge("registration-challenge")).resolves.toMatchObject({
       consumedAt: expect.any(String),
     });
+    const audit = await repository.listAuditEvents("firm-1");
+    const credentialAudit = audit.events.find(
+      (event) => event.action === "auth_credential.passkey.created",
+    );
+    expect(credentialAudit).toMatchObject({
+      resourceType: "auth_credential",
+      metadata: {
+        userId: "user-1",
+        credentialId: expect.any(String),
+        deviceType: "singleDevice",
+        backedUp: false,
+      },
+    });
+    const serializedAudit = JSON.stringify(credentialAudit);
+    expect(serializedAudit).not.toContain("credential-id");
+    expect(serializedAudit).not.toContain(Buffer.from([1, 2, 3]).toString("base64url"));
 
     const replay = await server.inject({
       method: "POST",

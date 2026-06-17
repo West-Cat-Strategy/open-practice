@@ -125,7 +125,10 @@ describe("contact routes", () => {
           relatedContact: { kind: string; displayName: string; id?: string };
           visibleMatterIds: string[];
         }>;
-        qualityReview: { summary: { revalidationPromptCount: number }; signals: unknown[] };
+        qualityReview: {
+          summary: { revalidationPromptCount: number; retentionHoldCueCount: number };
+          signals: unknown[];
+        };
       }>
     >();
     expect(payload.map((dossier) => dossier.contact.id)).toEqual(["contact-ada", "contact-river"]);
@@ -134,8 +137,8 @@ describe("contact routes", () => {
     );
     expect(payload.find((dossier) => dossier.contact.id === "contact-ada")).toMatchObject({
       qualityReview: {
-        summary: { revalidationPromptCount: 1 },
-        signals: [
+        summary: { revalidationPromptCount: 1, retentionHoldCueCount: 1 },
+        signals: expect.arrayContaining([
           expect.objectContaining({
             kind: "protected_party_cue",
             matterId: "matter-001",
@@ -148,7 +151,11 @@ describe("contact routes", () => {
             kind: "conflict_revalidation",
             sourceRecordId: "proposal-contact-name",
           }),
-        ],
+          expect.objectContaining({
+            kind: "retention_hold_review",
+            matterId: "matter-001",
+          }),
+        ]),
       },
       conflictHistory: [
         expect.objectContaining({
@@ -304,6 +311,23 @@ describe("contact routes", () => {
       },
     });
     expect(method.statusCode).toBe(201);
+    const methodId = method.json<{ contactMethod: { id: string } }>().contactMethod.id;
+
+    const methodUpdate = await server.inject({
+      method: "PATCH",
+      url: `/api/contacts/${contactId}/contact-methods/${methodId}`,
+      payload: {
+        label: "registered_office",
+        conflictCheckIncluded: false,
+      },
+    });
+    expect(methodUpdate.statusCode).toBe(200);
+
+    const methodDelete = await server.inject({
+      method: "DELETE",
+      url: `/api/contacts/${contactId}/contact-methods/${methodId}`,
+    });
+    expect(methodDelete.statusCode).toBe(200);
 
     const names = await server.inject({
       method: "PATCH",
@@ -581,6 +605,28 @@ describe("contact routes", () => {
           portalAccessPosture: expect.objectContaining({
             grants: [expect.objectContaining({ status: "suspended", accountBound: false })],
           }),
+          documentHoldReviewPosture: [
+            expect.objectContaining({
+              matterId: "matter-001",
+              documentLegalHoldCount: 1,
+              documentReviewCount: 0,
+            }),
+          ],
+          retentionHoldReviewPosture: {
+            summary: { retentionHoldCueCount: 1 },
+            signals: [
+              expect.objectContaining({
+                kind: "retention_hold_review",
+                matterId: "matter-001",
+                retentionHoldReview: expect.objectContaining({
+                  cueReasons: expect.arrayContaining([
+                    "matter_party_posture",
+                    "document_legal_hold",
+                  ]),
+                }),
+              }),
+            ],
+          },
           timelineCues: expect.arrayContaining([
             expect.objectContaining({
               title: "Task deadline cue",
@@ -604,6 +650,8 @@ describe("contact routes", () => {
     expect(serializedExport).not.toContain("Synthetic expert association.");
     expect(serializedExport).not.toContain("Synthetic private association note");
     expect(serializedExport).not.toContain("Synthetic private relationship note");
+    expect(serializedExport).not.toContain("Retainer agreement.pdf");
+    expect(serializedExport).not.toContain("matters/matter-001/retainer-v1.pdf");
     expect(serializedExport).not.toContain("Review tenant evidence package");
     expect(serializedExport).not.toContain("Review filing deadline schedule");
     expect(serializedExport).not.toContain("sourceLabel");
@@ -621,9 +669,21 @@ describe("contact routes", () => {
     });
     expect(deniedExport.statusCode).toBe(403);
 
+    const unlinkedMatterExport = await server.inject({
+      method: "POST",
+      url: `/api/contacts/${contactId}/history-export`,
+      payload: {
+        purpose: "staff_review",
+        matterId: "matter-002",
+        reviewReason: "Synthetic staff review reason for unlinked matter export.",
+      },
+    });
+    expect(unlinkedMatterExport.statusCode).toBe(403);
+
     const audit = await repository.listAuditEvents("firm-west-legal");
     expect(audit.events.map((event) => event.action)).toEqual(
       expect.arrayContaining([
+        "contact.updated",
         "contact.relationship.created",
         "contact.matter_association.created",
         "contact.matter_association.updated",
@@ -632,6 +692,23 @@ describe("contact routes", () => {
         "contact_history_export.requested",
       ]),
     );
+    const contactMethodAuditEvents = audit.events.filter(
+      (event) =>
+        event.action === "contact.updated" &&
+        event.resourceId === contactId &&
+        Array.isArray(event.metadata.changedFields) &&
+        event.metadata.changedFields.includes("contactMethods"),
+    );
+    expect(contactMethodAuditEvents).toHaveLength(3);
+    expect(contactMethodAuditEvents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          metadata: { contactId, changedFields: ["contactMethods"], status: "prospective" },
+        }),
+      ]),
+    );
+    expect(JSON.stringify(contactMethodAuditEvents)).not.toContain("10 Synthetic Plaza");
+    expect(JSON.stringify(contactMethodAuditEvents)).not.toContain("address");
     const exportAudit = audit.events.find(
       (event) => event.action === "contact_history_export.requested",
     );
@@ -642,9 +719,11 @@ describe("contact routes", () => {
         contactId,
         purpose: "staff_review",
         reviewReasonPresent: true,
-        generatedCategoryCount: 9,
+        generatedCategoryCount: 11,
         matterAssociationCount: 1,
         portalGrantCount: 1,
+        documentHoldCueCount: 1,
+        retentionHoldCueCount: 1,
         retentionPosture: "transient_regenerated_no_retained_export_body",
         legalHoldPosture: "respects_existing_matter_visibility_no_hold_override",
         privacyPosture: "redacted_authorized_projection_only",
@@ -667,6 +746,7 @@ describe("contact routes", () => {
       url: "/api/contacts/contact-river/history-export-requests",
       payload: {
         purpose: "staff_review",
+        matterId: "matter-001",
         reviewReason: "Synthetic staff review reason for queued contact export.",
       },
     });
@@ -675,6 +755,8 @@ describe("contact routes", () => {
     expect(queued.json()).toMatchObject({
       exportRequest: {
         contactId: "contact-river",
+        matterId: "matter-001",
+        matterScoped: true,
         purpose: "staff_review",
         status: "queued",
         reviewReasonPresent: true,
@@ -716,11 +798,13 @@ describe("contact routes", () => {
       finishedAt: "2026-06-16T12:05:00.000Z",
       metadata: {
         ...job.metadata,
-        generatedCategoryCount: 9,
+        generatedCategoryCount: 11,
         timelineEntryCount: 1,
         matterAssociationCount: 1,
         portalGrantCount: 0,
         conflictSummaryCount: 0,
+        documentHoldCueCount: 1,
+        retentionHoldCueCount: 1,
       },
     });
 
@@ -732,8 +816,11 @@ describe("contact routes", () => {
     expect(status.json()).toMatchObject({
       exportRequest: {
         contactId: "contact-river",
+        matterId: "matter-001",
         status: "completed",
-        generatedCategoryCount: 9,
+        generatedCategoryCount: 11,
+        documentHoldCueCount: 1,
+        retentionHoldCueCount: 1,
       },
     });
 
@@ -751,6 +838,7 @@ describe("contact routes", () => {
     expect(download.json()).toMatchObject({
       exportRequest: {
         contactId: "contact-river",
+        matterId: "matter-001",
         jobId: job.id,
         status: "completed",
         storedBody: false,
@@ -767,10 +855,26 @@ describe("contact routes", () => {
           jurisdictionCertifiedRecordsClaim: false,
         },
         categories: {
-          timelineCues: expect.any(Array),
+          documentHoldReviewPosture: [
+            expect.objectContaining({
+              matterId: "matter-001",
+              documentLegalHoldCount: 1,
+            }),
+          ],
+          retentionHoldReviewPosture: {
+            summary: { retentionHoldCueCount: 1 },
+          },
+          timelineCues: expect.arrayContaining([
+            expect.objectContaining({ matterId: "matter-001" }),
+          ]),
         },
       },
     });
+    expect(
+      download
+        .json<{ export: { categories: { timelineCues: Array<{ matterId?: string }> } } }>()
+        .export.categories.timelineCues.every((entry) => entry.matterId === "matter-001"),
+    ).toBe(true);
     expect(JSON.stringify(download.json())).not.toContain("Synthetic staff review reason");
     expect(JSON.stringify(download.json())).not.toContain("Synthetic private");
 
@@ -784,6 +888,84 @@ describe("contact routes", () => {
     const serializedAudit = JSON.stringify(audit.events);
     expect(serializedAudit).not.toContain("Synthetic staff review reason");
     expect(serializedAudit).not.toContain("Synthetic private");
+  });
+
+  it("scopes contact-history exports to the requested visible linked matter", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository, user: user("owner_admin") });
+
+    const scoped = await server.inject({
+      method: "POST",
+      url: "/api/contacts/contact-ada/history-export",
+      payload: {
+        purpose: "staff_review",
+        matterId: "matter-001",
+        reviewReason: "Synthetic staff review reason for scoped contact export.",
+      },
+    });
+
+    expect(scoped.statusCode).toBe(200);
+    const payload = scoped.json<{
+      exportRequest: { matterId?: string };
+      export: {
+        categories: {
+          relationshipPosture: unknown[];
+          matterPartyPosture: Array<{ matterId: string }>;
+          portalAccessPosture: { grants: Array<{ matterId: string }> };
+          conflictReviewPosture: {
+            cues: Array<{ matterId?: string }>;
+            history: Array<{ visibleMatchedMatterIds: string[] }>;
+          };
+          documentHoldReviewPosture: Array<{ matterId: string; documentLegalHoldCount: number }>;
+          retentionHoldReviewPosture: { summary: { retentionHoldCueCount: number } };
+          timelineCues: Array<{ matterId?: string }>;
+        };
+      };
+    }>();
+    expect(payload.exportRequest.matterId).toBe("matter-001");
+    expect(payload.export.categories.relationshipPosture).toEqual([
+      expect.objectContaining({ visibleMatterIds: ["matter-001"] }),
+    ]);
+    expect(payload.export.categories.matterPartyPosture).toEqual([
+      expect.objectContaining({ matterId: "matter-001" }),
+    ]);
+    expect(
+      payload.export.categories.portalAccessPosture.grants.every(
+        (grant) => grant.matterId === "matter-001",
+      ),
+    ).toBe(true);
+    expect(
+      payload.export.categories.conflictReviewPosture.cues.every(
+        (cue) => cue.matterId === "matter-001",
+      ),
+    ).toBe(true);
+    expect(
+      payload.export.categories.conflictReviewPosture.history.every((entry) =>
+        entry.visibleMatchedMatterIds.every((matterId) => matterId === "matter-001"),
+      ),
+    ).toBe(true);
+    expect(payload.export.categories.documentHoldReviewPosture).toEqual([
+      expect.objectContaining({ matterId: "matter-001", documentLegalHoldCount: 1 }),
+    ]);
+    expect(payload.export.categories.retentionHoldReviewPosture.summary).toEqual({
+      retentionHoldCueCount: 1,
+    });
+    expect(
+      payload.export.categories.timelineCues.every((entry) => entry.matterId === "matter-001"),
+    ).toBe(true);
+    expect(JSON.stringify(payload)).not.toContain("North Star");
+    expect(JSON.stringify(payload)).not.toContain("Retainer agreement.pdf");
+
+    const unlinked = await server.inject({
+      method: "POST",
+      url: "/api/contacts/contact-ada/history-export",
+      payload: {
+        purpose: "staff_review",
+        matterId: "matter-002",
+        reviewReason: "Synthetic staff review reason for unlinked scoped contact export.",
+      },
+    });
+    expect(unlinked.statusCode).toBe(403);
   });
 
   it("completes inline contact-history export requests and rejects expired links or denied roles", async () => {
@@ -882,6 +1064,7 @@ describe("contact routes", () => {
         duplicateCandidateCount: 2,
         sensitivePartyCueCount: 3,
         revalidationPromptCount: 1,
+        retentionHoldCueCount: 2,
       },
       items: expect.arrayContaining([
         expect.objectContaining({
@@ -994,10 +1177,22 @@ describe("contact routes", () => {
         resolutionNote: "Synthetic private revalidation note should stay out of audit metadata.",
       },
     });
+    const retentionHold = await server.inject({
+      method: "POST",
+      url: "/api/contacts/data-quality-resolutions",
+      payload: {
+        contactId: "contact-ada",
+        signalKind: "retention_hold_review",
+        decision: "needs_follow_up",
+        matterId: "matter-001",
+        resolutionNote: "Synthetic private retention note should stay out of audit metadata.",
+      },
+    });
 
     expect(duplicate.statusCode).toBe(200);
     expect(protectedParty.statusCode).toBe(200);
     expect(revalidation.statusCode).toBe(200);
+    expect(retentionHold.statusCode).toBe(200);
     expect(duplicate.json()).toMatchObject({
       contactId: "contact-ada",
       signalKind: "duplicate_candidate",
@@ -1018,6 +1213,10 @@ describe("contact routes", () => {
           signalKind: "conflict_revalidation",
           decision: "revalidation_completed",
         }),
+        expect.objectContaining({
+          signalKind: "retention_hold_review",
+          decision: "needs_follow_up",
+        }),
       ]),
     );
     await expect(repository.getContact("firm-west-legal", "contact-ada")).resolves.toEqual(
@@ -1031,7 +1230,7 @@ describe("contact routes", () => {
     const resolutionAudit = audit.events.filter(
       (event) => event.action === "contact.data_quality_resolution.recorded",
     );
-    expect(resolutionAudit).toHaveLength(3);
+    expect(resolutionAudit).toHaveLength(4);
     const auditJson = JSON.stringify(resolutionAudit);
     expect(auditJson).not.toContain("Synthetic private");
     expect(auditJson).not.toContain("ada@example.test");

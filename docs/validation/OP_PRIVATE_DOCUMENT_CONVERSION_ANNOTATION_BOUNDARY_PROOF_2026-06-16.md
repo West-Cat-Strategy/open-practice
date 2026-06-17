@@ -24,6 +24,14 @@ local-only prototypes:
 No API, database, worker, provider, route, schema, package manifest, dependency, runtime prototype,
 or reference-derived source changed in this slice.
 
+## Runtime Follow-Up
+
+This proof remains the historical docs-first boundary record. The later same-day local-only runtime
+prototype is recorded in
+[Document Conversion Review Runtime Prototype Proof](OP_DOCUMENT_CONVERSION_REVIEW_RUNTIME_PROTOTYPE_PROOF_2026-06-16.md).
+That follow-up keeps the same no-raw-client-text/no-raw-Markdown/no-annotation/no-provider-payload
+boundary while adding metadata-only `document_conversion_review` posture.
+
 ## Changed Paths
 
 - `docs/api-and-state-machines.md`

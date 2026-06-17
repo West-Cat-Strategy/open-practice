@@ -497,6 +497,7 @@ describe("contact dossiers", () => {
       duplicateCandidateCount: 1,
       sensitivePartyCueCount: 2,
       revalidationPromptCount: 1,
+      retentionHoldCueCount: 1,
     });
     expect(ada.qualityReview.signals).toEqual(
       expect.arrayContaining([
@@ -550,6 +551,70 @@ describe("contact dossiers", () => {
     );
   });
 
+  it("derives retention and legal-hold review cues from authorized dossier counts only", () => {
+    const dossiers = buildContactDossiers({
+      firmId: "firm-west-legal",
+      contacts: sampleContacts,
+      matters: sampleMatters.filter((matter) => matter.id === "matter-001"),
+      matterParties: sampleMatterParties.map((party) =>
+        party.id === "party-001"
+          ? { ...party, status: "inactive" as const, endedOn: "2026-05-20" }
+          : party,
+      ),
+      portalGrants: samplePortalGrants,
+      matterRetentionHoldReviews: [
+        {
+          matterId: "matter-001",
+          documentLegalHoldCount: 1,
+          documentReviewCount: 2,
+          lifecycleReviewCount: 1,
+          blockedLifecycleReviewCount: 1,
+          latestLifecycleReviewedAt: "2026-06-16T12:00:00.000Z",
+        },
+      ],
+      now: "2026-05-02T12:00:00.000Z",
+    });
+
+    const ada = dossiers.find((dossier) => dossier.contact.id === "contact-ada")!;
+    expect(ada.qualityReview.summary.retentionHoldCueCount).toBe(1);
+    expect(ada.matters[0]?.retentionHoldReview).toEqual({
+      documentLegalHoldCount: 1,
+      documentReviewCount: 2,
+      lifecycleReviewCount: 1,
+      blockedLifecycleReviewCount: 1,
+      latestLifecycleReviewedAt: "2026-06-16T12:00:00.000Z",
+    });
+    expect(ada.qualityReview.signals).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "retention_hold_review",
+          severity: "blocker",
+          matterId: "matter-001",
+          retentionHoldReview: expect.objectContaining({
+            contactStatus: "active",
+            matterStatus: "open",
+            partyStatus: "inactive",
+            portalActive: true,
+            documentLegalHoldCount: 1,
+            documentReviewCount: 2,
+            lifecycleReviewCount: 1,
+            blockedLifecycleReviewCount: 1,
+            cueReasons: [
+              "matter_party_posture",
+              "portal_grant_posture",
+              "document_legal_hold",
+              "document_review",
+              "matter_lifecycle_review",
+            ],
+            cueCount: 5,
+            reviewSeverity: "blocker",
+          }),
+        }),
+      ]),
+    );
+    expect(JSON.stringify(ada.qualityReview.signals)).not.toContain("Synthetic trust review");
+  });
+
   it("validates contact data-quality resolution records", () => {
     const resolution = {
       id: "contact-quality-resolution-001",
@@ -564,6 +629,16 @@ describe("contact dossiers", () => {
     } as const;
 
     expect(() => validateContactDataQualityResolutionRecord(resolution)).not.toThrow();
+    expect(() =>
+      validateContactDataQualityResolutionRecord({
+        ...resolution,
+        id: "contact-quality-resolution-retention",
+        signalKind: "retention_hold_review",
+        decision: "acknowledged",
+        matterId: "matter-001",
+        relatedContactId: undefined,
+      }),
+    ).not.toThrow();
     expect(() =>
       validateContactDataQualityResolutionRecord({
         ...resolution,

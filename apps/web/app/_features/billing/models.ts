@@ -17,6 +17,7 @@ import type {
   LedgerEntry,
   LedgerPostingRequestRecord,
   LedgerPostingRequestReviewSummary,
+  LedgerReconciliationFreshnessReview,
   LedgerReconciliationRecord,
   LedgerStatementImportBatchRecord,
   LedgerStatementMatchRuleProfileRecord,
@@ -137,6 +138,7 @@ export interface TrustControlsDashboardResponse {
   postingRequests: LedgerPostingRequestRecord[];
   postingRequestSummary: LedgerPostingRequestReviewSummary;
   reconciliations: LedgerReconciliationRecord[];
+  reconciliationFreshness?: LedgerReconciliationFreshnessReview;
   accountingReview: {
     importBatches: LedgerStatementImportBatchRecord[];
     matchRuleProfiles: LedgerStatementMatchRuleProfileRecord[];

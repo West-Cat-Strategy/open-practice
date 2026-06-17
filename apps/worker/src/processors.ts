@@ -16,7 +16,11 @@ import { processDocumentAssemblyJob } from "./processors/document-assembly.js";
 import { processEmailJob } from "./processors/email.js";
 import { processInboundEmailJob } from "./processors/inbound-email.js";
 import { processInboundEmailPollJob } from "./processors/inbound-email-poll.js";
-import { processOcrJob } from "./processors/ocr.js";
+import {
+  documentConversionReviewJobName,
+  processDocumentConversionReviewJob,
+  processOcrJob,
+} from "./processors/ocr.js";
 import { processReportJob } from "./processors/reports.js";
 import type {
   ConnectorDnsResolver,
@@ -135,6 +139,9 @@ async function processOpenPracticeJobBody(input: {
 }): Promise<WorkerJobResult> {
   const { queueName, data } = input;
 
+  if (queueName === "ocr" && input.jobName === documentConversionReviewJobName) {
+    return processDocumentConversionReviewJob(input);
+  }
   if (queueName === "ocr") return processOcrJob(input);
   if (queueName === "email") return processEmailJob(input);
   if (queueName === "connectors") return processConnectorJob(input);

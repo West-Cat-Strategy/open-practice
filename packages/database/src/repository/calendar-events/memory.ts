@@ -27,6 +27,7 @@ import {
   type CalendarMeetingSessionListOptions,
   type CalendarMeetingSessionStatusUpdateInput,
   type CalendarSchedulingRequestListOptions,
+  type CalendarSchedulingRequestUpdateInput,
 } from "../calendar-events-contracts.js";
 import { clone } from "../contracts.js";
 import { activeCalendarAttendees, activeCalendarReminders } from "../drizzle-mappers.js";
@@ -361,6 +362,47 @@ export function listMemoryCalendarSchedulingRequests(
         return leftTime === rightTime ? left.id.localeCompare(right.id) : leftTime - rightTime;
       }),
   );
+}
+
+export function getMemoryCalendarSchedulingRequest(
+  store: MemoryCalendarEventStore,
+  firmId: string,
+  matterId: string,
+  requestId: string,
+): CalendarSchedulingRequestRecord | undefined {
+  return clone(
+    store.calendarSchedulingRequests.find(
+      (request) =>
+        request.firmId === firmId && request.matterId === matterId && request.id === requestId,
+    ),
+  );
+}
+
+export function updateMemoryCalendarSchedulingRequestReview(
+  store: MemoryCalendarEventStore,
+  input: CalendarSchedulingRequestUpdateInput,
+): CalendarSchedulingRequestRecord | undefined {
+  const index = store.calendarSchedulingRequests.findIndex(
+    (request) =>
+      request.firmId === input.firmId &&
+      request.matterId === input.matterId &&
+      request.id === input.requestId,
+  );
+  if (index < 0) return undefined;
+  const existing = store.calendarSchedulingRequests[index]!;
+  store.calendarSchedulingRequests[index] = clone({
+    ...existing,
+    status: input.status,
+    calendarEventId:
+      input.calendarEventId === undefined
+        ? existing.calendarEventId
+        : (input.calendarEventId ?? undefined),
+    reviewedAt: input.reviewedAt,
+    reviewedByUserId: input.reviewedByUserId,
+    updatedAt: input.reviewedAt,
+    updatedByUserId: input.reviewedByUserId,
+  });
+  return clone(store.calendarSchedulingRequests[index]);
 }
 
 export function deleteMemoryCalendarEventReminder(

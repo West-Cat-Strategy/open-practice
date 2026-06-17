@@ -60,6 +60,7 @@ import {
   deleteDrizzleCalendarEventReminder,
   getDrizzleCalendarEvent,
   getDrizzleCalendarEventByUid,
+  getDrizzleCalendarSchedulingRequest,
   getDrizzleCalendarGuestLink,
   getDrizzleCalendarGuestLinkByTokenHash,
   getDrizzleCalendarMeetingSession,
@@ -73,6 +74,7 @@ import {
   revokeDrizzleCalendarGuestLink,
   updateDrizzleCalendarGuestLinkStatus,
   updateDrizzleCalendarMeetingSessionStatus,
+  updateDrizzleCalendarSchedulingRequestReview,
   upsertDrizzleCalendarEvent,
   upsertDrizzleCalendarEventAttendee,
   upsertDrizzleCalendarEventReminder,
@@ -876,6 +878,20 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     request: Parameters<OpenPracticeRepository["createCalendarSchedulingRequest"]>[0],
   ): ReturnType<OpenPracticeRepository["createCalendarSchedulingRequest"]> {
     return createDrizzleCalendarSchedulingRequest(this.db, request);
+  }
+
+  async getCalendarSchedulingRequest(
+    firmId: string,
+    matterId: string,
+    requestId: string,
+  ): ReturnType<OpenPracticeRepository["getCalendarSchedulingRequest"]> {
+    return getDrizzleCalendarSchedulingRequest(this.db, firmId, matterId, requestId);
+  }
+
+  async updateCalendarSchedulingRequestReview(
+    input: Parameters<OpenPracticeRepository["updateCalendarSchedulingRequestReview"]>[0],
+  ): ReturnType<OpenPracticeRepository["updateCalendarSchedulingRequestReview"]> {
+    return updateDrizzleCalendarSchedulingRequestReview(this.db, input);
   }
 
   async listCalendarSchedulingRequests(

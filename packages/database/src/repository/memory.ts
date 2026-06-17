@@ -187,6 +187,7 @@ import {
   deleteMemoryCalendarEventReminder,
   getMemoryCalendarEvent,
   getMemoryCalendarEventByUid,
+  getMemoryCalendarSchedulingRequest,
   getMemoryCalendarGuestLink,
   getMemoryCalendarGuestLinkByTokenHash,
   getMemoryCalendarMeetingSession,
@@ -200,6 +201,7 @@ import {
   revokeMemoryCalendarGuestLink,
   updateMemoryCalendarGuestLinkStatus,
   updateMemoryCalendarMeetingSessionStatus,
+  updateMemoryCalendarSchedulingRequestReview,
   upsertMemoryCalendarEvent,
   upsertMemoryCalendarEventAttendee,
   upsertMemoryCalendarEventReminder,
@@ -1936,6 +1938,24 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     request: Parameters<OpenPracticeRepository["createCalendarSchedulingRequest"]>[0],
   ): ReturnType<OpenPracticeRepository["createCalendarSchedulingRequest"]> {
     return Promise.resolve(createMemoryCalendarSchedulingRequest(this.calendarEventStore, request));
+  }
+
+  async getCalendarSchedulingRequest(
+    firmId: string,
+    matterId: string,
+    requestId: string,
+  ): ReturnType<OpenPracticeRepository["getCalendarSchedulingRequest"]> {
+    return Promise.resolve(
+      getMemoryCalendarSchedulingRequest(this.calendarEventStore, firmId, matterId, requestId),
+    );
+  }
+
+  async updateCalendarSchedulingRequestReview(
+    input: Parameters<OpenPracticeRepository["updateCalendarSchedulingRequestReview"]>[0],
+  ): ReturnType<OpenPracticeRepository["updateCalendarSchedulingRequestReview"]> {
+    return Promise.resolve(
+      updateMemoryCalendarSchedulingRequestReview(this.calendarEventStore, input),
+    );
   }
 
   async listCalendarSchedulingRequests(

@@ -1,6 +1,7 @@
 import {
   buildContactTimelineTaskCues,
   buildContactDossiers,
+  summarizeContactDossierMatterRetentionHoldReview,
   validateContactRecord,
   validateContactDataQualityResolutionRecord,
   validateContactRelationshipRecord,
@@ -115,6 +116,13 @@ export async function listDrizzleContactDossiersForUser(
     matters,
     matterParties,
     portalGrants,
+    matterRetentionHoldReviews: matters.map((matter) =>
+      summarizeContactDossierMatterRetentionHoldReview({
+        matterId: matter.id,
+        documents: matter.documents,
+        lifecycleTransitions: matter.lifecycleTransitions,
+      }),
+    ),
     contactRelationships,
     intakeVariableProposals,
     conflictChecks,

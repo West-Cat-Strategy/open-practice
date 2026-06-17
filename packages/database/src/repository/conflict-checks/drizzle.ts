@@ -67,7 +67,11 @@ export async function runDrizzleConflictCheck(
     resourceType: "conflict_check",
     resourceId: checkId,
     occurredAt: createdAt,
-    metadata: { prospectiveName: input.prospectiveName, matchCount: results.length },
+    metadata: {
+      resultCount: results.length,
+      includeClosedMatters: input.includeClosedMatters,
+      ...(input.prospectiveRole ? { partyRole: input.prospectiveRole } : {}),
+    },
   });
   return { results, auditChainValid: (await dependencies.listAuditEvents(input.firmId)).valid };
 }

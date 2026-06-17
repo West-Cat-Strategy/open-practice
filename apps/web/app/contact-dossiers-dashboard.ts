@@ -107,6 +107,7 @@ export function filterContactDossiers(
         ...(signal.duplicateReview?.matchedFields ?? []),
         signal.sourceRecordId ?? "",
         signal.changedAt ?? "",
+        ...(signal.retentionHoldReview?.cueReasons ?? []),
       ]),
       ...dossier.conflictHistory.flatMap((entry) => [
         entry.id,
@@ -123,6 +124,7 @@ export function summarizeContactDossier(dossier: ContactDossier): string {
   const flags = [
     dossier.qualityReview.summary.duplicateCandidateCount > 0 ? "duplicate review" : null,
     dossier.qualityReview.summary.revalidationPromptCount > 0 ? "conflict recheck" : null,
+    dossier.qualityReview.summary.retentionHoldCueCount > 0 ? "retention/hold review" : null,
     dossier.matters.some((matter) => matter.adverse) ? "adverse" : null,
     dossier.matters.some((matter) => matter.confidential) ? "confidential" : null,
     dossier.portal.activeGrantCount > 0 ? "portal active" : null,
@@ -143,6 +145,7 @@ export function summarizeContactReviewQueueItem(item: ContactReviewQueueItem): s
     item.summary.duplicateCandidateCount > 0 ? "duplicate review" : null,
     item.summary.sensitivePartyCueCount > 0 ? "protected-party cue" : null,
     item.summary.revalidationPromptCount > 0 ? "conflict recheck" : null,
+    item.summary.retentionHoldCueCount > 0 ? "retention/hold review" : null,
   ].filter(Boolean);
   return flags.length > 0 ? flags.join(" / ") : "review";
 }
@@ -208,6 +211,10 @@ export const contactDataQualityResolutionActions: Record<
   conflict_revalidation: [
     { decision: "revalidation_completed", label: "Revalidated" },
     { decision: "revalidation_requested", label: "Request recheck" },
+  ],
+  retention_hold_review: [
+    { decision: "acknowledged", label: "Acknowledge" },
+    { decision: "needs_follow_up", label: "Follow up" },
   ],
 };
 

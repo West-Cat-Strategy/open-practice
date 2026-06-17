@@ -176,6 +176,43 @@ function buildSyntheticControls(): TrustControlsDashboardResponse {
       createdAt: "2026-06-30T00:00:00.000Z",
     },
   ];
+  controls.reconciliationFreshness = {
+    generatedAt: "2026-08-15T00:00:00.000Z",
+    freshWithinDays: 30,
+    watchWithinDays: 60,
+    rows: [
+      {
+        accountId: "trust_account_synthetic",
+        accountName: "Synthetic Trust Account",
+        posture: "stale",
+        daysSinceLatestReviewedStatementPeriod: 46,
+        staleDayCount: 16,
+        latestReconciliationId: "reconciliation_synthetic",
+        latestReconciliationStatus: "exception",
+        latestReviewedStatementPeriodStart: "2026-06-01T00:00:00.000Z",
+        latestReviewedStatementPeriodEnd: "2026-06-30T00:00:00.000Z",
+        exceptionCount: 1,
+        importedStatementRowCount: 2,
+        matchedStatementRowCount: 1,
+        unmatchedStatementRowCount: 1,
+        reviewOnly: true,
+      },
+    ],
+    summary: {
+      accountCount: 1,
+      freshCount: 0,
+      watchCount: 0,
+      staleCount: 1,
+      neverReconciledCount: 0,
+      totalStaleDayCount: 16,
+      maxStaleDayCount: 16,
+      latestReviewedStatementPeriodEnd: "2026-06-30T00:00:00.000Z",
+      exceptionCount: 1,
+      unmatchedStatementRowCount: 1,
+      reviewOnly: true,
+    },
+    reviewOnly: true,
+  };
   controls.accountingReview.matchRuleProfiles = [
     {
       id: "match_profile_synthetic",
@@ -399,6 +436,8 @@ describe("TrustControlsSection", () => {
         compactDate,
         compactStatus,
         formatCurrency,
+        onReviewPostingRequest: () => {},
+        postingRequestActionKey: "",
         trustControlsStatus: "Trust controls loaded.",
         trustReviewSummary: summarizeTrustControls(controls),
       }),
@@ -420,8 +459,14 @@ describe("TrustControlsSection", () => {
     expect(html).toContain("Prepared posting requests");
     expect(html).toContain("trust_txn_prepared_pending");
     expect(html).toContain("pending approval");
+    expect(html).toContain("Approve");
+    expect(html).toContain("Reject");
     expect(html).toContain("rejection reason recorded");
     expect(html).toContain("review-only profiles · no automatic matching");
+    expect(html).toContain("Reconciliation freshness");
+    expect(html).toContain("0 fresh · 0 watch · 1 stale · 0 never reconciled");
+    expect(html).toContain("reviewed through 2026-06-30");
+    expect(html).toContain("1 unmatched · 1 exceptions · 16 stale days");
     expect(html).toContain("metadata only · manual review required");
     expect(html).toContain("No auto-match · no ledger posting · no live feed");
     expect(html).toContain("operator review only · not jurisdiction-certified");
@@ -458,6 +503,8 @@ describe("TrustControlsSection", () => {
         compactDate,
         compactStatus,
         formatCurrency,
+        onReviewPostingRequest: () => {},
+        postingRequestActionKey: "",
         trustControlsStatus: "No matter selected.",
         trustReviewSummary: summarizeTrustControls(controls),
       }),
@@ -468,6 +515,9 @@ describe("TrustControlsSection", () => {
     expect(html).toContain("No accounting review profiles are recorded");
     expect(html).toContain("No bank-feed import batch metadata is recorded");
     expect(html).toContain("No prepared posting requests are present");
+    expect(html).toContain(
+      "No stale, unreconciled, or exception freshness rows are present in the current controls payload.",
+    );
     expect(html).toContain("No trust ledger postings are linked to this matter yet.");
     expect(html).toContain("No reconciliation exceptions or unreconciled trust accounts");
     expect(html).toContain("Pending approval transaction IDs");
@@ -486,6 +536,8 @@ describe("TrustControlsSection", () => {
         compactDate,
         compactStatus,
         formatCurrency,
+        onReviewPostingRequest: () => {},
+        postingRequestActionKey: "",
         trustControlsStatus: "Trust controls loaded.",
         trustReviewSummary: summarizeTrustControls(controls),
       }),

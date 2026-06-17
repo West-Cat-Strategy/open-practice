@@ -12,6 +12,7 @@ import {
 } from "../http/auth-helpers.js";
 import { parseRequestPart } from "../http/validation.js";
 import { createEmbeddedAuthService } from "../services/auth-service.js";
+import { appendRepositoryAuditEvent, appendRouteAuditEvent } from "./audit-events.js";
 
 const loginBodySchema = z.object({
   email: z.string().email(),
@@ -122,6 +123,15 @@ export function registerAuthRoutes(
         createdAt: now.toISOString(),
         expiresAt,
       });
+      await appendRouteAuditEvent(options.repository, request.auth, {
+        action: "auth_credential.password_setup_token.created",
+        resourceType: "auth_credential",
+        resourceId: record.id,
+        metadata: {
+          userId: user.id,
+          expiresInHours: body.expiresInHours,
+        },
+      });
       return { token, expiresAt: record.expiresAt, userId: user.id };
     },
   );
@@ -134,7 +144,19 @@ export function registerAuthRoutes(
         throw Object.assign(new Error("Password setup is not configured"), { statusCode: 503 });
       }
       const body = parseRequestPart(passwordSetupBodySchema, request.body, "body");
-      return authService.completePasswordSetup(body);
+      const result = await authService.completePasswordSetup(body);
+      await appendRepositoryAuditEvent(options.repository, {
+        firmId: result.user.firmId,
+        actorId: result.user.id,
+        action: "auth_credential.password.updated",
+        resourceType: "auth_credential",
+        resourceId: result.user.id,
+        metadata: {
+          userId: result.user.id,
+          method: "password_setup_token",
+        },
+      });
+      return result;
     },
   );
 }

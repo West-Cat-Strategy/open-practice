@@ -5,6 +5,8 @@ import {
   buildTaskDeadlineWorkbench,
   classifyTaskDeadline,
 } from "./tasks.js";
+import { buildLegalClinicCadenceSignals } from "./legal-clinics.js";
+import { sampleLegalClinicMatterProfiles, sampleLegalClinicPrograms } from "./sample-data.js";
 
 const now = new Date("2026-05-02T16:00:00.000Z");
 
@@ -376,6 +378,75 @@ describe("task deadline workbench", () => {
         },
       }),
     ]);
+  });
+
+  it("surfaces legal-clinic cadence follow-ups as operational-view task sources", () => {
+    const cadenceSignals = buildLegalClinicCadenceSignals({
+      programs: sampleLegalClinicPrograms,
+      profiles: [
+        {
+          ...sampleLegalClinicMatterProfiles[0]!,
+          id: "legal-clinic-profile-cadence",
+          eligibilityStatus: "needs_review",
+          referralStatus: "referral_needed",
+          referralDate: "2026-04-20T12:00:00.000Z",
+          nextReviewDate: "2026-05-01T17:00:00.000Z",
+          notes: "raw-client-private",
+        },
+      ],
+      now: now.toISOString(),
+    });
+    const existing = task({
+      id: "task-existing-legal-clinic-cadence",
+      sourceType: "operational_view",
+      sourceId: "legal_clinic_cadence:legal-clinic-profile-cadence:next_review_due",
+    });
+
+    const workbench = buildTaskDeadlineWorkbench({
+      tasks: [existing],
+      matterParties: [],
+      matters: [{ id: "matter-001", number: "2026-0001", title: "Residential tenancy review" }],
+      legalClinicCadenceSignals: cadenceSignals,
+      userId: "user-licensee",
+      now,
+    });
+
+    expect(workbench.suggestedFollowUps).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "legal-clinic-cadence:legal-clinic-profile-cadence:eligibility_review",
+          matterId: "matter-001",
+          title: "Review legal clinic eligibility",
+          priority: "high",
+          dueAt: "2026-05-01T17:00:00.000Z",
+          source: {
+            type: "operational_view",
+            id: "legal_clinic_cadence:legal-clinic-profile-cadence:eligibility_review",
+            label: "Legal clinic cadence",
+          },
+        }),
+        expect.objectContaining({
+          id: "legal-clinic-cadence:legal-clinic-profile-cadence:referral_follow_up",
+          source: {
+            type: "operational_view",
+            id: "legal_clinic_cadence:legal-clinic-profile-cadence:referral_follow_up",
+            label: "Legal clinic cadence",
+          },
+        }),
+      ]),
+    );
+    expect(workbench.suggestedFollowUps).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: {
+            type: "operational_view",
+            id: "legal_clinic_cadence:legal-clinic-profile-cadence:next_review_due",
+            label: "Legal clinic cadence",
+          },
+        }),
+      ]),
+    );
+    expect(JSON.stringify(workbench.suggestedFollowUps)).not.toContain("raw-client-private");
   });
 
   it("builds redacted contact timeline task cues without private task or scheduling content", () => {

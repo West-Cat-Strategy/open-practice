@@ -63,7 +63,11 @@ export function runMemoryConflictCheck(
     resourceType: "conflict_check",
     resourceId: checkId,
     occurredAt: createdAt,
-    metadata: { prospectiveName: input.prospectiveName, matchCount: results.length },
+    metadata: {
+      resultCount: results.length,
+      includeClosedMatters: input.includeClosedMatters,
+      ...(input.prospectiveRole ? { partyRole: input.prospectiveRole } : {}),
+    },
   });
   return { results, auditChainValid: store.auditEvents.length > 0 };
 }

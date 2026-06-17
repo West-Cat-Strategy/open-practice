@@ -185,7 +185,7 @@ async function createMailgunRawMimeJob(input: {
     resourceType: "inbound_email_raw",
     resourceId: input.tokenHash,
     idempotencyKeyPresent: true,
-    rawStorageKey: input.rawStorageKey,
+    rawStorageKeyPresent: true,
     rawContentSha256: input.rawContentSha256,
     rawSizeBytes: input.rawSizeBytes,
     domain: input.domain,
@@ -295,7 +295,7 @@ export function registerInboundEmailRawMimeRoutes(
               firmId: firm.id,
               resourceType: "inbound_email_raw",
               resourceId: tokenHash,
-              metadata: job.metadata,
+              metadata: { ...job.metadata, rawStorageKey },
             },
             { jobId: job.id },
           );

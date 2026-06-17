@@ -169,6 +169,84 @@ describe("calendar routes", () => {
     expect(JSON.stringify(response.json().schedulingRequests)).not.toContain("ada.morgan");
   });
 
+  it("creates and reviews staff-only scheduling requests with redacted audit metadata", async () => {
+    const repository = new AuditRecordingRepository();
+    const server = testServer(user("licensee", ["matter-001"]), repository);
+
+    const created = await server.inject({
+      method: "POST",
+      url: "/api/calendar/scheduling-requests",
+      payload: {
+        matterId: "matter-001",
+        kind: "event_scheduling",
+        title: "Private scheduling title must stay out of audit metadata",
+        sourceType: "manual",
+        sourceLabel: "Private source label must stay out of audit metadata",
+        requestedStartsAt: "2026-05-09T17:00:00.000Z",
+        requestedEndsAt: "2026-05-09T17:30:00.000Z",
+        privacy: "staff_only",
+      },
+    });
+
+    expect(created.statusCode).toBe(201);
+    expect(created.json().schedulingRequest).toMatchObject({
+      matterId: "matter-001",
+      kind: "event_scheduling",
+      status: "needs_review",
+      privacy: { visibility: "staff_only", clientVisible: false },
+      source: { type: "manual" },
+    });
+    const requestId = created.json().schedulingRequest.id;
+
+    const reviewed = await server.inject({
+      method: "PATCH",
+      url: `/api/calendar/scheduling-requests/${requestId}/review`,
+      payload: {
+        matterId: "matter-001",
+        status: "scheduled",
+        calendarEventId: "calendar-event-002",
+      },
+    });
+
+    expect(reviewed.statusCode).toBe(200);
+    expect(reviewed.json().schedulingRequest).toMatchObject({
+      id: requestId,
+      status: "scheduled",
+      linkedEvent: {
+        id: "calendar-event-002",
+        status: "tentative",
+      },
+    });
+
+    expect(repository.recordedAuditEvents.map((event) => event.action)).toEqual([
+      "calendar.scheduling_request.created",
+      "calendar.scheduling_request.reviewed",
+    ]);
+    expect(repository.recordedAuditEvents[0]?.metadata).toMatchObject({
+      matterId: "matter-001",
+      requestId,
+      status: "needs_review",
+      kind: "event_scheduling",
+      sourceType: "manual",
+      privacy: "staff_only",
+      hasRequestedDueAt: false,
+      hasRequestedStartsAt: true,
+      hasRequestedEndsAt: true,
+    });
+    expect(repository.recordedAuditEvents[1]?.metadata).toMatchObject({
+      matterId: "matter-001",
+      requestId,
+      status: "scheduled",
+      calendarEventId: "calendar-event-002",
+    });
+    const serializedAudit = JSON.stringify(repository.recordedAuditEvents);
+    expect(serializedAudit).not.toContain("Private scheduling title");
+    expect(serializedAudit).not.toContain("Private source label");
+    expect(serializedAudit).not.toContain("2026-05-09T17:00:00.000Z");
+    expect(serializedAudit).not.toContain("hasRequestedWindow");
+    expect(serializedAudit).not.toContain("linkedEventId");
+  });
+
   it("blocks cross-matter calendar reads and export", async () => {
     const server = testServer(user("licensee", ["matter-001"]));
     const listResponse = await server.inject({

@@ -45,6 +45,7 @@ import type {
   LedgerEntry,
   LedgerPostingRequestRecord,
   LedgerPostingRequestReviewSummary,
+  LedgerReconciliationFreshnessReview,
   LedgerReconciliationRecord,
   LedgerStatementImportBatchRecord,
   LedgerStatementMatchRuleProfileRecord,
@@ -58,7 +59,9 @@ import type {
   PublicConsultationIntakeRecord,
   RedactedImapProviderSettings,
   RedactedSmtpProviderSettings,
+  StaffReportExportProfile,
   StaffReportHistoryItem,
+  StaffReportProjection,
   StaffReportingWorkspace,
   SignatureRequestRecord,
   TaskDeadlineWorkbench,
@@ -95,6 +98,7 @@ export type {
   LedgerEntry,
   LedgerPostingRequestRecord,
   LedgerPostingRequestReviewSummary,
+  LedgerReconciliationFreshnessReview,
   LedgerReconciliationRecord,
   LedgerStatementImportBatchRecord,
   LedgerStatementMatchRuleProfileRecord,
@@ -125,6 +129,9 @@ export type {
 } from "./_features/document-assembly/models";
 
 export type {
+  DocumentConversionReviewCounts,
+  DocumentConversionReviewPolicy,
+  DocumentConversionReviewSummary,
   DocumentMetadataOcrStatus,
   DocumentMetadataSearchFilters,
   DocumentMetadataSearchPosture,
@@ -647,6 +654,15 @@ export type StaffReportingWorkspaceResponse = StaffReportingWorkspace;
 
 export interface StaffReportExportRequestResponse {
   exportRequest: StaffReportHistoryItem;
+}
+
+export interface StaffReportExportDownloadResponse {
+  exportRequest: StaffReportHistoryItem;
+  export: {
+    reportType: "staff_reporting";
+    exportProfile?: StaffReportExportProfile;
+    report: StaffReportProjection;
+  };
 }
 
 export type WorkerRunQueueFilter = "all" | "email" | "ocr";

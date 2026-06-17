@@ -9,6 +9,7 @@ import type {
   DocumentProcessingGroup,
   DocumentProcessingLatestExtraction,
   DocumentProcessingLatestJob,
+  DocumentConversionReviewSummary,
   DocumentMetadataSearchFilters,
   DocumentMetadataSearchPosture,
   DocumentMetadataTag,
@@ -357,6 +358,34 @@ export function describeLatestExtraction(extraction?: DocumentProcessingLatestEx
     extraction.completedAt ? `completed ${extraction.completedAt}` : undefined,
   ].filter(Boolean);
   return parts.join(" · ") || "Extraction summary available";
+}
+
+export function describeDocumentConversionReview(
+  conversionReview?: DocumentConversionReviewSummary,
+): string {
+  if (!conversionReview) return "not available";
+  const counts = conversionReview.counts;
+  const countParts = [
+    typeof counts?.sourceTextLength === "number" ? `${counts.sourceTextLength} chars` : undefined,
+    typeof counts?.wordCount === "number" ? `${counts.wordCount} words` : undefined,
+    typeof counts?.estimatedPageCount === "number" && counts.estimatedPageCount > 0
+      ? `${counts.estimatedPageCount} estimated pages`
+      : undefined,
+  ].filter(Boolean);
+  const artifact = conversionReview.artifactId ? "artifact ready" : "no artifact";
+  const summaryPosture =
+    conversionReview.summaryPosture === "op_authored_metadata_only"
+      ? "OP-authored metadata only"
+      : compactDocumentProcessingReason(conversionReview.summaryPosture);
+  return [
+    compactDocumentProcessingReason(conversionReview.posture),
+    ...countParts,
+    artifact,
+    summaryPosture,
+    conversionReview.policy.metadataOnly ? "metadata only" : undefined,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 export function describeDocumentQueueAction(

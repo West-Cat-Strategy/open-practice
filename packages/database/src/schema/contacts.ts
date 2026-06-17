@@ -137,7 +137,7 @@ export const contactDataQualityResolutions = pgTable(
     ),
     signalKindValue: check(
       "contact_data_quality_resolutions_signal_kind_value",
-      sql`${table.signalKind} in ('duplicate_candidate', 'protected_party_cue', 'conflict_revalidation')`,
+      sql`${table.signalKind} in ('duplicate_candidate', 'protected_party_cue', 'conflict_revalidation', 'retention_hold_review')`,
     ),
     decisionValue: check(
       "contact_data_quality_resolutions_decision_value",
