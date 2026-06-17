@@ -30,9 +30,6 @@ const ports = keepUp
       mailpitWeb: "48025",
     };
 const composeEnv = {
-  OPEN_PRACTICE_DOCKER_API_HOST_BIND: "127.0.0.1",
-  OPEN_PRACTICE_DOCKER_WEB_HOST_BIND: "127.0.0.1",
-  OPEN_PRACTICE_DOCKER_INFRA_HOST_BIND: "127.0.0.1",
   OPEN_PRACTICE_DOCKER_API_HOST_PORT: ports.api,
   OPEN_PRACTICE_DOCKER_WEB_HOST_PORT: ports.web,
   OPEN_PRACTICE_DOCKER_POSTGRES_HOST_PORT: ports.postgres,
@@ -41,8 +38,9 @@ const composeEnv = {
   OPEN_PRACTICE_DOCKER_MINIO_CONSOLE_HOST_PORT: ports.minioConsole,
   OPEN_PRACTICE_DOCKER_MAILPIT_SMTP_HOST_PORT: ports.mailpitSmtp,
   OPEN_PRACTICE_DOCKER_MAILPIT_WEB_HOST_PORT: ports.mailpitWeb,
+  OPEN_PRACTICE_PUBLIC_API_ORIGIN: `http://localhost:${ports.api}`,
+  OPEN_PRACTICE_PUBLIC_WEB_ORIGIN: `http://localhost:${ports.web}`,
 };
-const databaseUrl = `postgresql://open_practice:open_practice@localhost:${ports.postgres}/open_practice`;
 const apiHealthUrl = `http://127.0.0.1:${ports.api}/health`;
 const webUrl = `http://127.0.0.1:${ports.web}/`;
 let passed = false;
@@ -151,6 +149,7 @@ async function main() {
       "api",
       "web",
       "worker",
+      "db-migrate",
     ],
     {
       env: { DOCKER_BUILDKIT: "1" },
@@ -160,7 +159,7 @@ async function main() {
   await runCompose("docker-up-infra", [
     "up",
     "-d",
-    "minio-init",
+    "minio-bucket-init",
     "postgres",
     "redis",
     "minio",
@@ -190,18 +189,6 @@ async function main() {
   );
   await waitForUrl("minio", `http://127.0.0.1:${ports.minio}/minio/health/ready`);
   await waitForUrl("mailpit", `http://127.0.0.1:${ports.mailpitWeb}`);
-
-  await run("db-migrate", "pnpm", ["--filter", "@open-practice/database", "db:migrate"], {
-    env: { DATABASE_URL: databaseUrl },
-  });
-  await runCompose("minio-bucket", [
-    "exec",
-    "-T",
-    "minio",
-    "sh",
-    "-c",
-    "mkdir -p /data/open-practice-documents",
-  ]);
 
   await runCompose("docker-up-apps", ["up", "-d", "api", "worker", "web"]);
   const health = await waitForUrl("API", apiHealthUrl, { timeoutMs: 90_000 });

@@ -24,8 +24,8 @@ pnpm install
 docker compose up -d
 ```
 
-Access the application at `http://localhost:33000`. The stack is fully containerized and coordinates automatically.
-The default Compose ports bind to loopback only.
+Access the application at `http://localhost:33000`. The stack is fully containerized and coordinates
+automatically. The default Compose ports bind to loopback only.
 
 To validate the built API, Web, and Worker images before leaving the local dev stack running:
 
@@ -40,6 +40,16 @@ Redis, MinIO, Mailpit, API, Web, and Worker, runs migrations, checks API health,
 app serves on loopback. By default it uses an isolated Compose project and disposable volumes. Add
 `-- --refresh` when you need pinned Redis pulls and `--pull` image rebuilds. Use `-- --keep-up` to
 validate and leave the default Compose dev stack running.
+
+For Docker footprint reviews, record API, Web, and Worker image sizes in the validation proof after
+the build finishes:
+
+```bash
+docker image inspect open-practice-dev-api open-practice-dev-web open-practice-dev-worker --format '{{.RepoTags}} {{.Size}}'
+```
+
+These images and the default Compose stack are local validation artifacts. Do not publish or reuse the
+local Compose profile as a production deployment profile.
 
 If you prefer to run services locally for development:
 
@@ -90,12 +100,12 @@ pnpm --filter @open-practice/web dev
 Default local host ports are intentionally uncommon to avoid collisions with other developer tools:
 web `33000`, API `34000`, PostgreSQL `35432`, Redis `36379`, MinIO `39000`, MinIO console
 `39001`, Mailpit SMTP `31025`, and Mailpit UI `38025`.
-Compose exposes them through scoped bind variables that default to `127.0.0.1`:
-`OPEN_PRACTICE_DOCKER_WEB_HOST_BIND`, `OPEN_PRACTICE_DOCKER_API_HOST_BIND`, and
-`OPEN_PRACTICE_DOCKER_INFRA_HOST_BIND`, plus per-service host-port variables for isolated smoke
-runs. Keep `OPEN_PRACTICE_DOCKER_API_HOST_BIND` loopback-bound; the Compose API refuses non-loopback
-binds because the local stack carries dev-only auth and setup flags. Do not reuse the local Docker
-stack as a production profile.
+Compose publishes every default service on `127.0.0.1` and only exposes per-service host-port
+variables for isolated smoke runs. If you change the local web or API host ports, also set
+`OPEN_PRACTICE_PUBLIC_WEB_ORIGIN` or `OPEN_PRACTICE_PUBLIC_API_ORIGIN` to the matching loopback
+origin so WebAuthn, public web links, and browser API calls line up with the alternate ports. The
+local Compose profile uses development secrets, local S3 endpoints, local Mailpit capture, and
+relaxed local web CSP, so it must stay loopback-only and must not be reused as a production profile.
 
 Local proof, package-manager credential, shell credential, cloud credential, and generated output
 paths stay excluded from the Docker build context through `.dockerignore` and `pnpm policy:check`.

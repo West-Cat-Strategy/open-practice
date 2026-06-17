@@ -5,29 +5,29 @@ API contracts, database schema changes, auth changes, or release handoff.
 
 ## Default Commands
 
-| Need                   | Command                                          | Notes                                                                                                                                                                             |
-| ---------------------- | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Full local gate        | `pnpm ci:local`                                  | Runs the full local verification lane and `git diff --check`.                                                                                                                     |
-| Release readiness      | `pnpm release:local`                             | Creates a local release proof artifact with dependency audit, license JSON, SBOM, full local gate, migration replay, artifact secret scan, and diff whitespace evidence.          |
-| Dependency audit       | `pnpm deps:audit`                                | Runs local production and development dependency audits.                                                                                                                          |
-| License evidence       | `pnpm deps:licenses`                             | Summarizes dependency license groups and fails only on unknown or unlicensed groups. Use `-- --json-output <path>` for package-level JSON evidence.                               |
-| Dead-code gate         | `pnpm deadcode:check`                            | Runs Knip against unused files, dependencies, unlisted dependencies, unresolved imports, and binaries.                                                                            |
-| Selective validation   | `pnpm verify:select -- --base <git-ref>`         | Prints recommended commands for changed files without running them.                                                                                                               |
-| Dirty-tree selection   | `pnpm verify:select -- --dirty`                  | Prints recommended commands for staged, unstaged, and untracked working-tree files.                                                                                               |
-| Formatting             | `pnpm format:check`                              | Required before handoff.                                                                                                                                                          |
-| Static lint            | `pnpm lint`                                      | Runs Turbo package lint tasks.                                                                                                                                                    |
-| Type checking          | `pnpm typecheck`                                 | Runs Turbo package type checks.                                                                                                                                                   |
-| Tests                  | `pnpm test`                                      | Runs package test suites.                                                                                                                                                         |
-| Host browser E2E       | `pnpm e2e:host`                                  | Runs Playwright against a synthetic memory-backed API plus Next.js web runtime across Chromium desktop/mobile, Firefox, and WebKit.                                               |
-| Docker browser E2E     | `pnpm e2e:docker`                                | Runs Playwright against a disposable PostgreSQL-backed runtime with Redis, MinIO, and Mailpit infrastructure.                                                                     |
-| Matterless browser E2E | `pnpm e2e:matterless`                            | Runs the dedicated Chromium matterless-auth coverage against the host memory runtime.                                                                                             |
-| Client portal E2E      | `pnpm e2e:client-portal`                         | Runs the dedicated Chromium client-portal auth coverage against the host memory runtime.                                                                                          |
-| Docker app image smoke | `pnpm docker:app-smoke`                          | Pulls Redis, builds wrapped local service images plus API/Web/Worker images, starts the local Compose stack, migrates the default Compose database, and checks API/web readiness. |
-| Database schema check  | `pnpm --filter @open-practice/database db:check` | Required for schema or migration changes.                                                                                                                                         |
-| Migration parity       | `pnpm migrations:check`                          | Verifies SQL migration files and Drizzle journal entries stay in lockstep.                                                                                                        |
-| Migration replay       | `pnpm migrations:replay`                         | Applies migrations to a disposable local PostgreSQL database and cleans it up.                                                                                                    |
-| Policy and docs checks | `pnpm policy:check`                              | Runs tracked-secret, package manifest, dead-code, migration parity, OSS reuse, docs link, validation-proof index, local-evidence, and architecture-boundary policy checks.        |
-| Build                  | `pnpm build`                                     | Required for release or app shell changes.                                                                                                                                        |
+| Need                   | Command                                          | Notes                                                                                                                                                                                                                 |
+| ---------------------- | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Full local gate        | `pnpm ci:local`                                  | Runs the full local verification lane and `git diff --check`.                                                                                                                                                         |
+| Release readiness      | `pnpm release:local`                             | Creates a local release proof artifact with dependency audit, license JSON, SBOM, full local gate, migration replay, artifact secret scan, and diff whitespace evidence.                                              |
+| Dependency audit       | `pnpm deps:audit`                                | Runs local production and development dependency audits.                                                                                                                                                              |
+| License evidence       | `pnpm deps:licenses`                             | Summarizes dependency license groups and fails only on unknown or unlicensed groups. Use `-- --json-output <path>` for package-level JSON evidence.                                                                   |
+| Dead-code gate         | `pnpm deadcode:check`                            | Runs Knip against unused files, dependencies, unlisted dependencies, unresolved imports, and binaries.                                                                                                                |
+| Selective validation   | `pnpm verify:select -- --base <git-ref>`         | Prints recommended commands for changed files without running them.                                                                                                                                                   |
+| Dirty-tree selection   | `pnpm verify:select -- --dirty`                  | Prints recommended commands for staged, unstaged, and untracked working-tree files.                                                                                                                                   |
+| Formatting             | `pnpm format:check`                              | Required before handoff.                                                                                                                                                                                              |
+| Static lint            | `pnpm lint`                                      | Runs Turbo package lint tasks.                                                                                                                                                                                        |
+| Type checking          | `pnpm typecheck`                                 | Runs Turbo package type checks.                                                                                                                                                                                       |
+| Tests                  | `pnpm test`                                      | Runs package test suites.                                                                                                                                                                                             |
+| Host browser E2E       | `pnpm e2e:host`                                  | Runs Playwright against a synthetic memory-backed API plus Next.js web runtime across Chromium desktop/mobile, Firefox, and WebKit.                                                                                   |
+| Docker browser E2E     | `pnpm e2e:docker`                                | Runs Playwright against a disposable PostgreSQL-backed runtime with Redis, MinIO, and Mailpit infrastructure.                                                                                                         |
+| Matterless browser E2E | `pnpm e2e:matterless`                            | Runs the dedicated Chromium matterless-auth coverage against the host memory runtime.                                                                                                                                 |
+| Client portal E2E      | `pnpm e2e:client-portal`                         | Runs the dedicated Chromium client-portal auth coverage against the host memory runtime.                                                                                                                              |
+| Docker app image smoke | `pnpm docker:app-smoke`                          | Pulls Redis, builds wrapped local service images plus API/Web/Worker images, starts the local Compose stack, migrates the default Compose database, checks API/web readiness, and supports app-image footprint proof. |
+| Database schema check  | `pnpm --filter @open-practice/database db:check` | Required for schema or migration changes.                                                                                                                                                                             |
+| Migration parity       | `pnpm migrations:check`                          | Verifies SQL migration files and Drizzle journal entries stay in lockstep.                                                                                                                                            |
+| Migration replay       | `pnpm migrations:replay`                         | Applies migrations to a disposable local PostgreSQL database and cleans it up.                                                                                                                                        |
+| Policy and docs checks | `pnpm policy:check`                              | Runs tracked-secret, package manifest, dead-code, migration parity, OSS reuse, docs link, validation-proof index, local-evidence, and architecture-boundary policy checks.                                            |
+| Build                  | `pnpm build`                                     | Required for release or app shell changes.                                                                                                                                                                            |
 
 ## Selective Validation
 
@@ -189,7 +189,9 @@ client-portal workspace, redaction, and private-field leakage coverage.
 disposable Compose project, alternate loopback ports, and disposable volumes so it does not disturb a
 running dev stack. Add `-- --refresh` when the proof needs pinned Redis pulls and `--pull` image
 rebuilds. Use `pnpm docker:app-smoke -- --keep-up` to validate and leave the default dev stack
-running on web `33000` and API `34000`.
+running on web `33000` and API `34000`. For footprint work, pair the smoke result with
+`docker image inspect open-practice-dev-api open-practice-dev-web open-practice-dev-worker --format '{{.RepoTags}} {{.Size}}'`
+so the proof records before/after API, Web, and Worker image sizes.
 
 ## Change-Type Guidance
 
@@ -198,9 +200,10 @@ running on web `33000` and API `34000`.
 - Database schema or repository behavior: run database tests, `db:check`, `pnpm migrations:check`, API tests, and the full verification lane.
 - Web dashboard, route catalog, or UI state changes: run web tests and typecheck; use `pnpm build` for Next app integration proof, and `pnpm e2e:host` when rendered browser behavior changes.
 - External upload, public-token, object-storage, or release browser proof: run `pnpm e2e:docker` when Docker is available.
-- Dockerfile, Compose, or app-image runtime changes: run selector first, then include
-  `pnpm docker:residual-watch`, `pnpm docker:app-smoke`, `pnpm e2e:docker`, and the selected static
-  checks.
+- Dockerfile, Compose, or app-image runtime changes: run selector first, record the exact final path
+  set, then include `pnpm docker:residual-watch`, `pnpm docker:app-smoke`, `pnpm e2e:docker`,
+  app-image size evidence, and the selected static checks. If implementation files are still pending,
+  keep proof rows marked as pending rather than claiming final validation.
 - Documentation-only changes: run `pnpm format:check`, `pnpm docs:check`, and `pnpm policy:check`.
 
 ## Current Gaps

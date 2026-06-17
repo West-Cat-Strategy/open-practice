@@ -34,6 +34,12 @@ playwright-report
 test-results
 *.tsbuildinfo
 
+docs
+e2e
+**/*.test.*
+**/*.spec.*
+**/__tests__
+
 .DS_Store
 *.log
 npm-debug.log*

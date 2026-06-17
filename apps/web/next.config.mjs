@@ -125,6 +125,8 @@ if (isProduction) {
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   devIndicators: false,
+  output: "standalone",
+  outputFileTracingRoot: projectRoot,
   poweredByHeader: false,
   transpilePackages: ["@open-practice/domain"],
   turbopack: {
