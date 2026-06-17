@@ -35,7 +35,9 @@ The 2026-06-16 Docker app-image footprint and Compose hardening proof is recorde
 [OP_DOCKER_APP_IMAGE_FOOTPRINT_COMPOSE_HARDENING_PROOF_2026-06-16.md](OP_DOCKER_APP_IMAGE_FOOTPRINT_COMPOSE_HARDENING_PROOF_2026-06-16.md).
 It records the API/Web/Worker before/after image sizes, the reduced Docker build context, local-only
 Compose self-initialization for migrations and MinIO bucket setup, loopback-only port rendering,
-Docker smoke/E2E proof, and the residual-watch Postgres manifest-drift review candidate.
+Docker smoke/E2E proof, and the residual-watch Postgres manifest-drift review candidate. The
+2026-06-17 follow-up keeps the Postgres pin unchanged because Docker Engine and Scout were
+unavailable for same-contract proof.
 
 The 2026-06-16 OP-T158 email template drafts proof is recorded in
 [OP-T158_EMAIL_TEMPLATE_DRAFTS_PROOF_2026-06-16.md](OP-T158_EMAIL_TEMPLATE_DRAFTS_PROOF_2026-06-16.md).
