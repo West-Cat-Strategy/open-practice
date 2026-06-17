@@ -1,6 +1,9 @@
 # Open Practice Documentation
 
-Use this index as the first stop for repo orientation. Open Practice is a legal-practice system, so matter authorization, confidentiality, auditability, trust/funds caution, and clean-room reuse discipline stay central across docs and code.
+The root [README](../README.md) is the GitHub-facing overview. Use this index as the canonical
+internal documentation map for repo orientation. Open Practice is a legal-practice system, so matter
+authorization, confidentiality, auditability, trust/funds caution, and clean-room reuse discipline
+stay central across docs and code.
 
 ## Start Here
 
