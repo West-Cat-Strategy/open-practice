@@ -20,6 +20,29 @@ Out of scope: native mobile capture, automatic billing, external time-tool sync,
 payment processing, trust-ledger posting, tax/compliance certification, ReBAC authorization-matrix
 leftovers, OP-T144 proof residue, and OP-T133/document-assembly stash residue.
 
+## 2026-06-17 Hardening Addendum
+
+- Added explicit API regression coverage that a submitted time entry inside a locked billing period
+  cannot be approved directly through `POST /api/time-entries/:id/approve`.
+- Reconciled the stale improvement-opportunity wording so local timer-generated draft time entries
+  are documented as shipped OP-T134 posture, with future native mobile capture or external
+  time-tool sync expected to preserve draft-only review and billing-period-lock boundaries.
+- Runtime billing behavior stayed unchanged: no new endpoint, schema, migration, dependency,
+  automatic invoice generation, approval bypass, payment processing, or trust-ledger posting.
+
+Addendum validation:
+
+| Command                                                                                                                                                                                          | Result                                                              |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------- |
+| `pnpm verify:select -- --files apps/api/src/routes/billing.test.ts docs/improvement-opportunities.md docs/validation/OP-T134_TIME_EXPENSE_CAPTURE_PROOF_2026-05-31.md docs/validation/README.md` | Passed; selected format, docs, policy, API test, and API typecheck. |
+| `pnpm --filter @open-practice/api exec vitest run src/routes/billing.test.ts`                                                                                                                    | Passed: 1 file, 29 tests.                                           |
+| `pnpm format:check`                                                                                                                                                                              | Passed after formatting the validation proof index table.           |
+| `pnpm docs:check`                                                                                                                                                                                | Passed.                                                             |
+| `pnpm policy:check`                                                                                                                                                                              | Passed.                                                             |
+| `pnpm --filter @open-practice/api test`                                                                                                                                                          | Passed: 42 files, 553 tests.                                        |
+| `pnpm --filter @open-practice/api typecheck`                                                                                                                                                     | Passed.                                                             |
+| `git diff --check`                                                                                                                                                                               | Passed.                                                             |
+
 ## Recovery Trail
 
 Used these 2026-05-29 OP-T134 stashes as recovery references:
