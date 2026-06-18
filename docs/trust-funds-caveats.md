@@ -53,6 +53,10 @@ trust accounting software, accounting software, or tax-advice tooling.
 - Normalized payment settlement event records are reconciliation-review evidence only. They do not
   prove live settlement, apply invoice balances, reconcile deposits, handle refunds or chargebacks,
   authorize trust withdrawals, or move funds.
+- Future payment processor imports, deposit-match proposals, refund cues, and chargeback cues remain
+  review evidence until a separate approved workflow records reviewer evidence. They must not retain
+  raw provider payloads, mutate invoice balances, create reconciliation records, call provider APIs,
+  post operating or trust ledger entries, authorize withdrawals, or notify clients by themselves.
 - AI draft-invoice cues are review artifacts only. Approving a proposal records reviewer status but
   does not create an invoice, change balances, schedule payment collection, reconcile payment
   evidence, or post trust/operating ledger entries.
@@ -84,10 +88,13 @@ certified for a jurisdiction without specific review.
 
 Manual payments and future payment-processor imports should be reconciled before affecting invoice
 status. Open Practice records new manual payments as pending evidence until reviewer reconciliation
-creates the effective allocation. A trust-transfer request may document that funds are intended to
-move from trust after review and may later be linked to an existing matching ledger transaction, but
-the actual trust ledger change must remain a separate, explicit, balanced posting with its own audit
-trail.
+creates the effective allocation. The
+[payment import and deposit matching boundary packet](payment-import-deposit-matching-boundary-packet.md)
+keeps processor imports, deposit proposals, refunds, and chargebacks in reviewer-owned evidence
+posture until later approved controls define exact effects. A trust-transfer request may document
+that funds are intended to move from trust after review and may later be linked to an existing
+matching ledger transaction, but the actual trust ledger change must remain a separate, explicit,
+balanced posting with its own audit trail.
 
 ## Before Compliance Claims
 

@@ -937,6 +937,15 @@ refunds or chargebacks, vault cards, or post trust ledger entries. Public provid
 replay recovery remain blocked production work until signature verification and deployment controls
 are approved.
 
+The payment import and deposit matching boundary packet records the next safe docs-first posture for
+processor imports, deposit proposals, refunds, and chargebacks. Future imports may store only
+normalized reviewer evidence and must not retain provider payloads, card/customer details, checkout
+URLs, receipt files, dispute packets, refund artifacts, or chargeback payloads. Deposit matching
+remains reviewer-owned proposal state; refunds and chargebacks remain exception cues. None of those
+future surfaces may mutate invoice paid/balance status, create reconciliation records, move funds,
+call provider APIs, notify clients, or post trust ledger entries without a later approved reviewer
+workflow and proof note.
+
 Trust-transfer requests move through `pending_approval`, `approved`, `rejected`, `linked`, and
 `cancelled`. These records represent a controlled request to pay an invoice from trust after review.
 Approval requires the request to be pending, the invoice to belong to the same matter, the request
@@ -1346,5 +1355,6 @@ production still must configure RP ID/origin, session secrets, authorization, an
 retention controls before exposing them. `DOCUSEAL_*`, `DOCASSEMBLE_*`, and `OIDC_*` variables are
 deprecated and rejected in production. Stripe Checkout Session creation is available only behind an
 explicit non-production processor provider configuration; production `STRIPE_SECRET_KEY`
-configuration is rejected until webhook verification, settlement imports, refunds, and chargeback
+configuration is rejected until webhook verification, settlement imports, refunds, chargebacks,
+replay/deployment posture, provider payload redaction, reviewer evidence, and trust/funds review
 controls are introduced behind an explicit deployment profile.

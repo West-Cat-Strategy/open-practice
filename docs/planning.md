@@ -127,9 +127,13 @@ rows live in `docs/planning-and-progress.md`; this section holds the durable pro
 2.  **Billing, Payments, Trust, And Accounting**: OP-T135 delivered the hosted payment-request shell
     boundary, and OP-T136 delivered operating-vs-trust account posture, match-rule profiles,
     protected-funds cues, metadata-only bank-feed shell posture, and review-only accounting
-    dashboards. Live settlement, card storage, bank-feed automation, automatic trust posting,
-    payment-plan enforcement, automatic matching/disbursement, and certified accounting claims stay
-    out of scope until their processor, reconciliation, and compliance profiles are approved.
+    dashboards. The 2026-06-17 payment import/deposit matching boundary packet keeps processor
+    imports, deposit proposals, refunds, and chargebacks as reviewer-owned evidence only until a
+    later runtime slice proves payload redaction, reviewer evidence, and funds controls. Live
+    settlement, provider payload retention, card storage, bank-feed automation, automatic trust
+    posting, payment-plan enforcement, automatic matching/disbursement, invoice-balance mutation
+    without reviewer evidence, and certified accounting claims stay out of scope until their
+    processor, reconciliation, and compliance profiles are approved.
 3.  **AI And Legal Work**: OP-T138 adds review-first operational proposals over the existing async
     assist boundary, and OP-T139 adds the staff-only legal research workspace shell for bounded
     cited-source notes, matter-context attachments, document-analysis status, strategy/timeline

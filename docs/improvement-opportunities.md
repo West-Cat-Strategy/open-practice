@@ -292,8 +292,13 @@ surface.
     evidence required before an effective allocation can change invoice paid/balance status. The
     2026-06-16 parity closure adds Billing dashboard reconciliation controls for pending manual
     payments while preserving review-only evidence boundaries.
-  - **Remaining boundary:** Future payment-processor imports, deposit matching, refunds,
-    chargebacks, and trust posting remain separate future work.
+  - **Docs-first boundary packet:** The 2026-06-17
+    [payment import and deposit matching boundary packet](payment-import-deposit-matching-boundary-packet.md)
+    defines processor imports, deposit matching, refunds, and chargebacks as normalized
+    reviewer-owned evidence only. It preserves no live settlement, no trust posting, no provider
+    payload retention, and no invoice-balance mutation without reviewer evidence.
+  - **Remaining boundary:** Runtime processor import, deposit matching, refund, chargeback, and
+    trust posting behavior remain separate future work after the packet.
   - **References:** `opencollective__opencollective-api` settlement/reconciliation concepts and
     `blnkfinance__blnk` reconciliation boundaries.
   - **Reuse and snippets:** Open Collective is MIT but architecture-only in this corpus; Blnk is
