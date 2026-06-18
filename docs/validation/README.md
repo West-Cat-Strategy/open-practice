@@ -18,14 +18,15 @@ skipped-check context. The live workboard remains
 
 ## Current Handoff Notes
 
-The 2026-06-17 all-active-lanes integration proof is recorded in
+The 2026-06-17 all-active-lanes integration proof, with the 2026-06-18 Docker gate closeout, is
+recorded in
 [OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-16.md](OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-16.md).
 It covers the merge of the 13 committed dirty lanes plus the clean retirement branch into
 `merge/open-practice-active-lanes-2026-06-17`, the final 101-path integrated path set against
-`origin/main`, selector output from `pnpm verify:select -- --base origin/main`, and the current
-Docker hard-gate blocker. `pnpm docker:residual-watch` printed its startup command, hung silently
-for roughly 3.5 minutes, then exited 130 after Ctrl-C. No fast-forward, push, prune, remote prune,
-or stash operation was performed.
+`origin/main`, selector output from `pnpm verify:select -- --base origin/main`, the Postgres/Mailpit
+same-contract Docker pin refresh, and green Docker app smoke, residual watch, Docker E2E, package,
+build, policy/docs, and `pnpm ci:local` validation. Fast-forward, push, prune, and final parity
+evidence are pending this closeout's publication step; stash count remains unchanged at `42`.
 
 The 2026-06-17 OP-T159 aged receivables report proof is recorded in
 [OP-T159_AGED_RECEIVABLES_REPORT_PROOF_2026-06-17.md](OP-T159_AGED_RECEIVABLES_REPORT_PROOF_2026-06-17.md).
@@ -92,11 +93,10 @@ The 2026-06-16 Docker app-image footprint and Compose hardening proof is recorde
 [OP_DOCKER_APP_IMAGE_FOOTPRINT_COMPOSE_HARDENING_PROOF_2026-06-16.md](OP_DOCKER_APP_IMAGE_FOOTPRINT_COMPOSE_HARDENING_PROOF_2026-06-16.md).
 It records the API/Web/Worker before/after image sizes, the reduced Docker build context, local-only
 Compose self-initialization for migrations and MinIO bucket setup, loopback-only port rendering,
-Docker smoke/E2E proof, and the residual-watch Postgres manifest-drift review candidate. The
-2026-06-17 local rerun addendum records the current Docker daemon/socket blockers, Postgres
-manifest-drift plus Mailpit source-tag review candidates, and green selected non-Docker checks. The
-same-day Postgres manifest-drift follow-up keeps the Postgres pin unchanged because Docker Engine
-and Scout were unavailable for same-contract proof.
+Docker smoke/E2E proof, and the historical residual-watch Postgres manifest-drift review candidate.
+The 2026-06-17 local rerun addenda record the Docker daemon/socket blockers and held Postgres pin;
+the 2026-06-18 all-active-lanes closeout supersedes those blockers by refreshing the Postgres digest
+and Mailpit `v1.30.2` source pin, then rerunning Docker app smoke, residual watch, and Docker E2E.
 
 The 2026-06-16 OP-T158 email template drafts proof is recorded in
 [OP-T158_EMAIL_TEMPLATE_DRAFTS_PROOF_2026-06-16.md](OP-T158_EMAIL_TEMPLATE_DRAFTS_PROOF_2026-06-16.md).
@@ -435,7 +435,7 @@ use [Planning and Progress](../planning-and-progress.md) for current row status.
 | [OP_PROVIDER_DOCUMENT_CONVERSION_BOUNDARY_PROOF_2026-06-17.md](OP_PROVIDER_DOCUMENT_CONVERSION_BOUNDARY_PROOF_2026-06-17.md)                                       | Row-local proof note | Proof for the docs-only reviewed provider-backed document conversion boundary, covering future conversion, annotation, chunking, embedding, and semantic-review guardrails; preserved metadata-only `document_conversion_review` runtime posture; clean-room/license constraints; and no raw client text, converted Markdown, annotation bodies/spans, prompts, chunks, embeddings/vectors, storage keys, object bodies, provider payloads, private excerpts, or generated summaries in durable metadata. |
 | [OP_TRUST_POSTING_ACTION_DESCRIPTORS_PROOF_2026-06-17.md](OP_TRUST_POSTING_ACTION_DESCRIPTORS_PROOF_2026-06-17.md)                                                 | Row-local proof note | Proof for the read-only Trust Controls posting-request approve/reject descriptor slice, covering domain-owned action labels, busy/disabled reasons, accessible labels, stable action keys, dashboard guardrails, unchanged API/database/audit semantics, and the no-settlement/no-bank-feed/no automatic-trust-posting boundary.                                                                                                                                                                          |
 | [OP_TRUST_POSTING_APPROVAL_COMMANDS_PROOF_2026-06-16.md](OP_TRUST_POSTING_APPROVAL_COMMANDS_PROOF_2026-06-16.md)                                                   | Row-local proof note | Proof for the opt-in pre-post trust posting approval commands, covering prepare/list/approve/reject semantics, trust-ledger authorization, maker-checker restrictions, idempotent balanced posting at approval time, no-overdraft recheck behavior, Funds controls cues, safe audit metadata, and the no-settlement/no-bank-feed/no trust-transfer auto-post/no certified-accounting boundary.                                                                                                            |
-| [OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-16.md](OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-16.md)                                                               | Mainline proof       | Proof for the 2026-06-16 16-lane branch-first mainline merge plus later three-lane/eight-lane follow-up merges, 2026-06-17 local worktree retirements, unpublished-delta Docker blockers, and the current all-active-lanes integration branch blocked before push/prune by `pnpm docker:residual-watch` hanging until Ctrl-C exit 130.                                                                                                                                                                    |
+| [OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-16.md](OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-16.md)                                                               | Mainline proof       | Proof for the 2026-06-16 16-lane branch-first mainline merge plus later three-lane/eight-lane follow-up merges, 2026-06-17 local worktree retirements, unpublished-delta Docker blockers, and the 2026-06-18 all-active-lanes Docker gate closeout that cleared Postgres/Mailpit residual candidates before publication.                                                                                                                                                                                  |
 | [OP-T133_WORKER_OWNED_PACKAGE_ASSEMBLY_PROOF_2026-06-16.md](OP-T133_WORKER_OWNED_PACKAGE_ASSEMBLY_PROOF_2026-06-16.md)                                             | Row-local proof note | Done proof for moving embedded intake generated-package assembly to the worker-owned `document_assembly` queue with snapshot reload, redacted lifecycle metadata, compact poll responses, and no docassemble runtime dependency.                                                                                                                                                                                                                                                                          |
 | [OP_MANUAL_PAYMENT_RECONCILIATION_GATE_PROOF_2026-06-16.md](OP_MANUAL_PAYMENT_RECONCILIATION_GATE_PROOF_2026-06-16.md)                                             | Row-local proof note | Done proof for the manual-payment reconciliation gate, covering pending manual-payment evidence, reviewer reconciliation before effective allocations, Billing dashboard cues, audit metadata, and no live settlement, automatic deposit reconciliation, or trust posting.                                                                                                                                                                                                                                |
 | [OP_INTAKE_TEMPLATE_VERSIONS_PROOF_2026-06-16.md](OP_INTAKE_TEMPLATE_VERSIONS_PROOF_2026-06-16.md)                                                                 | Row-local proof note | Proof for mutable staff intake-template drafts, immutable published versions, session-pinned public link behavior, redacted publish audit metadata, migration backfill, and selector-driven validation for the schema/API/domain/docs/policy change set.                                                                                                                                                                                                                                                  |

@@ -390,6 +390,72 @@ Validation results:
 | `pnpm policy:check` | Passed | Secrets, package policy, dead-code, migration, OSS reuse, docs, proof index, Docker ignore, and boundary checks passed. |
 | `git diff --check`  | Passed | No whitespace errors.                                                                                                   |
 
+## All Active Local Lanes Docker Gate Closeout - 2026-06-18
+
+Branch: `merge/open-practice-active-lanes-2026-06-17`
+Worktree: `/Users/bryan/projects/open-practice`
+Integration tip before this closeout: `5363ace1`
+
+Preflight confirmed the integration branch was still clean and fast-forwardable before Docker
+validation/fixes:
+
+- `origin/main` and `git ls-remote --heads origin main` both resolved to
+  `81c3adbec03a79c76ad0b98f5378fccabbc2f8b7`; no force push was needed or attempted.
+- Local `main` remained `5f15fc87cec13b12143a4a5b3dc746b1534f5c9c`.
+- `git branch --no-merged HEAD` returned no branches, and every active sibling worktree status was
+  clean.
+- Stash count was `42`; stashes were not touched.
+
+Docker Engine became available, so the hard gate was rerun instead of publishing the blocked
+integration. The first post-image-build residual watch reported two same-contract review candidates:
+Postgres `postgres-upstream-18-alpine-manifest` drift and Mailpit `v1.30.2`. The closeout fixed those
+owned Docker surfaces only:
+
+- `docker/postgres/Dockerfile` now pins `postgres:18-alpine` at
+  `sha256:1b1689b20d16a014a3d195653381cf2caa75a41a92d93b255a9d6ea29fd353aa`.
+- `docker/mailpit/Dockerfile` now pins Mailpit `v1.30.2` with source archive SHA-256
+  `239f044997dcb6ec27ed1b85b5ca3bba9d5996d66dad67014c3f4aa75549269b`.
+- `docker-compose.yml` now uses `open-practice-mailpit:v1.30.2-go1.26.4`.
+- `scripts/watch-docker-residuals.test.mjs` now reflects the current source tag and image posture.
+
+Closeout validation:
+
+| Command                                           | Result | Notes                                                                                                                             |
+| ------------------------------------------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| `docker info`                                     | Passed | Docker server was available; `ServerVersion` was `29.5.3`.                                                                        |
+| `pnpm verify:select -- --base origin/main`        | Passed | Selected the Docker, docs/policy, package, build, and web/local gates listed above.                                               |
+| `pnpm docker:app-smoke`                           | Passed | Rebuilt refreshed support images; API health was PostgreSQL-backed and the Web root served.                                       |
+| `pnpm docker:residual-watch`                      | Passed | Artifact: `/tmp/codex-security-scans/open-practice/docker-residual-watch/2026-06-18T20-44-47Z`; no blockers or review candidates. |
+| `pnpm e2e:docker`                                 | Passed | After installing the missing local Chromium cache with `pnpm exec playwright install chromium`, rerun passed 3 Playwright tests.  |
+| `pnpm format:check`                               | Passed | Prettier check passed.                                                                                                            |
+| `pnpm docs:check`                                 | Passed | Documentation link validation passed.                                                                                             |
+| `pnpm policy:check`                               | Passed | Secrets, package policy, dead-code, migration, OSS reuse, docs, proof index, Docker ignore, and boundary checks passed.           |
+| `pnpm test`                                       | Passed | Turbo package tests passed; script tests passed 63 tests across 13 suites.                                                        |
+| `pnpm --filter @open-practice/domain test`        | Passed | 31 files and 222 tests passed.                                                                                                    |
+| `pnpm --filter @open-practice/domain typecheck`   | Passed | `tsc -p tsconfig.json --noEmit` passed.                                                                                           |
+| `pnpm --filter @open-practice/domain build`       | Passed | Manual build gate passed.                                                                                                         |
+| `pnpm --filter @open-practice/database test`      | Passed | 22 files and 128 tests passed.                                                                                                    |
+| `pnpm --filter @open-practice/database db:check`  | Passed | Drizzle check passed.                                                                                                             |
+| `pnpm migrations:check`                           | Passed | Migration parity passed: 65 SQL files match 65 journal entries.                                                                   |
+| `pnpm --filter @open-practice/database typecheck` | Passed | `tsc -p tsconfig.json --noEmit` passed.                                                                                           |
+| `pnpm --filter @open-practice/database build`     | Passed | Database package build passed.                                                                                                    |
+| `pnpm --filter @open-practice/api test`           | Passed | 42 files and 558 tests passed.                                                                                                    |
+| `pnpm --filter @open-practice/api typecheck`      | Passed | `tsc -p tsconfig.json --noEmit` passed.                                                                                           |
+| `pnpm --filter @open-practice/providers test`     | Passed | 9 files and 20 tests passed.                                                                                                      |
+| `pnpm --filter @open-practice/worker test`        | Passed | 5 files and 46 tests passed.                                                                                                      |
+| `pnpm --filter @open-practice/worker typecheck`   | Passed | `tsc -p tsconfig.json --noEmit` passed.                                                                                           |
+| `pnpm --filter @open-practice/worker build`       | Passed | Worker build passed.                                                                                                              |
+| `pnpm --filter @open-practice/web test`           | Passed | 37 files and 202 tests passed.                                                                                                    |
+| `pnpm --filter @open-practice/web typecheck`      | Passed | `tsc -p tsconfig.json --noEmit` passed.                                                                                           |
+| `pnpm build`                                      | Passed | Turbo build passed for all six workspaces.                                                                                        |
+| `pnpm ci:local`                                   | Passed | Full local verification gate passed. Logs are under `/tmp/open-practice-closeout-20260618T204924Z`.                               |
+| `git diff --check`                                | Passed | No whitespace errors.                                                                                                             |
+
+This validation commit records green publication readiness only. At this point in the proof, `main`
+has not yet been fast-forwarded, `origin/main` has not yet been pushed, branch/worktree prune has not
+yet run, remote prune has not yet run, and the 42 stashes remain untouched. Final parity and prune
+evidence will be recorded after `main` publication.
+
 ## Unpublished Mainline Delta Revalidation - 2026-06-17
 
 Before any push or release handoff, the current checkout was revalidated at

@@ -1,4 +1,4 @@
-FROM postgres:18-alpine@sha256:96d56f7f57c6aacd1fcb908bc83b345ec5f83231ee486dd66a1baadce274db88 AS upstream
+FROM postgres:18-alpine@sha256:1b1689b20d16a014a3d195653381cf2caa75a41a92d93b255a9d6ea29fd353aa AS upstream
 
 RUN apk add --no-cache "libcurl>=8.19.0-r0" su-exec \
   && rm -f /usr/local/bin/gosu \

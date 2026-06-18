@@ -1,6 +1,6 @@
 # Planning and Progress
 
-**Last Updated:** 2026-06-17
+**Last Updated:** 2026-06-18
 
 Use this file for live tracked work, immediate next moves, and the forward-looking development plan.
 Use `docs/planning.md` for the durable roadmap, `docs/improvement-opportunities.md` for candidate
@@ -10,8 +10,8 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 | Snapshot              | Value                                                                |
 | --------------------- | -------------------------------------------------------------------- |
-| Current focus         | Active-lane integration and Docker-gated validation.                 |
-| Next recommended pick | Finish merge validation before push/prune.                           |
+| Current focus         | Active-lane mainline publication and prune closeout.                 |
+| Next recommended pick | Fast-forward/push `main`, verify parity, then prune merged lanes.    |
 | Ready rows            | 0                                                                    |
 | Candidate rows        | 0                                                                    |
 | In progress rows      | 0                                                                    |
@@ -26,10 +26,10 @@ The 2026-06-17 all-active-lanes integration branch
 `merge/open-practice-active-lanes-2026-06-17` merged the 13 committed dirty lanes plus the clean
 `docs/retire-merged-sibling-worktrees-2026-06-17` branch. The integrated
 `pnpm verify:select -- --base origin/main` selector passed and selected the full package, build,
-policy/docs, and Docker validation set. Docker remains the hard blocker: `pnpm docker:residual-watch`
-printed its startup command, then hung without further output for roughly 3.5 minutes and was
-interrupted with Ctrl-C, exiting 130. No fast-forward to `main`, push, branch/worktree prune, remote
-prune, or stash operation was performed. Proof is recorded in
+policy/docs, and Docker validation set. The 2026-06-18 closeout cleared the Docker hard gate by
+refreshing the same-contract Postgres digest and Mailpit `v1.30.2` source pin, then rerunning
+`pnpm docker:app-smoke`, `pnpm docker:residual-watch`, `pnpm e2e:docker`, selected package gates,
+`pnpm build`, `pnpm ci:local`, and `git diff --check` successfully. Proof is recorded in
 [OP mainline merge push prune proof](validation/OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-16.md).
 
 The 2026-06-17 unpublished local mainline delta revalidation confirmed the committed
@@ -37,10 +37,8 @@ The 2026-06-17 unpublished local mainline delta revalidation confirmed the commi
 delta at `5f15fc87`, then reran `pnpm verify:select -- --files <18 paths>` and the selected checks.
 `pnpm format:check`, `pnpm docs:check`, `pnpm policy:check`, `pnpm test`,
 `pnpm --filter @open-practice/web test`, `pnpm --filter @open-practice/web typecheck`,
-`pnpm build`, and `git diff --check` passed. `pnpm docker:residual-watch`,
-`pnpm docker:app-smoke`, and `pnpm e2e:docker` are blocked by the unavailable Docker daemon/socket;
-residual-watch also surfaced separate Postgres manifest-drift and Mailpit `v1.30.2` review
-candidates. No push or release handoff was performed. Proof is recorded as addenda in
+`pnpm build`, and `git diff --check` passed. That dated Docker daemon/socket blocker is superseded by
+the 2026-06-18 Docker gate closeout above. Proof is recorded as addenda in
 [Docker app-image footprint and Compose hardening proof](validation/OP_DOCKER_APP_IMAGE_FOOTPRINT_COMPOSE_HARDENING_PROOF_2026-06-16.md)
 and
 [OP mainline merge push prune proof](validation/OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-16.md).

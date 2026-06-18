@@ -3,8 +3,8 @@
 Date: 2026-06-16
 Branch: `codex/docker-footprint-hardening`
 Worktree: `/Users/bryan/projects/open-practice-docker-footprint-hardening`
-Status: Final validation recorded; 2026-06-17 follow-ups record blocked local Docker daemon
-evidence and keep the Postgres pin unchanged because Docker Engine/Scout proof is blocked.
+Status: Final validation recorded; 2026-06-18 all-active-lanes closeout cleared the 2026-06-17
+Docker blockers by refreshing the Postgres and Mailpit pins and rerunning Docker/local gates.
 
 ## Scope
 
@@ -280,6 +280,40 @@ Selected validation:
 | `pnpm docs:check`                   | Pass    | Documentation link validation passed.                   |
 | `pnpm policy:check`                 | Pass    | Policy, proof-index, and boundary gates passed.         |
 | `git diff --check`                  | Pass    | No whitespace errors.                                   |
+
+## 2026-06-18 All-Active-Lanes Docker Gate Closeout
+
+Branch: `merge/open-practice-active-lanes-2026-06-17`
+Worktree: `/Users/bryan/projects/open-practice`
+
+This closeout supersedes the 2026-06-17 Docker-blocked publication gate while preserving the dated
+blocker notes above. Docker Engine became available, so the active-lanes integration fixed only the
+same-contract residual candidates surfaced by `pnpm docker:residual-watch`:
+
+- Postgres `postgres:18-alpine` was refreshed from
+  `sha256:96d56f7f57c6aacd1fcb908bc83b345ec5f83231ee486dd66a1baadce274db88` to
+  `sha256:1b1689b20d16a014a3d195653381cf2caa75a41a92d93b255a9d6ea29fd353aa`.
+- Mailpit was refreshed from `v1.30.1` to `v1.30.2` after verifying
+  `refs/tags/v1.30.2` at `fcd4f574ebae2ee856c21ec6bd4182d51cbad35d` and source archive SHA-256
+  `239f044997dcb6ec27ed1b85b5ca3bba9d5996d66dad67014c3f4aa75549269b`.
+- Compose now references `open-practice-mailpit:v1.30.2-go1.26.4`; SMTP port `1025`, web port
+  `8025`, local-only Compose posture, and loopback-bound publication stay unchanged.
+
+Validation evidence:
+
+| Command                                    | Status               | Notes                                                                                                                                  |
+| ------------------------------------------ | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `docker info`                              | Passed               | Docker server was available; `ServerVersion` was `29.5.3`.                                                                             |
+| `pnpm verify:select -- --base origin/main` | Passed               | Selected Docker residual watch, Docker app smoke, Docker E2E, format/docs/policy checks, package tests/typechecks/builds, and build.   |
+| `pnpm docker:app-smoke`                    | Passed               | Rebuilt the refreshed Postgres/Mailpit images and confirmed PostgreSQL-backed API health plus the Web root.                            |
+| `pnpm docker:residual-watch`               | Passed               | Artifact: `/tmp/codex-security-scans/open-practice/docker-residual-watch/2026-06-18T20-44-47Z`; no blockers or review candidates.      |
+| `pnpm e2e:docker`                          | Passed after install | First run reached Playwright but lacked the local Chromium cache; after `pnpm exec playwright install chromium`, rerun passed 3 tests. |
+| `pnpm ci:local`                            | Passed               | Final local gate passed as part of the active-lanes closeout runner.                                                                   |
+| `git diff --check`                         | Passed               | No whitespace errors.                                                                                                                  |
+
+No API, schema, route, UI, worker, domain, database, provider, copied excerpt, vendored asset,
+client data, matter data, credential, payment, production Compose profile, or private deployment
+detail changed in this Docker closeout.
 
 ## Production Boundary
 

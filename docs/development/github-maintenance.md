@@ -88,12 +88,12 @@ the 2026-05-12 / 2026-05-16 / 2026-06-04 infra-image follow-ups:
   `/data` volume contract. The 2026-06-05 local Scout scan reports `11C`/`16H`, with the Alpine base
   current and the remaining findings in MinIO/application Go modules; no same-contract base-image
   recommendation clears those residuals.
-- The local Mailpit service now builds `open-practice-mailpit:v1.30.1-go1.26.4` from the checked
-  v1.30.1 source archive on a fixed Go toolchain while preserving SMTP port `1025` and web port
-  `8025`. The runtime now starts as a non-root user. The builder is now pinned to
-  `golang:1.26.4-alpine3.23` by digest. The 2026-06-05 local Scout scan reports `0C`/`1H`, with the
-  single residual high in `github.com/gomarkdown/markdown` marked not fixed and the Alpine base
-  current.
+- The local Mailpit service now builds `open-practice-mailpit:v1.30.2-go1.26.4` from the checked
+  v1.30.2 source archive on a fixed Go toolchain while preserving SMTP port `1025` and web port
+  `8025`. The runtime starts as a non-root user. The builder is pinned to
+  `golang:1.26.4-alpine3.23` by digest, and the source archive SHA-256 is recorded in
+  `docker/mailpit/Dockerfile`. The 2026-06-18 residual-watch closeout verified this newer source tag
+  before Docker app smoke and Docker E2E validation.
 - The 2026-06-05 all-image follow-up artifact is local-only at
   `/tmp/codex-security-scans/open-practice/0484630_20260605T221819Z_docker_followup/summary.md`.
   It records the Compose image inventory, the all-image Scout matrix, and the rationale for closing

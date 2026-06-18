@@ -30,7 +30,7 @@ services:
     build:
       context: ./docker/minio
   mailpit:
-    image: open-practice-mailpit:v1.30.1-go1.26.4
+    image: open-practice-mailpit:v1.30.2-go1.26.4
     build:
       context: ./docker/mailpit
 `;
@@ -53,8 +53,8 @@ FROM alpine:3.23.4@sha256:runtime
 
 const mailpitDockerfileFixture = `
 FROM golang:1.26.4-alpine3.23@sha256:builder AS builder
-ARG MAILPIT_VERSION=v1.30.1
-ARG MAILPIT_SHA256=bda226e88f828215fc3646258494e71ebfaf82074970ea28a319c91a64c068d2
+ARG MAILPIT_VERSION=v1.30.2
+ARG MAILPIT_SHA256=239f044997dcb6ec27ed1b85b5ca3bba9d5996d66dad67014c3f4aa75549269b
 FROM alpine:3.23.4@sha256:runtime
 `;
 
@@ -79,7 +79,7 @@ function fakeSuccessfulSpawn(command, args) {
         status: 0,
         stdout: isMinio
           ? "9e49 refs/tags/RELEASE.2025-10-15T17-29-55Z\n"
-          : "bda226 refs/tags/v1.30.1\n",
+          : "239f04 refs/tags/v1.30.2\n",
         stderr: "",
       };
     }
@@ -133,7 +133,7 @@ describe("watch-docker-residuals contract", () => {
     assert.deepEqual(parseComposeServiceImages(composeFixture), {
       postgres: "open-practice-postgres:18-alpine-su-exec",
       minio: "open-practice-minio:RELEASE.2025-10-15T17-29-55Z-go1.26.4",
-      mailpit: "open-practice-mailpit:v1.30.1-go1.26.4",
+      mailpit: "open-practice-mailpit:v1.30.2-go1.26.4",
     });
     assert.deepEqual(parseDockerfilePosture("postgres", postgresDockerfileFixture), {
       upstreamImage: `postgres:18-alpine@${postgresDigest}`,
@@ -146,7 +146,7 @@ describe("watch-docker-residuals contract", () => {
       parseDockerfilePosture("minio", minioDockerfileFixture).version,
       "RELEASE.2025-10-15T17-29-55Z",
     );
-    assert.equal(parseDockerfilePosture("mailpit", mailpitDockerfileFixture).version, "v1.30.1");
+    assert.equal(parseDockerfilePosture("mailpit", mailpitDockerfileFixture).version, "v1.30.2");
   });
 
   it("derives the residual watch command lane from the current posture", () => {
