@@ -13,6 +13,7 @@ import type {
   LedgerAccount,
   LedgerAccountingReviewProfileRecord,
   LedgerAccountingReviewSummary,
+  LedgerBalanceSnapshotComparison,
   LedgerBankFeedReconciliationReviewSummary,
   LedgerEntry,
   LedgerPostingRequestRecord,
@@ -138,6 +139,7 @@ export interface TrustControlsDashboardResponse {
   postingRequests: LedgerPostingRequestRecord[];
   postingRequestSummary: LedgerPostingRequestReviewSummary;
   reconciliations: LedgerReconciliationRecord[];
+  balanceSnapshotComparison: LedgerBalanceSnapshotComparison;
   reconciliationFreshness?: LedgerReconciliationFreshnessReview;
   accountingReview: {
     importBatches: LedgerStatementImportBatchRecord[];

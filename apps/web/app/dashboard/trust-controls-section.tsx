@@ -44,6 +44,21 @@ const financialCommandFamilyLabels: Record<FinancialCommandJournalFamily, string
   reconciliation: "Reconciliation",
 };
 
+const balanceSnapshotReviewLabels: Record<
+  TrustControlsDashboardResponse["balanceSnapshotComparison"]["reviewReasons"][number],
+  string
+> = {
+  no_trust_balances: "No trust balances",
+  overdrawn_trust_balance: "Overdrawn trust balance",
+  no_posted_transaction: "No posted transaction",
+  no_reconciliation_preview_metadata: "No preview metadata",
+  no_reconciliation_snapshot: "No reconciliation snapshot",
+  posting_newer_than_preview: "Posting newer than preview",
+  posting_newer_than_reconciliation: "Posting newer than reconciliation",
+  reconciliation_variance: "Reconciliation variance",
+  unmatched_statement_rows: "Unmatched statement rows",
+};
+
 function financialCommandDecisionIsRisk(decision: string): boolean {
   return ["exception", "needs_follow_up", "rejected"].includes(decision);
 }
@@ -125,6 +140,7 @@ export function TrustControlsSection({
   const accountingSummary = accountingReview.summary;
   const bankFeedReviewSummary = accountingReview.bankFeedReviewSummary;
   const bankFeedImportBatches = accountingReview.importBatches;
+  const balanceSnapshotComparison = activeTrustControls.balanceSnapshotComparison;
   const reconciliationFreshness = activeTrustControls.reconciliationFreshness ?? {
     generatedAt: "",
     freshWithinDays: 30,
@@ -244,6 +260,110 @@ export function TrustControlsSection({
           <ShieldCheck size={18} />
           <strong>{accountingSummary.protectedAccountCount} protected cues</strong>
           <span>{accountingSummary.bankFeedShellCount} bank-feed shells</span>
+        </div>
+      </div>
+
+      <div className="section-title">
+        <h3>Balance snapshot comparison</h3>
+        <span>{balanceSnapshotComparison.reviewReasons.length} review cues · no posting</span>
+      </div>
+      <div className="activity-grid two-column">
+        <div className="activity-card">
+          <Banknote size={18} />
+          <strong>
+            {formatCurrency(balanceSnapshotComparison.currentTrustBalance.totalCents)}
+          </strong>
+          <span>
+            {balanceSnapshotComparison.currentTrustBalance.balanceCount} balances ·{" "}
+            {balanceSnapshotComparison.currentTrustBalance.overdrawnBalanceCount} overdrawn
+          </span>
+        </div>
+        <div className="activity-card">
+          <Clock3 size={18} />
+          <strong>
+            {balanceSnapshotComparison.latestPostedTransaction?.transactionId ??
+              "No posted transaction"}
+          </strong>
+          <span>
+            {balanceSnapshotComparison.latestPostedTransaction
+              ? `${compactDate(
+                  balanceSnapshotComparison.latestPostedTransaction.postedAt,
+                )} · ${balanceSnapshotComparison.latestPostedTransaction.entryCount} entries`
+              : "review-only ledger posture"}
+          </span>
+        </div>
+        <div className="activity-card">
+          <FileText size={18} />
+          <strong>
+            {balanceSnapshotComparison.latestReconciliationPreview?.accountName ??
+              "No preview metadata"}
+          </strong>
+          <span>
+            {balanceSnapshotComparison.latestReconciliationPreview
+              ? `${balanceSnapshotComparison.latestReconciliationPreview.status.replaceAll(
+                  "_",
+                  " ",
+                )} · ${
+                  balanceSnapshotComparison.latestReconciliationPreview.importedStatementRowCount
+                } rows`
+              : "metadata only · no statement rows"}
+          </span>
+        </div>
+        <div className="activity-card">
+          <AlertTriangle size={18} />
+          <strong>
+            {balanceSnapshotComparison.latestReconciliationSnapshot
+              ? formatCurrency(balanceSnapshotComparison.latestReconciliationSnapshot.varianceCents)
+              : "No snapshot"}
+          </strong>
+          <span>
+            {balanceSnapshotComparison.latestReconciliationSnapshot
+              ? `${balanceSnapshotComparison.latestReconciliationSnapshot.status.replaceAll(
+                  "_",
+                  " ",
+                )} · ${
+                  balanceSnapshotComparison.latestReconciliationSnapshot.unmatchedStatementRowCount
+                } unmatched`
+              : "latest reconciliation unavailable"}
+          </span>
+        </div>
+      </div>
+      <div className="party-list">
+        {balanceSnapshotComparison.reviewReasons.slice(0, 5).map((reason) => (
+          <div className="party-row" key={reason}>
+            <span>
+              <strong>{balanceSnapshotReviewLabels[reason]}</strong>
+              <small>
+                Generated {compactDate(balanceSnapshotComparison.generatedAt)} · review only
+              </small>
+            </span>
+            <em
+              className={
+                reason === "overdrawn_trust_balance" ||
+                reason === "reconciliation_variance" ||
+                reason === "unmatched_statement_rows"
+                  ? "risk"
+                  : undefined
+              }
+            >
+              review
+            </em>
+          </div>
+        ))}
+        {balanceSnapshotComparison.reviewReasons.length === 0 ? (
+          <p className="inline-empty">
+            No balance snapshot review cues are present in the current controls payload.
+          </p>
+        ) : null}
+        <div className="party-row">
+          <span>
+            <strong>Comparison boundary</strong>
+            <small>
+              {balanceSnapshotComparison.policy.previewStoragePosture.replaceAll("_", " ")}
+            </small>
+            <small>No auto-match · no ledger posting · no settlement</small>
+          </span>
+          <em>review only</em>
         </div>
       </div>
 

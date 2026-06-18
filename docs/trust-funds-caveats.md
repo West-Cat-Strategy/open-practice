@@ -34,6 +34,10 @@ trust accounting software, accounting software, or tax-advice tooling.
   and exceptions only; they do not store statement rows, connect providers, auto-match
   transactions, post ledgers, reconcile accounts automatically, authorize disbursements, or certify
   accounting conclusions.
+- Ledger balance snapshot comparisons are read-only reviewer cues derived from existing trust
+  balances, latest posted transaction posture, statement import batch metadata, and reconciliation
+  snapshots. They do not persist preview rows, create reconciliation records, post ledger entries,
+  run matching, settle funds, connect feeds, or certify accounting conclusions.
 - Reconciliation exception resolution records can store staff notes and variance decisions for
   unmatched statement-preview rows. They are review notes only: they do not mutate posted ledger
   entries, create reconciliation records, move funds, or certify accounting conclusions.

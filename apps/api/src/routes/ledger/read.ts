@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import {
+  buildLedgerBalanceSnapshotComparison,
   ledgerAccountingReviewSummary,
   ledgerBankFeedReconciliationReviewSummary,
   buildFinancialCommandJournal,
@@ -85,6 +86,12 @@ export function registerLedgerReadRoutes(
       postingRequests,
       postingRequestSummary: ledgerPostingRequestReviewSummary(postingRequests),
       reconciliations,
+      balanceSnapshotComparison: buildLedgerBalanceSnapshotComparison({
+        ledger,
+        importBatches,
+        reconciliations,
+        generatedAt,
+      }),
       reconciliationFreshness: ledgerReconciliationFreshnessReview({
         accounts: hasFirmWideAccess ? ledger.accounts : [],
         reconciliations: hasFirmWideAccess ? reconciliations : [],

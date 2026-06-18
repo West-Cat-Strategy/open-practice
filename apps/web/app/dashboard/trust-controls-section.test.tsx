@@ -213,6 +213,64 @@ function buildSyntheticControls(): TrustControlsDashboardResponse {
     },
     reviewOnly: true,
   };
+  controls.balanceSnapshotComparison = {
+    generatedAt: "2026-08-15T00:00:00.000Z",
+    reviewOnly: true,
+    currentTrustBalance: {
+      totalCents: 12500,
+      balanceCount: 1,
+      overdrawnBalanceCount: 1,
+    },
+    latestPostedTransaction: {
+      transactionId: "trust_txn_synthetic",
+      postedAt: "2026-06-06T00:00:00.000Z",
+      entryCount: 1,
+      matterCount: 1,
+      clientCount: 1,
+      accountCount: 1,
+      trustAssetDeltaCents: 12500,
+      clientLiabilityDeltaCents: 0,
+      reversal: false,
+    },
+    latestReconciliationPreview: {
+      importBatchId: "import_batch_synthetic",
+      accountId: "trust_account_synthetic",
+      accountName: "Synthetic Trust Account",
+      status: "review_ready",
+      createdAt: "2026-06-06T00:00:00.000Z",
+      importedStatementRowCount: 2,
+      duplicateStatementRowCount: 1,
+      matchingProfilePresent: true,
+      sourceLabelPresent: true,
+      storagePosture: "metadata_only_no_statement_rows",
+    },
+    latestReconciliationSnapshot: {
+      reconciliationId: "reconciliation_synthetic",
+      accountId: "trust_account_synthetic",
+      accountName: "Synthetic Trust Account",
+      status: "exception",
+      statementPeriodEnd: "2026-06-30T00:00:00.000Z",
+      expectedBalanceCents: 12500,
+      actualBalanceCents: 12400,
+      varianceCents: -100,
+      unmatchedStatementRowCount: 1,
+    },
+    reviewReasons: [
+      "overdrawn_trust_balance",
+      "reconciliation_variance",
+      "unmatched_statement_rows",
+    ],
+    policy: {
+      source: "ledger_snapshot_and_reconciliation_metadata",
+      previewStoragePosture: "latest_import_batch_metadata_only_no_statement_rows",
+      automaticMatching: false,
+      automaticLedgerPosting: false,
+      automaticReconciliation: false,
+      settlementAutomation: false,
+      liveBankFeedConnection: false,
+      jurisdictionCertifiedAccounting: false,
+    },
+  };
   controls.accountingReview.matchRuleProfiles = [
     {
       id: "match_profile_synthetic",
@@ -447,6 +505,11 @@ describe("TrustControlsSection", () => {
     expect(html).toContain("Matter trust balance");
     expect(html).toContain("Trust controls workbench");
     expect(html).toContain("Trust controls loaded.");
+    expect(html).toContain("Balance snapshot comparison");
+    expect(html).toContain("3 review cues · no posting");
+    expect(html).toContain("Overdrawn trust balance");
+    expect(html).toContain("latest import batch metadata only no statement rows");
+    expect(html).toContain("Comparison boundary");
     expect(html).toContain("Financial command journal");
     expect(html).toContain("4 decisions · audit chain valid");
     expect(html).toContain("Trust transaction · approval_synthetic");
@@ -515,6 +578,8 @@ describe("TrustControlsSection", () => {
     expect(html).toContain("No accounting review profiles are recorded");
     expect(html).toContain("No bank-feed import batch metadata is recorded");
     expect(html).toContain("No prepared posting requests are present");
+    expect(html).toContain("No trust balances");
+    expect(html).toContain("No preview metadata");
     expect(html).toContain(
       "No stale, unreconciled, or exception freshness rows are present in the current controls payload.",
     );

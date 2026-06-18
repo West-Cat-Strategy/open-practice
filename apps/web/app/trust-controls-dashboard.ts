@@ -94,6 +94,31 @@ export function emptyTrustControlsDashboard(): TrustControlsDashboardResponse {
       totalCount: 0,
     },
     reconciliations: [],
+    balanceSnapshotComparison: {
+      generatedAt: new Date(0).toISOString(),
+      reviewOnly: true,
+      currentTrustBalance: {
+        totalCents: 0,
+        balanceCount: 0,
+        overdrawnBalanceCount: 0,
+      },
+      reviewReasons: [
+        "no_trust_balances",
+        "no_posted_transaction",
+        "no_reconciliation_preview_metadata",
+        "no_reconciliation_snapshot",
+      ],
+      policy: {
+        source: "ledger_snapshot_and_reconciliation_metadata",
+        previewStoragePosture: "latest_import_batch_metadata_only_no_statement_rows",
+        automaticMatching: false,
+        automaticLedgerPosting: false,
+        automaticReconciliation: false,
+        settlementAutomation: false,
+        liveBankFeedConnection: false,
+        jurisdictionCertifiedAccounting: false,
+      },
+    },
     reconciliationFreshness: {
       generatedAt: new Date(0).toISOString(),
       freshWithinDays: 30,
