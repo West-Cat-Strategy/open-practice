@@ -732,6 +732,8 @@ describe("ledger routes", () => {
         jobId: exportRequest.jobId,
       }),
     ]);
+    expect(JSON.stringify(queuedReports)).toContain("jurisdictional_trust_summary_json");
+    expect(JSON.stringify(queuedReports)).not.toContain("fieldKeys");
     expect(JSON.stringify(queuedReports)).not.toContain("synthetic-april-trust.pdf");
 
     const [job] = await repository.listJobLifecycleRecords("firm-west-legal", {
@@ -745,6 +747,7 @@ describe("ledger routes", () => {
       metadata: {
         reportType: "jurisdictional_trust",
         reportScope: "firm",
+        fieldProfileId: "jurisdictional_trust_summary_json",
         jurisdiction: "BC",
         requestedByUserId: "user-admin",
         enqueueStatus: "queued_for_local_report_worker",
@@ -767,6 +770,7 @@ describe("ledger routes", () => {
       metadata: {
         reportType: "jurisdictional_trust",
         reportScope: "firm",
+        fieldProfileId: "jurisdictional_trust_summary_json",
         jurisdiction: "BC",
         requestedByUserId: "user-admin",
         summaryCount: 1,
@@ -790,6 +794,13 @@ describe("ledger routes", () => {
     expect(downloaded.json()).toMatchObject({
       exportRequest: { jobId: exportRequest.jobId, status: "completed" },
       export: {
+        fieldProfile: expect.objectContaining({
+          id: "jurisdictional_trust_summary_json",
+          format: "json",
+          source: "generated_local_projection",
+          manualDownloadOnly: true,
+          storesRawExportBody: false,
+        }),
         compliancePosture: "operational_controls_only_not_jurisdiction_certified",
         summaries: [
           expect.objectContaining({
@@ -799,12 +810,29 @@ describe("ledger routes", () => {
         ],
       },
     });
+    const downloadedPayload = downloaded.json();
+    expect(downloadedPayload.export.fieldProfile.fieldKeys).toEqual(
+      expect.arrayContaining(["summaries.trustBalanceCents", "summaries.totalVarianceCents"]),
+    );
+    const forbiddenFieldKeys = new Set([
+      "rawBody",
+      "rawExportBody",
+      "storageKey",
+      "objectKey",
+      "evidence",
+    ]);
+    expect(
+      downloadedPayload.export.fieldProfile.fieldKeys.some((key: string) =>
+        forbiddenFieldKeys.has(key.split(".").at(-1) ?? key),
+      ),
+    ).toBe(false);
 
     const serializedAuditAndJobs = JSON.stringify({
       audit: await repository.listAuditEvents("firm-west-legal"),
       jobs: await repository.listJobLifecycleRecords("firm-west-legal"),
     });
     expect(serializedAuditAndJobs).not.toContain("synthetic-april-trust.pdf");
+    expect(serializedAuditAndJobs).not.toContain("fieldKeys");
   });
 
   it("denies jurisdictional trust reports to matter-scoped users", async () => {

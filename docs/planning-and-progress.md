@@ -62,6 +62,15 @@ invoice, and write-off rules. Category deactivation prevents future selection on
 recalculate invoices, apply payments, settle funds, or post trust entries. Proof is recorded in
 [firm-managed expense category registry proof](validation/OP_EXPENSE_CATEGORY_REGISTRY_PROOF_2026-06-17.md).
 
+The 2026-06-17 financial export field-profile branch adds the smallest OP-authored metadata layer
+for existing async billing and jurisdictional trust downloads. Download responses now include
+`billing_operational_records_json` or `jurisdictional_trust_summary_json` field profiles with
+allowlisted generated-projection keys, while queue/job/audit metadata stores only profile IDs and
+bounded status/count fields. The slice keeps existing export serialization, regenerated-download
+behavior, no retained export body, no live settlement, no automatic trust posting, and no
+provider/object-storage side effects. Proof is recorded in
+[financial export field profiles proof](validation/OP_FINANCIAL_EXPORT_FIELD_PROFILES_PROOF_2026-06-17.md).
+
 The 2026-06-17 parked worktree reconciliation confirmed that
 `/Users/bryan/projects/open-practice-meeting-availability` and
 `/Users/bryan/projects/open-practice-contact-history-export-scope` were fully absorbed by current

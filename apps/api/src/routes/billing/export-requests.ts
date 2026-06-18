@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
-import type { JobLifecycleRecord } from "@open-practice/domain";
+import { financialExportFieldProfiles, type JobLifecycleRecord } from "@open-practice/domain";
 import { hasFirmWideLedgerAccess, requireAccess } from "../../http/auth-guards.js";
 import { ApiHttpError } from "../../http/response.js";
 import { parseRequestPart } from "../../http/validation.js";
@@ -18,6 +18,8 @@ const billingExportRequestBodySchema = z
 const billingExportParamsSchema = z.object({
   exportJobId: z.string().min(1),
 });
+
+const billingExportFieldProfile = financialExportFieldProfiles.billingOperationalRecordsJson;
 
 function compactMetadata(metadata: Record<string, unknown>): Record<string, unknown> {
   return Object.fromEntries(Object.entries(metadata).filter(([, value]) => value !== undefined));
@@ -95,6 +97,7 @@ async function serializeBillingExport(
     generatedAt: new Date().toISOString(),
     reportType: "billing",
     reportScope: scope,
+    fieldProfile: billingExportFieldProfile,
     matterId,
     billingPosture: "operational_records_only_no_live_payment_processing_or_tax_advice",
     trustTransferPolicy: "review_only_no_automatic_trust_ledger_posting",
@@ -127,6 +130,7 @@ function createBillingExportRouteHandlers({
       const metadata = compactMetadata({
         reportType: "billing",
         reportScope: scope,
+        fieldProfileId: billingExportFieldProfile.id,
         matterId: body.matterId,
         requestedByUserId: request.auth.user.id,
         enqueueStatus: queueConfigured ? "queued_for_local_report_worker" : "completed_inline",
@@ -161,6 +165,7 @@ function createBillingExportRouteHandlers({
               metadata: compactMetadata({
                 reportType: "billing",
                 reportScope: scope,
+                fieldProfileId: billingExportFieldProfile.id,
                 matterId: body.matterId,
                 requestedByUserId: request.auth.user.id,
               }),
@@ -185,6 +190,7 @@ function createBillingExportRouteHandlers({
           jobId: job.id,
           reportType: "billing",
           reportScope: scope,
+          fieldProfileId: billingExportFieldProfile.id,
           matterId: body.matterId,
           idempotencyKeyPresent: Boolean(body.idempotencyKey),
           enqueueStatus: queueConfigured ? "queued_for_local_report_worker" : "completed_inline",

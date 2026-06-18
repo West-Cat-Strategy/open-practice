@@ -2,6 +2,7 @@ import type { OpenPracticeRepository } from "@open-practice/database";
 import {
   buildStaffReportProjection,
   canAccess,
+  financialExportFieldProfiles,
   getStaffSavedReportDefinition,
   isStaffReportDefinitionKey,
   isStaffReportExportProfileId,
@@ -103,6 +104,7 @@ export async function processReportJob(input: {
         resourceId: data.resourceId,
         reportType: "billing",
         reportScope: matterId ? "matter" : "firm",
+        fieldProfileId: financialExportFieldProfiles.billingOperationalRecordsJson.id,
         matterId,
         recordCount,
         timeEntryCount: timeEntries.length,
@@ -128,6 +130,7 @@ export async function processReportJob(input: {
         resourceId: data.resourceId,
         reportType: "jurisdictional_trust",
         reportScope: "firm",
+        fieldProfileId: financialExportFieldProfiles.jurisdictionalTrustSummaryJson.id,
         jurisdiction,
         generatedAt: new Date().toISOString(),
       }),
