@@ -3,8 +3,8 @@
 Date: 2026-06-16
 Branch: `codex/docker-footprint-hardening`
 Worktree: `/Users/bryan/projects/open-practice-docker-footprint-hardening`
-Status: Final validation recorded; `pnpm docker:residual-watch` needs review for upstream Postgres
-registry-manifest drift only.
+Status: Final validation recorded; 2026-06-17 follow-ups record blocked local Docker daemon
+evidence and keep the Postgres pin unchanged because Docker Engine/Scout proof is blocked.
 
 ## Scope
 
@@ -213,6 +213,73 @@ The residual-watch artifact status is `blocked`. It also surfaced two review can
 remain separate from this validation-only pass: `postgres-upstream-18-alpine-manifest`
 registry-manifest drift and a newer Mailpit source tag, `v1.30.2`. Because Docker app smoke and
 Docker E2E could not run against a working Docker daemon, this rerun is not release-handoff-ready.
+
+## 2026-06-17 Postgres Manifest-Drift Follow-Up
+
+Branch: `codex/docker-residual-postgres-drift-2026-06-17`
+Worktree: `/Users/bryan/projects/open-practice-docker-residual-postgres-drift`
+
+The root checkout became occupied by unrelated dirty work during the first residual-watch attempt, so
+this follow-up continued in the clean sibling worktree above. No Dockerfile, Compose, dependency, or
+runtime image change is made in this branch. Compose remains local-development-only and loopback
+bound.
+
+Final path set:
+
+```text
+docs/validation/OP_DOCKER_APP_IMAGE_FOOTPRINT_COMPOSE_HARDENING_PROOF_2026-06-16.md
+docs/validation/README.md
+```
+
+Branch-local residual-watch command:
+
+```bash
+pnpm docker:residual-watch
+```
+
+Artifact:
+
+```text
+/tmp/codex-security-scans/open-practice/docker-residual-watch/2026-06-17T22-46-09Z
+```
+
+The clean branch-local artifact reports:
+
+- Status: `blocked`
+- Postgres candidate: `postgres-upstream-18-alpine-manifest`
+- Kind: `registry-manifest-drift`
+- Current digest: `sha256:96d56f7f57c6aacd1fcb908bc83b345ec5f83231ee486dd66a1baadce274db88`
+- Observed digest: `sha256:d3e64d36360a9f40c30fbbc5dd2dde799fe35f8537500c8b067551a6497f50f4`
+- Docker blocker: `docker-version` cannot connect to
+  `unix:///Users/bryan/.docker/run/docker.sock`
+- Scout blockers: Postgres, MinIO, and Mailpit quickview, critical/high CVE, and recommendation
+  checks all failed because Docker Engine is unavailable
+- Additional out-of-scope candidate: `mailpit-source-tags` reports `v1.30.2` newer than current
+  `v1.30.1`
+
+Decision: no same-contract Postgres pin update is safe in this follow-up. The registry manifest
+probe still observes the Postgres 18.4 Alpine manifest drift, but Docker Engine and Scout are needed
+to compare the wrapped local image's critical/high posture, recommendations, and runtime proof
+before updating the pinned upstream digest. The existing
+`open-practice-postgres:18-alpine-su-exec` wrapper, `su-exec` replacement, `libcurl>=8.19.0-r0`,
+Postgres 18 contract, health check behavior, and Compose image name remain unchanged.
+
+Follow-up selector:
+
+```bash
+pnpm verify:select -- --files docs/validation/OP_DOCKER_APP_IMAGE_FOOTPRINT_COMPOSE_HARDENING_PROOF_2026-06-16.md docs/validation/README.md
+```
+
+Selected validation:
+
+| Command                             | Status  | Notes                                                   |
+| ----------------------------------- | ------- | ------------------------------------------------------- |
+| `pnpm docker:residual-watch`        | Blocked | Artifact path and blocker details are recorded above.   |
+| `pnpm verify:select -- --files ...` | Pass    | Recommended format, docs, and policy checks.            |
+| `pnpm format:check`                 | Pass    | Passed after formatting the two touched Markdown files. |
+| `pnpm docs:check`                   | Pass    | Documentation link validation passed.                   |
+| `pnpm policy:check`                 | Pass    | Policy, proof-index, and boundary gates passed.         |
+| `git diff --check`                  | Pass    | No whitespace errors.                                   |
 
 ## Production Boundary
 
