@@ -108,8 +108,10 @@ surface.
     snippets without a reuse decision.
 
 - **Private document conversion and annotation research spike**
-  - **Status:** Metadata-only conversion review shipped on 2026-06-16; keep future work focused on
-    provider-backed conversion or annotation only after a separate reviewed design.
+  - **Status:** Metadata-only conversion review shipped on 2026-06-16; the 2026-06-17
+    provider-backed boundary proof records the reviewed design guardrails for future conversion,
+    annotation, chunking, embedding, and semantic-review slices. Runtime expansion remains a
+    separate future implementation.
   - **Shipped boundary:** Open Practice now queues `document_conversion_review` jobs after verified
     upload, safe scan posture, and completed OCR extraction, then surfaces posture in Documents and
     Research through `document_analysis_status` artifacts. Retained state is limited to OP-authored
@@ -119,7 +121,8 @@ surface.
     generated summaries, and private excerpts must not enter job metadata, audit metadata, API
     posture, artifacts, or proof notes.
   - **Remaining boundary:** Provider-backed conversion, annotation bodies, chunk storage,
-    embeddings, and external semantic-review providers remain out of scope.
+    embeddings, and external semantic-review providers remain out of scope until a later runtime
+    slice proves the same metadata-only, review-only, no-raw-text/no-provider-payload boundary.
   - **References:** `unstructured-io__unstructured`, `microsoft__markitdown`,
     `getomni-ai__zerox`, `open-source-legal__opencontracts`, `paperless-ngx__paperless-ngx`, and
     `papermerge__papermerge-core`.

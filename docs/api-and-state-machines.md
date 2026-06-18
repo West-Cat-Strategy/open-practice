@@ -1125,6 +1125,18 @@ job endpoints are separate from document-processing classification: `ai_triage` 
 configured for `draft_assist_suggestion` when the async assist queue is injected, while
 classification remains reserved/deferred. Job metadata must not carry email bodies, portal tokens,
 generated content, storage keys, raw evidence, source text, or private secrets.
+Any future provider-backed document conversion, annotation, chunking, embedding, or semantic-review
+slice must start with a reviewed local/private-processing design before it becomes actionable.
+Provider-specific execution belongs in worker/provider boundaries after matter-scoped authorization,
+verified upload, safe scan posture, and the required license/reuse decision. Durable job lifecycle
+metadata, audit metadata, API posture, legal-research artifacts, and proof notes may retain only
+IDs, counts, length bands, status/posture labels, policy flags, provider kind/status, idempotency-key
+presence, and reviewer state. They must not store or expose raw client text, raw OCR text, converted
+Markdown, annotation bodies or spans, chunks, embedding vectors, prompts, storage keys, object
+bodies, provider payloads, private excerpts, or free-form generated summaries. Semantic-review
+outputs remain reviewer-only and non-mutating until a later runtime slice explicitly proves the same
+boundary; they must not automatically change document classification, drafts, matters, messages,
+tasks, calendar items, ledger records, or portal access.
 The workbench also returns reviewer-only `reviewSuggestions` per visible document. These suggestions
 are non-mutating cues for classification review, duplicate/supersession checks, matter/contact
 context, missing metadata, and retention review based on legal hold, supersession, upload,

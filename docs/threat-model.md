@@ -17,9 +17,10 @@
 - Overbroad portal grants exposing privileged documents.
 - Tampered audit logs or trust ledger records.
 - Uploaded malware or unsafe document previews.
-- Derived-document leakage through raw converted Markdown, raw annotations, sensitive chunks,
-  embeddings, provider payloads, prompts, object-storage keys, or private excerpts in job metadata,
-  audit metadata, API posture, or validation proof.
+- Derived-document leakage through raw client text, raw OCR text, converted Markdown, annotation
+  bodies/spans, sensitive chunks, embeddings, semantic-review outputs, provider payloads, prompts,
+  object-storage keys, object bodies, free-form generated summaries, or private excerpts in job
+  metadata, audit metadata, API posture, artifacts, or validation proof.
 - Forged upload-completion claims, checksum mismatches, or scan-state bypasses.
 - Spoofed, duplicated, or out-of-order embedded signature/provider events.
 - Overexposed intake answers or generated documents.
@@ -33,8 +34,10 @@
 - Signed URLs with short expiry and scan-gated sharing.
 - Upload-complete records that preserve checksum and scan status before share decisions.
 - Local-only document-processing boundaries that retain only OP-authored redacted summaries,
-  counts, statuses, and posture metadata until a separately reviewed conversion or annotation
-  prototype proves the same no-raw-text/no-provider-payload posture.
+  counts, length bands, statuses, policy flags, provider kind/status, idempotency-key presence,
+  reviewer state, and posture metadata until a separately reviewed provider-backed conversion,
+  annotation, chunking, embedding, or semantic-review slice proves the same no-raw-text/
+  no-provider-payload posture.
 - Hash-chained domain audit events.
 - Balanced double-entry ledger posting and idempotency keys.
 - Provider-agnostic e-sign evidence stored in core records.

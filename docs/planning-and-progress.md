@@ -126,6 +126,17 @@ posting entries, matching transactions, settling funds, connecting feeds, or cla
 accounting. Proof is recorded in
 [Ledger balance snapshot comparison proof](validation/OP_LEDGER_BALANCE_SNAPSHOT_COMPARISON_PROOF_2026-06-17.md).
 
+The 2026-06-17 provider-backed document conversion boundary proof is docs-only and records the
+reviewed design guardrails for future conversion, annotation, chunking, embedding, and semantic
+review before any runtime expansion. The current shipped behavior remains the local-only
+metadata-only `document_conversion_review` path. Provider-backed conversion, annotation bodies,
+chunk storage, embeddings, retained Markdown extraction, external semantic-review providers,
+runtime dependencies, object-storage writes, queues, routes, schemas, and dashboard behavior remain
+deferred. Future slices must preserve matter-scoped authorization, verified upload, safe scan
+posture, license/reuse review, and metadata-only job/audit/API/artifact/proof boundaries. Proof is
+recorded in
+[provider-backed document conversion boundary proof](validation/OP_PROVIDER_DOCUMENT_CONVERSION_BOUNDARY_PROOF_2026-06-17.md).
+
 The 2026-06-16 private document conversion and annotation boundary proof remains the historical
 docs-first policy record. The current local-only follow-up now adds metadata-only
 `document_conversion_review` jobs after verified upload, safe scan posture, and completed OCR
