@@ -21,6 +21,23 @@ import type {
 const IMAP_RAW_MIME_SOURCE = "imap.mailbox_poll";
 const INBOUND_EMAIL_JOB_MAX_ATTEMPTS = 4;
 const IMAP_POLL_MAX_MESSAGES = 25;
+const INBOUND_EMAIL_PARSER_RECOVERY_METADATA = {
+  recoveryPosture: "owner_reviewed_raw_object_replay",
+  ownerReviewRequired: true,
+  rawObjectRecoverable: true,
+  providerPayloadStored: false,
+  automaticDocumentPromotion: false,
+  automaticMatterCreation: false,
+} as const;
+const INBOUND_EMAIL_POLL_RECOVERY_METADATA = {
+  recoveryPosture: "owner_reviewed_provider_poll",
+  ownerReviewRequired: true,
+  rawObjectRecoverable: false,
+  providerPayloadStored: false,
+  automaticDocumentPromotion: false,
+  automaticMatterCreation: false,
+} as const;
+const enqueueFailureMessage = "Job enqueue failed; retry after the worker queue is available.";
 
 function sha256Hex(value: Buffer): string {
   return createHash("sha256").update(value).digest("hex");
@@ -72,6 +89,7 @@ async function createParserJob(input: {
   const now = new Date().toISOString();
   const jobId = crypto.randomUUID();
   const metadata = {
+    ...INBOUND_EMAIL_PARSER_RECOVERY_METADATA,
     idempotencyFingerprint: sha256Hex(
       Buffer.from(`${input.uidValidity}:${input.uid}:${input.rawContentSha256}`),
     ),
@@ -111,16 +129,33 @@ async function enqueueParserJob(input: {
   job: JobLifecycleRecord;
   rawStorageKey: string;
 }): Promise<JobLifecycleRecord> {
-  const bullJob = await input.inboundEmailJobQueue.add(
-    INBOUND_EMAIL_PARSE_JOB_NAME,
-    {
-      firmId: input.firmId,
-      resourceType: input.job.targetResourceType,
-      resourceId: input.job.targetResourceId,
-      metadata: { ...input.job.metadata, rawStorageKey: input.rawStorageKey },
-    },
-    { jobId: input.job.id },
-  );
+  let bullJob: Awaited<ReturnType<WorkerJobQueue["add"]>>;
+  try {
+    bullJob = await input.inboundEmailJobQueue.add(
+      INBOUND_EMAIL_PARSE_JOB_NAME,
+      {
+        firmId: input.firmId,
+        resourceType: input.job.targetResourceType,
+        resourceId: input.job.targetResourceId,
+        metadata: { ...input.job.metadata, rawStorageKey: input.rawStorageKey },
+      },
+      { jobId: input.job.id },
+    );
+  } catch (error) {
+    await input.repository.updateJobLifecycleRecord(input.firmId, input.job.id, {
+      status: "failed",
+      attemptsMade: Math.max(input.job.attemptsMade, 1),
+      failedAt: new Date().toISOString(),
+      errorMessage: enqueueFailureMessage,
+      metadata: {
+        ...input.job.metadata,
+        ...INBOUND_EMAIL_PARSER_RECOVERY_METADATA,
+        providerFailureStage: "imap_parser_enqueue",
+        enqueueStatus: "failed",
+      },
+    });
+    throw error;
+  }
   return input.repository.updateJobLifecycleRecord(input.firmId, input.job.id, {
     bullJobId: bullJob.id?.toString(),
     metadata: { ...input.job.metadata, bullJobId: bullJob.id?.toString() },
@@ -136,6 +171,7 @@ async function scheduleNextPoll(input: {
   const now = new Date().toISOString();
   const jobId = crypto.randomUUID();
   const metadata = {
+    ...INBOUND_EMAIL_POLL_RECOVERY_METADATA,
     provider: IMAP_INBOUND_PROVIDER_KEY,
     source: "worker.inbound_email.imap.self_schedule",
     delayMs: input.delayMs,
@@ -189,6 +225,7 @@ export async function processInboundEmailPollJob(input: {
       status: "skipped",
       reason: "IMAP inbound email provider is disabled",
       metadata: {
+        ...INBOUND_EMAIL_POLL_RECOVERY_METADATA,
         firmId: data.firmId,
         provider: IMAP_INBOUND_PROVIDER_KEY,
         providerConfigured: false,
@@ -271,6 +308,7 @@ export async function processInboundEmailPollJob(input: {
   return {
     status: "completed",
     metadata: {
+      ...INBOUND_EMAIL_POLL_RECOVERY_METADATA,
       firmId: data.firmId,
       provider: IMAP_INBOUND_PROVIDER_KEY,
       source: IMAP_RAW_MIME_SOURCE,

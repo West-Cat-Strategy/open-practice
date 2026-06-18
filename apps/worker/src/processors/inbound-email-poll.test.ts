@@ -8,7 +8,24 @@ import {
 } from "@open-practice/domain";
 import { processOpenPracticeJob, type WorkerJobQueue } from "../processors.js";
 
-function fakeQueue() {
+const parserRecoveryMetadata = {
+  recoveryPosture: "owner_reviewed_raw_object_replay",
+  ownerReviewRequired: true,
+  rawObjectRecoverable: true,
+  providerPayloadStored: false,
+  automaticDocumentPromotion: false,
+  automaticMatterCreation: false,
+};
+const pollRecoveryMetadata = {
+  recoveryPosture: "owner_reviewed_provider_poll",
+  ownerReviewRequired: true,
+  rawObjectRecoverable: false,
+  providerPayloadStored: false,
+  automaticDocumentPromotion: false,
+  automaticMatterCreation: false,
+};
+
+function fakeQueue(input: { rejectParser?: boolean } = {}) {
   const added: Array<{
     name: string;
     data: unknown;
@@ -16,6 +33,9 @@ function fakeQueue() {
   }> = [];
   const queue: WorkerJobQueue = {
     async add(name, data, options) {
+      if (input.rejectParser && name === INBOUND_EMAIL_PARSE_JOB_NAME) {
+        throw new Error("synthetic parser enqueue failure");
+      }
       added.push({ name, data, options });
       return { id: options?.jobId ?? `bull-${added.length}` };
     },
@@ -113,7 +133,13 @@ describe("IMAP inbound email polling worker", () => {
     ]);
     expect(added[0]?.data).toMatchObject({
       firmId: "firm-west-legal",
-      metadata: { rawStorageKey: expect.stringContaining("/11-") },
+      metadata: {
+        ...parserRecoveryMetadata,
+        rawStorageKey: expect.stringContaining("/11-"),
+      },
+    });
+    expect(added[2]?.data).toMatchObject({
+      metadata: expect.objectContaining(pollRecoveryMetadata),
     });
     const parserJobs = (
       await repository.listJobLifecycleRecords("firm-west-legal", {
@@ -124,6 +150,7 @@ describe("IMAP inbound email polling worker", () => {
       .sort((left, right) => Number(left.metadata.uid) - Number(right.metadata.uid));
     expect(parserJobs).toHaveLength(2);
     expect(parserJobs[0]?.metadata).toMatchObject({
+      ...parserRecoveryMetadata,
       rawStorageKeyPresent: true,
       mailboxHash: expect.any(String),
       uidValidity: 7,
@@ -182,5 +209,60 @@ describe("IMAP inbound email polling worker", () => {
 
     expect(added.filter((job) => job.name === INBOUND_EMAIL_PARSE_JOB_NAME)).toHaveLength(1);
     expect(added.filter((job) => job.name === IMAP_POLL_JOB_NAME)).toHaveLength(2);
+  });
+
+  it("marks IMAP-created parser jobs failed when parser enqueue is rejected", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await enableImap(repository);
+    const { queue, added } = fakeQueue({ rejectParser: true });
+    const { s3 } = fakeS3();
+
+    await expect(
+      processOpenPracticeJob({
+        queueName: "inbound_email",
+        jobName: IMAP_POLL_JOB_NAME,
+        data: { firmId: "firm-west-legal" },
+        repository,
+        s3,
+        ocrProvider: {} as never,
+        mailSender: {} as never,
+        inboundEmailParser: {} as never,
+        inboundEmailJobQueue: queue,
+        imapMailboxPoller: {
+          async poll() {
+            return {
+              uidValidity: 7,
+              messages: [{ uid: 11, raw: Buffer.from("Subject: one\r\n\r\nbody one") }],
+              nextState: {
+                uidValidity: 7,
+                lastSuccessfullyQueuedUid: 11,
+                lastPollAt: "2026-06-10T00:01:00.000Z",
+                lastSuccessfulPollAt: "2026-06-10T00:01:00.000Z",
+              },
+            };
+          },
+        } as never,
+      }),
+    ).rejects.toThrow("synthetic parser enqueue failure");
+
+    expect(added).toHaveLength(0);
+    const [parserJob] = (
+      await repository.listJobLifecycleRecords("firm-west-legal", {
+        queueName: "inbound_email",
+      })
+    ).filter((job) => job.jobName === INBOUND_EMAIL_PARSE_JOB_NAME);
+    expect(parserJob).toMatchObject({
+      status: "failed",
+      attemptsMade: 1,
+      errorMessage: "Job enqueue failed; retry after the worker queue is available.",
+      metadata: {
+        ...parserRecoveryMetadata,
+        enqueueStatus: "failed",
+        providerFailureStage: "imap_parser_enqueue",
+        rawStorageKeyPresent: true,
+      },
+    });
+    expect(parserJob?.metadata).not.toHaveProperty("rawStorageKey");
+    expect(JSON.stringify(parserJob?.metadata)).not.toContain(".eml");
   });
 });

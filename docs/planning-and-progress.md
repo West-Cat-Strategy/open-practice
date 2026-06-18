@@ -10,7 +10,7 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 | Snapshot              | Value                                                                |
 | --------------------- | -------------------------------------------------------------------- |
-| Current focus         | Parked meeting/contact-history worktrees were absorbed and retired.  |
+| Current focus         | Inbound email recovery metadata is branch-ready.                     |
 | Next recommended pick | Pick from the durable roadmap/backlog after reviewing shipped proof. |
 | Ready rows            | 0                                                                    |
 | Candidate rows        | 0                                                                    |
@@ -21,6 +21,15 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 | Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`     |
 
 ## Current Handoff Notes
+
+The 2026-06-17 inbound email recovery metadata branch deepens the existing Mailgun/IMAP inbound
+replay-recovery posture with owner-reviewed metadata only. Parser and IMAP poll lifecycle records
+now carry safe recovery posture fields, bounded provider-failure stages, and no raw MIME, object
+keys, provider payloads, mailbox credentials, document promotion, or matter creation. IMAP-created
+parser lifecycle rows are marked failed when parser enqueue is rejected so owners see a recoverable
+job through existing redacted job APIs. Proof is recorded as an addendum in
+[Inbound email replay recovery proof](validation/OP_INBOUND_EMAIL_REPLAY_RECOVERY_PROOF_2026-06-03.md),
+with selector-driven validation green.
 
 The 2026-06-17 parked worktree reconciliation confirmed that
 `/Users/bryan/projects/open-practice-meeting-availability` and

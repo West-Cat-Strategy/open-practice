@@ -18,6 +18,13 @@ skipped-check context. The live workboard remains
 
 ## Current Handoff Notes
 
+The 2026-06-17 inbound email recovery metadata addendum is recorded in
+[OP_INBOUND_EMAIL_REPLAY_RECOVERY_PROOF_2026-06-03.md](OP_INBOUND_EMAIL_REPLAY_RECOVERY_PROOF_2026-06-03.md).
+It covers metadata-only owner-reviewed recovery posture for Mailgun and IMAP inbound parser/poll
+lifecycle failures, bounded provider-failure stages, IMAP parser enqueue failure marking, and the
+preserved no-raw-MIME/no-object-key/no-provider-payload/no-automatic-document-or-matter-promotion
+boundary. The addendum records the final changed-path selector and selected package/doc/policy gates.
+
 The 2026-06-16 Clio parity gap closure proof is recorded in
 [OP_CLIO_PARITY_GAP_CLOSURE_PROOF_2026-06-16.md](OP_CLIO_PARITY_GAP_CLOSURE_PROOF_2026-06-16.md).
 It covers the final workflow-depth closure for metadata-only document conversion review,

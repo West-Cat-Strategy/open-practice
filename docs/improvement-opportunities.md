@@ -143,9 +143,12 @@ surface.
 
 - **Inbound provider webhook intake boundary**
   - **Shipped slice:** The first Mailgun raw-MIME provider webhook validates the provider
-    signature, stores raw MIME in object storage, and queues the existing inbound parser.
-  - **Remaining gap / future boundary:** Other provider adapters, durable replay recovery, and
-    automatic document promotion remain future work.
+    signature, stores raw MIME in object storage, and queues the existing inbound parser. The
+    follow-up recovery metadata slice adds owner-reviewed, metadata-only recovery posture for
+    Mailgun and IMAP parser/poll lifecycle failures through existing job APIs.
+  - **Remaining gap / future boundary:** Other provider adapters, historical replay-cache or
+    object-copy repair, provider-specific recovery tools, and automatic document promotion remain
+    future work.
   - **References:** `chatwoot__chatwoot` and inbound-channel patterns in `paperless-ngx__paperless-ngx`.
   - **Reuse and snippets:** Chatwoot has MIT core plus enterprise directories; use architecture only
     unless a file-level review excludes enterprise-only material.
