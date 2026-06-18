@@ -86,6 +86,7 @@ describe("authorization fixture catalogue", () => {
       "firm_wide_reviewer",
       "public_share_token_holder",
       "revoked_public_share_token_holder",
+      "standalone_contact_creator",
       "unassigned_matter_staff",
       "unverified_public_share_token_holder",
     ]);
@@ -93,6 +94,12 @@ describe("authorization fixture catalogue", () => {
       "matter:firm-wide:list-all",
       "matter:assigned:list-visible",
       "matter:unassigned:list-hidden",
+      "contact:firm-wide:list-all",
+      "contact:assigned:client-visible",
+      "contact:assigned:counterparty-visible",
+      "contact:unassigned:list-hidden",
+      "contact:standalone-creator:list-visible",
+      "contact:portal-client:staff-list-denied",
       "document:assigned:read-visible",
       "document:unassigned:read-hidden",
       "document:portal-grant:metadata-visible",
@@ -105,6 +112,39 @@ describe("authorization fixture catalogue", () => {
       "portal-link:revoked-share:hidden",
       "portal-link:email-unverified:denied",
     ]);
+  });
+
+  it("keeps contact list fixture route decisions aligned with current RBAC", () => {
+    const externalUser: User = {
+      id: "client-ada",
+      firmId: sampleFirm.id,
+      displayName: "Synthetic Portal Client",
+      email: "ada@example.test",
+      role: "client_external",
+      assignedMatterIds: [],
+      mfaEnabled: true,
+    };
+
+    for (const id of [
+      "contact:firm-wide:list-all",
+      "contact:assigned:client-visible",
+      "contact:assigned:counterparty-visible",
+      "contact:unassigned:list-hidden",
+      "contact:standalone-creator:list-visible",
+      "contact:portal-client:staff-list-denied",
+    ]) {
+      const item = fixtureCase(id);
+      const subject =
+        item.subjectId === externalUser.id ? externalUser : sampleUser(item.subjectId);
+      expect(
+        canAccess({
+          user: subject,
+          firmId: sampleFirm.id,
+          resource: item.resource,
+          action: item.action,
+        }),
+      ).toBe(item.expectedDecision === "allow");
+    }
   });
 
   it("keeps matter and document fixture decisions aligned with RBAC plus matter scope", () => {

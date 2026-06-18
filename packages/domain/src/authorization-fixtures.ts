@@ -1,11 +1,12 @@
 import type { Action, ResourceKind } from "./permissions.js";
 
-export type AuthorizationFixtureFamily = "matter" | "document" | "job" | "portal_link";
+export type AuthorizationFixtureFamily = "matter" | "contact" | "document" | "job" | "portal_link";
 
 export type AuthorizationFixtureRelation =
   | "firm_wide_reviewer"
   | "assigned_matter_staff"
   | "unassigned_matter_staff"
+  | "standalone_contact_creator"
   | "external_portal_contact"
   | "account_bound_portal_grant_holder"
   | "public_share_token_holder"
@@ -37,6 +38,8 @@ export const authorizationRelationVocabulary: Record<AuthorizationFixtureRelatio
     "Staff with a role permission and matching matter assignment can see matter-scoped records.",
   unassigned_matter_staff:
     "Staff with a role permission but no matching assignment cannot see matter-scoped records.",
+  standalone_contact_creator:
+    "Staff can list their own unlinked standalone contacts without widening matter-scoped records.",
   external_portal_contact:
     "Client-external users are limited to active portal grants for their contact and matter.",
   account_bound_portal_grant_holder:
@@ -88,6 +91,85 @@ export const authorizationFixtureCases: AuthorizationFixtureCase[] = [
     matterId: "matter-002",
     resourceId: "matter-002",
     rationale: "Matter-scoped staff cannot read or list unassigned matter records.",
+  },
+  {
+    id: "contact:firm-wide:list-all",
+    family: "contact",
+    resource: "contact",
+    action: "read",
+    relation: "firm_wide_reviewer",
+    expectedDecision: "allow",
+    listVisible: true,
+    subjectId: "user-admin",
+    resourceId: "contact-northstar",
+    rationale: "Firm-wide reviewers can list all synthetic contact dossiers.",
+  },
+  {
+    id: "contact:assigned:client-visible",
+    family: "contact",
+    resource: "contact",
+    action: "read",
+    relation: "assigned_matter_staff",
+    expectedDecision: "allow",
+    listVisible: true,
+    subjectId: "user-licensee",
+    matterId: "matter-001",
+    resourceId: "contact-ada",
+    rationale: "Assigned staff can list the client contact linked through their visible matter.",
+  },
+  {
+    id: "contact:assigned:counterparty-visible",
+    family: "contact",
+    resource: "contact",
+    action: "read",
+    relation: "assigned_matter_staff",
+    expectedDecision: "allow",
+    listVisible: true,
+    subjectId: "user-licensee",
+    matterId: "matter-001",
+    resourceId: "contact-river",
+    rationale:
+      "Assigned staff can list the counterparty contact linked through their visible matter.",
+  },
+  {
+    id: "contact:unassigned:list-hidden",
+    family: "contact",
+    resource: "contact",
+    action: "read",
+    relation: "unassigned_matter_staff",
+    expectedDecision: "allow",
+    listVisible: false,
+    subjectId: "user-licensee",
+    matterId: "matter-002",
+    resourceId: "contact-northstar",
+    rationale:
+      "Staff with route-level contact read access do not list contacts linked only to unassigned matters.",
+  },
+  {
+    id: "contact:standalone-creator:list-visible",
+    family: "contact",
+    resource: "contact",
+    action: "read",
+    relation: "standalone_contact_creator",
+    expectedDecision: "allow",
+    listVisible: true,
+    subjectId: "user-staff",
+    resourceId: "contact-standalone-creator",
+    rationale: "Staff can list their own standalone contact when it is not linked to a matter.",
+  },
+  {
+    id: "contact:portal-client:staff-list-denied",
+    family: "contact",
+    resource: "contact",
+    action: "read",
+    relation: "external_portal_contact",
+    expectedDecision: "deny",
+    listVisible: false,
+    subjectId: "client-ada",
+    matterId: "matter-001",
+    contactId: "contact-ada",
+    resourceId: "contact-ada",
+    rationale: "Client-external portal users cannot access staff contact dossier/list routes.",
   },
   {
     id: "document:assigned:read-visible",

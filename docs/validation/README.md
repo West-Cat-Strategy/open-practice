@@ -132,7 +132,10 @@ The 2026-06-16 ReBAC fixture catalogue proof is recorded in
 It covers the OP-authored relation vocabulary plus denial/list-visible fixtures for matters,
 documents, jobs, and portal links; focused domain/API route tests; and selector-chosen
 domain/API/provider/worker/docs/policy validation without adding a ReBAC policy engine,
-canonical-only authorization rewrite, schema change, dependency, or route behavior change.
+canonical-only authorization rewrite, schema change, dependency, or route behavior change. The
+2026-06-17 addendum expands the fixture matrix to contact dossier/list visibility for firm-wide
+reviewers, assigned staff, unassigned staff, standalone contact creators, and client-external route
+denial while preserving the same no-runtime-rewrite boundary.
 
 The 2026-06-16 workflow-step history projection branch is recorded in
 [OP_WORKFLOW_STEP_HISTORY_PROJECTION_PROOF_2026-06-16.md](OP_WORKFLOW_STEP_HISTORY_PROJECTION_PROOF_2026-06-16.md).
