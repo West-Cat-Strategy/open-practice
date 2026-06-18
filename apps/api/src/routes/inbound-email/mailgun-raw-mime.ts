@@ -12,6 +12,7 @@ import {
 import { enqueueFailureError, markJobEnqueueFailed } from "../outbound-email.js";
 import {
   INBOUND_EMAIL_JOB_MAX_ATTEMPTS,
+  INBOUND_EMAIL_PARSER_RECOVERY_METADATA,
   type InboundEmailRouteDependencies,
   MAILGUN_PROVIDER_KEY,
   MAILGUN_RAW_MIME_JOB_NAME,
@@ -180,6 +181,7 @@ async function createMailgunRawMimeJob(input: {
       tokenHash: input.tokenHash,
       rawContentSha256: input.rawContentSha256,
     }),
+    ...INBOUND_EMAIL_PARSER_RECOVERY_METADATA,
     provider: MAILGUN_PROVIDER_KEY,
     source: MAILGUN_RAW_MIME_SOURCE,
     resourceType: "inbound_email_raw",
@@ -304,7 +306,10 @@ export function registerInboundEmailRawMimeRoutes(
             metadata: { ...job.metadata, bullJobId: bullJob.id?.toString() },
           });
         } catch {
-          await markJobEnqueueFailed(repository, firm.id, job, new Date().toISOString());
+          await markJobEnqueueFailed(repository, firm.id, job, new Date().toISOString(), {
+            ...INBOUND_EMAIL_PARSER_RECOVERY_METADATA,
+            providerFailureStage: "parser_enqueue",
+          });
           throw enqueueFailureError();
         }
       }

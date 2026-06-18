@@ -74,13 +74,14 @@ export async function markJobEnqueueFailed(
   firmId: string,
   job: JobLifecycleRecord,
   occurredAt: string,
+  failureMetadata: Record<string, unknown> = {},
 ): Promise<JobLifecycleRecord> {
   return repository.updateJobLifecycleRecord(firmId, job.id, {
     status: "failed",
     attemptsMade: Math.max(job.attemptsMade, 1),
     failedAt: occurredAt,
     errorMessage: enqueueFailureMessage,
-    metadata: { ...job.metadata, enqueueStatus: "failed" },
+    metadata: { ...job.metadata, ...failureMetadata, enqueueStatus: "failed" },
   });
 }
 

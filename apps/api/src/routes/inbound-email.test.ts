@@ -24,6 +24,22 @@ const firmId = "firm-west-legal";
 const now = "2026-04-29T12:00:00.000Z";
 const servers: FastifyInstance[] = [];
 type TestS3Config = { client: S3Client; bucket: string; serverSideEncryption?: "AES256" };
+const inboundParserRecoveryMetadata = {
+  recoveryPosture: "owner_reviewed_raw_object_replay",
+  ownerReviewRequired: true,
+  rawObjectRecoverable: true,
+  providerPayloadStored: false,
+  automaticDocumentPromotion: false,
+  automaticMatterCreation: false,
+};
+const inboundPollRecoveryMetadata = {
+  recoveryPosture: "owner_reviewed_provider_poll",
+  ownerReviewRequired: true,
+  rawObjectRecoverable: false,
+  providerPayloadStored: false,
+  automaticDocumentPromotion: false,
+  automaticMatterCreation: false,
+};
 
 function user(role: ProfessionalRole, assignedMatterIds: string[] = ["matter-001"]): User {
   const idByRole: Partial<Record<ProfessionalRole, string>> = {
@@ -117,6 +133,7 @@ function parserJob(overrides: Partial<JobLifecycleRecord> = {}): JobLifecycleRec
     errorMessage: "Synthetic parser failed with raw MIME body details",
     idempotencyKey: `inbound-parser-original-key-${id}`,
     metadata: {
+      ...inboundParserRecoveryMetadata,
       provider: "mailgun",
       source: "mailgun.raw_mime_webhook",
       resourceType: "inbound_email_raw",
@@ -321,6 +338,7 @@ describe("inbound email routes", () => {
       jobName: "parse_inbound_email",
       targetResourceType: "inbound_email_raw",
       metadata: {
+        ...inboundParserRecoveryMetadata,
         provider: "mailgun",
         source: "mailgun.raw_mime_webhook",
         rawStorageKeyPresent: true,
@@ -528,7 +546,11 @@ describe("inbound email routes", () => {
     expect(job).toMatchObject({
       status: "failed",
       attemptsMade: 1,
-      metadata: expect.objectContaining({ enqueueStatus: "failed" }),
+      metadata: expect.objectContaining({
+        ...inboundParserRecoveryMetadata,
+        enqueueStatus: "failed",
+        providerFailureStage: "parser_enqueue",
+      }),
     });
   });
 
@@ -580,6 +602,8 @@ describe("inbound email routes", () => {
     expect(response.body).not.toContain("message.eml");
     expect(response.body).not.toContain("Synthetic body");
     expect(response.body).not.toContain("synthetic-mailgun-signing-key");
+    expect(response.json().job.metadata).toMatchObject(inboundParserRecoveryMetadata);
+    expect(response.json().sourceJob.metadata).toMatchObject(inboundParserRecoveryMetadata);
     expect(inboundQueue.jobs).toHaveLength(1);
     expect(inboundQueue.jobs[0]).toMatchObject({
       name: "parse_inbound_email",
@@ -606,6 +630,7 @@ describe("inbound email routes", () => {
     expect(jobs.find((job) => job.id === response.json().job.id)).toMatchObject({
       status: "queued",
       metadata: expect.objectContaining({
+        ...inboundParserRecoveryMetadata,
         retryOfJobId: "job-inbound-parser-failed",
         rawStorageKeyPresent: true,
       }),
@@ -672,6 +697,49 @@ describe("inbound email routes", () => {
     expect(
       retriedAgainJobs.find((job) => job.id === retryAgain.json().job.id)?.metadata,
     ).not.toHaveProperty("rawStorageKey");
+  });
+
+  it("marks failed inbound parser retry enqueues with owner-reviewed recovery metadata", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createJobLifecycleRecord(parserJob());
+    const inboundQueue = fakeInboundEmailQueue({ reject: true });
+
+    const response = await testServer(
+      repository,
+      user("owner_admin", ["matter-001", "matter-002"]),
+      undefined,
+      undefined,
+      inboundQueue.queue,
+    ).inject({
+      method: "POST",
+      url: "/api/inbound-email/parser-jobs/job-inbound-parser-failed/retry",
+      payload: {
+        idempotencyKey: "operator-retry-enqueue-failure",
+        confirmation: {
+          confirmed: true,
+          action: "retry",
+          jobId: "job-inbound-parser-failed",
+          expectedStatus: "failed",
+        },
+      },
+    });
+
+    expect(response.statusCode).toBe(503);
+    expect(inboundQueue.jobs).toHaveLength(0);
+    const jobs = await repository.listJobLifecycleRecords(firmId, { queueName: "inbound_email" });
+    const retryJob = jobs.find((job) => job.id !== "job-inbound-parser-failed");
+    expect(retryJob).toMatchObject({
+      status: "failed",
+      attemptsMade: 1,
+      metadata: expect.objectContaining({
+        ...inboundParserRecoveryMetadata,
+        enqueueStatus: "failed",
+        providerFailureStage: "parser_retry_enqueue",
+        rawStorageKeyPresent: true,
+      }),
+    });
+    expect(retryJob?.metadata).not.toHaveProperty("rawStorageKey");
+    expect(JSON.stringify(retryJob?.metadata)).not.toContain(".eml");
   });
 
   it("keeps manual inbound parser retries idempotent by operator key", async () => {
@@ -1107,6 +1175,7 @@ describe("inbound email routes", () => {
         firmId,
         resourceType: "provider_setting",
         resourceId: IMAP_INBOUND_PROVIDER_KEY,
+        metadata: expect.objectContaining(inboundPollRecoveryMetadata),
       },
     });
 
@@ -1219,7 +1288,65 @@ describe("inbound email routes", () => {
     expect(response.json()).toMatchObject({
       poll: { status: "queued", job: { jobName: IMAP_POLL_JOB_NAME } },
     });
-    expect(jobs.map((job) => job.name)).toEqual([IMAP_POLL_JOB_NAME]);
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0]).toMatchObject({
+      name: IMAP_POLL_JOB_NAME,
+      data: {
+        metadata: expect.objectContaining(inboundPollRecoveryMetadata),
+      },
+    });
+  });
+
+  it("marks failed manual IMAP poll enqueue jobs with owner-reviewed recovery metadata", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.upsertProviderSetting({
+      id: "provider-inbound-email-imap",
+      firmId,
+      kind: "inbound_email",
+      key: IMAP_INBOUND_PROVIDER_KEY,
+      enabled: true,
+      encryptedConfig: serializeImapProviderConfig({
+        version: 1,
+        host: "imap.example.test",
+        port: 993,
+        secure: true,
+        username: "inbox@example.test",
+        password: "imap-secret",
+        mailbox: "INBOX",
+        pollIntervalSeconds: 300,
+        markSeen: false,
+        state: {},
+      }),
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const response = await testServer(
+      repository,
+      user("owner_admin", ["matter-001", "matter-002"]),
+      undefined,
+      fakeS3(),
+      fakeInboundEmailQueue({ reject: true }).queue,
+    ).inject({
+      method: "POST",
+      url: "/api/inbound-email/settings/imap/poll",
+    });
+
+    expect(response.statusCode).toBe(503);
+    expect(response.body).not.toContain("imap-secret");
+    const [job] = await repository.listJobLifecycleRecords(firmId, {
+      queueName: "inbound_email",
+    });
+    expect(job).toMatchObject({
+      jobName: IMAP_POLL_JOB_NAME,
+      status: "failed",
+      attemptsMade: 1,
+      metadata: {
+        ...inboundPollRecoveryMetadata,
+        enqueueStatus: "failed",
+        providerFailureStage: "imap_poll_enqueue",
+      },
+    });
   });
 
   it("filters inbound address status for matter-scoped users", async () => {

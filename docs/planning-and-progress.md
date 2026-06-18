@@ -10,8 +10,8 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 | Snapshot              | Value                                                                |
 | --------------------- | -------------------------------------------------------------------- |
-| Current focus         | Firm-managed expense category registry first slice validation.       |
-| Next recommended pick | Review the registry proof and merge branch once validation is green. |
+| Current focus         | Active-lane integration and Docker-gated validation.                 |
+| Next recommended pick | Finish merge validation before push/prune.                           |
 | Ready rows            | 0                                                                    |
 | Candidate rows        | 0                                                                    |
 | In progress rows      | 0                                                                    |
@@ -70,6 +70,15 @@ bounded status/count fields. The slice keeps existing export serialization, rege
 behavior, no retained export body, no live settlement, no automatic trust posting, and no
 provider/object-storage side effects. Proof is recorded in
 [financial export field profiles proof](validation/OP_FINANCIAL_EXPORT_FIELD_PROFILES_PROOF_2026-06-17.md).
+
+The 2026-06-17 inbound email recovery metadata branch deepens the existing Mailgun/IMAP inbound
+replay-recovery posture with owner-reviewed metadata only. Parser and IMAP poll lifecycle records
+now carry safe recovery posture fields, bounded provider-failure stages, and no raw MIME, object
+keys, provider payloads, mailbox credentials, document promotion, or matter creation. IMAP-created
+parser lifecycle rows are marked failed when parser enqueue is rejected so owners see a recoverable
+job through existing redacted job APIs. Proof is recorded as an addendum in
+[Inbound email replay recovery proof](validation/OP_INBOUND_EMAIL_REPLAY_RECOVERY_PROOF_2026-06-03.md),
+with selector-driven validation green.
 
 The 2026-06-17 parked worktree reconciliation confirmed that
 `/Users/bryan/projects/open-practice-meeting-availability` and

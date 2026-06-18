@@ -14,6 +14,22 @@ export const MAILGUN_PROVIDER_KEY = "mailgun";
 export const MAILGUN_RAW_MIME_JOB_NAME = "parse_inbound_email";
 export const MAILGUN_RAW_MIME_SOURCE = "mailgun.raw_mime_webhook";
 export const INBOUND_EMAIL_JOB_MAX_ATTEMPTS = 4;
+export const INBOUND_EMAIL_PARSER_RECOVERY_METADATA = {
+  recoveryPosture: "owner_reviewed_raw_object_replay",
+  ownerReviewRequired: true,
+  rawObjectRecoverable: true,
+  providerPayloadStored: false,
+  automaticDocumentPromotion: false,
+  automaticMatterCreation: false,
+} as const;
+export const INBOUND_EMAIL_POLL_RECOVERY_METADATA = {
+  recoveryPosture: "owner_reviewed_provider_poll",
+  ownerReviewRequired: true,
+  rawObjectRecoverable: false,
+  providerPayloadStored: false,
+  automaticDocumentPromotion: false,
+  automaticMatterCreation: false,
+} as const;
 
 export const inboundEmailMessageParamsSchema = z.object({ id: z.string().min(1) });
 

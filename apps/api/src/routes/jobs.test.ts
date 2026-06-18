@@ -871,11 +871,19 @@ describe("jobs routes", () => {
       failedAt: "2026-05-02T10:01:00.000Z",
       errorMessage: "Synthetic parser failed with private raw MIME content",
       metadata: {
+        recoveryPosture: "owner_reviewed_raw_object_replay",
+        ownerReviewRequired: true,
+        rawObjectRecoverable: true,
+        providerPayloadStored: false,
+        automaticDocumentPromotion: false,
+        automaticMatterCreation: false,
+        providerFailureStage: "parser_retry_enqueue",
         provider: "mailgun",
         source: "api.inbound_email.parser_job.retry",
         resourceType: "inbound_email_raw",
         resourceId: "synthetic-token-hash",
         retryOfJobId: "job-inbound-parser-original",
+        providerPayload: { private: "Synthetic provider payload" },
         rawStorageKey:
           "inbound-email/firm-west-legal/raw/provider-webhooks/mailgun/raw-mime/private.eml",
         rawContentSha256: "a".repeat(64),
@@ -901,6 +909,13 @@ describe("jobs routes", () => {
         source: "api.inbound_email.parser_job.retry",
         resourceType: "inbound_email_raw",
         resourceId: "synthetic-token-hash",
+        recoveryPosture: "owner_reviewed_raw_object_replay",
+        ownerReviewRequired: true,
+        rawObjectRecoverable: true,
+        providerPayloadStored: false,
+        automaticDocumentPromotion: false,
+        automaticMatterCreation: false,
+        providerFailureStage: "parser_retry_enqueue",
       },
     });
     expect(detail.json().job).toMatchObject({
@@ -911,6 +926,13 @@ describe("jobs routes", () => {
         source: "api.inbound_email.parser_job.retry",
         resourceType: "inbound_email_raw",
         resourceId: "synthetic-token-hash",
+        recoveryPosture: "owner_reviewed_raw_object_replay",
+        ownerReviewRequired: true,
+        rawObjectRecoverable: true,
+        providerPayloadStored: false,
+        automaticDocumentPromotion: false,
+        automaticMatterCreation: false,
+        providerFailureStage: "parser_retry_enqueue",
       },
     });
     expect(list.body).not.toContain("rawStorageKey");
@@ -920,6 +942,8 @@ describe("jobs routes", () => {
     expect(detail.body).not.toContain("rawStorageKey");
     expect(detail.body).not.toContain("private.eml");
     expect(detail.body).not.toContain("private raw MIME content");
+    expect(detail.body).not.toMatch(/"providerPayload"\s*:/);
+    expect(detail.body).not.toContain("Synthetic provider payload");
   });
 
   it("returns one firm-scoped redacted job detail", async () => {

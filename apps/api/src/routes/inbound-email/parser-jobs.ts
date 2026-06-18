@@ -14,6 +14,7 @@ import { enqueueFailureError, markJobEnqueueFailed } from "../outbound-email.js"
 import {
   assertJobRecoveryAccess,
   INBOUND_EMAIL_JOB_MAX_ATTEMPTS,
+  INBOUND_EMAIL_PARSER_RECOVERY_METADATA,
   MAILGUN_PROVIDER_KEY,
   MAILGUN_RAW_MIME_JOB_NAME,
 } from "./shared.js";
@@ -157,10 +158,17 @@ function safeParserJobMetadata(metadata: Record<string, unknown>): Record<string
     "idempotencyFingerprint",
     "idempotencyKeyPresent",
     "mailboxHash",
+    "automaticDocumentPromotion",
+    "automaticMatterCreation",
+    "ownerReviewRequired",
     "provider",
+    "providerPayloadStored",
+    "providerFailureStage",
     "rawContentSha256",
+    "rawObjectRecoverable",
     "rawSizeBytes",
     "rawStorageKeyPresent",
+    "recoveryPosture",
     "resourceId",
     "resourceType",
     "retryOfJobId",
@@ -306,6 +314,7 @@ async function createParserRetryJob(input: {
       resourceType: input.sourceJob.targetResourceType,
       resourceId: input.sourceJob.targetResourceId,
     }),
+    ...INBOUND_EMAIL_PARSER_RECOVERY_METADATA,
     provider:
       typeof input.sourceJob.metadata.provider === "string"
         ? input.sourceJob.metadata.provider
@@ -400,7 +409,10 @@ export function registerInboundEmailParserJobRoutes(
           metadata: { ...job.metadata, bullJobId: bullJob.id?.toString() },
         });
       } catch {
-        await markJobEnqueueFailed(repository, request.auth.firmId, job, now);
+        await markJobEnqueueFailed(repository, request.auth.firmId, job, now, {
+          ...INBOUND_EMAIL_PARSER_RECOVERY_METADATA,
+          providerFailureStage: "parser_retry_enqueue",
+        });
         throw enqueueFailureError();
       }
       await appendRouteAuditEvent(repository, request.auth, {

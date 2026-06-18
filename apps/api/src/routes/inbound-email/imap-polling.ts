@@ -8,7 +8,7 @@ import type { ApiAuthContext } from "../../server.js";
 import { enqueueFailureError, markJobEnqueueFailed } from "../outbound-email.js";
 import type { ApiJobQueue } from "../types.js";
 import type { InboundEmailRouteDependencies } from "./shared.js";
-import { INBOUND_EMAIL_JOB_MAX_ATTEMPTS } from "./shared.js";
+import { INBOUND_EMAIL_JOB_MAX_ATTEMPTS, INBOUND_EMAIL_POLL_RECOVERY_METADATA } from "./shared.js";
 
 export interface EnqueuedImapPollJob {
   status: "queued";
@@ -44,6 +44,7 @@ export async function enqueueImapMailboxPoll(input: {
   const now = new Date().toISOString();
   const jobId = crypto.randomUUID();
   const metadata = {
+    ...INBOUND_EMAIL_POLL_RECOVERY_METADATA,
     provider: IMAP_INBOUND_PROVIDER_KEY,
     source: "api.inbound_email.imap.poll",
     requestedByUserId: input.auth.user.id,
@@ -80,7 +81,10 @@ export async function enqueueImapMailboxPoll(input: {
     });
     return { status: "queued", job: updatedJob };
   } catch {
-    await markJobEnqueueFailed(input.repository, input.auth.firmId, job, now);
+    await markJobEnqueueFailed(input.repository, input.auth.firmId, job, now, {
+      ...INBOUND_EMAIL_POLL_RECOVERY_METADATA,
+      providerFailureStage: "imap_poll_enqueue",
+    });
     throw enqueueFailureError();
   }
 }
