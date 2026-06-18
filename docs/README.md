@@ -29,6 +29,7 @@ stay central across docs and code.
   workboard proof that is no longer active status.
 - [Threat Model](threat-model.md), [Deployment Hardening](deployment-hardening.md),
   [Trust/Funds Caveats](trust-funds-caveats.md),
+  [Payment Import And Deposit Matching Boundary Packet](payment-import-deposit-matching-boundary-packet.md),
   [Contact-History Export, Retention, And Privacy Decision Packet](contact-history-export-retention-privacy-decision-packet.md),
   and [Document Retention And Hold Workflow Design](document-retention-hold-workflow-design.md)
   define security, compliance, retention, and privacy posture.

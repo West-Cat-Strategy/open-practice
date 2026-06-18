@@ -204,6 +204,14 @@ recalculates invoice paid/balance status. It preserves the no-live-settlement an
 posture from OP-T135/OP-T149, updates Billing dashboard cues, and records proof in
 [Manual payment reconciliation gate proof](validation/OP_MANUAL_PAYMENT_RECONCILIATION_GATE_PROOF_2026-06-16.md).
 
+The 2026-06-17 payment import and deposit matching boundary packet is docs-first policy groundwork
+for the next payments/funds boundary. It defines processor imports, deposit proposals, refunds, and
+chargebacks as normalized reviewer-owned evidence only: no live settlement, no public webhook or
+replay worker, no provider payload retention, no invoice-balance mutation without manual-payment
+reviewer evidence, no automatic reconciliation, no provider refund/dispute calls, no client
+notification, and no trust posting. Proof is recorded in
+[Payment import and deposit matching boundary packet proof](validation/OP_PAYMENT_IMPORT_DEPOSIT_MATCHING_BOUNDARY_PACKET_PROOF_2026-06-17.md).
+
 The 2026-06-16 Signature Request Envelope Metadata branch adds OP-authored signer-order and
 field-placement metadata directly to existing signature requests. Domain validation stays
 provider-neutral, invalid metadata is rejected before provider submission or email/audit side
