@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  compactTrustPostingRequestReviewActionReason,
   describeOperationalActionState,
+  describeTrustPostingRequestReviewAction,
   disabledOperationalAction,
+  trustPostingRequestReviewBusyAction,
+  trustPostingRequestReviewBusyKey,
 } from "./operational-actions.js";
 
 describe("operational action states", () => {
@@ -61,5 +65,123 @@ describe("operational action states", () => {
       disabledReason: "permission_required",
       tone: "risk",
     });
+  });
+
+  it("describes available trust posting request review actions", () => {
+    expect(
+      describeTrustPostingRequestReviewAction({
+        action: "approved",
+        status: "pending_approval",
+      }),
+    ).toEqual({
+      actionKey: "ledger_posting_request.approve",
+      available: true,
+      availability: "available",
+      label: "Approve",
+      tone: "ready",
+    });
+
+    expect(
+      describeTrustPostingRequestReviewAction({
+        action: "rejected",
+        status: "pending_approval",
+      }),
+    ).toEqual({
+      actionKey: "ledger_posting_request.reject",
+      available: true,
+      availability: "available",
+      label: "Reject",
+      tone: "risk",
+    });
+  });
+
+  it("describes trust posting request review busy states without request data", () => {
+    const busyKey = trustPostingRequestReviewBusyKey("approved", "posting_request_synthetic");
+
+    expect(trustPostingRequestReviewBusyAction(busyKey, "posting_request_synthetic")).toBe(
+      "approved",
+    );
+    expect(trustPostingRequestReviewBusyAction("", "posting_request_synthetic")).toBeUndefined();
+    expect(
+      trustPostingRequestReviewBusyAction(
+        "archived:posting_request_synthetic",
+        "posting_request_synthetic",
+      ),
+    ).toBe("other");
+
+    expect(
+      describeTrustPostingRequestReviewAction({
+        action: "approved",
+        status: "pending_approval",
+        busyAction: "approved",
+      }),
+    ).toMatchObject({
+      available: false,
+      availability: "disabled",
+      label: "Approving",
+      disabledReason: "approved_in_progress",
+    });
+
+    expect(
+      describeTrustPostingRequestReviewAction({
+        action: "rejected",
+        status: "pending_approval",
+        busyAction: "approved",
+      }),
+    ).toMatchObject({
+      available: false,
+      availability: "disabled",
+      label: "Reject",
+      disabledReason: "review_action_in_progress",
+    });
+
+    const serialized = JSON.stringify(
+      describeTrustPostingRequestReviewAction({
+        action: "approved",
+        status: "pending_approval",
+        busyAction: "approved",
+      }),
+    );
+    expect(serialized).not.toContain("posting_request_synthetic");
+    expect(serialized).not.toContain("Synthetic preparation note");
+    expect(serialized).not.toContain("Synthetic rejection reason");
+  });
+
+  it("describes unavailable trust posting request review actions", () => {
+    expect(
+      describeTrustPostingRequestReviewAction({
+        action: "approved",
+        status: "posted",
+      }),
+    ).toMatchObject({
+      actionKey: "ledger_posting_request.approve",
+      available: false,
+      availability: "disabled",
+      label: "Approve",
+      disabledReason: "status_not_pending_approval",
+    });
+
+    expect(
+      describeTrustPostingRequestReviewAction({
+        action: "rejected",
+        status: "rejected",
+      }),
+    ).toMatchObject({
+      actionKey: "ledger_posting_request.reject",
+      available: false,
+      availability: "disabled",
+      label: "Reject",
+      disabledReason: "status_not_pending_approval",
+    });
+
+    expect(compactTrustPostingRequestReviewActionReason("approved_in_progress")).toBe(
+      "approval in progress",
+    );
+    expect(compactTrustPostingRequestReviewActionReason("review_action_in_progress")).toBe(
+      "review action in progress",
+    );
+    expect(compactTrustPostingRequestReviewActionReason("status_not_pending_approval")).toBe(
+      "not pending approval",
+    );
   });
 });
