@@ -178,9 +178,13 @@ surface.
   - **Shipped first slice:** OP now journals review-only pause, close, archive, and reopen readiness
     records with current/target status snapshots, concise reasons/blockers, matter-scoped API
     access, safe audit metadata, and dashboard evidence for already-visible matters.
-  - **Remaining gap:** Future work should only add explicit lifecycle commands after a separate
-    policy/design slice proves automation, portal, task, billing, assignment, and destructive cleanup
-    consequences. The shipped journal remains evidence-only and does not mutate matter status.
+  - **Drafted policy/API plan:** The 2026-06-17 docs-only plan defines a future, unshipped
+    `POST /api/matters/:matterId/lifecycle-commands` contract and pause/close/archive/reopen
+    consequences across portal visibility, billing, tasks, assignments, audit metadata, and cleanup
+    boundaries.
+  - **Remaining gap:** Future work should only implement explicit lifecycle commands after a
+    separate implementation scope is approved. The shipped journal remains evidence-only and does
+    not mutate matter status.
   - **References:** `primeroims__primero`, `arkcase__arkcase`, and `jlawyerorg__j-lawyer-org`.
   - **Reuse and snippets:** AGPL/LGPL/reference-only; no direct snippets.
 
