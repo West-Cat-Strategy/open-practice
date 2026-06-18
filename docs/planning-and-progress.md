@@ -10,8 +10,8 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 | Snapshot              | Value                                                                |
 | --------------------- | -------------------------------------------------------------------- |
-| Current focus         | Active-lane mainline publication and prune closeout.                 |
-| Next recommended pick | Fast-forward/push `main`, verify parity, then prune merged lanes.    |
+| Current focus         | Active-lane mainline publication and prune closeout complete.        |
+| Next recommended pick | Start the next scoped branch from refreshed `main`.                  |
 | Ready rows            | 0                                                                    |
 | Candidate rows        | 0                                                                    |
 | In progress rows      | 0                                                                    |
@@ -29,7 +29,9 @@ The 2026-06-17 all-active-lanes integration branch
 policy/docs, and Docker validation set. The 2026-06-18 closeout cleared the Docker hard gate by
 refreshing the same-contract Postgres digest and Mailpit `v1.30.2` source pin, then rerunning
 `pnpm docker:app-smoke`, `pnpm docker:residual-watch`, `pnpm e2e:docker`, selected package gates,
-`pnpm build`, `pnpm ci:local`, and `git diff --check` successfully. Proof is recorded in
+`pnpm build`, `pnpm ci:local`, and `git diff --check` successfully. `main` was fast-forwarded and
+pushed, parity was verified, clean merged sibling worktrees and merged local branches were pruned,
+remote refs were pruned, and the stash count stayed `42`. Proof is recorded in
 [OP mainline merge push prune proof](validation/OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-16.md).
 
 The 2026-06-17 unpublished local mainline delta revalidation confirmed the committed

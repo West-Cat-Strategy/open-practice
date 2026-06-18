@@ -390,6 +390,80 @@ Validation results:
 | `pnpm policy:check` | Passed | Secrets, package policy, dead-code, migration, OSS reuse, docs, proof index, Docker ignore, and boundary checks passed. |
 | `git diff --check`  | Passed | No whitespace errors.                                                                                                   |
 
+## Final Active-Lane Publication And Prune - 2026-06-18
+
+Short proof branch: `proof/open-practice-mainline-closeout-2026-06-18`
+Base: published `main` at `9b4937a12b85c188de373eead11cb5defbb255c6`
+
+After the Docker gate closeout commit, the primary checkout switched to `main`,
+fast-forwarded from `5f15fc87cec13b12143a4a5b3dc746b1534f5c9c` to
+`9b4937a12b85c188de373eead11cb5defbb255c6`, and pushed `origin/main` from
+`81c3adbec03a79c76ad0b98f5378fccabbc2f8b7` to
+`9b4937a12b85c188de373eead11cb5defbb255c6`.
+
+Post-push parity before pruning:
+
+- `git rev-parse HEAD`, `git rev-parse main`, and `git rev-parse origin/main` all returned
+  `9b4937a12b85c188de373eead11cb5defbb255c6`.
+- `git ls-remote --heads origin main` returned
+  `9b4937a12b85c188de373eead11cb5defbb255c6 refs/heads/main`.
+- `git status --short --branch` returned `## main...origin/main` with no dirty paths.
+- Stash count remained `42`; stashes were not touched.
+
+Clean sibling worktrees removed with `git worktree remove`:
+
+- `/Users/bryan/projects/open-practice-aged-receivables`
+- `/Users/bryan/projects/open-practice-docker-residual-postgres-drift`
+- `/Users/bryan/projects/open-practice-document-retention-hold-design`
+- `/Users/bryan/projects/open-practice-expense-category-registry`
+- `/Users/bryan/projects/open-practice-financial-export-field-profiles`
+- `/Users/bryan/projects/open-practice-inbound-email-recovery-metadata-2026-06-17`
+- `/Users/bryan/projects/open-practice-ledger-balance-snapshot-comparison`
+- `/Users/bryan/projects/open-practice-matter-lifecycle-commands`
+- `/Users/bryan/projects/open-practice-payment-import-boundary-2026-06-17`
+- `/Users/bryan/projects/open-practice-provider-doc-conversion-boundary-2026-06-17`
+- `/Users/bryan/projects/open-practice-rebac-contact-list-fixtures`
+- `/Users/bryan/projects/open-practice-retire-merged-sibling-worktrees-2026-06-17`
+- `/Users/bryan/projects/open-practice-trust-posting-action-descriptors`
+
+Local branches deleted with `git branch -d` after `git branch --merged main` proved them merged and
+`git branch --no-merged main` returned no branches:
+
+- `audit/clio-parity-gap-closure-2026-06-16`
+- `codex/docker-residual-postgres-drift-2026-06-17`
+- `codex/financial-export-field-profiles-2026-06-17`
+- `codex/inbound-email-recovery-metadata-2026-06-17`
+- `codex/matter-lifecycle-command-policy-2026-06-17`
+- `codex/rebac-contact-list-fixtures`
+- `codex/trust-posting-action-descriptors`
+- `docs/document-retention-hold-design-2026-06-17`
+- `docs/payment-import-boundary-2026-06-17`
+- `docs/provider-document-conversion-boundary-2026-06-17`
+- `docs/retire-merged-sibling-worktrees-2026-06-17`
+- `docs/root-adopter-readme`
+- `feature/aged-receivables-report`
+- `feature/expense-category-registry`
+- `feature/op-t134-timer-draft-lock-proof`
+- `feature/reviewer-ledger-balance-snapshot-comparison`
+- `merge/open-practice-active-lanes-2026-06-17`
+
+`git worktree prune` and `git remote prune origin` both passed.
+
+Final inventory before this proof-only addendum:
+
+- `git worktree list --porcelain` showed only `/Users/bryan/projects/open-practice` on `main` at
+  `9b4937a12b85c188de373eead11cb5defbb255c6`.
+- `git branch --format='%(refname:short)'` showed only `main`.
+- `git branch --merged main --format='%(refname:short)'` showed only `main`; `git branch --no-merged
+main --format='%(refname:short)'` returned no branches.
+- `git status --short --branch` returned `## main...origin/main` with no dirty paths.
+- Stash count remained `42`; no stash entries were applied, dropped, or rewritten.
+
+This proof-only addendum changes documentation status only. No API, schema, route, UI, worker, domain,
+database, Docker image, Compose runtime, dependency, copied excerpt, vendored asset, client data,
+matter data, credential, payment, or private deployment detail changed after the published
+active-lane closeout.
+
 ## All Active Local Lanes Docker Gate Closeout - 2026-06-18
 
 Branch: `merge/open-practice-active-lanes-2026-06-17`
