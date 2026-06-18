@@ -80,6 +80,18 @@ job through existing redacted job APIs. Proof is recorded as an addendum in
 [Inbound email replay recovery proof](validation/OP_INBOUND_EMAIL_REPLAY_RECOVERY_PROOF_2026-06-03.md),
 with selector-driven validation green.
 
+The later 2026-06-17 merged sibling worktree retirement removed only
+`/Users/bryan/projects/open-practice-docker-footprint-hardening`,
+`/Users/bryan/projects/open-practice-parked-worktree-reconciliation`, and
+`/Users/bryan/projects/open-practice-promotional-root-readme` after confirming their branches were
+merged into local `main`. The promotional root README residue was preserved as ignored local
+evidence at
+`.tmp/worktree-retirement/2026-06-17/promotional-root-readme/README.md` with SHA-256
+`a6e672928440324307f5570dd051d387b353d320287be696a1613bd1c1e9f801` before the worktree was
+removed. Other active sibling worktrees, merged non-worktree branches, remote refs, and all stashes
+were left untouched. Proof is recorded as an addendum in
+[OP mainline merge push prune proof](validation/OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-16.md).
+
 The 2026-06-17 parked worktree reconciliation confirmed that
 `/Users/bryan/projects/open-practice-meeting-availability` and
 `/Users/bryan/projects/open-practice-contact-history-export-scope` were fully absorbed by current
