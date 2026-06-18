@@ -319,9 +319,12 @@ surface.
 
 - **Invoice aging report expansion**
   - **Shipped slices:** Billing dashboards and staff reporting now expose review-only billing
-    posture and issued-balance surfaces.
-  - **Remaining gap:** A future slice could add an aged receivables report grouped by client, matter,
-    and invoice with current/30/60/90-style buckets and export-profile alignment.
+    posture, issued-balance surfaces, and a staff-only aged receivables report grouped by visible
+    client, matter, invoice, or current/30/60/90-style aging bucket with manual export-profile
+    alignment.
+  - **Remaining boundary:** Payment-processor imports, automatic payment allocation, invoice
+    mutation, write-off automation, settlement handling, trust posting, and accounting certification
+    remain separate future work.
   - **References:** `ledgersmb__ledgersmb` aging-report vocabulary and Open Collective overdue
     billing concepts.
   - **Reuse and snippets:** LedgerSMB is GPL/reference-only and Open Collective is architecture-only;

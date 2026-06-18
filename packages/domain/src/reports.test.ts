@@ -6,6 +6,7 @@ import {
   STAFF_SAVED_REPORT_DEFINITIONS,
 } from "./reports.js";
 import {
+  sampleContacts,
   sampleInvoices,
   sampleLegalClinicMatterProfiles,
   sampleLedgerAccounts,
@@ -15,6 +16,7 @@ import {
   sampleTimeEntries,
   sampleUsers,
 } from "./sample-data.js";
+import type { InvoiceRecord } from "./billing.js";
 import type { LedgerReconciliationRecord } from "./ledger.js";
 
 const generatedAt = "2026-06-20T12:00:00.000Z";
@@ -66,6 +68,7 @@ describe("staff reporting workspace", () => {
 
     expect(STAFF_SAVED_REPORT_DEFINITIONS.map((definition) => definition.key)).toEqual([
       "invoice_aging",
+      "aged_receivables",
       "reconciliation_freshness",
       "productivity",
       "operational_follow_up",
@@ -89,6 +92,21 @@ describe("staff reporting workspace", () => {
           ]),
           exportProfileIds: ["summary_json", "review_csv"],
         }),
+        expect.objectContaining({
+          key: "aged_receivables",
+          defaultGrouping: "client",
+          filters: expect.arrayContaining([
+            expect.objectContaining({ key: "asOf" }),
+            expect.objectContaining({ key: "invoiceStatuses" }),
+          ]),
+          groupings: expect.arrayContaining([
+            expect.objectContaining({ key: "client" }),
+            expect.objectContaining({ key: "matter" }),
+            expect.objectContaining({ key: "invoice" }),
+            expect.objectContaining({ key: "aging_bucket" }),
+          ]),
+          exportProfileIds: ["summary_json", "review_csv"],
+        }),
       ]),
     );
     expect(STAFF_REPORT_EXPORT_PROFILES).toEqual(
@@ -108,10 +126,11 @@ describe("staff reporting workspace", () => {
       rawReportBodiesInJobMetadata: false,
     });
     expect(workspace.scheduleReadinessSummary).toMatchObject({
-      totalDefinitions: 4,
-      manualExportReadyDefinitions: 4,
+      totalDefinitions: 5,
+      manualExportReadyDefinitions: 5,
       manualOnlyDefinitionKeys: [
         "invoice_aging",
+        "aged_receivables",
         "reconciliation_freshness",
         "productivity",
         "operational_follow_up",
@@ -125,8 +144,8 @@ describe("staff reporting workspace", () => {
     expect(workspace.reportBuilderPosture).toMatchObject({
       status: "metadata_only",
       savedDefinitionsOnly: true,
-      filterCount: 24,
-      groupingCount: 24,
+      filterCount: 30,
+      groupingCount: 32,
       exportProfileCount: 2,
       customSql: false,
       biEmbeds: false,
@@ -240,6 +259,239 @@ describe("staff reporting workspace", () => {
     expect(JSON.stringify([invoiceAging, reconciliationFreshness, productivity])).not.toContain(
       "rawBody",
     );
+  });
+
+  it("builds aged receivables by client, matter, invoice, and five aging buckets", () => {
+    const receivableInvoices: InvoiceRecord[] = [
+      {
+        ...sampleInvoices[0]!,
+        id: "invoice-current",
+        invoiceNumber: "INV-CURRENT",
+        dueAt: "2026-06-21T00:00:00.000Z",
+        balanceDueCents: 1000,
+        totalCents: 1000,
+        paidCents: 0,
+      },
+      {
+        ...sampleInvoices[0]!,
+        id: "invoice-current-no-due-date",
+        invoiceNumber: "INV-CURRENT-NO-DUE",
+        dueAt: undefined,
+        balanceDueCents: 600,
+        totalCents: 600,
+        paidCents: 0,
+      },
+      {
+        ...sampleInvoices[0]!,
+        id: "invoice-1-30",
+        invoiceNumber: "INV-1-30",
+        dueAt: "2026-06-10T00:00:00.000Z",
+        balanceDueCents: 2000,
+        totalCents: 2000,
+        paidCents: 0,
+      },
+      {
+        ...sampleInvoices[0]!,
+        id: "invoice-31-60",
+        invoiceNumber: "INV-31-60",
+        dueAt: "2026-05-10T00:00:00.000Z",
+        balanceDueCents: 3000,
+        totalCents: 4000,
+        paidCents: 1000,
+        status: "partially_paid",
+      },
+      {
+        ...sampleInvoices[0]!,
+        id: "invoice-61-90",
+        invoiceNumber: "INV-61-90",
+        dueAt: "2026-04-05T00:00:00.000Z",
+        balanceDueCents: 4000,
+        totalCents: 4000,
+        paidCents: 0,
+      },
+      {
+        ...sampleInvoices[0]!,
+        id: "invoice-91-plus",
+        invoiceNumber: "INV-91-PLUS",
+        dueAt: "2026-03-01T00:00:00.000Z",
+        balanceDueCents: 5000,
+        totalCents: 5000,
+        paidCents: 0,
+      },
+      {
+        ...sampleInvoices[0]!,
+        id: "invoice-draft-excluded",
+        invoiceNumber: "INV-DRAFT-EXCLUDED",
+        status: "draft",
+        balanceDueCents: 6000,
+      },
+      {
+        ...sampleInvoices[0]!,
+        id: "invoice-approved-excluded",
+        invoiceNumber: "INV-APPROVED-EXCLUDED",
+        status: "approved",
+        balanceDueCents: 7000,
+      },
+      {
+        ...sampleInvoices[0]!,
+        id: "invoice-void-excluded",
+        invoiceNumber: "INV-VOID-EXCLUDED",
+        status: "void",
+        balanceDueCents: 8000,
+      },
+      {
+        ...sampleInvoices[0]!,
+        id: "invoice-paid-excluded",
+        invoiceNumber: "INV-PAID-EXCLUDED",
+        status: "paid",
+        balanceDueCents: 0,
+        paidCents: 13230,
+      },
+    ];
+
+    const projection = buildStaffReportProjection({
+      firmId: "firm-west-legal",
+      generatedAt,
+      definitionKey: "aged_receivables",
+      matters: sampleMatters,
+      users: sampleUsers,
+      contacts: sampleContacts,
+      invoices: receivableInvoices,
+      ledgerAccounts: sampleLedgerAccounts,
+      ledgerEntries: sampleLedgerEntries,
+      reconciliations,
+      legalClinicMatterProfiles: sampleLegalClinicMatterProfiles,
+      timeEntries: sampleTimeEntries,
+      taskDeadlines: sampleTaskDeadlines,
+    });
+
+    expect(projection).toMatchObject({
+      definitionKey: "aged_receivables",
+      groupingKey: "client",
+      summary: {
+        metrics: expect.objectContaining({
+          totalReceivableCents: 15600,
+          invoiceCount: 6,
+          clientCount: 1,
+          pastDueCount: 4,
+          currentCents: 1600,
+          days1To30Cents: 2000,
+          days31To60Cents: 3000,
+          days61To90Cents: 4000,
+          days91PlusCents: 5000,
+        }),
+        groups: [
+          expect.objectContaining({
+            key: "contact-ada",
+            label: "Ada Morgan",
+            totalCents: 15600,
+            rowCount: 6,
+          }),
+        ],
+      },
+    });
+    expect(projection.rows.map((row) => row.metadata.bucketKey)).toEqual([
+      "91_plus",
+      "61_90",
+      "31_60",
+      "1_30",
+      "current",
+      "current",
+    ]);
+    expect(new Set(projection.rows.map((row) => row.metadata.bucketKey))).toEqual(
+      new Set(["current", "1_30", "31_60", "61_90", "91_plus"]),
+    );
+    expect(projection.rows[0]).toMatchObject({
+      id: "invoice-91-plus",
+      label: "INV-91-PLUS Ada Morgan",
+      matterId: "matter-001",
+      matterNumber: "2026-0001",
+      metadata: expect.objectContaining({
+        clientContactId: "contact-ada",
+        clientDisplayName: "Ada Morgan",
+        invoiceId: "invoice-91-plus",
+        invoiceNumber: "INV-91-PLUS",
+        matterId: "matter-001",
+        matterNumber: "2026-0001",
+        totalCents: 5000,
+        paidCents: 0,
+        balanceDueCents: 5000,
+        bucketKey: "91_plus",
+        bucketLabel: "91+ days",
+        days91PlusCents: 5000,
+      }),
+    });
+    expect(JSON.stringify(projection)).not.toContain("INV-DRAFT-EXCLUDED");
+    expect(JSON.stringify(projection)).not.toContain("INV-APPROVED-EXCLUDED");
+    expect(JSON.stringify(projection)).not.toContain("INV-VOID-EXCLUDED");
+    expect(JSON.stringify(projection)).not.toContain("INV-PAID-EXCLUDED");
+    expect(JSON.stringify(projection)).not.toContain("undated");
+
+    const byMatter = buildStaffReportProjection({
+      firmId: "firm-west-legal",
+      generatedAt,
+      definitionKey: "aged_receivables",
+      groupingKey: "matter",
+      matters: sampleMatters,
+      users: sampleUsers,
+      contacts: sampleContacts,
+      invoices: receivableInvoices,
+      ledgerAccounts: sampleLedgerAccounts,
+      ledgerEntries: sampleLedgerEntries,
+      reconciliations,
+      legalClinicMatterProfiles: sampleLegalClinicMatterProfiles,
+      timeEntries: sampleTimeEntries,
+      taskDeadlines: sampleTaskDeadlines,
+    });
+    const byInvoice = buildStaffReportProjection({
+      firmId: "firm-west-legal",
+      generatedAt,
+      definitionKey: "aged_receivables",
+      groupingKey: "invoice",
+      matters: sampleMatters,
+      users: sampleUsers,
+      contacts: sampleContacts,
+      invoices: receivableInvoices,
+      ledgerAccounts: sampleLedgerAccounts,
+      ledgerEntries: sampleLedgerEntries,
+      reconciliations,
+      legalClinicMatterProfiles: sampleLegalClinicMatterProfiles,
+      timeEntries: sampleTimeEntries,
+      taskDeadlines: sampleTaskDeadlines,
+    });
+    const byBucket = buildStaffReportProjection({
+      firmId: "firm-west-legal",
+      generatedAt,
+      definitionKey: "aged_receivables",
+      groupingKey: "aging_bucket",
+      matters: sampleMatters,
+      users: sampleUsers,
+      contacts: sampleContacts,
+      invoices: receivableInvoices,
+      ledgerAccounts: sampleLedgerAccounts,
+      ledgerEntries: sampleLedgerEntries,
+      reconciliations,
+      legalClinicMatterProfiles: sampleLegalClinicMatterProfiles,
+      timeEntries: sampleTimeEntries,
+      taskDeadlines: sampleTaskDeadlines,
+    });
+
+    expect(byMatter.summary.groups[0]).toMatchObject({
+      key: "matter-001",
+      label: "2026-0001 Morgan tenancy dispute",
+    });
+    expect(byInvoice.summary.groups).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ key: "invoice-91-plus", label: "INV-91-PLUS" }),
+      ]),
+    );
+    expect(byBucket.summary.groups.map((group) => group.key)).toEqual([
+      "1_30",
+      "31_60",
+      "61_90",
+      "91_plus",
+      "current",
+    ]);
   });
 
   it("groups and filters staff report projections by derived read-only dimensions", () => {

@@ -3,6 +3,7 @@ import type { LegalClinicMatterProfile } from "./legal-clinics.js";
 import type { LedgerAccount, LedgerEntry, LedgerReconciliationRecord } from "./ledger.js";
 import type {
   ActivityTimelineEntry,
+  Contact,
   Matter,
   Province,
   TaskDeadlineRecord,
@@ -12,6 +13,7 @@ import type {
 
 export type StaffReportDefinitionKey =
   | "invoice_aging"
+  | "aged_receivables"
   | "reconciliation_freshness"
   | "productivity"
   | "operational_follow_up";
@@ -23,8 +25,10 @@ export type StaffReportFilterType = "date" | "duration" | "enum" | "number" | "s
 export type StaffReportGroupingKey =
   | "aging_bucket"
   | "account"
+  | "client"
   | "staff_member"
   | "priority"
+  | "invoice"
   | "matter"
   | "jurisdiction"
   | "practiceArea"
@@ -253,6 +257,7 @@ export interface BuildStaffReportProjectionInput {
   groupingKey?: StaffReportGroupingKey;
   matters: StaffReportMatterInput[];
   users: User[];
+  contacts?: Array<Pick<Contact, "id" | "displayName">>;
   invoices: InvoiceRecord[];
   ledgerAccounts: LedgerAccount[];
   ledgerEntries?: LedgerEntry[];
@@ -421,6 +426,44 @@ const STAFF_SAVED_REPORT_DEFINITION_INPUTS: StaffSavedReportDefinitionInput[] = 
     updatedAt: savedDefinitionTimestamp,
   },
   {
+    key: "aged_receivables",
+    name: "Aged receivables",
+    description:
+      "Read-only issued receivable balances grouped by client, matter, invoice, and aging bucket.",
+    category: "billing",
+    defaultGrouping: "client",
+    filters: [
+      { key: "asOf", label: "As of", type: "date", defaultValue: "generatedAt" },
+      {
+        key: "invoiceStatuses",
+        label: "Invoice statuses",
+        type: "status",
+        options: ["issued", "partially_paid"],
+      },
+      ...STAFF_REPORT_DIMENSION_FILTERS,
+    ],
+    groupings: [
+      {
+        key: "client",
+        label: "Client",
+        description: "Group receivable balances by visible client display name.",
+      },
+      { key: "matter", label: "Matter", description: "Group receivable balances by matter." },
+      { key: "invoice", label: "Invoice", description: "Group each receivable by invoice number." },
+      {
+        key: "aging_bucket",
+        label: "Aging bucket",
+        description: "Current, 1-30, 31-60, 61-90, and 91+ days past due.",
+      },
+      ...STAFF_REPORT_DIMENSION_GROUPINGS,
+    ],
+    exportProfileIds: ["summary_json", "review_csv"],
+    permissionScope: ["report:read", "report:export"],
+    source: "open_practice_builtin",
+    savedAt: savedDefinitionTimestamp,
+    updatedAt: savedDefinitionTimestamp,
+  },
+  {
     key: "reconciliation_freshness",
     name: "Reconciliation freshness",
     description: "Trust asset account reconciliation recency and exception posture.",
@@ -521,8 +564,10 @@ export function isStaffReportGroupingKey(value: string): value is StaffReportGro
   return [
     "aging_bucket",
     "account",
+    "client",
     "staff_member",
     "priority",
+    "invoice",
     "matter",
     "jurisdiction",
     "practiceArea",
@@ -551,9 +596,23 @@ function userById(users: User[]): Map<string, User> {
   return new Map(users.map((user) => [user.id, user]));
 }
 
+function contactById(
+  contacts: BuildStaffReportProjectionInput["contacts"] = [],
+): Map<string, Pick<Contact, "id" | "displayName">> {
+  return new Map(contacts.map((contact) => [contact.id, contact]));
+}
+
 function matterLabel(matter: StaffReportMatterInput | undefined, matterId: string): string {
   if (!matter) return matterId;
   return `${matter.number} ${matter.title}`;
+}
+
+function clientDisplayLabel(
+  contacts: Map<string, Pick<Contact, "id" | "displayName">>,
+  clientContactId: string | undefined,
+): string {
+  if (!clientContactId) return "Client unavailable";
+  return contacts.get(clientContactId)?.displayName ?? "Client unavailable";
 }
 
 function userLabel(user: User | undefined, userId: string | undefined): string {
@@ -724,12 +783,45 @@ function invoiceAgingBucket(
   generatedAtMs: number,
 ): { key: string; label: string; daysPastDue?: number; tone: StaffReportProjectionRow["tone"] } {
   const dueMs = parseTime(invoice.dueAt);
-  if (dueMs === undefined) return { key: "undated", label: "Undated", tone: "neutral" };
+  if (dueMs === undefined) return { key: "current", label: "Current", tone: "ready" };
   const daysPastDue = Math.max(daysBetween(generatedAtMs, dueMs) ?? 0, 0);
   if (daysPastDue <= 0) return { key: "current", label: "Current", daysPastDue, tone: "ready" };
   if (daysPastDue <= 30) return { key: "1_30", label: "1-30 days", daysPastDue, tone: "neutral" };
   if (daysPastDue <= 60) return { key: "31_60", label: "31-60 days", daysPastDue, tone: "risk" };
   return { key: "61_plus", label: "61+ days", daysPastDue, tone: "risk" };
+}
+
+function receivablesAgingBucket(
+  invoice: Pick<InvoiceRecord, "dueAt">,
+  generatedAtMs: number,
+): { key: string; label: string; daysPastDue?: number; tone: StaffReportProjectionRow["tone"] } {
+  const dueMs = parseTime(invoice.dueAt);
+  if (dueMs === undefined) return { key: "current", label: "Current", tone: "ready" };
+  const daysPastDue = Math.max(daysBetween(generatedAtMs, dueMs) ?? 0, 0);
+  if (daysPastDue <= 0) return { key: "current", label: "Current", daysPastDue, tone: "ready" };
+  if (daysPastDue <= 30) return { key: "1_30", label: "1-30 days", daysPastDue, tone: "neutral" };
+  if (daysPastDue <= 60) return { key: "31_60", label: "31-60 days", daysPastDue, tone: "risk" };
+  if (daysPastDue <= 90) return { key: "61_90", label: "61-90 days", daysPastDue, tone: "risk" };
+  return { key: "91_plus", label: "91+ days", daysPastDue, tone: "risk" };
+}
+
+const receivablesBucketMetricKeys = {
+  current: "currentCents",
+  "1_30": "days1To30Cents",
+  "31_60": "days31To60Cents",
+  "61_90": "days61To90Cents",
+  "91_plus": "days91PlusCents",
+} as const;
+
+function receivablesBucketAmounts(bucketKey: string, amountCents: number): Record<string, number> {
+  return Object.fromEntries(
+    Object.values(receivablesBucketMetricKeys).map((key) => [
+      key,
+      receivablesBucketMetricKeys[bucketKey as keyof typeof receivablesBucketMetricKeys] === key
+        ? amountCents
+        : 0,
+    ]),
+  );
 }
 
 function buildInvoiceAgingProjection(
@@ -795,6 +887,117 @@ function buildInvoiceAgingProjection(
       totalBalanceDueCents,
       invoiceCount: rows.length,
       pastDueCount: rows.filter((row) => row.groupKey !== "current").length,
+    },
+  });
+}
+
+function buildAgedReceivablesProjection(
+  input: BuildStaffReportProjectionInput,
+  generatedAt: string,
+  generatedAtMs: number,
+  groupingKey: StaffReportGroupingKey,
+): StaffReportProjection {
+  const matters = matterById(input.matters);
+  const contacts = contactById(input.contacts);
+  const profiles = legalClinicProfileByMatterId(input.legalClinicMatterProfiles);
+  const rows = input.invoices
+    .filter(
+      (invoice) =>
+        invoice.balanceDueCents > 0 && ["issued", "partially_paid"].includes(invoice.status),
+    )
+    .map((invoice): StaffReportProjectionRow | undefined => {
+      const matter = matters.get(invoice.matterId);
+      const dimensions = dimensionsForMatter(matter, profiles.get(invoice.matterId));
+      if (!dimensionsMatchFilters(dimensions, input.dimensionFilters)) return undefined;
+      const aging = receivablesAgingBucket(invoice, generatedAtMs);
+      const clientLabel = clientDisplayLabel(contacts, invoice.clientContactId);
+      const dimensionGrouping = dimensionGroup(groupingKey, dimensions);
+      const group =
+        dimensionGrouping ??
+        (groupingKey === "client"
+          ? { key: invoice.clientContactId ?? "client_unavailable", label: clientLabel }
+          : groupingKey === "matter"
+            ? { key: invoice.matterId, label: matterLabel(matter, invoice.matterId) }
+            : groupingKey === "invoice"
+              ? { key: invoice.id, label: invoice.invoiceNumber }
+              : { key: aging.key, label: aging.label });
+      const bucketAmounts = receivablesBucketAmounts(aging.key, invoice.balanceDueCents);
+      return {
+        id: invoice.id,
+        label: `${invoice.invoiceNumber} ${clientLabel}`,
+        groupKey: group.key,
+        groupLabel: group.label,
+        status: invoice.status,
+        tone: aging.tone,
+        matterId: invoice.matterId,
+        matterNumber: matter?.number,
+        dueAt: invoice.dueAt,
+        metricCents: invoice.balanceDueCents,
+        dimensions,
+        metadata: {
+          clientContactId: invoice.clientContactId,
+          clientDisplayName: clientLabel,
+          matterId: invoice.matterId,
+          matterNumber: matter?.number,
+          invoiceId: invoice.id,
+          invoiceNumber: invoice.invoiceNumber,
+          issuedAt: invoice.issuedAt,
+          dueAt: invoice.dueAt,
+          status: invoice.status,
+          totalCents: invoice.totalCents,
+          paidCents: invoice.paidCents,
+          balanceDueCents: invoice.balanceDueCents,
+          daysPastDue: aging.daysPastDue,
+          bucketKey: aging.key,
+          bucketLabel: aging.label,
+          ...bucketAmounts,
+          ...dimensionMetadata(dimensions),
+        },
+      };
+    })
+    .filter((row): row is StaffReportProjectionRow => Boolean(row))
+    .sort(sortRows);
+
+  const totalReceivableCents = rows.reduce((sum, row) => sum + (row.metricCents ?? 0), 0);
+  const bucketTotals = rows.reduce<Record<string, number>>(
+    (totals, row) => {
+      for (const key of Object.values(receivablesBucketMetricKeys)) {
+        const value = row.metadata[key];
+        totals[key] += typeof value === "number" ? value : 0;
+      }
+      return totals;
+    },
+    {
+      currentCents: 0,
+      days1To30Cents: 0,
+      days31To60Cents: 0,
+      days61To90Cents: 0,
+      days91PlusCents: 0,
+    },
+  );
+  return projection({
+    definitionKey: "aged_receivables",
+    generatedAt,
+    groupingKey,
+    filters: {
+      asOf: generatedAt,
+      invoiceStatuses: "issued,partially_paid",
+      ...compactDimensionFilters(input.dimensionFilters),
+    },
+    dimensionFilters: compactDimensionFilters(input.dimensionFilters),
+    rows,
+    metrics: {
+      totalReceivableCents,
+      invoiceCount: rows.length,
+      clientCount: new Set(
+        rows.map((row) =>
+          typeof row.metadata.clientContactId === "string"
+            ? row.metadata.clientContactId
+            : row.metadata.clientDisplayName,
+        ),
+      ).size,
+      pastDueCount: rows.filter((row) => row.metadata.bucketKey !== "current").length,
+      ...bucketTotals,
     },
   });
 }
@@ -1173,6 +1376,9 @@ export function buildStaffReportProjection(
 
   if (input.definitionKey === "invoice_aging") {
     return buildInvoiceAgingProjection(input, generatedAt, generatedAtMs, groupingKey);
+  }
+  if (input.definitionKey === "aged_receivables") {
+    return buildAgedReceivablesProjection(input, generatedAt, generatedAtMs, groupingKey);
   }
   if (input.definitionKey === "reconciliation_freshness") {
     return buildReconciliationFreshnessProjection(input, generatedAt, generatedAtMs, groupingKey);

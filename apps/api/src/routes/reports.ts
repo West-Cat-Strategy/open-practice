@@ -25,6 +25,7 @@ import type { ApiRouteDependencies } from "./types.js";
 
 const reportDefinitionKeySchema = z.enum([
   "invoice_aging",
+  "aged_receivables",
   "reconciliation_freshness",
   "productivity",
   "operational_follow_up",
@@ -35,8 +36,10 @@ const exportProfileIdSchema = z.enum(["summary_json", "review_csv"]);
 const groupingKeySchema = z.enum([
   "aging_bucket",
   "account",
+  "client",
   "staff_member",
   "priority",
+  "invoice",
   "matter",
   "jurisdiction",
   "practiceArea",
@@ -177,9 +180,10 @@ async function loadStaffReportProjectionInput(input: {
   auth: ApiAuthContext;
 }) {
   const overview = await input.repository.getOverview(input.auth.firmId);
-  const [matters, invoices, ledger, reconciliations, timeEntries, taskDeadlines] =
+  const [matters, contacts, invoices, ledger, reconciliations, timeEntries, taskDeadlines] =
     await Promise.all([
       input.repository.listMattersForUser(input.auth.user),
+      input.repository.listContactsForUser(input.auth.user),
       input.repository.listInvoices(input.auth.firmId),
       input.repository.getLedger(input.auth.firmId),
       input.repository.listLedgerReconciliations(input.auth.firmId),
@@ -200,6 +204,7 @@ async function loadStaffReportProjectionInput(input: {
   return {
     firmId: input.auth.firmId,
     matters,
+    contacts: contacts.map((contact) => ({ id: contact.id, displayName: contact.displayName })),
     users: overview.users,
     invoices: invoices.filter((invoice) => visibleMatterIds.has(invoice.matterId)),
     ledgerAccounts: canViewFirmWideLedgerReports ? ledger.accounts : [],
