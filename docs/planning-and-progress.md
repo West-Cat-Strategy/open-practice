@@ -43,6 +43,16 @@ preserves the existing report export queue/profile boundary and does not create 
 automatically allocate payments, mutate invoice balances, process settlement events, or post trust
 ledger entries.
 
+The 2026-06-17 document retention and hold workflow design is recorded in
+[Document Retention And Hold Workflow Design](document-retention-hold-workflow-design.md), with
+proof in
+[document retention and hold workflow design proof](validation/OP_DOCUMENT_RETENTION_HOLD_WORKFLOW_DESIGN_PROOF_2026-06-17.md).
+It defines practice-configured review schedules, hold-blocking rules, deletion-review gates, and
+records-disposition wording for future reviewed planning. This is docs-first only: current runtime
+document-processing remains limited to non-mutating retention-review hints and metadata-only review
+posture, with no deletion automation, retention-deadline enforcement, legal-hold override command,
+object deletion, or jurisdiction-certified compliance claim.
+
 The 2026-06-17 parked worktree reconciliation confirmed that
 `/Users/bryan/projects/open-practice-meeting-availability` and
 `/Users/bryan/projects/open-practice-contact-history-export-scope` were fully absorbed by current

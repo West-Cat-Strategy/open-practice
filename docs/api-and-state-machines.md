@@ -1084,6 +1084,12 @@ provider payloads, tokens, arbitrary metadata values, deletion automation, reten
 retention-policy eligibility, and jurisdictional compliance claims are never returned. Applying
 suggestions, merging documents, changing classification, writing metadata, or deleting documents
 remains outside this surface.
+The docs-first
+[document retention and hold workflow design](document-retention-hold-workflow-design.md) records
+future review language for practice-configured schedules, hold blockers, deletion-review gates, and
+records-disposition packets. It does not change the current API contract: document-processing still
+returns only non-mutating hints and metadata-only posture, with no retention-deadline enforcement,
+legal-hold override command, object deletion, or jurisdiction-certified compliance claim.
 Failed or skipped OCR, transcription, email, connector, AI-assist, or media jobs must not change
 portal-share, billing, signature, trust, or audit state without an explicit reviewed transition.
 
