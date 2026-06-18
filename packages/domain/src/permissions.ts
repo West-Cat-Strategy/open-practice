@@ -263,6 +263,7 @@ const safeJobMetadataKeys = new Set([
   "evidenceKeyCount",
   "expenseEntryCount",
   "exportBodyStoredInJobMetadata",
+  "fieldProfileId",
   "exportProfileId",
   "failedCount",
   "firmId",

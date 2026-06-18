@@ -681,6 +681,7 @@ describe("job metadata redaction", () => {
     expect(
       redactJobMetadata({
         exportKind: "billing",
+        fieldProfileId: "billing_operational_records_json",
         matterId: "matter-001",
         requestedByUserId: "user-admin",
         recordCount: 4,
@@ -689,12 +690,14 @@ describe("job metadata redaction", () => {
         invoiceCount: 1,
         paymentCount: 1,
         enqueueStatus: "queued_for_local_report_worker",
+        fieldKeys: ["timeEntries.narrative"],
         narrative: "Synthetic private billing narrative",
         ledgerMemo: "Synthetic private ledger memo",
         recipientEmail: "client@example.test",
         exportBody: [{ private: "Synthetic export content" }],
       }),
     ).toEqual({
+      fieldProfileId: "billing_operational_records_json",
       matterId: "matter-001",
       requestedByUserId: "user-admin",
       recordCount: 4,
@@ -707,16 +710,19 @@ describe("job metadata redaction", () => {
     expect(
       redactJobMetadata({
         exportKind: "trust",
+        fieldProfileId: "jurisdictional_trust_summary_json",
         recordCount: 7,
         trustTransferRequestCount: 1,
         ledgerAccountCount: 3,
         ledgerEntryCount: 2,
         balanceCount: 1,
         trustBalanceCount: 1,
+        fieldKeys: ["summaries.trustBalanceCents"],
         accountNames: ["Synthetic private account name"],
         ledgerEntries: [{ memo: "Synthetic private ledger memo" }],
       }),
     ).toEqual({
+      fieldProfileId: "jurisdictional_trust_summary_json",
       recordCount: 7,
       trustTransferRequestCount: 1,
     });

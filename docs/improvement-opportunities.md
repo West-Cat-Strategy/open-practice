@@ -300,10 +300,12 @@ surface.
     Apache-2.0/adopt-selectively. No direct snippets recommended.
 
 - **Financial export field profiles**
-  - **First slice:** Add export profile metadata and allowlisted field keys for billing and trust
-    downloads.
-  - **Local gap / shipped boundary:** Async billing/trust exports exist, but export bodies are
-    generated from local projections without reusable field-profile metadata.
+  - **Status:** Shipped first slice on 2026-06-17; keep future work focused on reviewed UI
+    affordances or true format negotiation only after comparing against this profile metadata.
+  - **Shipped boundary:** Billing and jurisdictional trust downloads now include OP-authored
+    reusable field-profile metadata with allowlisted generated-projection keys. Job lifecycle,
+    queue, and audit metadata carry profile IDs only, and downloads still regenerate current local
+    projections without retained export bodies or serialization rewrites.
   - **References:** `opencollective__opencollective-api` export-request patterns and
     `kimai__kimai` spreadsheet column vocabulary.
   - **Reuse and snippets:** Open Collective is MIT/architecture-only; Kimai is AGPL/reference-only.

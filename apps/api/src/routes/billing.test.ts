@@ -1576,6 +1576,8 @@ describe("billing routes", () => {
         jobId: exportRequest.jobId,
       }),
     ]);
+    expect(JSON.stringify(queuedReports)).toContain("billing_operational_records_json");
+    expect(JSON.stringify(queuedReports)).not.toContain("fieldKeys");
     expect(JSON.stringify(queuedReports)).not.toContain("Synthetic private billing export body");
 
     const [job] = await repository.listJobLifecycleRecords("firm-west-legal", {
@@ -1589,6 +1591,7 @@ describe("billing routes", () => {
       metadata: {
         reportType: "billing",
         reportScope: "matter",
+        fieldProfileId: "billing_operational_records_json",
         matterId: "matter-001",
         requestedByUserId: "user-admin",
         enqueueStatus: "queued_for_local_report_worker",
@@ -1609,6 +1612,7 @@ describe("billing routes", () => {
       metadata: {
         reportType: "billing",
         reportScope: "matter",
+        fieldProfileId: "billing_operational_records_json",
         matterId: "matter-001",
         requestedByUserId: "user-admin",
         timeEntryCount: 1,
@@ -1634,6 +1638,13 @@ describe("billing routes", () => {
       export: {
         reportType: "billing",
         reportScope: "matter",
+        fieldProfile: expect.objectContaining({
+          id: "billing_operational_records_json",
+          format: "json",
+          source: "generated_local_projection",
+          manualDownloadOnly: true,
+          storesRawExportBody: false,
+        }),
         matterId: "matter-001",
         timeEntries: expect.arrayContaining([
           expect.objectContaining({
@@ -1646,12 +1657,29 @@ describe("billing routes", () => {
         trustTransferRequests: expect.any(Array),
       },
     });
+    const downloadedPayload = downloaded.json();
+    expect(downloadedPayload.export.fieldProfile.fieldKeys).toEqual(
+      expect.arrayContaining(["timeEntries.narrative", "invoices.invoiceNumber"]),
+    );
+    const forbiddenFieldKeys = new Set([
+      "rawBody",
+      "rawExportBody",
+      "storageKey",
+      "objectKey",
+      "evidence",
+    ]);
+    expect(
+      downloadedPayload.export.fieldProfile.fieldKeys.some((key: string) =>
+        forbiddenFieldKeys.has(key.split(".").at(-1) ?? key),
+      ),
+    ).toBe(false);
 
     const serializedAuditAndJobs = JSON.stringify({
       events: await auditEvents(repository),
       jobs: await repository.listJobLifecycleRecords("firm-west-legal"),
     });
     expect(serializedAuditAndJobs).not.toContain("Synthetic private billing export body");
+    expect(serializedAuditAndJobs).not.toContain("fieldKeys");
   });
 
   it("denies billing export requests to non-billing roles", async () => {

@@ -7,7 +7,11 @@ import type {
   LegalClinicMatterProfile,
   Province,
 } from "@open-practice/domain";
-import { buildJurisdictionalTrustReport, ledgerControlsDiagnostics } from "@open-practice/domain";
+import {
+  buildJurisdictionalTrustReport,
+  financialExportFieldProfiles,
+  ledgerControlsDiagnostics,
+} from "@open-practice/domain";
 import { hasFirmWideLedgerAccess, requireAccess } from "../../http/auth-guards.js";
 import { ApiHttpError } from "../../http/response.js";
 import { parseRequestPart } from "../../http/validation.js";
@@ -41,6 +45,9 @@ const jurisdictionalTrustExportRequestBodySchema = z
 const jurisdictionalTrustExportParamsSchema = z.object({
   exportJobId: z.string().min(1),
 });
+
+const jurisdictionalTrustExportFieldProfile =
+  financialExportFieldProfiles.jurisdictionalTrustSummaryJson;
 
 function compactMetadata(metadata: Record<string, unknown>): Record<string, unknown> {
   return Object.fromEntries(Object.entries(metadata).filter(([, value]) => value !== undefined));
@@ -232,6 +239,7 @@ export function registerLedgerReportRoutes(
       const metadata = compactMetadata({
         reportType: "jurisdictional_trust",
         reportScope: "firm",
+        fieldProfileId: jurisdictionalTrustExportFieldProfile.id,
         jurisdiction: body.jurisdiction,
         practiceArea: body.practiceArea,
         clinicProgramId: body.clinicProgramId,
@@ -274,6 +282,7 @@ export function registerLedgerReportRoutes(
               metadata: compactMetadata({
                 reportType: "jurisdictional_trust",
                 reportScope: "firm",
+                fieldProfileId: jurisdictionalTrustExportFieldProfile.id,
                 jurisdiction: body.jurisdiction,
                 practiceArea: body.practiceArea,
                 clinicProgramId: body.clinicProgramId,
@@ -302,6 +311,7 @@ export function registerLedgerReportRoutes(
           jobId: job.id,
           reportType: "jurisdictional_trust",
           reportScope: "firm",
+          fieldProfileId: jurisdictionalTrustExportFieldProfile.id,
           jurisdiction: body.jurisdiction,
           practiceArea: body.practiceArea,
           clinicProgramId: body.clinicProgramId,
@@ -378,14 +388,16 @@ export function registerLedgerReportRoutes(
         );
       }
 
+      const report = await jurisdictionalTrustReportForRequest({
+        repository,
+        auth: request.auth,
+        filters: jurisdictionalTrustExportFilters(job),
+        groupBy: jurisdictionalTrustExportGroupBy(job),
+      });
+
       return {
         exportRequest: serializeJurisdictionalTrustExportRequest(job),
-        export: await jurisdictionalTrustReportForRequest({
-          repository,
-          auth: request.auth,
-          filters: jurisdictionalTrustExportFilters(job),
-          groupBy: jurisdictionalTrustExportGroupBy(job),
-        }),
+        export: { fieldProfile: jurisdictionalTrustExportFieldProfile, ...report },
       };
     },
   );

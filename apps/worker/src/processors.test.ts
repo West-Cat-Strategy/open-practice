@@ -1583,6 +1583,7 @@ describe("worker processors", () => {
         resourceId: "billing-export-worker-test",
         reportType: "billing",
         reportScope: "matter",
+        fieldProfileId: "billing_operational_records_json",
         matterId: "matter-001",
         recordCount: expect.any(Number),
         timeEntryCount: expect.any(Number),
@@ -1597,6 +1598,7 @@ describe("worker processors", () => {
         resourceId: "jurisdictional-trust-export-worker-test",
         reportType: "jurisdictional_trust",
         reportScope: "firm",
+        fieldProfileId: "jurisdictional_trust_summary_json",
         jurisdiction: "BC",
       },
     });
@@ -1611,6 +1613,7 @@ describe("worker processors", () => {
           status: "completed",
           metadata: expect.objectContaining({
             reportType: "billing",
+            fieldProfileId: "billing_operational_records_json",
             matterId: "matter-001",
             recordCount: expect.any(Number),
             timeEntryCount: expect.any(Number),
@@ -1621,6 +1624,7 @@ describe("worker processors", () => {
           status: "completed",
           metadata: expect.objectContaining({
             reportType: "jurisdictional_trust",
+            fieldProfileId: "jurisdictional_trust_summary_json",
             jurisdiction: "BC",
           }),
         }),
@@ -1629,6 +1633,7 @@ describe("worker processors", () => {
     const serializedJobs = JSON.stringify(jobs);
     expect(serializedJobs).not.toContain("Synthetic billing export body");
     expect(serializedJobs).not.toContain("synthetic-april-trust.pdf");
+    expect(serializedJobs).not.toContain("fieldKeys");
     expect(
       jobs.find((job) => job.id === "job-billing-export-worker-test")?.metadata,
     ).not.toHaveProperty("rawBody");
