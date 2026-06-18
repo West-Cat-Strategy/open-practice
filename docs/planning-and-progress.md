@@ -10,8 +10,8 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 | Snapshot              | Value                                                                |
 | --------------------- | -------------------------------------------------------------------- |
-| Current focus         | Parked meeting/contact-history worktrees were absorbed and retired.  |
-| Next recommended pick | Pick from the durable roadmap/backlog after reviewing shipped proof. |
+| Current focus         | Provider-backed document conversion boundary proof is docs-only.     |
+| Next recommended pick | Runtime expansion needs a separate reviewed implementation slice.    |
 | Ready rows            | 0                                                                    |
 | Candidate rows        | 0                                                                    |
 | In progress rows      | 0                                                                    |
@@ -21,6 +21,17 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 | Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`     |
 
 ## Current Handoff Notes
+
+The 2026-06-17 provider-backed document conversion boundary proof is docs-only and records the
+reviewed design guardrails for future conversion, annotation, chunking, embedding, and semantic
+review before any runtime expansion. The current shipped behavior remains the local-only
+metadata-only `document_conversion_review` path. Provider-backed conversion, annotation bodies,
+chunk storage, embeddings, retained Markdown extraction, external semantic-review providers,
+runtime dependencies, object-storage writes, queues, routes, schemas, and dashboard behavior remain
+deferred. Future slices must preserve matter-scoped authorization, verified upload, safe scan
+posture, license/reuse review, and metadata-only job/audit/API/artifact/proof boundaries. Proof is
+recorded in
+[provider-backed document conversion boundary proof](validation/OP_PROVIDER_DOCUMENT_CONVERSION_BOUNDARY_PROOF_2026-06-17.md).
 
 The 2026-06-17 parked worktree reconciliation confirmed that
 `/Users/bryan/projects/open-practice-meeting-availability` and
@@ -72,6 +83,10 @@ proof notes. Proof is recorded in
 [document conversion review runtime prototype proof](validation/OP_DOCUMENT_CONVERSION_REVIEW_RUNTIME_PROTOTYPE_PROOF_2026-06-16.md);
 the original boundary proof is recorded in
 [private document conversion and annotation boundary proof](validation/OP_PRIVATE_DOCUMENT_CONVERSION_ANNOTATION_BOUNDARY_PROOF_2026-06-16.md).
+A later docs-only design guardrail for provider-backed conversion, annotation, chunking, embedding,
+and semantic review is recorded in
+[provider-backed document conversion boundary proof](validation/OP_PROVIDER_DOCUMENT_CONVERSION_BOUNDARY_PROOF_2026-06-17.md);
+it does not add runtime provider behavior.
 
 The 2026-06-16 staff intake QA scenario matrix branch extends OP-T157's visual branch-rule
 authoring surface with staff-only saved QA scenarios inside existing embedded V2 intake template

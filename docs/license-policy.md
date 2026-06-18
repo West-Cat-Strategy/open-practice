@@ -22,8 +22,9 @@ Detailed reuse classes and admission rules live in `docs/reuse-decision-policy.m
 
 Copyleft services may be studied as references or run beside the core only after an explicit future
 integration decision. The current runtime keeps e-signing and intake embedded; a future
-paperless-style OCR/document-processing service, conversion worker, annotation service, or
-model-backed extraction service would need a documented local/private-processing boundary.
+paperless-style OCR/document-processing service, conversion worker, annotation service,
+chunking/embedding service, or semantic-review/model-backed extraction service would need a
+documented local/private-processing boundary before runtime use.
 
 Optional services must remain separate containers/processes and must not be required for core startup unless an explicit deployment profile enables them.
 
@@ -34,6 +35,10 @@ distinctive prose, provider payload shapes, or sample document content from thos
 Apache-2.0 core. Any future dependency, optional service, or source excerpt must record the source
 project, exact commit/tag, license, reuse class, touched files, upstream files or APIs referenced,
 notices, reviewer, and decision date before implementation.
+Design/proof wording may describe safe metadata boundaries, but it does not admit provider payload
+shapes, prompts, annotation bodies/spans, chunks, embeddings, converted Markdown, storage keys,
+object bodies, or sample document content into tracked runtime, job/audit/API metadata, or proof
+evidence.
 
 ## Reuse Checklist
 
@@ -55,6 +60,6 @@ Before any third-party source excerpt, vendored asset, or new runtime dependency
 - docassemble is historical/reference-only for current runtime scope.
 - j-lawyer.org, ArkCase, paperless-ngx, Kimai, LedgerSMB, CiviCRM, and Midaz are clean-room references only.
 - MarkItDown, Unstructured, Zerox, OpenContracts, and Papermerge remain research/reference inputs
-  for document conversion, annotation, chunking, and extraction boundaries until a documented reuse
-  decision admits a dependency, optional service, or excerpt.
+  for document conversion, annotation, chunking, embedding, semantic-review, and extraction
+  boundaries until a documented reuse decision admits a dependency, optional service, or excerpt.
 - Midaz must be treated as Elastic License 2.0 in the pinned clone unless legal review confirms a compatible licensing path.
