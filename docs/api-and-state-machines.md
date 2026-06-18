@@ -364,6 +364,38 @@ document access, and job lifecycle helpers described below.
 | `GET /api/draft-templates?category=&activeOnly=`                                                                                 | List active firm-scoped drafting templates, including seeded operational basics.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `POST /api/draft-templates`                                                                                                      | Create a firm-scoped drafting template from structured TipTap/ProseMirror JSON.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 
+### Planned Matter Lifecycle Commands
+
+Open Practice has not shipped a matter lifecycle command route. The current
+`GET/POST /api/matters/:matterId/lifecycle-transitions` routes remain append-only, review-only
+evidence for pause, close, archive, and reopen readiness; they do not mutate matter status or run
+portal, billing, task, assignment, audit, retention, or cleanup side effects.
+
+A future implementation may add `POST /api/matters/:matterId/lifecycle-commands` only after an
+explicit implementation scope is approved. The planned command body should include `command`,
+`expectedStatus`, `reason`, an idempotency key, and the linked lifecycle transition record ID. The
+linked transition record must be the latest matching `ready` record for the requested command and
+must still match the matter's current status; blocked, stale, missing, or mismatched readiness
+evidence must not execute a command. Future audit metadata must store safe IDs, before/after
+statuses, command name, linked readiness record ID, idempotency-key presence, and consequence
+flags/counts only. It must not store reason text, blocker text, client facts, payment evidence,
+private portal/document data, raw cleanup details, or private reviewer notes.
+
+Planned command consequences are deliberately narrow:
+
+- `pause`: `open -> paused`; preserves `closedOn`, portal grants, billing records, tasks,
+  assignments, and cleanup state.
+- `close`: `open|paused -> closed`; sets `closedOn`; preserves assignments, tasks, billing
+  records, and existing portal visibility; does not mutate invoices, payments, trust records, or
+  tasks.
+- `archive`: `closed -> archived`; requires matter delete/archive-level authorization; soft-archives
+  only, suspends matter-scoped client portal visibility without deleting grant or document-access
+  history, preserves billing/task/assignment records, and blocks while pending financial review
+  commands remain unresolved.
+- `reopen`: `paused|closed|archived -> open`; clears the current `closedOn`; does not automatically
+  reactivate portal grants suspended by archive, reopen archived tasks, create tasks, mutate
+  invoices, reconcile payments, or post trust funds.
+
 ### Outbound Delivery Confirmation
 
 Every API route that can queue recipient email requires an explicit confirmation payload before it
