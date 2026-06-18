@@ -287,10 +287,12 @@ surface.
     original OP code.
 
 - **Ledger balance snapshot comparison**
-  - **First slice:** Add a read-only balance snapshot comparison between current OP trust balances,
-    latest posted transaction, and latest reconciliation preview.
-  - **Local gap / shipped boundary:** OP protects non-negative balances and records reconciliations,
-    but there is no consolidated balance-drift view across ledger, preview, and report surfaces.
+  - **Shipped first slice:** The trust controls payload and Funds dashboard now expose a read-only
+    balance snapshot comparison across current OP trust balances, latest posted transaction posture,
+    latest statement import batch metadata as preview posture, and latest reconciliation snapshot.
+  - **Remaining boundary:** The comparison is a reviewer cue only. It does not persist preview rows,
+    post ledger entries, run automatic matching or reconciliation, connect bank feeds, settle funds,
+    or claim jurisdiction-certified trust accounting.
   - **References:** `blnkfinance__blnk`, `apache__fineract`.
   - **Reuse and snippets:** Apache-2.0/adopt-selectively; snippets are possible only with provenance,
     but domain behavior is simple enough to author locally.

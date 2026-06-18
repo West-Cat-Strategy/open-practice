@@ -390,6 +390,72 @@ export interface LedgerBankFeedReconciliationReviewSummary {
   reviewOnly: true;
 }
 
+export type LedgerBalanceSnapshotReviewReason =
+  | "no_trust_balances"
+  | "overdrawn_trust_balance"
+  | "no_posted_transaction"
+  | "no_reconciliation_preview_metadata"
+  | "no_reconciliation_snapshot"
+  | "posting_newer_than_preview"
+  | "posting_newer_than_reconciliation"
+  | "reconciliation_variance"
+  | "unmatched_statement_rows";
+
+export interface LedgerBalanceSnapshotComparison {
+  generatedAt: string;
+  reviewOnly: true;
+  currentTrustBalance: {
+    totalCents: number;
+    balanceCount: number;
+    overdrawnBalanceCount: number;
+  };
+  latestPostedTransaction?: {
+    transactionId: string;
+    postedAt: string;
+    entryCount: number;
+    matterCount: number;
+    clientCount: number;
+    accountCount: number;
+    trustAssetDeltaCents: number;
+    clientLiabilityDeltaCents: number;
+    reversal: boolean;
+  };
+  latestReconciliationPreview?: {
+    importBatchId: string;
+    accountId: string;
+    accountName: string;
+    status: LedgerStatementImportBatchStatus;
+    createdAt: string;
+    importedStatementRowCount: number;
+    duplicateStatementRowCount: number;
+    matchingProfilePresent: boolean;
+    sourceLabelPresent: boolean;
+    storagePosture: "metadata_only_no_statement_rows";
+  };
+  latestReconciliationSnapshot?: {
+    reconciliationId: string;
+    accountId: string;
+    accountName: string;
+    status: LedgerReconciliationStatus;
+    statementPeriodEnd: string;
+    expectedBalanceCents: number;
+    actualBalanceCents: number;
+    varianceCents: number;
+    unmatchedStatementRowCount: number;
+  };
+  reviewReasons: LedgerBalanceSnapshotReviewReason[];
+  policy: {
+    source: "ledger_snapshot_and_reconciliation_metadata";
+    previewStoragePosture: "latest_import_batch_metadata_only_no_statement_rows";
+    automaticMatching: false;
+    automaticLedgerPosting: false;
+    automaticReconciliation: false;
+    settlementAutomation: false;
+    liveBankFeedConnection: false;
+    jurisdictionCertifiedAccounting: false;
+  };
+}
+
 export const ledgerReconciliationFreshnessPostures = [
   "fresh",
   "watch",
@@ -1040,6 +1106,182 @@ export function ledgerBankFeedReconciliationReviewSummary(input: {
     trustDisbursementAutomation: false,
     importBatchStoragePosture: "metadata_only_no_statement_rows",
     reviewOnly: true,
+  };
+}
+
+export function buildLedgerBalanceSnapshotComparison(input: {
+  ledger: LedgerControlsLedgerSnapshot;
+  importBatches: LedgerStatementImportBatchRecord[];
+  reconciliations: LedgerReconciliationRecord[];
+  generatedAt?: string;
+}): LedgerBalanceSnapshotComparison {
+  const generatedAt = input.generatedAt ?? new Date().toISOString();
+  const accountsById = new Map(input.ledger.accounts.map((account) => [account.id, account]));
+  const trustBalanceValues = Object.values(input.ledger.trustBalances);
+  const currentTrustBalance = {
+    totalCents: trustBalanceValues.reduce((total, balanceCents) => total + balanceCents, 0),
+    balanceCount: trustBalanceValues.length,
+    overdrawnBalanceCount: trustBalanceValues.filter((balanceCents) => balanceCents < 0).length,
+  };
+
+  const postedTransactions = new Map<
+    string,
+    {
+      transactionId: string;
+      postedAt: string;
+      entryCount: number;
+      matterIds: Set<string>;
+      clientIds: Set<string>;
+      accountIds: Set<string>;
+      trustAssetDeltaCents: number;
+      clientLiabilityDeltaCents: number;
+      reversal: boolean;
+    }
+  >();
+  for (const entry of input.ledger.entries) {
+    const current = postedTransactions.get(entry.transactionId) ?? {
+      transactionId: entry.transactionId,
+      postedAt: entry.postedAt,
+      entryCount: 0,
+      matterIds: new Set<string>(),
+      clientIds: new Set<string>(),
+      accountIds: new Set<string>(),
+      trustAssetDeltaCents: 0,
+      clientLiabilityDeltaCents: 0,
+      reversal: false,
+    };
+    current.entryCount += 1;
+    current.matterIds.add(entry.matterId);
+    current.clientIds.add(entry.clientId);
+    current.accountIds.add(entry.accountId);
+    current.reversal = current.reversal || Boolean(entry.reversingTransactionId);
+    if ((parseTimestamp(entry.postedAt) ?? 0) > (parseTimestamp(current.postedAt) ?? 0)) {
+      current.postedAt = entry.postedAt;
+    }
+    const accountType = accountsById.get(entry.accountId)?.type;
+    if (accountType === "trust_asset") {
+      current.trustAssetDeltaCents += entry.debitCents - entry.creditCents;
+    } else if (accountType === "client_liability") {
+      current.clientLiabilityDeltaCents += entry.creditCents - entry.debitCents;
+    }
+    postedTransactions.set(entry.transactionId, current);
+  }
+  const latestPostedTransactionSource = [...postedTransactions.values()].sort(
+    (left, right) =>
+      (parseTimestamp(right.postedAt) ?? 0) - (parseTimestamp(left.postedAt) ?? 0) ||
+      left.transactionId.localeCompare(right.transactionId),
+  )[0];
+  const latestPostedTransaction = latestPostedTransactionSource
+    ? {
+        transactionId: latestPostedTransactionSource.transactionId,
+        postedAt: latestPostedTransactionSource.postedAt,
+        entryCount: latestPostedTransactionSource.entryCount,
+        matterCount: latestPostedTransactionSource.matterIds.size,
+        clientCount: latestPostedTransactionSource.clientIds.size,
+        accountCount: latestPostedTransactionSource.accountIds.size,
+        trustAssetDeltaCents: latestPostedTransactionSource.trustAssetDeltaCents,
+        clientLiabilityDeltaCents: latestPostedTransactionSource.clientLiabilityDeltaCents,
+        reversal: latestPostedTransactionSource.reversal,
+      }
+    : undefined;
+
+  const latestImportBatch = [...input.importBatches].sort(
+    (left, right) =>
+      (parseTimestamp(right.createdAt) ?? 0) - (parseTimestamp(left.createdAt) ?? 0) ||
+      left.id.localeCompare(right.id),
+  )[0];
+  const latestReconciliationPreview = latestImportBatch
+    ? {
+        importBatchId: latestImportBatch.id,
+        accountId: latestImportBatch.accountId,
+        accountName:
+          accountsById.get(latestImportBatch.accountId)?.name ?? latestImportBatch.accountId,
+        status: latestImportBatch.status,
+        createdAt: latestImportBatch.createdAt,
+        importedStatementRowCount: latestImportBatch.importedStatementRowCount,
+        duplicateStatementRowCount: latestImportBatch.duplicateStatementRowCount,
+        matchingProfilePresent: Boolean(latestImportBatch.matchingProfileId),
+        sourceLabelPresent: latestImportBatch.sourceLabel.trim().length > 0,
+        storagePosture: "metadata_only_no_statement_rows" as const,
+      }
+    : undefined;
+
+  const latestReconciliation = [...input.reconciliations].sort(
+    (left, right) =>
+      (parseTimestamp(right.statementPeriodEnd) ?? 0) -
+        (parseTimestamp(left.statementPeriodEnd) ?? 0) ||
+      (parseTimestamp(right.createdAt) ?? 0) - (parseTimestamp(left.createdAt) ?? 0) ||
+      left.id.localeCompare(right.id),
+  )[0];
+  const latestReconciliationSummary = latestReconciliation
+    ? ledgerReconciliationReviewSummary(latestReconciliation)
+    : undefined;
+  const latestReconciliationSnapshot =
+    latestReconciliation && latestReconciliationSummary
+      ? {
+          reconciliationId: latestReconciliation.id,
+          accountId: latestReconciliation.accountId,
+          accountName:
+            accountsById.get(latestReconciliation.accountId)?.name ??
+            latestReconciliation.accountId,
+          status: latestReconciliation.status,
+          statementPeriodEnd: latestReconciliation.statementPeriodEnd,
+          expectedBalanceCents: latestReconciliation.expectedBalanceCents,
+          actualBalanceCents: latestReconciliation.actualBalanceCents,
+          varianceCents: latestReconciliationSummary.varianceCents,
+          unmatchedStatementRowCount: latestReconciliationSummary.unmatchedStatementRowCount,
+        }
+      : undefined;
+
+  const reviewReasons = new Set<LedgerBalanceSnapshotReviewReason>();
+  if (currentTrustBalance.balanceCount === 0) reviewReasons.add("no_trust_balances");
+  if (currentTrustBalance.overdrawnBalanceCount > 0) {
+    reviewReasons.add("overdrawn_trust_balance");
+  }
+  if (!latestPostedTransaction) reviewReasons.add("no_posted_transaction");
+  if (!latestReconciliationPreview) reviewReasons.add("no_reconciliation_preview_metadata");
+  if (!latestReconciliationSnapshot) reviewReasons.add("no_reconciliation_snapshot");
+  if (
+    latestPostedTransaction &&
+    latestReconciliationPreview &&
+    (parseTimestamp(latestPostedTransaction.postedAt) ?? 0) >
+      (parseTimestamp(latestReconciliationPreview.createdAt) ?? 0)
+  ) {
+    reviewReasons.add("posting_newer_than_preview");
+  }
+  if (
+    latestPostedTransaction &&
+    latestReconciliationSnapshot &&
+    (parseTimestamp(latestPostedTransaction.postedAt) ?? 0) >
+      (parseTimestamp(latestReconciliationSnapshot.statementPeriodEnd) ?? 0)
+  ) {
+    reviewReasons.add("posting_newer_than_reconciliation");
+  }
+  if (latestReconciliationSnapshot && latestReconciliationSnapshot.varianceCents !== 0) {
+    reviewReasons.add("reconciliation_variance");
+  }
+  if (latestReconciliationSnapshot && latestReconciliationSnapshot.unmatchedStatementRowCount > 0) {
+    reviewReasons.add("unmatched_statement_rows");
+  }
+
+  return {
+    generatedAt,
+    reviewOnly: true,
+    currentTrustBalance,
+    latestPostedTransaction,
+    latestReconciliationPreview,
+    latestReconciliationSnapshot,
+    reviewReasons: [...reviewReasons],
+    policy: {
+      source: "ledger_snapshot_and_reconciliation_metadata",
+      previewStoragePosture: "latest_import_batch_metadata_only_no_statement_rows",
+      automaticMatching: false,
+      automaticLedgerPosting: false,
+      automaticReconciliation: false,
+      settlementAutomation: false,
+      liveBankFeedConnection: false,
+      jurisdictionCertifiedAccounting: false,
+    },
   };
 }
 

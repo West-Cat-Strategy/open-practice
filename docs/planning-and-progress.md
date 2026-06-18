@@ -118,6 +118,14 @@ dashboard shows the compact journal, empty state, and audit-chain-invalid warnin
 in
 [Financial command approval journal proof](validation/OP_FINANCIAL_COMMAND_APPROVAL_JOURNAL_PROOF_2026-06-16.md).
 
+The 2026-06-17 reviewer-only ledger balance snapshot comparison branch adds a read-only
+`balanceSnapshotComparison` projection to the existing trust controls payload and Funds dashboard.
+It compares current OP trust balances, latest posted transaction posture, latest statement import
+batch metadata as preview posture, and latest reconciliation snapshot without storing preview rows,
+posting entries, matching transactions, settling funds, connecting feeds, or claiming certified
+accounting. Proof is recorded in
+[Ledger balance snapshot comparison proof](validation/OP_LEDGER_BALANCE_SNAPSHOT_COMPARISON_PROOF_2026-06-17.md).
+
 The 2026-06-16 private document conversion and annotation boundary proof remains the historical
 docs-first policy record. The current local-only follow-up now adds metadata-only
 `document_conversion_review` jobs after verified upload, safe scan posture, and completed OCR

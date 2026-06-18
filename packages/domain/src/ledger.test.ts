@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildLedgerBalanceSnapshotComparison,
   buildLedgerReconciliationExceptionResolutionStatementRow,
   buildJurisdictionalTrustReport,
   clientTrustBalanceByMatter,
@@ -509,6 +510,115 @@ describe("ledger controls diagnostics", () => {
         }),
       ]),
     );
+  });
+
+  it("compares trust balance snapshots without posting or storing preview rows", () => {
+    const comparison = buildLedgerBalanceSnapshotComparison({
+      ledger: {
+        accounts,
+        entries,
+        trustBalances: {
+          "contact-ada:matter-001": 5000,
+          "contact-northstar:matter-002": -1000,
+        },
+      },
+      importBatches: [
+        {
+          id: "import-batch-001",
+          firmId: "firm-west-legal",
+          accountId: "acct-trust-bank",
+          sourceLabel: "Synthetic trust statement",
+          checksumSha256: "a".repeat(64),
+          importedStatementRowCount: 3,
+          duplicateStatementRowCount: 1,
+          status: "previewed",
+          createdByUserId: "user-admin",
+          createdAt: "2026-05-01T12:30:00.000Z",
+        },
+      ],
+      reconciliations,
+      generatedAt: "2026-06-17T12:00:00.000Z",
+    });
+
+    expect(comparison).toMatchObject({
+      generatedAt: "2026-06-17T12:00:00.000Z",
+      reviewOnly: true,
+      currentTrustBalance: {
+        totalCents: 4000,
+        balanceCount: 2,
+        overdrawnBalanceCount: 1,
+      },
+      latestPostedTransaction: {
+        transactionId: "tx-rejected",
+        postedAt: "2026-05-01T13:00:00.000Z",
+        entryCount: 1,
+        matterCount: 1,
+        clientCount: 1,
+        accountCount: 1,
+        trustAssetDeltaCents: 0,
+        clientLiabilityDeltaCents: -1000,
+        reversal: false,
+      },
+      latestReconciliationPreview: {
+        importBatchId: "import-batch-001",
+        accountId: "acct-trust-bank",
+        accountName: "Pooled trust",
+        status: "previewed",
+        importedStatementRowCount: 3,
+        duplicateStatementRowCount: 1,
+        matchingProfilePresent: false,
+        sourceLabelPresent: true,
+        storagePosture: "metadata_only_no_statement_rows",
+      },
+      latestReconciliationSnapshot: {
+        reconciliationId: "reconciliation-001",
+        accountId: "acct-trust-bank",
+        accountName: "Pooled trust",
+        status: "exception",
+        statementPeriodEnd: "2026-05-31T23:59:59.000Z",
+        expectedBalanceCents: 5000,
+        actualBalanceCents: 4000,
+        varianceCents: -1000,
+        unmatchedStatementRowCount: 1,
+      },
+      policy: {
+        automaticMatching: false,
+        automaticLedgerPosting: false,
+        automaticReconciliation: false,
+        settlementAutomation: false,
+        liveBankFeedConnection: false,
+        jurisdictionCertifiedAccounting: false,
+      },
+    });
+    expect(comparison.reviewReasons).toEqual([
+      "overdrawn_trust_balance",
+      "posting_newer_than_preview",
+      "reconciliation_variance",
+      "unmatched_statement_rows",
+    ]);
+  });
+
+  it("keeps empty balance snapshot comparison states explicit", () => {
+    const comparison = buildLedgerBalanceSnapshotComparison({
+      ledger: {
+        accounts,
+        entries: [],
+        trustBalances: {},
+      },
+      importBatches: [],
+      reconciliations: [],
+      generatedAt: "2026-06-17T12:00:00.000Z",
+    });
+
+    expect(comparison.latestPostedTransaction).toBeUndefined();
+    expect(comparison.latestReconciliationPreview).toBeUndefined();
+    expect(comparison.latestReconciliationSnapshot).toBeUndefined();
+    expect(comparison.reviewReasons).toEqual([
+      "no_trust_balances",
+      "no_posted_transaction",
+      "no_reconciliation_preview_metadata",
+      "no_reconciliation_snapshot",
+    ]);
   });
 
   it("builds cautious jurisdictional trust report summaries from existing controls", () => {
