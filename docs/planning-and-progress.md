@@ -22,6 +22,16 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 ## Current Handoff Notes
 
+The 2026-06-17 all-active-lanes integration branch
+`merge/open-practice-active-lanes-2026-06-17` merged the 13 committed dirty lanes plus the clean
+`docs/retire-merged-sibling-worktrees-2026-06-17` branch. The integrated
+`pnpm verify:select -- --base origin/main` selector passed and selected the full package, build,
+policy/docs, and Docker validation set. Docker remains the hard blocker: `pnpm docker:residual-watch`
+printed its startup command, then hung without further output for roughly 3.5 minutes and was
+interrupted with Ctrl-C, exiting 130. No fast-forward to `main`, push, branch/worktree prune, remote
+prune, or stash operation was performed. Proof is recorded in
+[OP mainline merge push prune proof](validation/OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-16.md).
+
 The 2026-06-17 unpublished local mainline delta revalidation confirmed the committed
 `origin/main...HEAD` and `origin/main..HEAD` path sets still match the 18-path Docker/docs/web/build
 delta at `5f15fc87`, then reran `pnpm verify:select -- --files <18 paths>` and the selected checks.

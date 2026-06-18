@@ -578,3 +578,208 @@ Validation results:
 | `pnpm docs:check`   | Passed | Documentation link validation passed with ignored evidence link-target placeholders present.                            |
 | `pnpm policy:check` | Passed | Secrets, package policy, dead-code, migration, OSS reuse, docs, proof index, Docker ignore, and boundary checks passed. |
 | `git diff --check`  | Passed | No whitespace errors.                                                                                                   |
+
+## All Active Local Lanes Integration - 2026-06-17
+
+Branch: `merge/open-practice-active-lanes-2026-06-17`
+Base before integration: local `main` at `5f15fc87cec13b12143a4a5b3dc746b1534f5c9c`
+Remote base: `origin/main` at `81c3adbec03a79c76ad0b98f5378fccabbc2f8b7`
+Integration tip before blocker recording: `3a0dac0e367a6e43a01b3da759c5b1beed21a296`
+
+The 13 dirty active lanes were committed branch-locally, then merged one at a time into the
+integration branch. The clean `docs/retire-merged-sibling-worktrees-2026-06-17` branch was merged
+last. Conflict resolution preserved row-local proof notes, validation index rows, workboard notes,
+route-authorization entries, migration metadata, and existing privacy/trust boundaries. No new
+public API decision was invented during conflict resolution.
+
+Integrated lane tips:
+
+| Branch                                                  | Commit     | Subject                                                     |
+| ------------------------------------------------------- | ---------- | ----------------------------------------------------------- |
+| `feature/op-t134-timer-draft-lock-proof`                | `5348eb3c` | `test: cover timer draft lock proof`                        |
+| `feature/aged-receivables-report`                       | `de6c5c08` | `feat: add aged receivables report`                         |
+| `codex/docker-residual-postgres-drift-2026-06-17`       | `5f42dfd9` | `docs: record Docker residual Postgres drift`               |
+| `docs/document-retention-hold-design-2026-06-17`        | `8488a27d` | `docs: add document retention hold workflow design`         |
+| `feature/expense-category-registry`                     | `84ab15bd` | `feat: add expense category registry`                       |
+| `codex/financial-export-field-profiles-2026-06-17`      | `94a5668a` | `feat: add financial export field profiles`                 |
+| `codex/inbound-email-recovery-metadata-2026-06-17`      | `f6ede8d8` | `feat: add inbound email recovery metadata`                 |
+| `feature/reviewer-ledger-balance-snapshot-comparison`   | `151d4678` | `feat: add ledger balance snapshot comparison`              |
+| `codex/matter-lifecycle-command-policy-2026-06-17`      | `9a229bf8` | `docs: add matter lifecycle command policy plan`            |
+| `docs/payment-import-boundary-2026-06-17`               | `410f2b8e` | `docs: add payment import deposit matching boundary packet` |
+| `docs/provider-document-conversion-boundary-2026-06-17` | `036826c8` | `docs: record provider document conversion boundary`        |
+| `codex/rebac-contact-list-fixtures`                     | `052c5ec1` | `test: add ReBAC contact list fixture coverage`             |
+| `codex/trust-posting-action-descriptors`                | `e71bc416` | `feat: add trust posting action descriptors`                |
+| `docs/retire-merged-sibling-worktrees-2026-06-17`       | `ad669ed9` | Clean branch merged last for historical retirement proof    |
+
+Final integrated path set against `origin/main` before this blocker note contained 101 paths:
+
+```text
+.dockerignore
+.env.example
+CONTRIBUTING.md
+Dockerfile
+README.md
+apps/api/src/routes/billing.test.ts
+apps/api/src/routes/billing/controls.ts
+apps/api/src/routes/billing/dashboard.ts
+apps/api/src/routes/billing/expenses.ts
+apps/api/src/routes/billing/export-requests.ts
+apps/api/src/routes/contacts.test.ts
+apps/api/src/routes/inbound-email.test.ts
+apps/api/src/routes/inbound-email/imap-polling.ts
+apps/api/src/routes/inbound-email/mailgun-raw-mime.ts
+apps/api/src/routes/inbound-email/parser-jobs.ts
+apps/api/src/routes/inbound-email/shared.ts
+apps/api/src/routes/jobs.test.ts
+apps/api/src/routes/ledger.test.ts
+apps/api/src/routes/ledger/read.ts
+apps/api/src/routes/ledger/reports.ts
+apps/api/src/routes/outbound-email.ts
+apps/api/src/routes/reports.test.ts
+apps/api/src/routes/reports.ts
+apps/web/app/_features/billing/models.ts
+apps/web/app/_features/billing/server-resources.ts
+apps/web/app/billing-dashboard.ts
+apps/web/app/dashboard-client.test.ts
+apps/web/app/dashboard-client.tsx
+apps/web/app/dashboard/billing-section.test.tsx
+apps/web/app/dashboard/billing-section.tsx
+apps/web/app/dashboard/reports-section.test.tsx
+apps/web/app/dashboard/reports-section.tsx
+apps/web/app/dashboard/trust-controls-section.test.tsx
+apps/web/app/dashboard/trust-controls-section.tsx
+apps/web/app/trust-controls-dashboard.ts
+apps/web/app/types.ts
+apps/web/next.config.mjs
+apps/worker/src/processors.test.ts
+apps/worker/src/processors/inbound-email-poll.test.ts
+apps/worker/src/processors/inbound-email-poll.ts
+apps/worker/src/processors/reports.ts
+docker-compose.yml
+docker/mailpit/Dockerfile
+docker/minio/Dockerfile
+docs/README.md
+docs/api-and-state-machines.md
+docs/deployment-hardening.md
+docs/development/getting-started.md
+docs/document-retention-hold-workflow-design.md
+docs/improvement-opportunities.md
+docs/license-policy.md
+docs/payment-import-deposit-matching-boundary-packet.md
+docs/planning-and-progress.md
+docs/planning.md
+docs/testing/TESTING.md
+docs/threat-model.md
+docs/trust-funds-caveats.md
+docs/validation/OP-T134_TIME_EXPENSE_CAPTURE_PROOF_2026-05-31.md
+docs/validation/OP-T159_AGED_RECEIVABLES_REPORT_PROOF_2026-06-17.md
+docs/validation/OP_DOCKER_APP_IMAGE_FOOTPRINT_COMPOSE_HARDENING_PROOF_2026-06-16.md
+docs/validation/OP_DOCUMENT_RETENTION_HOLD_WORKFLOW_DESIGN_PROOF_2026-06-17.md
+docs/validation/OP_EXPENSE_CATEGORY_REGISTRY_PROOF_2026-06-17.md
+docs/validation/OP_FINANCIAL_EXPORT_FIELD_PROFILES_PROOF_2026-06-17.md
+docs/validation/OP_INBOUND_EMAIL_REPLAY_RECOVERY_PROOF_2026-06-03.md
+docs/validation/OP_LEDGER_BALANCE_SNAPSHOT_COMPARISON_PROOF_2026-06-17.md
+docs/validation/OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-16.md
+docs/validation/OP_MATTER_LIFECYCLE_COMMAND_POLICY_PLAN_PROOF_2026-06-17.md
+docs/validation/OP_PAYMENT_IMPORT_DEPOSIT_MATCHING_BOUNDARY_PACKET_PROOF_2026-06-17.md
+docs/validation/OP_PROVIDER_DOCUMENT_CONVERSION_BOUNDARY_PROOF_2026-06-17.md
+docs/validation/OP_REBAC_FIXTURE_CATALOGUE_PROOF_2026-06-16.md
+docs/validation/OP_TRUST_POSTING_ACTION_DESCRIPTORS_PROOF_2026-06-17.md
+docs/validation/README.md
+packages/database/migrations/0064_billing_expense_categories.sql
+packages/database/migrations/meta/_journal.json
+packages/database/src/repository/billing-entries-contracts.ts
+packages/database/src/repository/billing-entries/drizzle.ts
+packages/database/src/repository/billing-entries/memory.ts
+packages/database/src/repository/drizzle-mappers.ts
+packages/database/src/repository/drizzle.ts
+packages/database/src/repository/memory.ts
+packages/database/src/schema/billing.ts
+packages/database/src/seed.ts
+packages/database/test/repository.billing-controls.test.ts
+packages/domain/src/audit-taxonomy.ts
+packages/domain/src/authorization-fixtures.ts
+packages/domain/src/billing.test.ts
+packages/domain/src/billing.ts
+packages/domain/src/financial-export-profiles.test.ts
+packages/domain/src/financial-export-profiles.ts
+packages/domain/src/index.ts
+packages/domain/src/ledger.test.ts
+packages/domain/src/ledger.ts
+packages/domain/src/models.ts
+packages/domain/src/operational-actions.test.ts
+packages/domain/src/operational-actions.ts
+packages/domain/src/permissions.test.ts
+packages/domain/src/permissions.ts
+packages/domain/src/reports.test.ts
+packages/domain/src/reports.ts
+scripts/docker-app-smoke.mjs
+scripts/route-authorization-manifest.mjs
+```
+
+Integrated selector:
+
+```bash
+pnpm verify:select -- --base origin/main
+```
+
+Selected commands:
+
+- `pnpm docker:residual-watch`
+- `pnpm docker:app-smoke`
+- `pnpm e2e:docker`
+- `pnpm format:check`
+- `pnpm docs:check`
+- `pnpm policy:check`
+- `pnpm test`
+- `pnpm --filter @open-practice/domain test`
+- `pnpm --filter @open-practice/domain typecheck`
+- `pnpm --filter @open-practice/database test`
+- `pnpm --filter @open-practice/database db:check`
+- `pnpm migrations:check`
+- `pnpm --filter @open-practice/database typecheck`
+- `pnpm --filter @open-practice/database build`
+- `pnpm --filter @open-practice/api test`
+- `pnpm --filter @open-practice/api typecheck`
+- `pnpm --filter @open-practice/providers test`
+- `pnpm --filter @open-practice/worker test`
+- `pnpm --filter @open-practice/worker typecheck`
+- `pnpm --filter @open-practice/worker build`
+- `pnpm --filter @open-practice/web test`
+- `pnpm --filter @open-practice/web typecheck`
+- `pnpm build`
+
+Integrated Docker hard-gate result:
+
+| Command                                    | Result  | Notes                                                                                                                                                |
+| ------------------------------------------ | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm verify:select -- --base origin/main` | Passed  | Selector output listed above.                                                                                                                        |
+| `pnpm docker:residual-watch`               | Blocked | Printed `$ node scripts/watch-docker-residuals.mjs`, stayed silent for roughly 3.5 minutes, and was interrupted with Ctrl-C. The command exited 130. |
+
+Because a Docker-backed validation command hung, this integration is not publish- or prune-ready.
+`main` was not fast-forwarded, `origin/main` was not pushed, selected source branches and worktrees
+were left intact, remote refs were not pruned, and stashes were not touched.
+
+### All-Active-Lanes Blocker Note Validation
+
+The final changed path set for this blocker note is:
+
+- `docs/planning-and-progress.md`
+- `docs/validation/OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-16.md`
+- `docs/validation/README.md`
+
+`pnpm verify:select -- --files docs/planning-and-progress.md docs/validation/OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-16.md docs/validation/README.md`
+selected:
+
+- `pnpm format:check`
+- `pnpm docs:check`
+- `pnpm policy:check`
+
+Validation results:
+
+| Command             | Result | Notes                                                                                                                   |
+| ------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------- |
+| `pnpm format:check` | Passed | Proof, workboard, and validation-index Markdown formatting passed after targeted Prettier.                              |
+| `pnpm docs:check`   | Passed | Documentation link validation passed with ignored evidence link-target placeholders present.                            |
+| `pnpm policy:check` | Passed | Secrets, package policy, dead-code, migration, OSS reuse, docs, proof index, Docker ignore, and boundary checks passed. |
+| `git diff --check`  | Passed | No whitespace errors.                                                                                                   |
