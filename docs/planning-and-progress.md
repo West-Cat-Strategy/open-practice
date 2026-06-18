@@ -10,8 +10,8 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 | Snapshot              | Value                                                                |
 | --------------------- | -------------------------------------------------------------------- |
-| Current focus         | Parked meeting/contact-history worktrees were absorbed and retired.  |
-| Next recommended pick | Pick from the durable roadmap/backlog after reviewing shipped proof. |
+| Current focus         | Firm-managed expense category registry first slice validation.       |
+| Next recommended pick | Review the registry proof and merge branch once validation is green. |
 | Ready rows            | 0                                                                    |
 | Candidate rows        | 0                                                                    |
 | In progress rows      | 0                                                                    |
@@ -52,6 +52,15 @@ records-disposition wording for future reviewed planning. This is docs-first onl
 document-processing remains limited to non-mutating retention-review hints and metadata-only review
 posture, with no deletion automation, retention-deadline enforcement, legal-hold override command,
 object deletion, or jurisdiction-certified compliance claim.
+
+The 2026-06-17 firm-managed expense category registry branch adds persisted
+`billing_expense_categories`, nullable `expense_entries.category_code`, Billing controls category
+APIs/UI, active/applicability validation for new expense entries, and a billing-dashboard
+`expenseCategories` payload with a compatibility `expenseCategoryProfiles` projection. Legacy
+free-text expense rows remain readable and non-category edits still follow existing finalized, lock,
+invoice, and write-off rules. Category deactivation prevents future selection only; it does not
+recalculate invoices, apply payments, settle funds, or post trust entries. Proof is recorded in
+[firm-managed expense category registry proof](validation/OP_EXPENSE_CATEGORY_REGISTRY_PROOF_2026-06-17.md).
 
 The 2026-06-17 parked worktree reconciliation confirmed that
 `/Users/bryan/projects/open-practice-meeting-availability` and

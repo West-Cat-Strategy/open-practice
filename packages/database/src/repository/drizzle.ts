@@ -127,12 +127,17 @@ import {
   upsertDrizzleIntakeFormItemAction,
 } from "./intake-forms/drizzle.js";
 import {
+  createDrizzleBillingExpenseCategory,
   createDrizzleExpenseEntry,
   createDrizzleTimeEntry,
+  getDrizzleBillingExpenseCategory,
+  getDrizzleBillingExpenseCategoryByCode,
   getDrizzleExpenseEntry,
   getDrizzleTimeEntry,
+  listDrizzleBillingExpenseCategories,
   listDrizzleExpenseEntries,
   listDrizzleTimeEntries,
+  updateDrizzleBillingExpenseCategory,
   updateDrizzleExpenseEntry,
   updateDrizzleTimeEntry,
 } from "./billing-entries/drizzle.js";
@@ -1702,6 +1707,41 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     updates: Parameters<OpenPracticeRepository["updateExpenseEntry"]>[2],
   ): ReturnType<OpenPracticeRepository["updateExpenseEntry"]> {
     return updateDrizzleExpenseEntry(this.db, firmId, entryId, updates);
+  }
+
+  async listBillingExpenseCategories(
+    firmId: string,
+    options: Parameters<OpenPracticeRepository["listBillingExpenseCategories"]>[1] = {},
+  ): ReturnType<OpenPracticeRepository["listBillingExpenseCategories"]> {
+    return listDrizzleBillingExpenseCategories(this.db, firmId, options);
+  }
+
+  async getBillingExpenseCategory(
+    firmId: string,
+    categoryId: string,
+  ): ReturnType<OpenPracticeRepository["getBillingExpenseCategory"]> {
+    return getDrizzleBillingExpenseCategory(this.db, firmId, categoryId);
+  }
+
+  async getBillingExpenseCategoryByCode(
+    firmId: string,
+    code: string,
+  ): ReturnType<OpenPracticeRepository["getBillingExpenseCategoryByCode"]> {
+    return getDrizzleBillingExpenseCategoryByCode(this.db, firmId, code);
+  }
+
+  async createBillingExpenseCategory(
+    category: Parameters<OpenPracticeRepository["createBillingExpenseCategory"]>[0],
+  ): ReturnType<OpenPracticeRepository["createBillingExpenseCategory"]> {
+    return createDrizzleBillingExpenseCategory(this.db, category);
+  }
+
+  async updateBillingExpenseCategory(
+    firmId: string,
+    categoryId: string,
+    updates: Parameters<OpenPracticeRepository["updateBillingExpenseCategory"]>[2],
+  ): ReturnType<OpenPracticeRepository["updateBillingExpenseCategory"]> {
+    return updateDrizzleBillingExpenseCategory(this.db, firmId, categoryId, updates);
   }
 
   async listInvoices(

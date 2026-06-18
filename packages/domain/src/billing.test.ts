@@ -7,9 +7,12 @@ import {
   billingRuleScope,
   billingTimerDraftPolicy,
   billingTimerWindowOverlapsLock,
+  billingExpenseCategoryAppliesToMatter,
+  billingExpenseCategoryProfileFromRecord,
   defaultBillDeliveryState,
   defaultBillReminderState,
   defaultCreditWriteOffPosture,
+  defaultBillingExpenseCategoriesForFirm,
   defaultHostedPaymentProcessorState,
   defaultPaymentPlanPlaceholder,
   buildPaymentSettlementReview,
@@ -19,10 +22,12 @@ import {
   expenseCategoryProfileForKey,
   hostedPaymentRequestPath,
   isBillableUnbilled,
+  normalizeExpenseCategoryCode,
   resolveBillingRateRule,
   summarizeTrustTransferLedgerLink,
   timerDraftMinutesFromWindow,
   trustTransferRequestAvailableBalanceCents,
+  validateBillingExpenseCategory,
   type BillingRateRuleRecord,
   type ManualPaymentRecord,
 } from "./billing.js";
@@ -274,6 +279,45 @@ describe("billing period locks and rate rules", () => {
     });
     expect(expenseCategoryProfileForKey("missing-profile")).toBeUndefined();
     expect(expenseCategoryProfileCues.every((profile) => profile.reviewOnly)).toBe(true);
+  });
+
+  it("builds and validates firm-managed expense category records", () => {
+    const [category] = defaultBillingExpenseCategoriesForFirm({
+      firmId: "firm-synthetic",
+      createdByUserId: "user-synthetic",
+      now: "2026-06-17T00:00:00.000Z",
+    });
+    expect(category).toMatchObject({
+      code: "filing_service",
+      label: "Filing and service",
+      active: true,
+      practiceAreas: [],
+      jurisdictions: [],
+    });
+    expect(normalizeExpenseCategoryCode(" Filing Service ")).toBe("filing_service");
+    expect(() =>
+      validateBillingExpenseCategory({
+        ...category!,
+        code: "Filing",
+      }),
+    ).toThrow(/lowercase letters/);
+    expect(
+      billingExpenseCategoryAppliesToMatter(
+        { ...category!, practiceAreas: ["Residential tenancy"], jurisdictions: ["BC"] },
+        { id: "matter-synthetic", practiceArea: "Residential tenancy", jurisdiction: "BC" },
+      ),
+    ).toBe(true);
+    expect(
+      billingExpenseCategoryAppliesToMatter(
+        { ...category!, practiceAreas: ["Notarial services"], jurisdictions: ["ON"] },
+        { id: "matter-synthetic", practiceArea: "Residential tenancy", jurisdiction: "BC" },
+      ),
+    ).toBe(false);
+    expect(billingExpenseCategoryProfileFromRecord(category!)).toMatchObject({
+      key: "filing_service",
+      category: "Filing and service",
+      reviewOnly: true,
+    });
   });
 
   it("defaults hosted payment request shells to non-settlement posture", () => {

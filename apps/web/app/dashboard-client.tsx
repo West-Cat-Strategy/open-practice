@@ -24,6 +24,7 @@ import {
 import { type RefObject, useEffect, useMemo, useState } from "react";
 import type {
   AiOperationalProposalRecord,
+  BillingExpenseCategoryRecord,
   ConflictCandidate,
   DraftExportFormat,
   EmbeddedIntakeTemplateDefinitionV2,
@@ -474,6 +475,8 @@ function csvCell(value: string | number | boolean | undefined): string {
   const text = String(value);
   return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
+
+const billingExpenseCategoryJurisdictions = new Set(["BC", "ON", "CANADA", "OTHER"]);
 
 function staffReportProjectionCsv(report: StaffReportProjection): string {
   const headers = [
@@ -1159,18 +1162,36 @@ export default function DashboardClient({
   const [timerDraftBillable, setTimerDraftBillable] = useState(true);
   const [timerDraftStatus, setTimerDraftStatus] = useState("No timer draft created.");
   const [creatingTimerDraft, setCreatingTimerDraft] = useState(false);
-  const firstExpenseProfileKey = billing.expenseCategoryProfiles[0]?.key ?? "";
+  const firstExpenseCategoryCode =
+    billing.expenseCategories[0]?.code ?? billing.expenseCategoryProfiles[0]?.key ?? "";
   const [expenseDraftProfileKey, setExpenseDraftProfileKey] =
-    useState<string>(firstExpenseProfileKey);
+    useState<string>(firstExpenseCategoryCode);
   const [expenseDraftCategory, setExpenseDraftCategory] = useState("");
   const [expenseDraftAmount, setExpenseDraftAmount] = useState("");
   const [expenseDraftDate, setExpenseDraftDate] = useState("");
   const [expenseDraftDescription, setExpenseDraftDescription] = useState("");
   const [expenseDraftReimbursable, setExpenseDraftReimbursable] = useState(
-    billing.expenseCategoryProfiles[0]?.defaultReimbursable ?? true,
+    billing.expenseCategories[0]?.defaultReimbursable ??
+      billing.expenseCategoryProfiles[0]?.defaultReimbursable ??
+      true,
   );
   const [expenseDraftStatus, setExpenseDraftStatus] = useState("No expense draft created.");
   const [creatingExpenseDraft, setCreatingExpenseDraft] = useState(false);
+  const [expenseCategoryCode, setExpenseCategoryCode] = useState("");
+  const [expenseCategoryLabel, setExpenseCategoryLabel] = useState("");
+  const [expenseCategoryReviewCue, setExpenseCategoryReviewCue] = useState("");
+  const [expenseCategoryMatterScoped, setExpenseCategoryMatterScoped] = useState(false);
+  const [expenseCategoryPracticeAreas, setExpenseCategoryPracticeAreas] = useState("");
+  const [expenseCategoryJurisdictions, setExpenseCategoryJurisdictions] = useState("");
+  const [expenseCategoryDefaultReimbursable, setExpenseCategoryDefaultReimbursable] =
+    useState(true);
+  const [expenseCategoryReimbursableAllowed, setExpenseCategoryReimbursableAllowed] =
+    useState(true);
+  const [expenseCategoryStatus, setExpenseCategoryStatus] = useState(
+    "No expense category change recorded.",
+  );
+  const [creatingExpenseCategory, setCreatingExpenseCategory] = useState(false);
+  const [updatingExpenseCategoryId, setUpdatingExpenseCategoryId] = useState("");
   const [manualPaymentReconciliationStatus, setManualPaymentReconciliationStatus] = useState(
     "No manual payment reconciled in this session.",
   );
@@ -2793,8 +2814,7 @@ export default function DashboardClient({
       matter: activeMatter,
       incurredAtDate: expenseDraftDate,
       amount: expenseDraftAmount,
-      categoryProfileKey: expenseDraftProfileKey,
-      customCategory: expenseDraftCategory,
+      categoryCode: expenseDraftProfileKey,
       description: expenseDraftDescription,
       reimbursable: expenseDraftReimbursable,
       locks: billingDashboard.periodLocks,
@@ -2827,6 +2847,137 @@ export default function DashboardClient({
       setExpenseDraftStatus(formatExpenseDraftApiFailure(dashboardApiStatus(error)));
     } finally {
       setCreatingExpenseDraft(false);
+    }
+  }
+
+  function billingExpenseCategoryProfile(category: BillingExpenseCategoryRecord) {
+    return {
+      key: category.code,
+      label: category.label,
+      category: category.label,
+      defaultReimbursable: category.defaultReimbursable,
+      reviewCue: category.reviewCue ?? "Review expense support before billing approval.",
+      reviewOnly: true as const,
+    };
+  }
+
+  async function createExpenseCategory(): Promise<void> {
+    if (!activeMatter) return;
+    const code = expenseCategoryCode
+      .trim()
+      .toLowerCase()
+      .replaceAll(/[\s-]+/g, "_");
+    const label = expenseCategoryLabel.trim();
+    if (!code || !label) {
+      setExpenseCategoryStatus("Expense category code and label are required.");
+      return;
+    }
+    if (!expenseCategoryReimbursableAllowed && expenseCategoryDefaultReimbursable) {
+      setExpenseCategoryStatus("Default reimbursable requires reimbursable allowed.");
+      return;
+    }
+    const practiceAreas = expenseCategoryPracticeAreas
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean);
+    const jurisdictions = expenseCategoryJurisdictions
+      .split(",")
+      .map((value) => value.trim().toUpperCase())
+      .filter(Boolean);
+    const invalidJurisdiction = jurisdictions.find(
+      (jurisdiction) => !billingExpenseCategoryJurisdictions.has(jurisdiction),
+    );
+    if (invalidJurisdiction) {
+      setExpenseCategoryStatus("Jurisdiction must be BC, ON, CANADA, or OTHER.");
+      return;
+    }
+
+    setCreatingExpenseCategory(true);
+    setExpenseCategoryStatus("Creating expense category...");
+    try {
+      const category = await requestDashboardJson<BillingExpenseCategoryRecord>(
+        apiBaseUrl,
+        "/api/billing/expense-categories",
+        {
+          method: "POST",
+          headers: devHeaders,
+          payload: {
+            code,
+            label,
+            active: true,
+            defaultReimbursable: expenseCategoryDefaultReimbursable,
+            reimbursableAllowed: expenseCategoryReimbursableAllowed,
+            ...(expenseCategoryMatterScoped ? { matterId: activeMatter.id } : {}),
+            practiceAreas,
+            jurisdictions,
+            ...(expenseCategoryReviewCue.trim()
+              ? { reviewCue: expenseCategoryReviewCue.trim() }
+              : {}),
+          },
+        },
+      );
+      setBillingDashboard((current) => ({
+        ...current,
+        expenseCategories: [
+          category,
+          ...current.expenseCategories.filter((candidate) => candidate.id !== category.id),
+        ],
+        expenseCategoryProfiles: [
+          billingExpenseCategoryProfile(category),
+          ...current.expenseCategoryProfiles.filter((candidate) => candidate.key !== category.code),
+        ],
+      }));
+      if (!expenseDraftProfileKey) {
+        setExpenseDraftProfileKey(category.code);
+        setExpenseDraftReimbursable(category.defaultReimbursable);
+      }
+      setExpenseCategoryCode("");
+      setExpenseCategoryLabel("");
+      setExpenseCategoryReviewCue("");
+      setExpenseCategoryMatterScoped(false);
+      setExpenseCategoryPracticeAreas("");
+      setExpenseCategoryJurisdictions("");
+      setExpenseCategoryDefaultReimbursable(true);
+      setExpenseCategoryReimbursableAllowed(true);
+      setExpenseCategoryStatus(`Created ${category.label}.`);
+    } catch (error) {
+      setExpenseCategoryStatus(`Expense category failed: ${dashboardApiStatus(error)}`);
+    } finally {
+      setCreatingExpenseCategory(false);
+    }
+  }
+
+  async function toggleExpenseCategoryActive(
+    category: BillingExpenseCategoryRecord,
+  ): Promise<void> {
+    setUpdatingExpenseCategoryId(category.id);
+    setExpenseCategoryStatus(
+      category.active ? "Deactivating expense category..." : "Activating expense category...",
+    );
+    try {
+      const updated = await requestDashboardJson<BillingExpenseCategoryRecord>(
+        apiBaseUrl,
+        `/api/billing/expense-categories/${encodeURIComponent(category.id)}`,
+        {
+          method: "PATCH",
+          headers: devHeaders,
+          payload: { active: !category.active },
+        },
+      );
+      setBillingDashboard((current) => ({
+        ...current,
+        expenseCategories: current.expenseCategories.map((candidate) =>
+          candidate.id === updated.id ? updated : candidate,
+        ),
+        expenseCategoryProfiles: current.expenseCategoryProfiles.map((candidate) =>
+          candidate.key === updated.code ? billingExpenseCategoryProfile(updated) : candidate,
+        ),
+      }));
+      setExpenseCategoryStatus(`${updated.label} is ${updated.active ? "active" : "inactive"}.`);
+    } catch (error) {
+      setExpenseCategoryStatus(`Expense category update failed: ${dashboardApiStatus(error)}`);
+    } finally {
+      setUpdatingExpenseCategoryId("");
     }
   }
 
@@ -6652,9 +6803,11 @@ export default function DashboardClient({
                     canCreateDraftInvoice={canCreateDraftInvoice}
                     cents={cents}
                     createDraftInvoice={createDraftInvoice}
+                    createExpenseCategory={createExpenseCategory}
                     createExpenseDraft={createExpenseDraft}
                     createTimerDraft={createTimerDraft}
                     creatingDraftInvoice={creatingDraftInvoice}
+                    creatingExpenseCategory={creatingExpenseCategory}
                     creatingExpenseDraft={creatingExpenseDraft}
                     creatingTimerDraft={creatingTimerDraft}
                     draftInvoiceDueAt={draftInvoiceDueAt}
@@ -6668,6 +6821,15 @@ export default function DashboardClient({
                     expenseDraftProfileKey={expenseDraftProfileKey}
                     expenseDraftReimbursable={expenseDraftReimbursable}
                     expenseDraftStatus={expenseDraftStatus}
+                    expenseCategoryCode={expenseCategoryCode}
+                    expenseCategoryDefaultReimbursable={expenseCategoryDefaultReimbursable}
+                    expenseCategoryJurisdictions={expenseCategoryJurisdictions}
+                    expenseCategoryLabel={expenseCategoryLabel}
+                    expenseCategoryMatterScoped={expenseCategoryMatterScoped}
+                    expenseCategoryPracticeAreas={expenseCategoryPracticeAreas}
+                    expenseCategoryReimbursableAllowed={expenseCategoryReimbursableAllowed}
+                    expenseCategoryReviewCue={expenseCategoryReviewCue}
+                    expenseCategoryStatus={expenseCategoryStatus}
                     manualPaymentReconciliationStatus={manualPaymentReconciliationStatus}
                     minutes={minutes}
                     onReconcileManualPayment={reconcileManualPayment}
@@ -6675,6 +6837,14 @@ export default function DashboardClient({
                     setDraftInvoiceDueAt={setDraftInvoiceDueAt}
                     setDraftInvoiceTaxName={setDraftInvoiceTaxName}
                     setDraftInvoiceTaxRate={setDraftInvoiceTaxRate}
+                    setExpenseCategoryCode={setExpenseCategoryCode}
+                    setExpenseCategoryDefaultReimbursable={setExpenseCategoryDefaultReimbursable}
+                    setExpenseCategoryJurisdictions={setExpenseCategoryJurisdictions}
+                    setExpenseCategoryLabel={setExpenseCategoryLabel}
+                    setExpenseCategoryMatterScoped={setExpenseCategoryMatterScoped}
+                    setExpenseCategoryPracticeAreas={setExpenseCategoryPracticeAreas}
+                    setExpenseCategoryReimbursableAllowed={setExpenseCategoryReimbursableAllowed}
+                    setExpenseCategoryReviewCue={setExpenseCategoryReviewCue}
                     setExpenseDraftAmount={setExpenseDraftAmount}
                     setExpenseDraftCategory={setExpenseDraftCategory}
                     setExpenseDraftDate={setExpenseDraftDate}
@@ -6688,6 +6858,8 @@ export default function DashboardClient({
                     setTimerDraftStoppedAt={setTimerDraftStoppedAt}
                     startTimerDraft={startTimerDraft}
                     stopTimerDraft={stopTimerDraft}
+                    toggleExpenseCategoryActive={toggleExpenseCategoryActive}
+                    updatingExpenseCategoryId={updatingExpenseCategoryId}
                     timerDraftBillable={timerDraftBillable}
                     timerDraftNarrative={timerDraftNarrative}
                     timerDraftRate={timerDraftRate}

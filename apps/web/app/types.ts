@@ -3,6 +3,7 @@ import type {
   AiOperationalProposalRecord,
   AiOperationalProposalSummary,
   BillDeliveryState,
+  BillingExpenseCategoryRecord,
   BillingPeriodLockRecord,
   BillingRateRuleRecord,
   BillingRateSnapshot,
@@ -79,6 +80,7 @@ import type {
 
 export type {
   BillDeliveryState,
+  BillingExpenseCategoryRecord,
   BillingPeriodLockRecord,
   BillingRateRuleRecord,
   BillingRateSnapshot,

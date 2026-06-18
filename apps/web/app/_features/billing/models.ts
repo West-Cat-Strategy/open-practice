@@ -5,6 +5,7 @@ import type {
   BillingRateSnapshot,
   BillingTimerDraftPolicy,
   BillReminderState,
+  BillingExpenseCategoryRecord,
   CreditWriteOffPosture,
   ExpenseCategoryProfileCue,
   FinancialCommandJournal,
@@ -48,6 +49,7 @@ export interface BillingExpenseItem {
   incurredAt?: string;
   amountCents: number;
   category: string;
+  categoryCode?: string;
   categoryProfileKey?: string;
   description: string;
   status: BillingEntryStatus;
@@ -123,6 +125,7 @@ export interface BillingDashboardResponse {
   periodLocks: BillingPeriodLockRecord[];
   rateRules: BillingRateRuleRecord[];
   timerDraftPolicy: BillingTimerDraftPolicy;
+  expenseCategories: BillingExpenseCategoryRecord[];
   expenseCategoryProfiles: readonly ExpenseCategoryProfileCue[];
   matters: MatterBillingSummary[];
 }

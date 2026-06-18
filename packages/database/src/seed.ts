@@ -1,4 +1,7 @@
-import { clientTrustBalanceDeltas } from "@open-practice/domain";
+import {
+  clientTrustBalanceDeltas,
+  defaultBillingExpenseCategoriesForFirm,
+} from "@open-practice/domain";
 import {
   sampleAuditEvents,
   sampleCalendarEvents,
@@ -272,6 +275,25 @@ export async function seedSampleData(db: OpenPracticeDatabase): Promise<void> {
         ...entry,
         performedAt: new Date(entry.performedAt),
       })),
+    )
+    .onConflictDoNothing();
+  await db
+    .insert(schema.billingExpenseCategories)
+    .values(
+      [sampleFirm, sampleMatterlessFirm].flatMap((firm) =>
+        defaultBillingExpenseCategoriesForFirm({
+          firmId: firm.id,
+          now: "2026-06-17T00:00:00.000Z",
+        }).map((category) => ({
+          ...category,
+          matterId: category.matterId ?? null,
+          reviewCue: category.reviewCue ?? null,
+          createdByUserId: category.createdByUserId ?? null,
+          updatedByUserId: category.updatedByUserId ?? null,
+          createdAt: new Date(category.createdAt),
+          updatedAt: new Date(category.updatedAt),
+        })),
+      ),
     )
     .onConflictDoNothing();
   await db

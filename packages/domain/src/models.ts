@@ -375,6 +375,7 @@ export interface ExpenseEntry {
   incurredAt: string;
   amountCents: number;
   category: string;
+  categoryCode?: string;
   description: string;
   reimbursable: boolean;
   billingStatus: BillingStatus;

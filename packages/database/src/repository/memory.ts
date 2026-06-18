@@ -16,9 +16,11 @@ import type {
 /* eslint-disable @typescript-eslint/no-this-alias -- Store facade getters/setters need live access to repository arrays. */
 
 import {
+  defaultBillingExpenseCategoriesForFirm,
   type AccessLogRecord,
   type AiOperationalProposalRecord,
   type AuditEvent,
+  type BillingExpenseCategoryRecord,
   type CalendarCredentialRecord,
   type CalendarEventRecord,
   type CalendarGuestLinkRecord,
@@ -258,12 +260,17 @@ import {
   type MemoryIntakeFormsStore,
 } from "./intake-forms/memory.js";
 import {
+  createMemoryBillingExpenseCategory,
   createMemoryExpenseEntry,
   createMemoryTimeEntry,
+  getMemoryBillingExpenseCategory,
+  getMemoryBillingExpenseCategoryByCode,
   getMemoryExpenseEntry,
   getMemoryTimeEntry,
+  listMemoryBillingExpenseCategories,
   listMemoryExpenseEntries,
   listMemoryTimeEntries,
+  updateMemoryBillingExpenseCategory,
   updateMemoryExpenseEntry,
   updateMemoryTimeEntry,
   type MemoryBillingEntriesStore,
@@ -583,6 +590,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private savedOperationalViewDefinitions: SavedOperationalViewDefinition[] = [];
   private timeEntries: TimeEntry[];
   private expenseEntries: ExpenseEntry[];
+  private billingExpenseCategories: BillingExpenseCategoryRecord[];
   private billingPeriodLocks: BillingPeriodLockRecord[] = [];
   private billingRateRules: BillingRateRuleRecord[] = [];
   private invoices: InvoiceRecord[];
@@ -767,6 +775,12 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
       },
       set expenseEntries(value: ExpenseEntry[]) {
         repository.expenseEntries = value;
+      },
+      get billingExpenseCategories() {
+        return repository.billingExpenseCategories;
+      },
+      set billingExpenseCategories(value: BillingExpenseCategoryRecord[]) {
+        repository.billingExpenseCategories = value;
       },
     };
   }
@@ -1436,6 +1450,14 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     this.portalDocumentAccess = [];
     this.timeEntries = seeded ? clone(sampleTimeEntries) : [];
     this.expenseEntries = seeded ? clone(sampleExpenseEntries) : [];
+    this.billingExpenseCategories = seeded
+      ? this.firms.flatMap((firm) =>
+          defaultBillingExpenseCategoriesForFirm({
+            firmId: firm.id,
+            now: "2026-06-17T00:00:00.000Z",
+          }),
+        )
+      : [];
     this.invoices = seeded ? clone(sampleInvoices) : [];
     this.invoiceLines = seeded ? clone(sampleInvoiceLines) : [];
     this.manualPayments = seeded ? clone(sampleManualPayments) : [];
@@ -2764,6 +2786,49 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   ): ReturnType<OpenPracticeRepository["updateExpenseEntry"]> {
     return Promise.resolve(
       updateMemoryExpenseEntry(this.billingEntriesStore, firmId, entryId, updates),
+    );
+  }
+
+  async listBillingExpenseCategories(
+    firmId: string,
+    options: Parameters<OpenPracticeRepository["listBillingExpenseCategories"]>[1] = {},
+  ): ReturnType<OpenPracticeRepository["listBillingExpenseCategories"]> {
+    return Promise.resolve(
+      listMemoryBillingExpenseCategories(this.billingEntriesStore, firmId, options),
+    );
+  }
+
+  async getBillingExpenseCategory(
+    firmId: string,
+    categoryId: string,
+  ): ReturnType<OpenPracticeRepository["getBillingExpenseCategory"]> {
+    return Promise.resolve(
+      getMemoryBillingExpenseCategory(this.billingEntriesStore, firmId, categoryId),
+    );
+  }
+
+  async getBillingExpenseCategoryByCode(
+    firmId: string,
+    code: string,
+  ): ReturnType<OpenPracticeRepository["getBillingExpenseCategoryByCode"]> {
+    return Promise.resolve(
+      getMemoryBillingExpenseCategoryByCode(this.billingEntriesStore, firmId, code),
+    );
+  }
+
+  async createBillingExpenseCategory(
+    category: Parameters<OpenPracticeRepository["createBillingExpenseCategory"]>[0],
+  ): ReturnType<OpenPracticeRepository["createBillingExpenseCategory"]> {
+    return Promise.resolve(createMemoryBillingExpenseCategory(this.billingEntriesStore, category));
+  }
+
+  async updateBillingExpenseCategory(
+    firmId: string,
+    categoryId: string,
+    updates: Parameters<OpenPracticeRepository["updateBillingExpenseCategory"]>[2],
+  ): ReturnType<OpenPracticeRepository["updateBillingExpenseCategory"]> {
+    return Promise.resolve(
+      updateMemoryBillingExpenseCategory(this.billingEntriesStore, firmId, categoryId, updates),
     );
   }
 

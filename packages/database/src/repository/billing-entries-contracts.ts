@@ -1,4 +1,4 @@
-import type { ExpenseEntry, TimeEntry } from "@open-practice/domain";
+import type { BillingExpenseCategoryRecord, ExpenseEntry, TimeEntry } from "@open-practice/domain";
 
 export interface BillingEntriesRepository {
   listTimeEntries(
@@ -36,8 +36,48 @@ export interface BillingEntriesRepository {
     updates: Partial<
       Pick<
         ExpenseEntry,
-        "incurredAt" | "amountCents" | "category" | "description" | "reimbursable" | "billingStatus"
+        | "incurredAt"
+        | "amountCents"
+        | "category"
+        | "categoryCode"
+        | "description"
+        | "reimbursable"
+        | "billingStatus"
       >
     >,
   ): Promise<ExpenseEntry>;
+  listBillingExpenseCategories(
+    firmId: string,
+    options?: { activeOnly?: boolean; matterId?: string },
+  ): Promise<BillingExpenseCategoryRecord[]>;
+  getBillingExpenseCategory(
+    firmId: string,
+    categoryId: string,
+  ): Promise<BillingExpenseCategoryRecord | undefined>;
+  getBillingExpenseCategoryByCode(
+    firmId: string,
+    code: string,
+  ): Promise<BillingExpenseCategoryRecord | undefined>;
+  createBillingExpenseCategory(
+    category: BillingExpenseCategoryRecord,
+  ): Promise<BillingExpenseCategoryRecord>;
+  updateBillingExpenseCategory(
+    firmId: string,
+    categoryId: string,
+    updates: Partial<
+      Pick<
+        BillingExpenseCategoryRecord,
+        | "label"
+        | "active"
+        | "defaultReimbursable"
+        | "reimbursableAllowed"
+        | "matterId"
+        | "practiceAreas"
+        | "jurisdictions"
+        | "reviewCue"
+        | "updatedByUserId"
+        | "updatedAt"
+      >
+    >,
+  ): Promise<BillingExpenseCategoryRecord>;
 }

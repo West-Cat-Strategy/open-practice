@@ -1,8 +1,8 @@
 import type { FastifyInstance } from "fastify";
 import {
   billingDateFallsInsideLock,
+  billingExpenseCategoryProfileFromRecord,
   billingTimerDraftPolicy,
-  expenseCategoryProfileCues,
   hasHostedPaymentRequestEvidence,
 } from "@open-practice/domain";
 import { requireAccess } from "../../http/auth-guards.js";
@@ -29,6 +29,7 @@ export function registerBillingDashboardRoutes(
       paymentRequests,
       periodLocks,
       rateRules,
+      expenseCategories,
     ] = await Promise.all([
       repository.listTimeEntries(request.auth.firmId),
       repository.listExpenseEntries(request.auth.firmId),
@@ -37,6 +38,7 @@ export function registerBillingDashboardRoutes(
       repository.listHostedPaymentRequests(request.auth.firmId),
       repository.listBillingPeriodLocks(request.auth.firmId),
       repository.listBillingRateRules(request.auth.firmId),
+      repository.listBillingExpenseCategories(request.auth.firmId),
     ]);
     const now = new Date().toISOString();
     const matterSummaries = matterIds.map((matterId) => {
@@ -70,6 +72,7 @@ export function registerBillingDashboardRoutes(
           incurredAt: entry.incurredAt,
           amountCents: entry.amountCents,
           category: entry.category,
+          categoryCode: entry.categoryCode,
           description: entry.description,
           status: entry.billingStatus,
         }));
@@ -97,21 +100,17 @@ export function registerBillingDashboardRoutes(
           (entry) =>
             entry.matterId === matterId && ["draft", "submitted"].includes(entry.billingStatus),
         )
-        .map((entry) => {
-          const profile = expenseCategoryProfileCues.find(
-            (candidate) => candidate.category === entry.category,
-          );
-          return {
-            id: entry.id,
-            matterId: entry.matterId,
-            incurredAt: entry.incurredAt,
-            amountCents: entry.amountCents,
-            category: entry.category,
-            categoryProfileKey: profile?.key,
-            description: entry.description,
-            status: entry.billingStatus,
-          };
-        });
+        .map((entry) => ({
+          id: entry.id,
+          matterId: entry.matterId,
+          incurredAt: entry.incurredAt,
+          amountCents: entry.amountCents,
+          category: entry.category,
+          categoryCode: entry.categoryCode,
+          categoryProfileKey: entry.categoryCode,
+          description: entry.description,
+          status: entry.billingStatus,
+        }));
       return {
         matterId,
         captureReviewTime,
@@ -203,7 +202,8 @@ export function registerBillingDashboardRoutes(
       periodLocks,
       rateRules,
       timerDraftPolicy: billingTimerDraftPolicy,
-      expenseCategoryProfiles: expenseCategoryProfileCues,
+      expenseCategories,
+      expenseCategoryProfiles: expenseCategories.map(billingExpenseCategoryProfileFromRecord),
       matters: matterSummaries,
     };
   });

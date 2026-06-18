@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import {
   billingTimerDraftPolicy,
   buildMatterSetupProfile,
+  defaultBillingExpenseCategoriesForFirm,
   expenseCategoryProfileCues,
   summarizeAiOperationalProposals,
   type ActivityTimelineEntry,
@@ -383,6 +384,11 @@ function capability(
     ...overrides,
   };
 }
+
+const syntheticExpenseCategories = defaultBillingExpenseCategoriesForFirm({
+  firmId: "firm-west-legal",
+  now: "2026-06-17T00:00:00.000Z",
+});
 
 function matter(overrides: Partial<MatterSummary>): MatterSummary {
   return {
@@ -3022,6 +3028,7 @@ describe("dashboard client behavior", () => {
       periodLocks: [],
       rateRules: [],
       timerDraftPolicy: billingTimerDraftPolicy,
+      expenseCategories: syntheticExpenseCategories,
       expenseCategoryProfiles: expenseCategoryProfileCues,
       matters: [
         {
@@ -3230,8 +3237,7 @@ describe("dashboard client behavior", () => {
         matter: { id: "matter-001" },
         incurredAtDate: "2026-05-05",
         amount: "42.50",
-        categoryProfileKey: "filing_service",
-        customCategory: "",
+        categoryCode: "filing_service",
         description: "Synthetic filing receipt.",
         reimbursable: true,
         locks: periodLocks,
@@ -3240,7 +3246,7 @@ describe("dashboard client behavior", () => {
       matterId: "matter-001",
       incurredAt: "2026-05-05T00:00:00.000Z",
       amountCents: 4250,
-      categoryProfileKey: "filing_service",
+      categoryCode: "filing_service",
       description: "Synthetic filing receipt.",
       reimbursable: true,
     });
@@ -3260,6 +3266,7 @@ describe("dashboard client behavior", () => {
       periodLocks,
       rateRules: [],
       timerDraftPolicy: billingTimerDraftPolicy,
+      expenseCategories: syntheticExpenseCategories,
       expenseCategoryProfiles: expenseCategoryProfileCues,
       matters: [
         {
@@ -3291,6 +3298,7 @@ describe("dashboard client behavior", () => {
       incurredAt: "2026-05-05T00:00:00.000Z",
       amountCents: 4250,
       category: "Filing and service",
+      categoryCode: "filing_service",
       description: "Synthetic filing receipt.",
       reimbursable: true,
       billingStatus: "draft",

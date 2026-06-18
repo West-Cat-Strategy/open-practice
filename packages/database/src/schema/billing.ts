@@ -10,7 +10,12 @@ import {
   timestamp,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import type { BillingRateSnapshot, HostedPaymentRequestRecord } from "@open-practice/domain";
+import type {
+  BillingExpenseCategoryRecord,
+  BillingRateSnapshot,
+  HostedPaymentRequestRecord,
+  Province,
+} from "@open-practice/domain";
 import { billingRateRules } from "./billing-controls.js";
 import { contacts } from "./contacts.js";
 import { firms, users } from "./core.js";
@@ -38,21 +43,70 @@ export const timeEntries = pgTable("time_entries", {
   billingStatus: text("billing_status").notNull().default("draft"),
 });
 
-export const expenseEntries = pgTable("expense_entries", {
-  id: text("id").primaryKey(),
-  firmId: text("firm_id")
-    .notNull()
-    .references(() => firms.id),
-  matterId: text("matter_id")
-    .notNull()
-    .references(() => matters.id),
-  incurredAt: timestamp("incurred_at", { withTimezone: true }).notNull().defaultNow(),
-  amountCents: integer("amount_cents").notNull(),
-  category: text("category").notNull(),
-  description: text("description").notNull(),
-  reimbursable: boolean("reimbursable").notNull().default(true),
-  billingStatus: text("billing_status").notNull().default("draft"),
-});
+export const billingExpenseCategories = pgTable(
+  "billing_expense_categories",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    code: text("code").notNull(),
+    label: text("label").notNull(),
+    active: boolean("active").notNull().default(true),
+    defaultReimbursable: boolean("default_reimbursable").notNull().default(true),
+    reimbursableAllowed: boolean("reimbursable_allowed").notNull().default(true),
+    matterId: text("matter_id").references(() => matters.id),
+    practiceAreas: jsonb("practice_areas")
+      .$type<BillingExpenseCategoryRecord["practiceAreas"]>()
+      .notNull()
+      .default([]),
+    jurisdictions: jsonb("jurisdictions").$type<Province[]>().notNull().default([]),
+    reviewCue: text("review_cue"),
+    createdByUserId: text("created_by_user_id").references(() => users.id),
+    updatedByUserId: text("updated_by_user_id").references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    firmCode: uniqueIndex("billing_expense_categories_firm_code_idx").on(table.firmId, table.code),
+    firmActive: index("billing_expense_categories_firm_active_idx").on(table.firmId, table.active),
+    matter: index("billing_expense_categories_matter_idx").on(table.matterId),
+    codeFormat: check(
+      "billing_expense_categories_code_format",
+      sql`${table.code} ~ '^[a-z0-9_]+$'`,
+    ),
+    reimbursableDefaultAllowed: check(
+      "billing_expense_categories_reimbursable_default_allowed",
+      sql`${table.reimbursableAllowed} OR ${table.defaultReimbursable} = false`,
+    ),
+  }),
+);
+
+export const expenseEntries = pgTable(
+  "expense_entries",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    matterId: text("matter_id")
+      .notNull()
+      .references(() => matters.id),
+    incurredAt: timestamp("incurred_at", { withTimezone: true }).notNull().defaultNow(),
+    amountCents: integer("amount_cents").notNull(),
+    category: text("category").notNull(),
+    categoryCode: text("category_code"),
+    description: text("description").notNull(),
+    reimbursable: boolean("reimbursable").notNull().default(true),
+    billingStatus: text("billing_status").notNull().default("draft"),
+  },
+  (table) => ({
+    firmCategoryCode: index("expense_entries_firm_category_code_idx").on(
+      table.firmId,
+      table.categoryCode,
+    ),
+  }),
+);
 
 export const invoices = pgTable(
   "invoices",

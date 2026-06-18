@@ -1,9 +1,20 @@
-import { and, eq } from "drizzle-orm";
-import type { ExpenseEntry, TimeEntry } from "@open-practice/domain";
+import { and, asc, eq } from "drizzle-orm";
+import {
+  normalizeExpenseCategoryCode,
+  validateBillingExpenseCategory,
+  type BillingExpenseCategoryRecord,
+  type ExpenseEntry,
+  type TimeEntry,
+} from "@open-practice/domain";
 import type { OpenPracticeDatabase } from "../../runtime.js";
 import * as schema from "../../schema.js";
 import { clone } from "../contracts.js";
-import { mapExpenseEntryRow, mapTimeEntryRow } from "../drizzle-mappers.js";
+import {
+  billingExpenseCategoryInsert,
+  mapBillingExpenseCategoryRow,
+  mapExpenseEntryRow,
+  mapTimeEntryRow,
+} from "../drizzle-mappers.js";
 
 export async function listDrizzleTimeEntries(
   db: OpenPracticeDatabase,
@@ -96,6 +107,7 @@ export async function createDrizzleExpenseEntry(
 ): Promise<ExpenseEntry> {
   await db.insert(schema.expenseEntries).values({
     ...entry,
+    categoryCode: entry.categoryCode ?? null,
     incurredAt: new Date(entry.incurredAt),
   });
   return clone(entry);
@@ -111,10 +123,111 @@ export async function updateDrizzleExpenseEntry(
     .update(schema.expenseEntries)
     .set({
       ...updates,
+      categoryCode: "categoryCode" in updates ? (updates.categoryCode ?? null) : undefined,
       incurredAt: updates.incurredAt ? new Date(updates.incurredAt) : undefined,
     })
     .where(and(eq(schema.expenseEntries.firmId, firmId), eq(schema.expenseEntries.id, entryId)))
     .returning();
   if (!row) throw new Error("Expense entry was not found");
   return mapExpenseEntryRow(row);
+}
+
+export async function listDrizzleBillingExpenseCategories(
+  db: OpenPracticeDatabase,
+  firmId: string,
+  options: { activeOnly?: boolean; matterId?: string } = {},
+): Promise<BillingExpenseCategoryRecord[]> {
+  const filters = [eq(schema.billingExpenseCategories.firmId, firmId)];
+  if (options.activeOnly) filters.push(eq(schema.billingExpenseCategories.active, true));
+  const rows = await db
+    .select()
+    .from(schema.billingExpenseCategories)
+    .where(and(...filters))
+    .orderBy(asc(schema.billingExpenseCategories.code));
+  return rows
+    .map(mapBillingExpenseCategoryRow)
+    .filter(
+      (category) =>
+        !options.matterId || !category.matterId || category.matterId === options.matterId,
+    );
+}
+
+export async function getDrizzleBillingExpenseCategory(
+  db: OpenPracticeDatabase,
+  firmId: string,
+  categoryId: string,
+): Promise<BillingExpenseCategoryRecord | undefined> {
+  const [row] = await db
+    .select()
+    .from(schema.billingExpenseCategories)
+    .where(
+      and(
+        eq(schema.billingExpenseCategories.firmId, firmId),
+        eq(schema.billingExpenseCategories.id, categoryId),
+      ),
+    );
+  return row ? mapBillingExpenseCategoryRow(row) : undefined;
+}
+
+export async function getDrizzleBillingExpenseCategoryByCode(
+  db: OpenPracticeDatabase,
+  firmId: string,
+  code: string,
+): Promise<BillingExpenseCategoryRecord | undefined> {
+  const [row] = await db
+    .select()
+    .from(schema.billingExpenseCategories)
+    .where(
+      and(
+        eq(schema.billingExpenseCategories.firmId, firmId),
+        eq(schema.billingExpenseCategories.code, normalizeExpenseCategoryCode(code)),
+      ),
+    );
+  return row ? mapBillingExpenseCategoryRow(row) : undefined;
+}
+
+export async function createDrizzleBillingExpenseCategory(
+  db: OpenPracticeDatabase,
+  category: BillingExpenseCategoryRecord,
+): Promise<BillingExpenseCategoryRecord> {
+  validateBillingExpenseCategory(category);
+  const existing = await getDrizzleBillingExpenseCategoryByCode(db, category.firmId, category.code);
+  if (existing) throw new Error("Billing expense category code already exists");
+  await db.insert(schema.billingExpenseCategories).values(billingExpenseCategoryInsert(category));
+  return clone(category);
+}
+
+export async function updateDrizzleBillingExpenseCategory(
+  db: OpenPracticeDatabase,
+  firmId: string,
+  categoryId: string,
+  updates: Partial<BillingExpenseCategoryRecord>,
+): Promise<BillingExpenseCategoryRecord> {
+  const existing = await getDrizzleBillingExpenseCategory(db, firmId, categoryId);
+  if (!existing) throw new Error("Billing expense category was not found");
+  const candidate = { ...existing, ...updates, code: existing.code };
+  validateBillingExpenseCategory(candidate);
+  const [row] = await db
+    .update(schema.billingExpenseCategories)
+    .set({
+      label: updates.label,
+      active: updates.active,
+      defaultReimbursable: updates.defaultReimbursable,
+      reimbursableAllowed: updates.reimbursableAllowed,
+      matterId: "matterId" in updates ? (updates.matterId ?? null) : undefined,
+      practiceAreas: updates.practiceAreas,
+      jurisdictions: updates.jurisdictions,
+      reviewCue: "reviewCue" in updates ? (updates.reviewCue ?? null) : undefined,
+      updatedByUserId: "updatedByUserId" in updates ? (updates.updatedByUserId ?? null) : undefined,
+      updatedAt: updates.updatedAt ? new Date(updates.updatedAt) : undefined,
+    })
+    .where(
+      and(
+        eq(schema.billingExpenseCategories.firmId, firmId),
+        eq(schema.billingExpenseCategories.id, categoryId),
+      ),
+    )
+    .returning();
+  if (!row) throw new Error("Billing expense category was not found");
+  return mapBillingExpenseCategoryRow(row);
 }
