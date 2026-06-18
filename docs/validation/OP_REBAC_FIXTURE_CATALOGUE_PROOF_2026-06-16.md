@@ -68,3 +68,63 @@ Passed:
 - `pnpm --filter @open-practice/providers build` and the first database build attempt had the same
   fresh-worktree ordering issue when started before the domain build completed; both passed after
   the domain package was built.
+
+## 2026-06-17 Contact Dossier/List Matrix Addendum
+
+### Scope
+
+This follow-up expands the OP-authored fixture matrix to the high-risk staff contact dossier/list
+surface: `GET /api/contacts/dossiers` and `GET /api/contacts`. It adds contact list-visible and
+denial cases for firm-wide reviewers, assigned matter staff, unassigned staff, standalone contact
+creators, and client-external portal users. It keeps the implementation test-focused and does not
+add a ReBAC policy engine, canonical authorization rewrite, route behavior change, route manifest
+change, schema change, dependency, public-token change, portal grant change, or matter-scope check
+replacement.
+
+### Changed Paths
+
+- `apps/api/src/routes/contacts.test.ts`
+- `docs/api-and-state-machines.md`
+- `docs/improvement-opportunities.md`
+- `docs/validation/OP_REBAC_FIXTURE_CATALOGUE_PROOF_2026-06-16.md`
+- `docs/validation/README.md`
+- `packages/domain/src/authorization-fixtures.ts`
+- `packages/domain/src/permissions.test.ts`
+
+### Validation
+
+Selector:
+
+```bash
+pnpm verify:select -- --files apps/api/src/routes/contacts.test.ts docs/api-and-state-machines.md docs/improvement-opportunities.md docs/validation/OP_REBAC_FIXTURE_CATALOGUE_PROOF_2026-06-16.md docs/validation/README.md packages/domain/src/authorization-fixtures.ts packages/domain/src/permissions.test.ts
+```
+
+Recommended:
+
+```text
+pnpm format:check
+pnpm docs:check
+pnpm policy:check
+pnpm --filter @open-practice/domain test
+pnpm --filter @open-practice/domain typecheck
+pnpm --filter @open-practice/api test
+pnpm --filter @open-practice/api typecheck
+pnpm --filter @open-practice/providers test
+pnpm --filter @open-practice/worker test
+```
+
+Passed:
+
+- `pnpm format:check`.
+- `pnpm docs:check`.
+- `pnpm --filter @open-practice/domain test` - 30 files, 212 tests.
+- `pnpm --filter @open-practice/domain typecheck`.
+- `pnpm --filter @open-practice/domain build`.
+- `pnpm --filter @open-practice/database build`.
+- `pnpm --filter @open-practice/providers build`.
+- `pnpm --filter @open-practice/api test` - 42 files, 554 tests.
+- `pnpm --filter @open-practice/api typecheck`.
+- `pnpm --filter @open-practice/providers test` - 9 files, 20 tests.
+- `pnpm --filter @open-practice/worker test` - 5 files, 45 tests.
+- `pnpm policy:check`.
+- `git diff --check`.

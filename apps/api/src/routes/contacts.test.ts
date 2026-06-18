@@ -4,6 +4,7 @@ import {
   InMemoryOpenPracticeRepository,
   type OpenPracticeRepository,
 } from "@open-practice/database";
+import { authorizationFixtureCases } from "@open-practice/domain";
 import type { Contact, ProfessionalRole, User } from "@open-practice/domain";
 import { registerContactRoutes } from "./contacts.js";
 import type { ApiJobQueue } from "./types.js";
@@ -60,11 +61,147 @@ function fakeReportQueue(jobs: QueuedReportJob[] = []): ApiJobQueue {
   };
 }
 
+function contactAuthorizationFixtureCase(id: string) {
+  const match = authorizationFixtureCases.find((candidate) => candidate.id === id);
+  if (!match) throw new Error(`Missing contact authorization fixture case ${id}`);
+  return match;
+}
+
 afterEach(async () => {
   await Promise.all(servers.splice(0).map((server) => server.close()));
 });
 
 describe("contact routes", () => {
+  it("keeps contact dossier and list visibility aligned with authorization fixtures", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createContact({
+      id: "contact-standalone-creator",
+      firmId: "firm-west-legal",
+      kind: "person",
+      displayName: "Synthetic Standalone Contact",
+      aliases: [],
+      identifiers: [],
+      createdByUserId: "user-staff",
+    });
+
+    const firmWideReviewer: User = {
+      ...user("owner_admin", []),
+      id: "user-admin",
+      displayName: "Synthetic Owner Admin",
+      email: "owner-admin@example.test",
+    };
+    const standaloneCreator: User = {
+      ...user("firm_member", []),
+      id: "user-staff",
+      displayName: "Synthetic Staff Creator",
+      email: "staff-creator@example.test",
+    };
+    const portalClient: User = {
+      id: "client-ada",
+      firmId: "firm-west-legal",
+      displayName: "Synthetic Portal Client",
+      email: "portal-client@example.test",
+      role: "client_external",
+      assignedMatterIds: ["matter-001"],
+      mfaEnabled: true,
+    };
+
+    const scenarios: Array<{
+      fixtureIds: string[];
+      authUser: User;
+      expectedStatus: number;
+      expectedVisibleIds?: string[];
+    }> = [
+      {
+        fixtureIds: ["contact:firm-wide:list-all"],
+        authUser: firmWideReviewer,
+        expectedStatus: 200,
+        expectedVisibleIds: [
+          "contact-ada",
+          "contact-northstar",
+          "contact-river",
+          "contact-standalone-creator",
+        ],
+      },
+      {
+        fixtureIds: ["contact:assigned:client-visible", "contact:assigned:counterparty-visible"],
+        authUser: user("licensee", ["matter-001"]),
+        expectedStatus: 200,
+        expectedVisibleIds: ["contact-ada", "contact-river"],
+      },
+      {
+        fixtureIds: ["contact:unassigned:list-hidden"],
+        authUser: user("licensee", ["matter-001"]),
+        expectedStatus: 200,
+        expectedVisibleIds: ["contact-ada", "contact-river"],
+      },
+      {
+        fixtureIds: ["contact:standalone-creator:list-visible"],
+        authUser: standaloneCreator,
+        expectedStatus: 200,
+        expectedVisibleIds: ["contact-standalone-creator"],
+      },
+      {
+        fixtureIds: ["contact:portal-client:staff-list-denied"],
+        authUser: portalClient,
+        expectedStatus: 403,
+      },
+    ];
+
+    for (const scenario of scenarios) {
+      const server = testServer({ repository, user: scenario.authUser });
+      const dossiers = await server.inject({ method: "GET", url: "/api/contacts/dossiers" });
+      const contactList = await server.inject({ method: "GET", url: "/api/contacts" });
+      const fixtures = scenario.fixtureIds.map(contactAuthorizationFixtureCase);
+
+      for (const fixture of fixtures) {
+        expect(fixture.family).toBe("contact");
+        expect(fixture.resource).toBe("contact");
+        expect(fixture.action).toBe("read");
+      }
+
+      expect(dossiers.statusCode).toBe(scenario.expectedStatus);
+      expect(contactList.statusCode).toBe(scenario.expectedStatus);
+
+      if (scenario.expectedStatus !== 200) {
+        expect(fixtures.every((fixture) => fixture.expectedDecision === "deny")).toBe(true);
+        continue;
+      }
+
+      if (!scenario.expectedVisibleIds) {
+        throw new Error("Expected visible contact ids for allowed contact fixture scenario");
+      }
+      const dossierPayload = dossiers.json<Array<{ contact: { id: string } }>>();
+      const listPayload = contactList.json<{ contacts: Array<{ id: string }> }>();
+      const dossierIds = dossierPayload.map((dossier) => dossier.contact.id);
+      const listIds = listPayload.contacts.map((contact) => contact.id);
+      expect(dossierIds).toEqual(scenario.expectedVisibleIds);
+      expect(listIds).toEqual(scenario.expectedVisibleIds);
+      const serialized = JSON.stringify({ dossiers: dossierPayload, contacts: listPayload });
+
+      for (const fixture of fixtures) {
+        expect(fixture.expectedDecision).toBe("allow");
+        const resourceId = fixture.resourceId;
+        if (!resourceId) {
+          throw new Error(`Missing contact resource id for fixture ${fixture.id}`);
+        }
+        if (fixture.listVisible) {
+          expect(dossierIds).toContain(resourceId);
+          expect(listIds).toContain(resourceId);
+        } else {
+          expect(serialized).not.toContain(resourceId);
+        }
+      }
+    }
+
+    const hiddenSearch = await testServer({
+      repository,
+      user: user("licensee", ["matter-001"]),
+    }).inject({ method: "GET", url: "/api/contacts?search=North" });
+    expect(hiddenSearch.statusCode).toBe(200);
+    expect(hiddenSearch.json<{ contacts: unknown[] }>().contacts).toEqual([]);
+  });
+
   it("returns read-only contact dossiers for accessible matters only", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     await repository.createIntakeVariableProposals([
