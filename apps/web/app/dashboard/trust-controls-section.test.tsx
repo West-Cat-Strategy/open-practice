@@ -522,9 +522,15 @@ describe("TrustControlsSection", () => {
     expect(html).toContain("Prepared posting requests");
     expect(html).toContain("trust_txn_prepared_pending");
     expect(html).toContain("pending approval");
+    expect(html).toContain('data-action-key="ledger_posting_request.approve"');
+    expect(html).toContain('data-action-key="ledger_posting_request.reject"');
+    expect(html).toContain('aria-label="Approve"');
+    expect(html).toContain('aria-label="Reject"');
     expect(html).toContain("Approve");
     expect(html).toContain("Reject");
     expect(html).toContain("rejection reason recorded");
+    expect(html).not.toContain("Synthetic preparation note");
+    expect(html).not.toContain("Synthetic rejection reason");
     expect(html).toContain("review-only profiles · no automatic matching");
     expect(html).toContain("Reconciliation freshness");
     expect(html).toContain("0 fresh · 0 watch · 1 stale · 0 never reconciled");
@@ -611,5 +617,34 @@ describe("TrustControlsSection", () => {
     expect(html).toContain("0 decisions · audit chain invalid");
     expect(html).toContain("Audit chain requires review");
     expect(html).toContain("Use the audit log before relying on this financial journal.");
+  });
+
+  it("renders trust posting review busy descriptors without leaking request notes", () => {
+    const controls = buildSyntheticControls();
+    const html = renderToStaticMarkup(
+      createElement(TrustControlsSection, {
+        activeJurisdictionTrustSummary: jurisdictionSummary,
+        activeTrustBalanceCents: 12500,
+        activeTrustControls: controls,
+        activeTrustPostings: [recentPosting],
+        compactDate,
+        compactStatus,
+        formatCurrency,
+        onReviewPostingRequest: () => {},
+        postingRequestActionKey: "approved:posting_request_pending",
+        trustControlsStatus: "Trust controls loaded.",
+        trustReviewSummary: summarizeTrustControls(controls),
+      }),
+    );
+
+    expect(html).toContain('aria-label="Approving: approval in progress"');
+    expect(html).toContain('title="Approving: approval in progress"');
+    expect(html).toContain('aria-label="Reject: review action in progress"');
+    expect(html).toContain('title="Reject: review action in progress"');
+    expect(html).toContain('data-action-key="ledger_posting_request.approve"');
+    expect(html).toContain('data-action-key="ledger_posting_request.reject"');
+    expect(html).toContain("Approving");
+    expect(html).not.toContain("Synthetic preparation note");
+    expect(html).not.toContain("Synthetic rejection reason");
   });
 });

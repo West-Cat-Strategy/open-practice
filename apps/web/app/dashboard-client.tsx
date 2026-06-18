@@ -36,6 +36,12 @@ import type {
 } from "@open-practice/domain";
 import type { CalendarMeetingLinkMode } from "@open-practice/domain/calendar-models";
 import {
+  compactTrustPostingRequestReviewActionReason,
+  describeTrustPostingRequestReviewAction,
+  trustPostingRequestReviewBusyAction,
+  trustPostingRequestReviewBusyKey,
+} from "@open-practice/domain/operational-actions";
+import {
   isUnavailableDashboardRouteSelection,
   type DashboardNavigationSectionKey,
   type DashboardRouteSelection,
@@ -2147,7 +2153,20 @@ export default function DashboardClient({
     decision: "approved" | "rejected",
   ): Promise<void> {
     if (!activeMatter) return;
-    const actionKey = `${decision}:${postingRequest.id}`;
+    const action = describeTrustPostingRequestReviewAction({
+      action: decision,
+      status: postingRequest.status,
+      busyAction: trustPostingRequestReviewBusyAction(postingRequestActionKey, postingRequest.id),
+    });
+    if (!action.available) {
+      setTrustControlsStatus(
+        `${action.label} unavailable: ${compactTrustPostingRequestReviewActionReason(
+          action.disabledReason,
+        )}.`,
+      );
+      return;
+    }
+    const actionKey = trustPostingRequestReviewBusyKey(decision, postingRequest.id);
     setPostingRequestActionKey(actionKey);
     setTrustControlsStatus(
       decision === "approved"

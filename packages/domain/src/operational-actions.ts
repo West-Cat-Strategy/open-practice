@@ -1,5 +1,9 @@
+import type { LedgerPostingRequestStatus } from "./ledger.js";
+
 export type OperationalActionAvailability = "available" | "disabled";
 export type OperationalActionTone = "neutral" | "ready" | "risk";
+export type TrustPostingRequestReviewAction = "approved" | "rejected";
+export type TrustPostingRequestReviewBusyAction = TrustPostingRequestReviewAction | "other";
 
 export interface OperationalActionDisabledCondition {
   reason: string;
@@ -60,4 +64,86 @@ export function describeOperationalActionState(
     label: input.availableLabel ?? input.label,
     tone: input.availableTone ?? "ready",
   };
+}
+
+const trustPostingRequestReviewActions = [
+  "approved",
+  "rejected",
+] as const satisfies readonly TrustPostingRequestReviewAction[];
+
+const trustPostingRequestReviewActionDescriptors: Record<
+  TrustPostingRequestReviewAction,
+  {
+    actionKey: string;
+    label: string;
+    busyLabel: string;
+    availableTone: OperationalActionTone;
+  }
+> = {
+  approved: {
+    actionKey: "ledger_posting_request.approve",
+    label: "Approve",
+    busyLabel: "Approving",
+    availableTone: "ready",
+  },
+  rejected: {
+    actionKey: "ledger_posting_request.reject",
+    label: "Reject",
+    busyLabel: "Rejecting",
+    availableTone: "risk",
+  },
+};
+
+export function trustPostingRequestReviewBusyKey(
+  action: TrustPostingRequestReviewAction,
+  postingRequestId: string,
+): string {
+  return `${action}:${postingRequestId}`;
+}
+
+export function trustPostingRequestReviewBusyAction(
+  busyKey: string,
+  postingRequestId: string,
+): TrustPostingRequestReviewBusyAction | undefined {
+  if (!busyKey) return undefined;
+  for (const action of trustPostingRequestReviewActions) {
+    if (busyKey === trustPostingRequestReviewBusyKey(action, postingRequestId)) return action;
+  }
+  return busyKey.endsWith(`:${postingRequestId}`) ? "other" : undefined;
+}
+
+export function compactTrustPostingRequestReviewActionReason(value?: string): string {
+  if (!value) return "available";
+  const labels: Record<string, string> = {
+    approved_in_progress: "approval in progress",
+    rejected_in_progress: "rejection in progress",
+    review_action_in_progress: "review action in progress",
+    status_not_pending_approval: "not pending approval",
+  };
+  return labels[value] ?? value.replaceAll("_", " ");
+}
+
+export function describeTrustPostingRequestReviewAction(input: {
+  action: TrustPostingRequestReviewAction;
+  status: LedgerPostingRequestStatus;
+  busyAction?: TrustPostingRequestReviewBusyAction;
+}): OperationalActionState {
+  const descriptor = trustPostingRequestReviewActionDescriptors[input.action];
+  const sameActionBusy = input.busyAction === input.action;
+  const anyActionBusy = input.busyAction !== undefined;
+
+  return describeOperationalActionState({
+    actionKey: descriptor.actionKey,
+    label: descriptor.label,
+    availableTone: descriptor.availableTone,
+    disabledWhen: [
+      sameActionBusy &&
+        disabledOperationalAction(`${input.action}_in_progress`, {
+          label: descriptor.busyLabel,
+        }),
+      anyActionBusy && disabledOperationalAction("review_action_in_progress"),
+      input.status !== "pending_approval" &&
+        disabledOperationalAction("status_not_pending_approval"),
+    ],
+  });
 }

@@ -166,8 +166,13 @@ authorization, matter scoping, idempotency/fingerprint checks, no self-approval,
 Approval posts the stored transaction through the existing ledger transaction path with current
 no-overdraft checks, while rejection never posts. Direct ledger posting remains available for
 non-selected postings, and the slice does not duplicate trust-transfer approve/reject/link, automate
-settlement or bank feeds, or claim jurisdiction-certified trust accounting. Proof is recorded in
-[trust posting approval commands proof](validation/OP_TRUST_POSTING_APPROVAL_COMMANDS_PROOF_2026-06-16.md).
+settlement or bank feeds, or claim jurisdiction-certified trust accounting. The 2026-06-17
+action-descriptor follow-up keeps those command semantics unchanged while deriving Trust Controls
+approve/reject labels, busy/disabled state, accessible labels, and action keys from the
+domain-owned operational action descriptor helper. Proof is recorded in
+[trust posting approval commands proof](validation/OP_TRUST_POSTING_APPROVAL_COMMANDS_PROOF_2026-06-16.md)
+and
+[trust posting action descriptors proof](validation/OP_TRUST_POSTING_ACTION_DESCRIPTORS_PROOF_2026-06-17.md).
 
 The 2026-06-16 CRM contact timeline activity-filter branch adds an optional
 `activity` query to `GET /api/contacts/:contactId/timeline` and a Contacts dashboard filter for

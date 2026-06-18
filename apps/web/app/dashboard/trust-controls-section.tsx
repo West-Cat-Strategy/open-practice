@@ -8,6 +8,11 @@ import {
   ShieldCheck,
   XCircle,
 } from "lucide-react";
+import {
+  compactTrustPostingRequestReviewActionReason,
+  describeTrustPostingRequestReviewAction,
+  trustPostingRequestReviewBusyAction,
+} from "@open-practice/domain/operational-actions";
 
 import type { FinancialCommandJournalEntry, FinancialCommandJournalFamily } from "../types";
 import type { TrustControlsDashboardResponse } from "../_features/billing/models";
@@ -498,53 +503,94 @@ export function TrustControlsSection({
         <span>checker approval before posting</span>
       </div>
       <div className="party-list">
-        {postingRequests.map((postingRequest) => (
-          <div className="party-row" key={postingRequest.id}>
-            <span>
-              <strong>{postingRequest.transactionId}</strong>
-              <small>
-                {postingRequest.entries.length} entries · prepared{" "}
-                {compactDate(postingRequest.preparedAt)} · {postingRequest.matterIds.length} matters
-              </small>
-              <small>
-                {postingRequest.ledgerTransactionId
-                  ? `posted as ${postingRequest.ledgerTransactionId}`
-                  : postingRequest.rejectionReason
-                    ? "rejection reason recorded"
-                    : "awaiting checker decision"}
-              </small>
-            </span>
-            <em className={postingRequest.status === "rejected" ? "risk" : undefined}>
-              {compactStatus(postingRequest.status)}
-            </em>
-            {postingRequest.status === "pending_approval" ? (
-              <span className="row-actions">
-                <button
-                  className="secondary-button compact-button row-button"
-                  disabled={postingRequestActionKey === `approved:${postingRequest.id}`}
-                  onClick={() => onReviewPostingRequest(postingRequest, "approved")}
-                  type="button"
-                >
-                  <Check size={14} aria-hidden="true" />
-                  {postingRequestActionKey === `approved:${postingRequest.id}`
-                    ? "Approving"
-                    : "Approve"}
-                </button>
-                <button
-                  className="secondary-button compact-button row-button"
-                  disabled={postingRequestActionKey === `rejected:${postingRequest.id}`}
-                  onClick={() => onReviewPostingRequest(postingRequest, "rejected")}
-                  type="button"
-                >
-                  <XCircle size={14} aria-hidden="true" />
-                  {postingRequestActionKey === `rejected:${postingRequest.id}`
-                    ? "Rejecting"
-                    : "Reject"}
-                </button>
+        {postingRequests.map((postingRequest) => {
+          const busyAction = trustPostingRequestReviewBusyAction(
+            postingRequestActionKey,
+            postingRequest.id,
+          );
+          const approveAction = describeTrustPostingRequestReviewAction({
+            action: "approved",
+            status: postingRequest.status,
+            busyAction,
+          });
+          const rejectAction = describeTrustPostingRequestReviewAction({
+            action: "rejected",
+            status: postingRequest.status,
+            busyAction,
+          });
+          const approveActionReason = compactTrustPostingRequestReviewActionReason(
+            approveAction.disabledReason,
+          );
+          const rejectActionReason = compactTrustPostingRequestReviewActionReason(
+            rejectAction.disabledReason,
+          );
+          return (
+            <div className="party-row" key={postingRequest.id}>
+              <span>
+                <strong>{postingRequest.transactionId}</strong>
+                <small>
+                  {postingRequest.entries.length} entries · prepared{" "}
+                  {compactDate(postingRequest.preparedAt)} · {postingRequest.matterIds.length}{" "}
+                  matters
+                </small>
+                <small>
+                  {postingRequest.ledgerTransactionId
+                    ? `posted as ${postingRequest.ledgerTransactionId}`
+                    : postingRequest.rejectionReason
+                      ? "rejection reason recorded"
+                      : "awaiting checker decision"}
+                </small>
               </span>
-            ) : null}
-          </div>
-        ))}
+              <em className={postingRequest.status === "rejected" ? "risk" : undefined}>
+                {compactStatus(postingRequest.status)}
+              </em>
+              {postingRequest.status === "pending_approval" ? (
+                <span className="row-actions">
+                  <button
+                    aria-label={
+                      approveAction.disabledReason
+                        ? `${approveAction.label}: ${approveActionReason}`
+                        : approveAction.label
+                    }
+                    className="secondary-button compact-button row-button"
+                    data-action-key={approveAction.actionKey}
+                    disabled={!approveAction.available}
+                    onClick={() => onReviewPostingRequest(postingRequest, "approved")}
+                    title={
+                      approveAction.disabledReason
+                        ? `${approveAction.label}: ${approveActionReason}`
+                        : approveAction.label
+                    }
+                    type="button"
+                  >
+                    <Check size={14} aria-hidden="true" />
+                    {approveAction.label}
+                  </button>
+                  <button
+                    aria-label={
+                      rejectAction.disabledReason
+                        ? `${rejectAction.label}: ${rejectActionReason}`
+                        : rejectAction.label
+                    }
+                    className="secondary-button compact-button row-button"
+                    data-action-key={rejectAction.actionKey}
+                    disabled={!rejectAction.available}
+                    onClick={() => onReviewPostingRequest(postingRequest, "rejected")}
+                    title={
+                      rejectAction.disabledReason
+                        ? `${rejectAction.label}: ${rejectActionReason}`
+                        : rejectAction.label
+                    }
+                    type="button"
+                  >
+                    <XCircle size={14} aria-hidden="true" />
+                    {rejectAction.label}
+                  </button>
+                </span>
+              ) : null}
+            </div>
+          );
+        })}
         {postingRequests.length === 0 ? (
           <p className="inline-empty">
             No prepared posting requests are present for the current controls payload.

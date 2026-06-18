@@ -259,7 +259,8 @@ surface.
   - **Shipped slices:** OP-T123 added the first shared descriptor for connector recovery and
     document OCR queue actions; OP-T124 extended the same boundary to public consultation Intake
     review actions; OP-T126 extended it to submitted intake review load, accept, reject, and
-    more-info actions.
+    more-info actions; the 2026-06-17 trust posting follow-up extends the same read-only descriptor
+    boundary to Trust Controls posting-request approve/reject buttons.
   - **Remaining gap:** Additional dashboard actions still need candidate-by-candidate adoption
     before a broader registry is justified; future slices should pick one implemented operational
     surface and keep explanation data read-only and domain-owned.
@@ -272,7 +273,9 @@ surface.
   - **Shipped first slice:** `trust_posting_requests` now provide prepare/list/approve/reject
     semantics so selected trust postings can be prepared by one staff user and posted only after
     checker approval. The 2026-06-16 parity closure wires pending requests into Trust Controls
-    approve/reject UI actions without changing posting semantics.
+    approve/reject UI actions without changing posting semantics. The 2026-06-17 action-descriptor
+    follow-up keeps those command semantics unchanged while deriving the Trust Controls button
+    labels, busy/disabled state, accessible labels, and action keys from domain-owned descriptors.
   - **Remaining boundary:** Direct trust transactions still post immediately for non-selected
     postings. The posting-request commands reuse the existing ledger transaction posting path at
     approval time, stay separate from the shipped trust-transfer approve/reject/link flow, and do not
