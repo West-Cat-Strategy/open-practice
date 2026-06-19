@@ -18,6 +18,14 @@ skipped-check context. The live workboard remains
 
 ## Current Handoff Notes
 
+The 2026-06-19 filtered audit repository reads proof is recorded in
+[OP_FILTERED_AUDIT_REPOSITORY_READS_PROOF_2026-06-19.md](OP_FILTERED_AUDIT_REPOSITORY_READS_PROOF_2026-06-19.md).
+It covers the behavior-preserving `listFilteredAuditEvents` repository capability, action/resource
+sequence indexes, matter-scoped `/api/audit` bounded reads, and Trust Controls
+`financialCommandJournal` filtered action reads while preserving full-chain verification for
+`chainValid`, firm-wide audit/export full-log behavior, authorization, redaction, posting,
+settlement, and public-route boundaries.
+
 The 2026-06-18 database access hot-path efficiency proof is recorded in
 [OP_DATABASE_ACCESS_HOT_PATH_EFFICIENCY_PROOF_2026-06-18.md](OP_DATABASE_ACCESS_HOT_PATH_EFFICIENCY_PROOF_2026-06-18.md).
 It covers the focused internal refactor for hot-path schema indexes, batched Drizzle repository

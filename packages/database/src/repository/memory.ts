@@ -161,6 +161,7 @@ import { clone } from "./contracts.js";
 import { createMemoryAuthRepository, type MemoryAuthStore } from "./auth/memory.js";
 import {
   appendMemoryAuditEvent,
+  listMemoryFilteredAuditEvents,
   listMemoryAuditEvents,
   recordMemoryAuditEvent,
   type MemoryAuditStore,
@@ -2196,6 +2197,13 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
 
   async listAuditEvents(firmId: string): ReturnType<OpenPracticeRepository["listAuditEvents"]> {
     return listMemoryAuditEvents(this.auditStore, firmId);
+  }
+
+  async listFilteredAuditEvents(
+    firmId: string,
+    filter: Parameters<OpenPracticeRepository["listFilteredAuditEvents"]>[1],
+  ): ReturnType<OpenPracticeRepository["listFilteredAuditEvents"]> {
+    return Promise.resolve(listMemoryFilteredAuditEvents(this.auditStore, firmId, filter));
   }
 
   async appendAuditEvent(

@@ -463,6 +463,13 @@
       "when": 1781568009000,
       "tag": "0065_hot_path_access_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1781568010000,
+      "tag": "0066_filtered_audit_read_indexes",
+      "breakpoints": true
     }
   ]
 }

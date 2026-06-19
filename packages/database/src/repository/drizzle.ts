@@ -35,6 +35,7 @@ import type { ProviderSettingsRepository } from "./provider-settings-contracts.j
 import { createDrizzleAuthRepository } from "./auth/drizzle.js";
 import {
   appendDrizzleAuditEvent,
+  listDrizzleFilteredAuditEvents,
   listDrizzleAuditEvents,
   recordDrizzleAuditEvent,
 } from "./audit/drizzle.js";
@@ -1085,6 +1086,13 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
 
   async listAuditEvents(firmId: string): ReturnType<OpenPracticeRepository["listAuditEvents"]> {
     return listDrizzleAuditEvents(this.db, firmId);
+  }
+
+  async listFilteredAuditEvents(
+    firmId: string,
+    filter: Parameters<OpenPracticeRepository["listFilteredAuditEvents"]>[1],
+  ): ReturnType<OpenPracticeRepository["listFilteredAuditEvents"]> {
+    return listDrizzleFilteredAuditEvents(this.db, firmId, filter);
   }
 
   async appendAuditEvent(

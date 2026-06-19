@@ -10,8 +10,8 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 | Snapshot              | Value                                                                |
 | --------------------- | -------------------------------------------------------------------- |
-| Current focus         | Database efficiency merge/push/prune closeout complete.              |
-| Next recommended pick | Start the next scoped branch from refreshed `main`.                  |
+| Current focus         | Filtered audit repository reads validation handoff.                  |
+| Next recommended pick | Review and merge the filtered audit-read branch after validation.    |
 | Ready rows            | 0                                                                    |
 | Candidate rows        | 0                                                                    |
 | In progress rows      | 0                                                                    |
@@ -48,6 +48,16 @@ once per visible outbox page instead of once per email. The branch preserves HTT
 authorization, redaction, provider behavior, public receipt behavior, queue/retry behavior,
 settlement/trust posture, and synthetic-only proof data. Proof is recorded in
 [email outbox child-row bulk reads proof](validation/OP_EMAIL_OUTBOX_CHILD_BULK_READS_PROOF_2026-06-18.md).
+
+The 2026-06-19 `refactor/filtered-audit-repository-reads-20260619` branch adds internal
+`listFilteredAuditEvents` repository reads with action, matter, resource-type, and resource-id
+filters plus audit-event action/resource sequence indexes. Matter-scoped `/api/audit` now uses the
+filtered read while firm-wide audit reads and audit export/download keep the full-chain/full-log
+path. Trust Controls reads only financial-command audit actions for the journal and still uses the
+full audit-chain verifier for `financialCommandJournal.chainValid`. The branch preserves HTTP
+response shapes, authorization, redaction, audit-chain posture, trust posting, settlement, and
+synthetic-only proof data. Proof is recorded in
+[filtered audit repository reads proof](validation/OP_FILTERED_AUDIT_REPOSITORY_READS_PROOF_2026-06-19.md).
 
 The 2026-06-17 all-active-lanes integration branch
 `merge/open-practice-active-lanes-2026-06-17` merged the 13 committed dirty lanes plus the clean

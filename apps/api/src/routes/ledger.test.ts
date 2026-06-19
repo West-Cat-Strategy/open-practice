@@ -5,7 +5,10 @@ import {
   InMemoryOpenPracticeRepository,
   type OpenPracticeRepository,
 } from "@open-practice/database";
-import type { LedgerReconciliationRecord } from "@open-practice/domain";
+import {
+  financialCommandJournalActions,
+  type LedgerReconciliationRecord,
+} from "@open-practice/domain";
 import { registerLedgerRoutes } from "./ledger.js";
 import type { ApiJobQueue } from "./types.js";
 
@@ -63,6 +66,28 @@ function fakeReportQueue(jobs: QueuedReportJob[] = []): ApiJobQueue {
       return { id: options?.jobId ?? "report-job" };
     },
   };
+}
+
+class FinancialCommandAuditReadRepository extends InMemoryOpenPracticeRepository {
+  fullAuditReadCount = 0;
+  readonly filteredAuditReads: Array<
+    Parameters<InMemoryOpenPracticeRepository["listFilteredAuditEvents"]>[1]
+  > = [];
+
+  override async listAuditEvents(
+    firmId: Parameters<InMemoryOpenPracticeRepository["listAuditEvents"]>[0],
+  ): ReturnType<InMemoryOpenPracticeRepository["listAuditEvents"]> {
+    this.fullAuditReadCount += 1;
+    return super.listAuditEvents(firmId);
+  }
+
+  override async listFilteredAuditEvents(
+    firmId: Parameters<InMemoryOpenPracticeRepository["listFilteredAuditEvents"]>[0],
+    filter: Parameters<InMemoryOpenPracticeRepository["listFilteredAuditEvents"]>[1],
+  ): ReturnType<InMemoryOpenPracticeRepository["listFilteredAuditEvents"]> {
+    this.filteredAuditReads.push(filter);
+    return super.listFilteredAuditEvents(firmId, filter);
+  }
 }
 
 function ledgerTransactionPayload(overrides: Record<string, unknown> = {}) {
@@ -418,7 +443,7 @@ describe("ledger routes", () => {
   });
 
   it("returns a read-only financial command journal from safe audit metadata cues", async () => {
-    const repository = new InMemoryOpenPracticeRepository();
+    const repository = new FinancialCommandAuditReadRepository();
     await repository.appendAuditEvent({
       id: "audit-financial-ledger-posted",
       firmId: "firm-west-legal",
@@ -655,6 +680,11 @@ describe("ledger routes", () => {
     expect(matterJournal.entries.map((entry) => entry.resourceId)).not.toContain(
       "trust-transfer-hidden",
     );
+    expect(repository.fullAuditReadCount).toBe(2);
+    expect(repository.filteredAuditReads).toEqual([
+      { actions: financialCommandJournalActions },
+      { actions: financialCommandJournalActions, matterId: "matter-001" },
+    ]);
   });
 
   it("returns aggregate-only jurisdictional trust reports for firm-wide ledger users", async () => {

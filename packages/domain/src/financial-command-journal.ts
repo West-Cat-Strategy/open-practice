@@ -97,6 +97,10 @@ const financialCommandJournalDefinitions: Record<string, FinancialCommandJournal
   },
 };
 
+export const financialCommandJournalActions = Object.freeze(
+  Object.keys(financialCommandJournalDefinitions),
+);
+
 function asString(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const trimmed = value.trim();
