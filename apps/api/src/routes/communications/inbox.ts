@@ -151,6 +151,38 @@ function serializeOutboundEmail(
   };
 }
 
+function uniqueEmailIds(emails: EmailOutboxRecord[]): string[] {
+  return [...new Set(emails.map((email) => email.id))];
+}
+
+function groupEmailEventsByEmailId(
+  events: EmailEventRecord[],
+  visibleEmailIds: string[],
+): Map<string, EmailEventRecord[]> {
+  const visibleEmailIdSet = new Set(visibleEmailIds);
+  const eventsByEmailId = new Map<string, EmailEventRecord[]>(
+    visibleEmailIds.map((emailId) => [emailId, []]),
+  );
+  for (const event of events) {
+    if (!visibleEmailIdSet.has(event.emailId)) continue;
+    eventsByEmailId.get(event.emailId)?.push(event);
+  }
+  return eventsByEmailId;
+}
+
+function latestReceiptTokenByEmailId(
+  receiptTokens: EmailReceiptTokenRecord[],
+  visibleEmailIds: string[],
+): Map<string, EmailReceiptTokenRecord> {
+  const visibleEmailIdSet = new Set(visibleEmailIds);
+  const receiptTokenByEmailId = new Map<string, EmailReceiptTokenRecord>();
+  for (const receiptToken of receiptTokens) {
+    if (!visibleEmailIdSet.has(receiptToken.emailId)) continue;
+    receiptTokenByEmailId.set(receiptToken.emailId, receiptToken);
+  }
+  return receiptTokenByEmailId;
+}
+
 function lastEventAt(email: EmailOutboxRecord, events: EmailEventRecord[]): string {
   return (
     [...events].reverse().find((event) => event.occurredAt)?.occurredAt ??
@@ -522,18 +554,20 @@ export function registerCommunicationsInboxRoutes(
         attachments: await repository.listInboundEmailAttachments(request.auth.firmId, message.id),
       })),
     );
-    const outboundEvents = await Promise.all(
-      outboundEmails.map(async (email) => ({
-        email,
-        events: await repository.listEmailEvents(request.auth.firmId, { emailId: email.id }),
-      })),
+    const outboundEmailIds = uniqueEmailIds(outboundEmails);
+    const [outboundEmailEvents, receiptTokens] = await Promise.all([
+      repository.listEmailEvents(request.auth.firmId, { emailIds: outboundEmailIds }),
+      repository.listEmailReceiptTokens(request.auth.firmId, { emailIds: outboundEmailIds }),
+    ]);
+    const eventsByOutboundEmailId = groupEmailEventsByEmailId(
+      outboundEmailEvents,
+      outboundEmailIds,
     );
-    const receiptTokens = await repository.listEmailReceiptTokens(request.auth.firmId, {
-      matterId: query.matterId,
-    });
-    const receiptTokenByEmailId = new Map(
-      receiptTokens.map((receiptToken) => [receiptToken.emailId, receiptToken]),
-    );
+    const receiptTokenByEmailId = latestReceiptTokenByEmailId(receiptTokens, outboundEmailIds);
+    const outboundEvents = outboundEmails.map((email) => ({
+      email,
+      events: eventsByOutboundEmailId.get(email.id) ?? [],
+    }));
     const conversationMessageSummaries = await Promise.all(
       conversationThreads.map(async (thread) => ({
         thread,

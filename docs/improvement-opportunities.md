@@ -35,6 +35,11 @@ matter-workspace grouping. The contact list/dossier split candidate is also impl
 `refactor/contact-list-efficiency` branch: the Drizzle `/api/contacts` list path now avoids full
 dossier hydration while preserving public response shape, search/sort/pagination compatibility,
 matter-scoped access, standalone creator visibility, and dossier/detail/history/export behavior.
+The email outbox child-row bulk-read slice is implemented in
+`refactor/email-outbox-child-bulk-reads`: outbound email events and receipt-token child rows are
+batched for `/api/mail/outbox` and the outbound portion of `/api/communications/inbox` using
+optional repository `emailIds` filters while preserving route shape, authorization, redaction,
+provider, receipt, queue/retry, trust, and payment boundaries.
 
 Future candidates should stay behavior-preserving unless promoted explicitly, and should compare
 against the shipped database-efficiency proofs before widening scope.
@@ -42,9 +47,9 @@ against the shipped database-efficiency proofs before widening scope.
 - **Client portal batch projection:** Build a portal-facing batch projection for existing
   client-visible grants, actions, documents, billing cues, and messages while preserving current
   client/matter visibility gates.
-- **Communications and email bulk reads:** Add focused bulk-read helpers for message/email views
-  that currently compose repeated matter or related-resource lookups, without surfacing raw private
-  body text outside existing boundaries.
+- **Remaining communications and email aggregation:** Keep inbound attachment/conversation
+  aggregation and other non-outbox message bulk reads separate from the shipped outbox child-row
+  slice, without surfacing raw private body text outside existing boundaries.
 - **Operational views and report read models:** Consider durable read-model helpers for high-volume
   operational dashboards and report slices once the selected views are stable enough to justify
   pre-shaped query paths.
@@ -168,6 +173,17 @@ surface.
   - **References:** `usewaypoint__email-builder-js`.
   - **Reuse and snippets:** Reference-only for OP-T158; no dependency, copied excerpt, vendored
     asset, or reference-derived code was added.
+
+- **Email outbox child-row bulk reads**
+  - **In-review slice:** The 2026-06-18 `refactor/email-outbox-child-bulk-reads` branch batches
+    outbound email event and receipt-token child rows for `/api/mail/outbox` and the outbound
+    portion of `/api/communications/inbox` using optional repository `emailIds` filters.
+  - **Preserved boundary:** No route shape, authorization, redaction, provider behavior, receipt
+    recording, queue/retry behavior, live settlement, trust posting, schema, migration, or
+    dependency change.
+  - **Remaining database-efficiency follow-ups:** Inbound attachment/conversation aggregation,
+    client portal batch projections, operational-view read-model inputs, and filtered audit reads
+    remain separate candidates and should keep their own privacy and chain-validity proof.
 
 - **Inbound provider webhook intake boundary**
   - **Shipped slice:** The first Mailgun raw-MIME provider webhook validates the provider

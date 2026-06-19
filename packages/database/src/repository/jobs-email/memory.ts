@@ -397,14 +397,13 @@ export function reconcileMemoryCalendarReminderDelivery(
 export function listMemoryEmailEvents(
   store: MemoryEmailJobsStore,
   firmId: string,
-  options: { emailId?: string } = {},
+  options: { emailId?: string; emailIds?: string[] } = {},
 ): EmailEventRecord[] {
+  const emailIds = options.emailId ? [options.emailId] : options.emailIds;
+  if (emailIds?.length === 0) return [];
   return clone(
     store.emailEvents
-      .filter(
-        (event) =>
-          event.firmId === firmId && (!options.emailId || event.emailId === options.emailId),
-      )
+      .filter((event) => event.firmId === firmId && (!emailIds || emailIds.includes(event.emailId)))
       .sort((left, right) => left.occurredAt.localeCompare(right.occurredAt)),
   );
 }
@@ -466,14 +465,16 @@ export function recordMemoryEmailReceiptToken(
 export function listMemoryEmailReceiptTokens(
   store: MemoryEmailJobsStore,
   firmId: string,
-  options: { emailId?: string; matterId?: string } = {},
+  options: { emailId?: string; emailIds?: string[]; matterId?: string } = {},
 ): EmailReceiptTokenRecord[] {
+  const emailIds = options.emailId ? [options.emailId] : options.emailIds;
+  if (emailIds?.length === 0) return [];
   return clone(
     store.emailReceiptTokens
       .filter(
         (token) =>
           token.firmId === firmId &&
-          (!options.emailId || token.emailId === options.emailId) &&
+          (!emailIds || emailIds.includes(token.emailId)) &&
           (!options.matterId || token.matterId === options.matterId),
       )
       .sort((left, right) => left.createdAt.localeCompare(right.createdAt)),

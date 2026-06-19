@@ -60,7 +60,10 @@ export interface EmailJobsRepository {
     requestedByUserId: string;
     reason: string;
   }): Promise<{ cancelledEmails: EmailOutboxRecord[]; skippedJobs: JobLifecycleRecord[] }>;
-  listEmailEvents(firmId: string, options?: { emailId?: string }): Promise<EmailEventRecord[]>;
+  listEmailEvents(
+    firmId: string,
+    options?: { emailId?: string; emailIds?: string[] },
+  ): Promise<EmailEventRecord[]>;
   createEmailReceiptToken(token: EmailReceiptTokenRecord): Promise<EmailReceiptTokenRecord>;
   getEmailReceiptTokenByHash(tokenHash: string): Promise<EmailReceiptTokenRecord | undefined>;
   recordEmailReceiptToken(input: {
@@ -69,7 +72,7 @@ export interface EmailJobsRepository {
   }): Promise<{ token: EmailReceiptTokenRecord; recordedNow: boolean } | undefined>;
   listEmailReceiptTokens(
     firmId: string,
-    options?: { emailId?: string; matterId?: string },
+    options?: { emailId?: string; emailIds?: string[]; matterId?: string },
   ): Promise<EmailReceiptTokenRecord[]>;
   updateJobLifecycleRecord(
     firmId: string,

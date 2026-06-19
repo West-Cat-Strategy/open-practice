@@ -1,5 +1,5 @@
 import Fastify, { type FastifyInstance } from "fastify";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { InMemoryOpenPracticeRepository } from "@open-practice/database";
 import { serializeSmtpProviderConfig } from "@open-practice/domain";
 import type { ProfessionalRole, User } from "@open-practice/domain";
@@ -1195,6 +1195,82 @@ describe("email routes", () => {
     expect(payload.emails[0]).not.toHaveProperty("htmlBody");
     expect(payload.emails[0]).not.toHaveProperty("textBody");
     expect(payload.emails[0].failureSummary.length).toBeLessThanOrEqual(240);
+  });
+
+  it("bulk-loads listed outbox child rows without changing response shape", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.upsertProviderSetting({
+      id: "provider-smtp-mailpit",
+      firmId: "firm-west-legal",
+      kind: "smtp",
+      key: "mailpit",
+      enabled: true,
+      encryptedConfig: "local-mailpit-profile",
+      createdAt: "2026-05-01T00:00:00.000Z",
+      updatedAt: "2026-05-01T00:00:00.000Z",
+    });
+    const server = testServer({ repository, authUser: user("licensee") });
+    const first = await server.inject({
+      method: "POST",
+      url: "/api/mail/outbox",
+      payload: {
+        matterId: "matter-001",
+        templateKey: "signature.requested",
+        to: ["first-client@example.test"],
+        subject: "Synthetic private first subject",
+        textBody: "Synthetic private first body.",
+        deliveryConfirmation: deliveryConfirmation(),
+      },
+    });
+    const second = await server.inject({
+      method: "POST",
+      url: "/api/mail/outbox",
+      payload: {
+        matterId: "matter-001",
+        templateKey: "client.update",
+        to: ["second-client@example.test"],
+        subject: "Synthetic private second subject",
+        textBody: "Synthetic private second body.",
+        deliveryConfirmation: deliveryConfirmation(),
+      },
+    });
+    expect(first.statusCode).toBe(201);
+    expect(second.statusCode).toBe(201);
+
+    const listedEmailEvents = vi.spyOn(repository, "listEmailEvents");
+    const listedReceiptTokens = vi.spyOn(repository, "listEmailReceiptTokens");
+
+    const response = await server.inject({
+      method: "GET",
+      url: "/api/mail/outbox?matterId=matter-001&limit=2",
+    });
+
+    expect(response.statusCode).toBe(200);
+    const payload = response.json();
+    expect(payload.emails).toHaveLength(2);
+    const listedEmailIds = payload.emails.map((email: { id: string }) => email.id);
+    expect(new Set(listedEmailIds)).toEqual(
+      new Set([first.json().email.id, second.json().email.id]),
+    );
+    expect(listedEmailEvents).toHaveBeenCalledTimes(1);
+    expect(listedEmailEvents).toHaveBeenCalledWith("firm-west-legal", {
+      emailIds: listedEmailIds,
+    });
+    expect(listedReceiptTokens).toHaveBeenCalledTimes(1);
+    expect(listedReceiptTokens).toHaveBeenCalledWith("firm-west-legal", {
+      emailIds: listedEmailIds,
+    });
+    expect(payload.emails[0]).toMatchObject({
+      id: expect.any(String),
+      matterId: "matter-001",
+      templateKey: expect.any(String),
+      recipientCount: 1,
+      events: expect.any(Array),
+    });
+    expect(response.body).not.toContain("Synthetic private first subject");
+    expect(response.body).not.toContain("Synthetic private second subject");
+    expect(response.body).not.toContain("first-client@example.test");
+    expect(response.body).not.toContain("second-client@example.test");
   });
 
   it("retries failed outbox email with a redacted workflow audit envelope", async () => {

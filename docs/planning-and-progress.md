@@ -1,6 +1,6 @@
 # Planning and Progress
 
-**Last Updated:** 2026-06-18
+**Last Updated:** 2026-06-19
 
 Use this file for live tracked work, immediate next moves, and the forward-looking development plan.
 Use `docs/planning.md` for the durable roadmap, `docs/improvement-opportunities.md` for candidate
@@ -8,17 +8,17 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 ## At a Glance
 
-| Snapshot              | Value                                                                  |
-| --------------------- | ---------------------------------------------------------------------- |
-| Current focus         | Database efficiency branches are being merged for mainline validation. |
-| Next recommended pick | Complete the email outbox efficiency merge, then run mainline proof.   |
-| Ready rows            | 0                                                                      |
-| Candidate rows        | 0                                                                      |
-| In progress rows      | 0                                                                      |
-| Review rows           | 0                                                                      |
-| Blocked rows          | 0                                                                      |
-| Archive               | Historical snapshots and proof live in [Archive](archive/README.md).   |
-| Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`       |
+| Snapshot              | Value                                                                |
+| --------------------- | -------------------------------------------------------------------- |
+| Current focus         | Database efficiency merge/push/prune closeout complete.              |
+| Next recommended pick | Start the next scoped branch from refreshed `main`.                  |
+| Ready rows            | 0                                                                    |
+| Candidate rows        | 0                                                                    |
+| In progress rows      | 0                                                                    |
+| Review rows           | 0                                                                    |
+| Blocked rows          | 0                                                                    |
+| Archive               | Historical snapshots and proof live in [Archive](archive/README.md). |
+| Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`     |
 
 ## Current Handoff Notes
 
@@ -39,6 +39,15 @@ while making `listDrizzleContactsForUser` avoid full contact dossier constructio
 contact readers query contacts directly; matter-scoped users derive visible contact IDs from
 assigned-matter parties plus standalone contacts they created. Proof is recorded in
 [contact list database efficiency proof](validation/OP_CONTACT_LIST_DATABASE_EFFICIENCY_PROOF_2026-06-18.md).
+
+The 2026-06-18 email outbox child-row bulk-read branch
+`refactor/email-outbox-child-bulk-reads` adds optional page-scoped
+`emailIds` filters to email events and receipt-token repository reads, then uses them from
+`/api/mail/outbox` and the outbound portion of `/api/communications/inbox` so child rows are fetched
+once per visible outbox page instead of once per email. The branch preserves HTTP response shapes,
+authorization, redaction, provider behavior, public receipt behavior, queue/retry behavior,
+settlement/trust posture, and synthetic-only proof data. Proof is recorded in
+[email outbox child-row bulk reads proof](validation/OP_EMAIL_OUTBOX_CHILD_BULK_READS_PROOF_2026-06-18.md).
 
 The 2026-06-17 all-active-lanes integration branch
 `merge/open-practice-active-lanes-2026-06-17` merged the 13 committed dirty lanes plus the clean

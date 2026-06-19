@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { PgDialect } from "drizzle-orm/pg-core";
 import type {
+  EmailEventRecord,
   EmailOutboxRecord,
+  EmailReceiptTokenRecord,
   JobLifecycleRecord,
   ProviderSettingRecord,
 } from "@open-practice/domain";
@@ -9,11 +12,18 @@ import {
   providerConfigEnvelopePrefix,
 } from "../src/config-encryption.js";
 import { DrizzleOpenPracticeRepository } from "../src/repository/drizzle.js";
+import { emailEventInsert, emailReceiptTokenInsert } from "../src/repository/drizzle-mappers.js";
 import { InMemoryOpenPracticeRepository } from "../src/repository/memory.js";
+import * as schema from "../src/schema.js";
 import { now } from "./repository.fixtures.js";
 
 const providerConfigKey = "base64:AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=";
 type DrizzleDb = ConstructorParameters<typeof DrizzleOpenPracticeRepository>[0];
+type EmailEventRow = ReturnType<typeof emailEventInsert>;
+type EmailReceiptTokenRow = ReturnType<typeof emailReceiptTokenInsert>;
+type EmailChildRow = EmailEventRow | EmailReceiptTokenRow;
+
+const drizzleDialect = new PgDialect();
 
 function calendarReminderEmail(overrides: Partial<EmailOutboxRecord> = {}): EmailOutboxRecord {
   return {
@@ -87,6 +97,220 @@ function drizzleProviderSettingsRepositoryWithRows(rows: Record<string, unknown>
     }),
   } as unknown as DrizzleDb;
   return { db, rows };
+}
+
+function renderedColumnValues(
+  rendered: ReturnType<PgDialect["sqlToQuery"]>,
+  tableName: string,
+  columnName: string,
+): unknown[] {
+  const columnRef = `"${tableName}"\\."${columnName}"`;
+  const equalsMatch = rendered.sql.match(new RegExp(`${columnRef} = \\$(\\d+)`));
+  if (equalsMatch?.[1]) return [rendered.params[Number(equalsMatch[1]) - 1]];
+  const inMatch = rendered.sql.match(new RegExp(`${columnRef} in \\(([^)]+)\\)`));
+  if (!inMatch?.[1]) return [];
+  return [...inMatch[1].matchAll(/\$(\d+)/g)].map((match) => rendered.params[Number(match[1]) - 1]);
+}
+
+function filterDrizzleEmailChildRows(
+  rows: EmailChildRow[],
+  tableName: "email_events" | "email_receipt_tokens",
+  condition: unknown,
+): EmailChildRow[] {
+  const rendered = drizzleDialect.sqlToQuery(condition as Parameters<PgDialect["sqlToQuery"]>[0]);
+  const firmIds = renderedColumnValues(rendered, tableName, "firm_id");
+  const emailIds = renderedColumnValues(rendered, tableName, "email_id");
+  const matterIds = renderedColumnValues(rendered, tableName, "matter_id");
+  return rows.filter(
+    (row) =>
+      (firmIds.length === 0 || firmIds.includes(row.firmId)) &&
+      (emailIds.length === 0 || emailIds.includes(row.emailId)) &&
+      (matterIds.length === 0 || matterIds.includes((row as EmailReceiptTokenRow).matterId)),
+  );
+}
+
+function sortDrizzleEmailChildRows(
+  rows: EmailChildRow[],
+  tableName: "email_events" | "email_receipt_tokens",
+): EmailChildRow[] {
+  const timestampFor = (row: EmailChildRow) =>
+    tableName === "email_events"
+      ? ((row as EmailEventRow).occurredAt?.getTime() ?? 0)
+      : ((row as EmailReceiptTokenRow).createdAt?.getTime() ?? 0);
+  return [...rows].sort((left, right) => timestampFor(left) - timestampFor(right));
+}
+
+function drizzleEmailJobsRepositoryWithRows(input: {
+  emailEvents: EmailEventRecord[];
+  emailReceiptTokens: EmailReceiptTokenRecord[];
+}) {
+  const emailEvents = input.emailEvents.map(emailEventInsert);
+  const emailReceiptTokens = input.emailReceiptTokens.map(emailReceiptTokenInsert);
+  const db = {
+    select: () => ({
+      from: (table: unknown) => {
+        const tableName =
+          table === schema.emailEvents
+            ? "email_events"
+            : table === schema.emailReceiptTokens
+              ? "email_receipt_tokens"
+              : undefined;
+        const rows = tableName === "email_events" ? emailEvents : emailReceiptTokens;
+        return {
+          where: (condition: unknown) => ({
+            orderBy: async () =>
+              tableName
+                ? sortDrizzleEmailChildRows(
+                    filterDrizzleEmailChildRows(rows, tableName, condition),
+                    tableName,
+                  )
+                : [],
+          }),
+        };
+      },
+    }),
+  } as unknown as DrizzleDb;
+  return new DrizzleOpenPracticeRepository(db);
+}
+
+function emailEventRecord(overrides: Partial<EmailEventRecord> = {}): EmailEventRecord {
+  return {
+    id: "email-event-bulk-default",
+    firmId: "firm-west-legal",
+    emailId: "email-bulk-a",
+    eventType: "queued",
+    occurredAt: now,
+    source: "api",
+    metadata: {},
+    ...overrides,
+  };
+}
+
+async function queueBulkReadEmail(
+  repository: InMemoryOpenPracticeRepository,
+  input: {
+    id: string;
+    firmId?: string;
+    matterId?: string;
+    queuedAt: string;
+  },
+) {
+  const firmId = input.firmId ?? "firm-west-legal";
+  const matterId = input.matterId ?? "matter-001";
+  await repository.createQueuedEmailOutbox({
+    email: calendarReminderEmail({
+      id: input.id,
+      firmId,
+      matterId,
+      queuedAt: input.queuedAt,
+      metadata: { matterId, source: "email.bulk-read.test" },
+    }),
+    event: emailEventRecord({
+      id: `email-event-${input.id}-queued`,
+      firmId,
+      emailId: input.id,
+      occurredAt: input.queuedAt,
+    }),
+    job: calendarReminderJob({
+      id: `job-${input.id}`,
+      firmId,
+      targetResourceId: input.id,
+      queuedAt: input.queuedAt,
+      metadata: { emailId: input.id, matterId, source: "email.bulk-read.test" },
+    }),
+  });
+}
+
+function receiptTokenRecord(
+  overrides: Partial<EmailReceiptTokenRecord> = {},
+): EmailReceiptTokenRecord {
+  return {
+    id: "receipt-token-bulk-default",
+    firmId: "firm-west-legal",
+    matterId: "matter-001",
+    emailId: "email-bulk-a",
+    tokenHash: "hashed-receipt-token-bulk-default",
+    purpose: "delivery_receipt",
+    expiresAt: "2026-05-25T12:00:00.000Z",
+    createdAt: now,
+    metadata: {},
+    ...overrides,
+  };
+}
+
+async function seedEmailChildBulkReadRows(repository: InMemoryOpenPracticeRepository) {
+  await queueBulkReadEmail(repository, {
+    id: "email-bulk-a",
+    queuedAt: "2026-04-25T12:00:00.000Z",
+  });
+  await queueBulkReadEmail(repository, {
+    id: "email-bulk-east",
+    firmId: "firm-east-legal",
+    queuedAt: "2026-04-25T12:00:30.000Z",
+  });
+  await queueBulkReadEmail(repository, {
+    id: "email-bulk-b",
+    queuedAt: "2026-04-25T12:01:00.000Z",
+  });
+  await queueBulkReadEmail(repository, {
+    id: "email-bulk-c",
+    matterId: "matter-002",
+    queuedAt: "2026-04-25T12:04:00.000Z",
+  });
+  await repository.recordEmailDeliveryResult({
+    firmId: "firm-west-legal",
+    emailId: "email-bulk-b",
+    status: "sent",
+    occurredAt: "2026-04-25T12:02:00.000Z",
+    attemptNumber: 1,
+    jobId: "job-email-bulk-b",
+    source: "worker",
+  });
+  await repository.recordEmailDeliveryResult({
+    firmId: "firm-west-legal",
+    emailId: "email-bulk-a",
+    status: "failed",
+    occurredAt: "2026-04-25T12:03:00.000Z",
+    attemptNumber: 1,
+    jobId: "job-email-bulk-a",
+    source: "worker",
+    terminal: true,
+    errorMessage: "Synthetic SMTP failure",
+  });
+  await repository.createEmailReceiptToken(
+    receiptTokenRecord({
+      id: "receipt-token-bulk-a",
+      emailId: "email-bulk-a",
+      tokenHash: "hashed-receipt-token-bulk-a",
+      createdAt: "2026-04-25T12:02:00.000Z",
+    }),
+  );
+  await repository.createEmailReceiptToken(
+    receiptTokenRecord({
+      id: "receipt-token-bulk-c",
+      matterId: "matter-002",
+      emailId: "email-bulk-c",
+      tokenHash: "hashed-receipt-token-bulk-c",
+      createdAt: "2026-04-25T12:03:00.000Z",
+    }),
+  );
+  await repository.createEmailReceiptToken(
+    receiptTokenRecord({
+      id: "receipt-token-bulk-b",
+      emailId: "email-bulk-b",
+      tokenHash: "hashed-receipt-token-bulk-b",
+      createdAt: "2026-04-25T12:04:00.000Z",
+    }),
+  );
+  await repository.createEmailReceiptToken(
+    receiptTokenRecord({
+      id: "receipt-token-bulk-east",
+      firmId: "firm-east-legal",
+      emailId: "email-bulk-east",
+      tokenHash: "hashed-receipt-token-bulk-east",
+      createdAt: "2026-04-25T12:01:00.000Z",
+    }),
+  );
 }
 
 describe("repository providers, jobs, and email delivery", () => {
@@ -621,6 +845,115 @@ describe("repository providers, jobs, and email delivery", () => {
       storageKey: "[redacted]",
     });
     expect(events.at(-1)?.errorMessage?.length).toBeLessThanOrEqual(240);
+  });
+
+  it("lists email events and receipt tokens for multiple child email ids across providers", async () => {
+    const memoryRepository = new InMemoryOpenPracticeRepository();
+    await seedEmailChildBulkReadRows(memoryRepository);
+    const allEvents = [
+      ...(await memoryRepository.listEmailEvents("firm-west-legal")),
+      ...(await memoryRepository.listEmailEvents("firm-east-legal")),
+    ];
+    const allTokens = [
+      ...(await memoryRepository.listEmailReceiptTokens("firm-west-legal")),
+      ...(await memoryRepository.listEmailReceiptTokens("firm-east-legal")),
+    ];
+    const drizzleRepository = drizzleEmailJobsRepositoryWithRows({
+      emailEvents: allEvents,
+      emailReceiptTokens: allTokens,
+    });
+
+    const omittedEvents = await memoryRepository.listEmailEvents("firm-west-legal");
+    expect(await drizzleRepository.listEmailEvents("firm-west-legal")).toEqual(omittedEvents);
+    expect(omittedEvents.map((event) => `${event.emailId}:${event.eventType}`)).toEqual([
+      "email-bulk-a:queued",
+      "email-bulk-b:queued",
+      "email-bulk-b:sent",
+      "email-bulk-a:failed",
+      "email-bulk-c:queued",
+    ]);
+
+    const bulkEventOptions = {
+      emailIds: ["email-bulk-b", "email-bulk-a", "email-bulk-east"],
+    };
+    const memoryBulkEvents = await memoryRepository.listEmailEvents(
+      "firm-west-legal",
+      bulkEventOptions,
+    );
+    expect(await drizzleRepository.listEmailEvents("firm-west-legal", bulkEventOptions)).toEqual(
+      memoryBulkEvents,
+    );
+    expect(
+      memoryBulkEvents.map((event) => `${event.firmId}:${event.emailId}:${event.eventType}`),
+    ).toEqual([
+      "firm-west-legal:email-bulk-a:queued",
+      "firm-west-legal:email-bulk-b:queued",
+      "firm-west-legal:email-bulk-b:sent",
+      "firm-west-legal:email-bulk-a:failed",
+    ]);
+
+    const singularEventOptions = { emailId: "email-bulk-b" };
+    expect(
+      await drizzleRepository.listEmailEvents("firm-west-legal", singularEventOptions),
+    ).toEqual(await memoryRepository.listEmailEvents("firm-west-legal", singularEventOptions));
+    await expect(
+      memoryRepository.listEmailEvents("firm-west-legal", { emailIds: [] }),
+    ).resolves.toEqual([]);
+    await expect(
+      drizzleRepository.listEmailEvents("firm-west-legal", { emailIds: [] }),
+    ).resolves.toEqual([]);
+
+    const omittedTokens = await memoryRepository.listEmailReceiptTokens("firm-west-legal");
+    expect(await drizzleRepository.listEmailReceiptTokens("firm-west-legal")).toEqual(
+      omittedTokens,
+    );
+    expect(omittedTokens.map((token) => token.id)).toEqual([
+      "receipt-token-bulk-a",
+      "receipt-token-bulk-c",
+      "receipt-token-bulk-b",
+    ]);
+
+    const bulkTokenOptions = {
+      emailIds: ["email-bulk-b", "email-bulk-a", "email-bulk-east"],
+    };
+    const memoryBulkTokens = await memoryRepository.listEmailReceiptTokens(
+      "firm-west-legal",
+      bulkTokenOptions,
+    );
+    expect(
+      await drizzleRepository.listEmailReceiptTokens("firm-west-legal", bulkTokenOptions),
+    ).toEqual(memoryBulkTokens);
+    expect(memoryBulkTokens.map((token) => `${token.firmId}:${token.id}`)).toEqual([
+      "firm-west-legal:receipt-token-bulk-a",
+      "firm-west-legal:receipt-token-bulk-b",
+    ]);
+
+    const matterFilteredTokenOptions = {
+      emailIds: ["email-bulk-a", "email-bulk-c"],
+      matterId: "matter-002",
+    };
+    expect(
+      await drizzleRepository.listEmailReceiptTokens("firm-west-legal", matterFilteredTokenOptions),
+    ).toEqual(
+      await memoryRepository.listEmailReceiptTokens("firm-west-legal", matterFilteredTokenOptions),
+    );
+    expect(
+      (
+        await memoryRepository.listEmailReceiptTokens("firm-west-legal", matterFilteredTokenOptions)
+      ).map((token) => token.id),
+    ).toEqual(["receipt-token-bulk-c"]);
+    await expect(
+      memoryRepository.listEmailReceiptTokens("firm-west-legal", {
+        emailIds: [],
+        matterId: "matter-001",
+      }),
+    ).resolves.toEqual([]);
+    await expect(
+      drizzleRepository.listEmailReceiptTokens("firm-west-legal", {
+        emailIds: [],
+        matterId: "matter-001",
+      }),
+    ).resolves.toEqual([]);
   });
 
   it("looks up and records delivery receipts idempotently by hashed token", async () => {
