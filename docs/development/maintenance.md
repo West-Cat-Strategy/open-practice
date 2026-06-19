@@ -19,24 +19,43 @@ handoff. Use [Repository Guide](repo-guide.md) for workspace ownership,
 Open Practice has a small validation control plane that should stay boring and explicit:
 
 - `pnpm verify:select -- --files <paths...>` prints recommended commands for a change set and never runs them.
+- `pnpm verify:run -- --files <paths...>` runs selector-selected commands and writes ignored
+  command logs under `.tmp/validation-runs/<timestamp>/`.
 - `pnpm docs:check` validates local Markdown links.
 - `pnpm policy:check` runs the combined local policy/integrity gate: tracked-secret scan, package
-  manifest policy, migration parity, OSS reuse validation, docs links, validation-proof index,
-  local-evidence `.dockerignore` coverage, and Open Practice boundary policy.
+  manifest policy, lockfile supply-chain policy, toolchain alignment, env-surface drift,
+  architecture import direction, migration parity, migration lint, OSS reuse validation, docs
+  links, validation-proof index, local-evidence `.dockerignore` coverage, and Open Practice boundary
+  policy.
 - `pnpm verify` runs the package verification lane.
 - `pnpm ci:local` runs `pnpm verify` and `git diff --check`.
 - `pnpm deps:audit` runs local production and development dependency audits.
+- `pnpm deps:supply-chain` checks the pnpm lockfile for non-registry refs, registry drift, missing
+  integrity, and native-build approval drift.
+- `pnpm deps:osv` runs optional local OSV lockfile scanning when `osv-scanner` is installed.
+- `pnpm deps:review` writes a non-gating local dependency review packet under
+  `.tmp/open-practice-dependency-review/<timestamp>/`.
+- `pnpm license:scan` runs optional local ScanCode copied-source/license scanning when installed.
+- `pnpm security:review` writes a full local security review packet under
+  `.tmp/open-practice-security-review/<timestamp>/`.
+- `pnpm security:secrets-history` and `pnpm security:privacy-rules` run optional local Gitleaks and
+  Semgrep privacy-rule scans.
+- `pnpm architecture:check` validates workspace import direction; `pnpm architecture:graph` writes
+  an ignored DOT graph under `.tmp/architecture/`.
+- `pnpm api:contract` writes an ignored OpenAPI route/auth inventory under `.tmp/api-contract/`.
+- `pnpm migrations:lint` checks changed SQL migrations for destructive or lock-prone patterns.
+- `pnpm e2e:a11y` runs the dedicated axe-backed Chromium accessibility lane over synthetic host
+  pages.
+- `pnpm docker:lint` and `pnpm docker:scan` run optional local Hadolint/Checkov and Trivy wrappers.
 - `pnpm release:local` runs dependency audits plus the full local gate.
+- `pnpm release:attest` is an optional local Cosign wrapper for explicit artifacts and keys; it does
+  not upload to a transparency log by default.
 
 When adding a new package, app, route family, or docs category, update
 [Testing](../testing/TESTING.md) and `scripts/select-validation.mjs` together.
 
 ## Known Follow-Ups
 
-- `docs/testing/TESTING.md` expects domain source changes to include
-  `pnpm --filter @open-practice/domain build`, but the current selector output does not emit that
-  command. Keep docs-only cleanups out of `scripts/select-validation.mjs`; align the selector and
-  its tests in a separate tooling slice.
 - The external `/Users/bryan/.codex/skills/maintain-open-practice-docs` skill still points to its
   own `references/docs-workflows.md`. Repo docs remain canonical; refresh external skills only in an
   explicit skill-upkeep task.

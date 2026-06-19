@@ -16,6 +16,9 @@ overrides:
 importers:
   .:
     devDependencies:
+      "@axe-core/playwright":
+        specifier: 4.11.3
+        version: 4.11.3(playwright-core@1.60.0)
       "@cyclonedx/cyclonedx-npm":
         specifier: 4.2.1
         version: 4.2.1
@@ -523,6 +526,14 @@ packages:
         integrity: sha512-iY8yvjE0y651BixKNPgmv1WrQc+GZ142sb0z4gYnChDDY2YqI4P/jsSopBWrKfAt7LOJAkOXt7rC/hms+WclQQ==,
       }
     engines: { node: ">=18.0.0" }
+
+  "@axe-core/playwright@4.11.3":
+    resolution:
+      {
+        integrity: sha512-h/kfksv4F0cVIDlKpT4700OehdRgpvuVskuQ2nb7/JmtWUXpe9ftHAPtwyXGvVSsa6SJ64A9ER7Zrzc/sIvC4w==,
+      }
+    peerDependencies:
+      playwright-core: ">= 1.0.0"
 
   "@cyclonedx/cyclonedx-library@10.0.0":
     resolution:
@@ -2742,6 +2753,13 @@ packages:
       {
         integrity: sha512-2t/sy01ArdHHE0vRH5Hsay+RtCZt3dLPji7W7/MMOCEgze5b7SNDC4j5H6FnVgPkI1MTNFGzHdHrVXDDl7QSSQ==,
       }
+
+  axe-core@4.11.4:
+    resolution:
+      {
+        integrity: sha512-KunSNx+TVpkAw/6ULfhnx+HWRecjqZGTOyquAoWHYLRSdK1tB5Ihce1ZW+UY3fj33bYAFWPu7W/GRSmmrCGuxA==,
+      }
+    engines: { node: ">=4" }
 
   balanced-match@1.0.2:
     resolution:
@@ -6012,6 +6030,11 @@ snapshots:
 
   "@aws/lambda-invoke-store@0.2.4": {}
 
+  "@axe-core/playwright@4.11.3(playwright-core@1.60.0)":
+    dependencies:
+      axe-core: 4.11.4
+      playwright-core: 1.60.0
+
   "@cyclonedx/cyclonedx-library@10.0.0(ajv-formats-draft2019@1.6.1(ajv@8.20.0))(ajv-formats@3.0.1(ajv@8.20.0))(ajv@8.20.0)(libxmljs2@0.37.0)(packageurl-js@2.0.1)(spdx-expression-parse@4.0.0)(xmlbuilder2@4.0.3)":
     optionalDependencies:
       ajv: 8.20.0
@@ -7206,6 +7229,8 @@ snapshots:
     dependencies:
       "@fastify/error": 4.2.0
       fastq: 1.20.1
+
+  axe-core@4.11.4: {}
 
   balanced-match@1.0.2:
     optional: true

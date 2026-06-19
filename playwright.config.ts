@@ -1,11 +1,13 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const hostExcluded = /@docker|@first-run|@matterless|@client-portal/;
-const nonChromiumHostExcluded = /@docker|@first-run|@matterless|@client-portal|@host-chromium-only/;
+const hostExcluded = /@docker|@first-run|@matterless|@client-portal|@a11y/;
+const nonChromiumHostExcluded =
+  /@docker|@first-run|@matterless|@client-portal|@host-chromium-only|@a11y/;
 const dockerOnly = /@docker/;
 const firstRunOnly = /@first-run/;
 const matterlessOnly = /@matterless/;
 const clientPortalOnly = /@client-portal/;
+const a11yOnly = /@a11y/;
 
 export default defineConfig({
   testDir: "e2e",
@@ -63,6 +65,11 @@ export default defineConfig({
     {
       name: "client-portal-chromium",
       grep: clientPortalOnly,
+      use: { ...devices["Desktop Chrome"] },
+    },
+    {
+      name: "a11y-chromium",
+      grep: a11yOnly,
       use: { ...devices["Desktop Chrome"] },
     },
   ],

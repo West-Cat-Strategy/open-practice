@@ -36,10 +36,10 @@ describe("select-validation contract", () => {
   });
 
   it("preserves legacy unknown-path behavior unless strict mode is requested", () => {
-    assert.deepEqual(selectCommands(["README.md"]), []);
+    assert.deepEqual(selectCommands(["notes/random.txt"]), []);
     assert.throws(
-      () => selectCommands(["README.md"], { strict: true }),
-      /No validation mapping for path\(s\): README\.md/,
+      () => selectCommands(["notes/random.txt"], { strict: true }),
+      /No validation mapping for path\(s\): notes\/random\.txt/,
     );
   });
 
@@ -47,8 +47,10 @@ describe("select-validation contract", () => {
     assert.deepEqual(
       selectCommands([".dockerignore", "docker-compose.yml", "docker/prod/Caddyfile"]),
       [
+        COMMANDS.dockerLint,
         COMMANDS.dockerResidualWatch,
         COMMANDS.dockerAppSmoke,
+        COMMANDS.dockerScan,
         COMMANDS.e2eDocker,
         COMMANDS.formatCheck,
         COMMANDS.docsCheck,
@@ -63,8 +65,13 @@ describe("select-validation contract", () => {
       COMMANDS.ciLocal,
       COMMANDS.depsAudit,
       COMMANDS.depsLicenses,
+      COMMANDS.depsSupplyChain,
+      COMMANDS.depsOsv,
+      COMMANDS.licenseScan,
+      COMMANDS.architectureCheck,
       COMMANDS.domainTest,
       COMMANDS.domainTypecheck,
+      COMMANDS.domainBuild,
     ]);
   });
 
@@ -76,6 +83,15 @@ describe("select-validation contract", () => {
       COMMANDS.e2eFirstRun,
       COMMANDS.e2eMatterless,
       COMMANDS.e2eClientPortal,
+      COMMANDS.e2eA11y,
+    ]);
+  });
+
+  it("routes root docs through docs and policy checks", () => {
+    assert.deepEqual(selectCommands(["README.md", "CONTRIBUTING.md", "SECURITY.md"]), [
+      COMMANDS.formatCheck,
+      COMMANDS.docsCheck,
+      COMMANDS.policyCheck,
     ]);
   });
 
@@ -85,9 +101,11 @@ describe("select-validation contract", () => {
         "packages/database/migrations/0033_saved_operational_view_matters_surface.sql",
       ]),
       [
+        COMMANDS.architectureCheck,
         COMMANDS.databaseTest,
         COMMANDS.databaseCheck,
         COMMANDS.migrationsCheck,
+        COMMANDS.migrationsLint,
         COMMANDS.databaseTypecheck,
         COMMANDS.databaseBuild,
         COMMANDS.apiTest,
@@ -97,6 +115,8 @@ describe("select-validation contract", () => {
 
   it("routes API child route modules through API and policy checks", () => {
     assert.deepEqual(selectCommands(["apps/api/src/routes/billing/controls.ts"]), [
+      COMMANDS.architectureCheck,
+      COMMANDS.apiContract,
       COMMANDS.policyCheck,
       COMMANDS.apiTest,
       COMMANDS.apiTypecheck,
@@ -110,9 +130,11 @@ describe("select-validation contract", () => {
         "packages/database/src/repository/billing-controls/memory.ts",
       ]),
       [
+        COMMANDS.architectureCheck,
         COMMANDS.databaseTest,
         COMMANDS.databaseCheck,
         COMMANDS.migrationsCheck,
+        COMMANDS.migrationsLint,
         COMMANDS.databaseTypecheck,
         COMMANDS.databaseBuild,
         COMMANDS.apiTest,
@@ -122,6 +144,29 @@ describe("select-validation contract", () => {
 
   it("maps the scripts directory shorthand to script validation", () => {
     assert.deepEqual(selectCommands(["scripts"]), [COMMANDS.policyCheck, COMMANDS.test]);
+  });
+
+  it("routes local security tooling changes through the security review packet", () => {
+    assert.deepEqual(
+      selectCommands([
+        "scripts/create-security-review.mjs",
+        "scripts/scan-tracked-secrets.mjs",
+        "scripts/security-hot-path-rescan.mjs",
+      ]),
+      [
+        COMMANDS.securityReview,
+        COMMANDS.securitySecretsHistory,
+        COMMANDS.policyCheck,
+        COMMANDS.test,
+      ],
+    );
+  });
+
+  it("routes API contract and privacy-rule tooling through their local checks", () => {
+    assert.deepEqual(
+      selectCommands(["scripts/generate-api-contract.mjs", ".semgrep/open-practice.yml"]),
+      [COMMANDS.securityPrivacyRules, COMMANDS.apiContract, COMMANDS.policyCheck, COMMANDS.test],
+    );
   });
 
   it("parses dirty and strict modes", () => {
@@ -148,6 +193,7 @@ describe("select-validation contract", () => {
       "apps/web/app/new-panel.tsx",
     ]);
     assert.deepEqual(runSelector(["--dirty"], { cwd: "/repo", exec }), [
+      COMMANDS.architectureCheck,
       COMMANDS.formatCheck,
       COMMANDS.docsCheck,
       COMMANDS.policyCheck,

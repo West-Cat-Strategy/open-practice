@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { execFileSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -119,6 +119,7 @@ function parseArgs(rawArgs = process.argv.slice(2)) {
   const explicitPaths = [];
   let failOnSkipped = false;
   let scanLargeFiles = false;
+  let jsonOutputPath = null;
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
@@ -139,14 +140,49 @@ function parseArgs(rawArgs = process.argv.slice(2)) {
       scanLargeFiles = true;
       continue;
     }
+    if (arg === "--json-output") {
+      const outputPath = args[index + 1];
+      index += 1;
+      if (!outputPath || outputPath.startsWith("--")) {
+        throw new Error("--json-output requires a path.");
+      }
+      jsonOutputPath = outputPath;
+      continue;
+    }
     throw new Error(`Unknown argument: ${arg}`);
   }
 
-  return { explicitPaths, failOnSkipped, scanLargeFiles };
+  return { explicitPaths, failOnSkipped, scanLargeFiles, jsonOutputPath };
+}
+
+export function buildSecretScanReport({
+  explicitPaths = [],
+  failOnSkipped = false,
+  files = [],
+  findings = [],
+  generatedAt = new Date().toISOString(),
+  scanLargeFiles = false,
+  skipped = [],
+} = {}) {
+  return {
+    generatedAt,
+    scope:
+      explicitPaths.length > 0
+        ? { mode: "explicit_paths", paths: explicitPaths, pathCount: explicitPaths.length }
+        : { mode: "tracked_git_files", fileCount: files.length },
+    options: { failOnSkipped, scanLargeFiles },
+    findings: findings.map(({ column, file, line, type }) => ({ file, line, column, type })),
+    skipped: skipped.map(({ file, reason, sizeBytes }) => ({ file, reason, sizeBytes })),
+  };
+}
+
+function writeJsonOutput(outputPath, report) {
+  mkdirSync(path.dirname(outputPath), { recursive: true });
+  writeFileSync(outputPath, `${JSON.stringify(report, null, 2)}\n`);
 }
 
 export function runSecretScan(rawArgs = process.argv.slice(2)) {
-  const { explicitPaths, failOnSkipped, scanLargeFiles } = parseArgs(rawArgs);
+  const { explicitPaths, failOnSkipped, scanLargeFiles, jsonOutputPath } = parseArgs(rawArgs);
   const files = explicitPaths.length > 0 ? explicitPaths : trackedFiles();
   const result =
     explicitPaths.length > 0
@@ -161,6 +197,16 @@ export function runSecretScan(rawArgs = process.argv.slice(2)) {
           { findings: [], skipped: [] },
         );
   const { findings, skipped } = result;
+  const report = buildSecretScanReport({
+    explicitPaths,
+    failOnSkipped,
+    files,
+    findings,
+    scanLargeFiles,
+    skipped,
+  });
+
+  if (jsonOutputPath) writeJsonOutput(jsonOutputPath, report);
 
   if (findings.length > 0) {
     console.error("Potential tracked secrets found:");
@@ -169,7 +215,7 @@ export function runSecretScan(rawArgs = process.argv.slice(2)) {
     }
     console.error("Remove the secret from tracked content and rotate it before publishing.");
     process.exitCode = 1;
-    return result;
+    return { ...result, report };
   }
 
   if (skipped.length > 0) {
@@ -180,7 +226,7 @@ export function runSecretScan(rawArgs = process.argv.slice(2)) {
     if (failOnSkipped) {
       console.error("Rerun with --scan-large-files or remove skipped files from the scan scope.");
       process.exitCode = 1;
-      return result;
+      return { ...result, report };
     }
   }
 
@@ -189,7 +235,7 @@ export function runSecretScan(rawArgs = process.argv.slice(2)) {
       ? "No high-confidence secrets found in requested paths."
       : "No high-confidence tracked secrets found.",
   );
-  return result;
+  return { ...result, report };
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

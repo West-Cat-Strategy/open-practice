@@ -333,15 +333,18 @@ async function ensureMinioBucket(env) {
 async function startDockerRuntime() {
   const apiPort = Number(process.env.E2E_DOCKER_API_PORT ?? 34120);
   const webPort = Number(process.env.E2E_DOCKER_WEB_PORT ?? 33120);
+  const postgresPort = Number(process.env.OPEN_PRACTICE_DOCKER_POSTGRES_HOST_PORT ?? 35432);
+  const redisPort = Number(process.env.OPEN_PRACTICE_DOCKER_REDIS_HOST_PORT ?? 36379);
+  const minioPort = Number(process.env.OPEN_PRACTICE_DOCKER_MINIO_HOST_PORT ?? 39000);
   const apiBaseUrl = `http://localhost:${apiPort}`;
   const webBaseUrl = `http://localhost:${webPort}`;
   dockerDatabaseName = `open_practice_e2e_${Date.now()}`;
-  const databaseUrl = `postgresql://open_practice:open_practice@localhost:35432/${dockerDatabaseName}`;
+  const databaseUrl = `postgresql://open_practice:open_practice@localhost:${postgresPort}/${dockerDatabaseName}`;
   const env = {
     ...runtimeEnv({ mode: "docker", apiPort, webPort, apiBaseUrl, webBaseUrl }),
     DATABASE_URL: databaseUrl,
-    REDIS_URL: "redis://localhost:36379/0",
-    S3_ENDPOINT: "http://localhost:39000",
+    REDIS_URL: `redis://localhost:${redisPort}/0`,
+    S3_ENDPOINT: `http://localhost:${minioPort}`,
     S3_REGION: "local",
     S3_BUCKET: "open-practice-documents",
     S3_ACCESS_KEY: "open_practice",
@@ -372,7 +375,7 @@ async function startDockerRuntime() {
     "-d",
     "open_practice",
   ]);
-  await waitForUrl("minio", "http://localhost:39000/minio/health/ready");
+  await waitForUrl("minio", `http://localhost:${minioPort}/minio/health/ready`);
   await run("docker-db-create", "docker", [
     ...dockerComposeBaseArgs,
     "exec",
@@ -396,9 +399,9 @@ async function startDockerRuntime() {
 }
 
 async function main() {
-  if (!["host", "docker", "first-run", "matterless", "client-portal"].includes(mode)) {
+  if (!["host", "docker", "first-run", "matterless", "client-portal", "a11y"].includes(mode)) {
     throw new Error(
-      "Usage: node scripts/run-e2e.mjs <host|docker|first-run|matterless|client-portal> [playwright args...]",
+      "Usage: node scripts/run-e2e.mjs <host|docker|first-run|matterless|client-portal|a11y> [playwright args...]",
     );
   }
 
@@ -429,19 +432,28 @@ async function main() {
                 DEV_AUTH_USER_ID: "user-matterless-admin",
               },
             })
-          : mode === "client-portal"
+          : mode === "a11y"
             ? await startHostRuntime({
-                mode: "client-portal",
+                mode: "a11y",
                 e2eMode: "host",
-                apiPortEnv: "E2E_CLIENT_PORTAL_API_PORT",
-                webPortEnv: "E2E_CLIENT_PORTAL_WEB_PORT",
-                defaultApiPort: 34150,
-                defaultWebPort: 33150,
-                env: {
-                  DEV_AUTH_USER_ID: "user-client-external",
-                },
+                apiPortEnv: "E2E_A11Y_API_PORT",
+                webPortEnv: "E2E_A11Y_WEB_PORT",
+                defaultApiPort: 34160,
+                defaultWebPort: 33160,
               })
-            : await startHostRuntime();
+            : mode === "client-portal"
+              ? await startHostRuntime({
+                  mode: "client-portal",
+                  e2eMode: "host",
+                  apiPortEnv: "E2E_CLIENT_PORTAL_API_PORT",
+                  webPortEnv: "E2E_CLIENT_PORTAL_WEB_PORT",
+                  defaultApiPort: 34150,
+                  defaultWebPort: 33150,
+                  env: {
+                    DEV_AUTH_USER_ID: "user-client-external",
+                  },
+                })
+              : await startHostRuntime();
   const projects =
     mode === "docker"
       ? ["docker-chromium"]
@@ -449,9 +461,11 @@ async function main() {
         ? ["first-run-chromium"]
         : mode === "matterless"
           ? ["matterless-chromium"]
-          : mode === "client-portal"
-            ? ["client-portal-chromium"]
-            : ["host-chromium", "host-mobile-chromium", "host-firefox", "host-webkit"];
+          : mode === "a11y"
+            ? ["a11y-chromium"]
+            : mode === "client-portal"
+              ? ["client-portal-chromium"]
+              : ["host-chromium", "host-mobile-chromium", "host-firefox", "host-webkit"];
   await runPlaywright(env, projects);
 }
 

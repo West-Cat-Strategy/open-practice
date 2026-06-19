@@ -476,7 +476,11 @@ export function MatterOverviewSection({
               </span>
             </div>
           </div>
-          <div className="party-list command-center-timeline">
+          <div
+            aria-label="Matter activity timeline"
+            className="party-list command-center-timeline"
+            tabIndex={0}
+          >
             {filteredMatterActivity.slice(0, 8).map((entry) => (
               <div className="party-row" key={entry.id}>
                 <span>
