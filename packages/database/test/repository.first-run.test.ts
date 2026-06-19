@@ -40,8 +40,11 @@ function drizzleRepositoryWithPoisonedMatterAssignments() {
     mfaEnabled: false,
     practitionerProfile: null,
   };
-  const allAssignments = [{ matterId: "matter-001" }, { matterId: "matter-cross-firm-poisoned" }];
-  const scopedAssignments = [{ matterId: "matter-001" }];
+  const allAssignments = [
+    { userId: "user-poisoned", matterId: "matter-001" },
+    { userId: "user-poisoned", matterId: "matter-cross-firm-poisoned" },
+  ];
+  const scopedAssignments = [{ userId: "user-poisoned", matterId: "matter-001" }];
   let joinedMattersForFirmScope = false;
   const db = {
     select: () => ({

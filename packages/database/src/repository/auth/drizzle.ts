@@ -4,7 +4,7 @@ import type {
   WebAuthnChallengeRecord,
   WebAuthnCredentialRecord,
 } from "@open-practice/domain";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import type { OpenPracticeDatabase } from "../../runtime.js";
 import * as schema from "../../schema.js";
 import type {
@@ -22,6 +22,49 @@ import {
   mapWebAuthnCredentialRow,
 } from "../drizzle-mappers.js";
 
+function mapUserRow(row: typeof schema.users.$inferSelect, assignedMatterIds: string[]): User {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    displayName: row.displayName,
+    email: row.email,
+    role: row.role,
+    assignedMatterIds,
+    mfaEnabled: row.mfaEnabled,
+    practitionerProfile: row.practitionerProfile ?? undefined,
+  };
+}
+
+async function listDrizzleAssignmentMatterIdsByUserId(
+  db: OpenPracticeDatabase,
+  firmId: string,
+  userIds: string[],
+): Promise<Map<string, string[]>> {
+  const uniqueUserIds = [...new Set(userIds)];
+  if (uniqueUserIds.length === 0) return new Map();
+  const assignments = await db
+    .select({
+      userId: schema.matterAssignments.userId,
+      matterId: schema.matterAssignments.matterId,
+    })
+    .from(schema.matterAssignments)
+    .innerJoin(
+      schema.matters,
+      and(
+        eq(schema.matters.id, schema.matterAssignments.matterId),
+        eq(schema.matters.firmId, firmId),
+      ),
+    )
+    .where(inArray(schema.matterAssignments.userId, uniqueUserIds));
+  const matterIdsByUserId = new Map<string, string[]>();
+  for (const assignment of assignments) {
+    const matterIds = matterIdsByUserId.get(assignment.userId) ?? [];
+    matterIds.push(assignment.matterId);
+    matterIdsByUserId.set(assignment.userId, matterIds);
+  }
+  return matterIdsByUserId;
+}
+
 export async function getDrizzleUser(
   db: OpenPracticeDatabase,
   firmId: string,
@@ -32,27 +75,8 @@ export async function getDrizzleUser(
     .from(schema.users)
     .where(and(eq(schema.users.firmId, firmId), eq(schema.users.id, userId)));
   if (!row) return undefined;
-  const assignments = await db
-    .select({ matterId: schema.matterAssignments.matterId })
-    .from(schema.matterAssignments)
-    .innerJoin(
-      schema.matters,
-      and(
-        eq(schema.matters.id, schema.matterAssignments.matterId),
-        eq(schema.matters.firmId, firmId),
-      ),
-    )
-    .where(eq(schema.matterAssignments.userId, userId));
-  return {
-    id: row.id,
-    firmId: row.firmId,
-    displayName: row.displayName,
-    email: row.email,
-    role: row.role,
-    assignedMatterIds: assignments.map((assignment) => assignment.matterId),
-    mfaEnabled: row.mfaEnabled,
-    practitionerProfile: row.practitionerProfile ?? undefined,
-  };
+  const assignmentsByUserId = await listDrizzleAssignmentMatterIdsByUserId(db, firmId, [userId]);
+  return mapUserRow(row, assignmentsByUserId.get(row.id) ?? []);
 }
 
 export async function createDrizzleUser(db: OpenPracticeDatabase, user: User): Promise<User> {
@@ -76,9 +100,12 @@ export async function createDrizzleUser(db: OpenPracticeDatabase, user: User): P
 
 async function listDrizzleUsers(db: OpenPracticeDatabase, firmId: string): Promise<User[]> {
   const rows = await db.select().from(schema.users).where(eq(schema.users.firmId, firmId));
-  return Promise.all(rows.map((row) => getDrizzleUser(db, row.firmId, row.id))).then((users) =>
-    users.filter((user): user is User => Boolean(user)),
+  const assignmentsByUserId = await listDrizzleAssignmentMatterIdsByUserId(
+    db,
+    firmId,
+    rows.map((row) => row.id),
   );
+  return rows.map((row) => mapUserRow(row, assignmentsByUserId.get(row.id) ?? []));
 }
 
 export async function getDrizzleUserByEmail(
@@ -87,8 +114,14 @@ export async function getDrizzleUserByEmail(
   email: string,
 ): Promise<User | undefined> {
   const normalized = email.trim().toLowerCase();
-  const users = await listDrizzleUsers(db, firmId);
-  return users.find((user) => user.email.trim().toLowerCase() === normalized);
+  const [row] = await db
+    .select()
+    .from(schema.users)
+    .where(and(eq(schema.users.firmId, firmId), eq(schema.users.email, normalized)))
+    .limit(1);
+  if (!row) return undefined;
+  const assignmentsByUserId = await listDrizzleAssignmentMatterIdsByUserId(db, firmId, [row.id]);
+  return mapUserRow(row, assignmentsByUserId.get(row.id) ?? []);
 }
 
 export async function getDrizzleAuthAccount(

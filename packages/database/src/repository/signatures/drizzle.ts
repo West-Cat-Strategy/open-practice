@@ -206,16 +206,16 @@ export async function listDrizzleSignatureWebhookAttempts(
   firmId: string,
   options: { provider?: SignatureWebhookAttemptRecord["provider"]; externalId?: string } = {},
 ): Promise<SignatureWebhookAttemptRecord[]> {
+  const filters = [eq(schema.signatureWebhookAttempts.firmId, firmId)];
+  if (options.provider)
+    filters.push(eq(schema.signatureWebhookAttempts.provider, options.provider));
+  if (options.externalId) {
+    filters.push(eq(schema.signatureWebhookAttempts.externalId, options.externalId));
+  }
   const rows = await db
     .select()
     .from(schema.signatureWebhookAttempts)
-    .where(eq(schema.signatureWebhookAttempts.firmId, firmId))
+    .where(and(...filters))
     .orderBy(asc(schema.signatureWebhookAttempts.receivedAt));
-  return rows
-    .map(mapSignatureWebhookAttemptRow)
-    .filter(
-      (attempt) =>
-        (!options.provider || attempt.provider === options.provider) &&
-        (!options.externalId || attempt.externalId === options.externalId),
-    );
+  return rows.map(mapSignatureWebhookAttemptRow);
 }

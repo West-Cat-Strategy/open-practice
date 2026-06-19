@@ -456,6 +456,13 @@
       "when": 1781568008000,
       "tag": "0064_billing_expense_categories",
       "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1781568009000,
+      "tag": "0065_hot_path_access_indexes",
+      "breakpoints": true
     }
   ]
 }

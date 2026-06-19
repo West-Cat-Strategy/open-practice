@@ -1,4 +1,4 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, isNull, or } from "drizzle-orm";
 import {
   normalizeExpenseCategoryCode,
   validateBillingExpenseCategory,
@@ -139,17 +139,19 @@ export async function listDrizzleBillingExpenseCategories(
 ): Promise<BillingExpenseCategoryRecord[]> {
   const filters = [eq(schema.billingExpenseCategories.firmId, firmId)];
   if (options.activeOnly) filters.push(eq(schema.billingExpenseCategories.active, true));
+  if (options.matterId) {
+    const matterFilter = or(
+      isNull(schema.billingExpenseCategories.matterId),
+      eq(schema.billingExpenseCategories.matterId, options.matterId),
+    );
+    if (matterFilter) filters.push(matterFilter);
+  }
   const rows = await db
     .select()
     .from(schema.billingExpenseCategories)
     .where(and(...filters))
     .orderBy(asc(schema.billingExpenseCategories.code));
-  return rows
-    .map(mapBillingExpenseCategoryRow)
-    .filter(
-      (category) =>
-        !options.matterId || !category.matterId || category.matterId === options.matterId,
-    );
+  return rows.map(mapBillingExpenseCategoryRow);
 }
 
 export async function getDrizzleBillingExpenseCategory(

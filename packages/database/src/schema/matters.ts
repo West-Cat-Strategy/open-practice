@@ -56,6 +56,7 @@ export const matterAssignments = pgTable(
   },
   (table) => ({
     pk: primaryKey({ columns: [table.matterId, table.userId] }),
+    userMatter: index("matter_assignments_user_matter_idx").on(table.userId, table.matterId),
   }),
 );
 
