@@ -15,6 +15,7 @@ import {
   assertMatterAccess,
   billingEntryQuerySchema,
   idParamsSchema,
+  orderByMatterIds,
   resolveTimeEntryRate,
 } from "./shared.js";
 
@@ -71,14 +72,12 @@ export function registerBillingTimeEntryRoutes(
       return { entries: await repository.listTimeEntries(request.auth.firmId, query) };
     }
 
-    const entries = (
-      await Promise.all(
-        request.auth.user.assignedMatterIds.map((matterId) =>
-          repository.listTimeEntries(request.auth.firmId, { ...query, matterId }),
-        ),
-      )
-    ).flat();
-    return { entries };
+    const assignedMatterIds = request.auth.user.assignedMatterIds;
+    const entries = await repository.listTimeEntries(request.auth.firmId, {
+      ...query,
+      matterIds: assignedMatterIds,
+    });
+    return { entries: orderByMatterIds(entries, assignedMatterIds) };
   });
 
   server.post("/api/time-entries", async (request) => {

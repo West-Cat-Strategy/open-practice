@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull, or } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, or } from "drizzle-orm";
 import {
   normalizeExpenseCategoryCode,
   validateBillingExpenseCategory,
@@ -19,10 +19,16 @@ import {
 export async function listDrizzleTimeEntries(
   db: OpenPracticeDatabase,
   firmId: string,
-  options: { matterId?: string; status?: TimeEntry["billingStatus"] } = {},
+  options: { matterId?: string; matterIds?: string[]; status?: TimeEntry["billingStatus"] } = {},
 ): Promise<TimeEntry[]> {
   const filters = [eq(schema.timeEntries.firmId, firmId)];
-  if (options.matterId) filters.push(eq(schema.timeEntries.matterId, options.matterId));
+  if (options.matterId) {
+    filters.push(eq(schema.timeEntries.matterId, options.matterId));
+  } else if (options.matterIds) {
+    const matterIds = [...new Set(options.matterIds)];
+    if (matterIds.length === 0) return [];
+    filters.push(inArray(schema.timeEntries.matterId, matterIds));
+  }
   if (options.status) filters.push(eq(schema.timeEntries.billingStatus, options.status));
   const rows = await db
     .select()
@@ -77,10 +83,16 @@ export async function updateDrizzleTimeEntry(
 export async function listDrizzleExpenseEntries(
   db: OpenPracticeDatabase,
   firmId: string,
-  options: { matterId?: string; status?: ExpenseEntry["billingStatus"] } = {},
+  options: { matterId?: string; matterIds?: string[]; status?: ExpenseEntry["billingStatus"] } = {},
 ): Promise<ExpenseEntry[]> {
   const filters = [eq(schema.expenseEntries.firmId, firmId)];
-  if (options.matterId) filters.push(eq(schema.expenseEntries.matterId, options.matterId));
+  if (options.matterId) {
+    filters.push(eq(schema.expenseEntries.matterId, options.matterId));
+  } else if (options.matterIds) {
+    const matterIds = [...new Set(options.matterIds)];
+    if (matterIds.length === 0) return [];
+    filters.push(inArray(schema.expenseEntries.matterId, matterIds));
+  }
   if (options.status) filters.push(eq(schema.expenseEntries.billingStatus, options.status));
   const rows = await db
     .select()

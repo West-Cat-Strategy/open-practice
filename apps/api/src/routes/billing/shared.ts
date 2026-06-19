@@ -28,6 +28,24 @@ export function assertMatterAccess(
   if (!access.ok) throw access.error;
 }
 
+export function orderByMatterIds<T extends { matterId: string }>(
+  records: T[],
+  matterIds: readonly string[],
+): T[] {
+  const matterOrder = new Map<string, number>();
+  matterIds.forEach((matterId, index) => {
+    if (!matterOrder.has(matterId)) matterOrder.set(matterId, index);
+  });
+  return records
+    .map((record, index) => ({ record, index }))
+    .sort((left, right) => {
+      const leftOrder = matterOrder.get(left.record.matterId) ?? Number.MAX_SAFE_INTEGER;
+      const rightOrder = matterOrder.get(right.record.matterId) ?? Number.MAX_SAFE_INTEGER;
+      return leftOrder - rightOrder || left.index - right.index;
+    })
+    .map(({ record }) => record);
+}
+
 function lockedBillingPeriodForTimestamp(
   timestamp: string,
   locks: BillingPeriodLockRecord[],

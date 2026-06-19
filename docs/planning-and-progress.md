@@ -64,6 +64,15 @@ authorization, redaction/audit posture, local-dev Docker boundaries, provider be
 behavior, and synthetic-only examples. Proof is recorded in
 [operational efficiency remediation proof](validation/OP_OPERATIONAL_EFFICIENCY_REMEDIATION_PROOF_2026-06-19.md).
 
+The 2026-06-19 review remediation branch `fix/review-remediation-20260619` implements the focused
+code-review backlog for contact dossier/preload reuse, contact dossier input indexing, batched
+assigned-matter billing list reads, route authorization manifest extraction, external-upload
+dashboard request-helper extraction, and selector/domain-build alignment. It preserves HTTP
+response shapes, authorization, redaction, payment settlement behavior, trust posting behavior,
+provider behavior, public/private data boundaries, and schema/dependency posture. Proof is recorded
+in
+[review remediation proof](validation/OP_REVIEW_REMEDIATION_PROOF_2026-06-19.md).
+
 The 2026-06-18 database access hot-path efficiency branch
 `refactor/db-access-hot-path-efficiency` adds focused internal query/index improvements without
 changing HTTP response shapes, permissions, payment settlement behavior, trust posting behavior,

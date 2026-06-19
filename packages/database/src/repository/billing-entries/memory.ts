@@ -13,16 +13,30 @@ export interface MemoryBillingEntriesStore {
   billingExpenseCategories: BillingExpenseCategoryRecord[];
 }
 
+function matchesBillingMatter(
+  matterId: string,
+  options: { matterId?: string; matterIds?: string[] },
+): boolean {
+  if (options.matterId) return matterId === options.matterId;
+  if (options.matterIds) return options.matterIds.includes(matterId);
+  return true;
+}
+
+function hasEmptyMatterIds(options: { matterId?: string; matterIds?: string[] }): boolean {
+  return !options.matterId && options.matterIds?.length === 0;
+}
+
 export function listMemoryTimeEntries(
   store: MemoryBillingEntriesStore,
   firmId: string,
-  options: { matterId?: string; status?: TimeEntry["billingStatus"] } = {},
+  options: { matterId?: string; matterIds?: string[]; status?: TimeEntry["billingStatus"] } = {},
 ): TimeEntry[] {
+  if (hasEmptyMatterIds(options)) return [];
   return clone(
     store.timeEntries.filter(
       (entry) =>
         entry.firmId === firmId &&
-        (!options.matterId || entry.matterId === options.matterId) &&
+        matchesBillingMatter(entry.matterId, options) &&
         (!options.status || entry.billingStatus === options.status),
     ),
   );
@@ -64,13 +78,14 @@ export function updateMemoryTimeEntry(
 export function listMemoryExpenseEntries(
   store: MemoryBillingEntriesStore,
   firmId: string,
-  options: { matterId?: string; status?: ExpenseEntry["billingStatus"] } = {},
+  options: { matterId?: string; matterIds?: string[]; status?: ExpenseEntry["billingStatus"] } = {},
 ): ExpenseEntry[] {
+  if (hasEmptyMatterIds(options)) return [];
   return clone(
     store.expenseEntries.filter(
       (entry) =>
         entry.firmId === firmId &&
-        (!options.matterId || entry.matterId === options.matterId) &&
+        matchesBillingMatter(entry.matterId, options) &&
         (!options.status || entry.billingStatus === options.status),
     ),
   );

@@ -281,4 +281,37 @@ describe("repository contact dossier quality review", () => {
     expect(JSON.stringify(dossiers)).not.toContain("North Star Holdings");
     expect(JSON.stringify(dossiers)).not.toContain("matter-002");
   });
+
+  it("reuses preloaded contact visibility for portal grants and timelines", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const user: User = {
+      id: "user-licensee",
+      firmId: "firm-west-legal",
+      displayName: "Test Licensee",
+      email: "licensee@example.test",
+      role: "licensee",
+      assignedMatterIds: ["matter-001"],
+      mfaEnabled: true,
+    };
+    const dossiers = await repository.listContactDossiersForUser(user);
+    const dossier = dossiers.find((candidate) => candidate.contact.id === "contact-ada")!;
+    const expectedGrants = await repository.listContactPortalGrantsForUser(user, "contact-ada");
+    const expectedTimeline = await repository.listContactTimelineForUser(user, "contact-ada");
+    repository.listMattersForUser = async () => {
+      throw new Error("unexpected contact dossier hydration");
+    };
+
+    await expect(
+      repository.listContactPortalGrantsForUser(user, "contact-ada", {
+        visibleDossier: dossier,
+        portalGrants: expectedGrants,
+      }),
+    ).resolves.toEqual(expectedGrants);
+    await expect(
+      repository.listContactTimelineForUser(user, "contact-ada", {
+        visibleDossier: dossier,
+        portalGrants: expectedGrants,
+      }),
+    ).resolves.toEqual(expectedTimeline);
+  });
 });

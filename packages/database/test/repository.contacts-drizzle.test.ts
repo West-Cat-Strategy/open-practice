@@ -1,11 +1,20 @@
 import { describe, expect, it } from "vitest";
-import type { Contact, MatterParty, ProfessionalRole, User } from "@open-practice/domain";
+import type {
+  Contact,
+  ContactDossier,
+  MatterParty,
+  PortalGrant,
+  ProfessionalRole,
+  User,
+} from "@open-practice/domain";
 import {
   sampleContacts,
   sampleMatterParties,
+  samplePortalGrants,
   sampleUsers,
 } from "@open-practice/domain/sample-data";
 import {
+  listDrizzleContactPortalGrantsForUser,
   listDrizzleContactsForUser,
   type DrizzleContactDependencies,
 } from "../src/repository/contacts/drizzle.js";
@@ -112,6 +121,45 @@ async function memoryContactIds(authUser: User, options = {}) {
 }
 
 describe("Drizzle contact list repository", () => {
+  it("reuses preloaded visible dossiers and portal grants without dossier hydration", async () => {
+    const authUser = { ...user("licensee", ["matter-001"]), id: "user-licensee" };
+    const calls: string[] = [];
+    const fail = (name: string) => async () => {
+      calls.push(name);
+      throw new Error(`unexpected ${name}`);
+    };
+    const dependencies: DrizzleContactDependencies = {
+      listMattersForUser: fail("listMattersForUser"),
+      listPortalGrants: fail("listPortalGrants"),
+      listTaskDeadlines: fail("listTaskDeadlines"),
+      listCalendarSchedulingRequests: fail("listCalendarSchedulingRequests"),
+      listIntakeVariableProposals: fail("listIntakeVariableProposals"),
+    };
+    const db = {
+      select: () => {
+        throw new Error("unexpected contact db read");
+      },
+    } as unknown as Parameters<typeof listDrizzleContactPortalGrantsForUser>[0];
+    const visibleDossier = {
+      contact: { id: "contact-ada", firmId: "firm-west-legal" },
+      matters: [{ matterId: "matter-001" }],
+    } as ContactDossier;
+    const hiddenMatterGrant: PortalGrant = {
+      ...samplePortalGrants[0]!,
+      id: "grant-hidden-matter",
+      matterId: "matter-002",
+      createdAt: "2026-05-30T12:00:00.000Z",
+    };
+
+    await expect(
+      listDrizzleContactPortalGrantsForUser(db, authUser, "contact-ada", dependencies, {
+        visibleDossier,
+        portalGrants: [hiddenMatterGrant, samplePortalGrants[0]!],
+      }),
+    ).resolves.toEqual([samplePortalGrants[0]]);
+    expect(calls).toEqual([]);
+  });
+
   it("lists firm-wide contacts directly without dossier-only hydration", async () => {
     const authUser = { ...user("owner_admin", []), id: "user-admin" };
     const { db, tableReads } = contactListDbWithRows({

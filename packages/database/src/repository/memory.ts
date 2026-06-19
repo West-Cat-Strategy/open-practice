@@ -1763,25 +1763,39 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   async listContactPortalGrantsForUser(
     user: User,
     contactId: string,
+    context?: Parameters<OpenPracticeRepository["listContactPortalGrantsForUser"]>[2],
   ): ReturnType<OpenPracticeRepository["listContactPortalGrantsForUser"]> {
-    return listMemoryContactPortalGrantsForUser(this.contactStore, user, contactId, {
-      listMattersForUser: (candidate) => this.listMattersForUser(candidate),
-      listTaskDeadlines: (firmId, options) => this.listTaskDeadlines(firmId, options),
-      listCalendarSchedulingRequests: (firmId, options) =>
-        this.listCalendarSchedulingRequests(firmId, options),
-    });
+    return listMemoryContactPortalGrantsForUser(
+      this.contactStore,
+      user,
+      contactId,
+      {
+        listMattersForUser: (candidate) => this.listMattersForUser(candidate),
+        listTaskDeadlines: (firmId, options) => this.listTaskDeadlines(firmId, options),
+        listCalendarSchedulingRequests: (firmId, options) =>
+          this.listCalendarSchedulingRequests(firmId, options),
+      },
+      context,
+    );
   }
 
   async listContactTimelineForUser(
     user: User,
     contactId: string,
+    context?: Parameters<OpenPracticeRepository["listContactTimelineForUser"]>[2],
   ): ReturnType<OpenPracticeRepository["listContactTimelineForUser"]> {
-    return listMemoryContactTimelineForUser(this.contactStore, user, contactId, {
-      listMattersForUser: (candidate) => this.listMattersForUser(candidate),
-      listTaskDeadlines: (firmId, options) => this.listTaskDeadlines(firmId, options),
-      listCalendarSchedulingRequests: (firmId, options) =>
-        this.listCalendarSchedulingRequests(firmId, options),
-    });
+    return listMemoryContactTimelineForUser(
+      this.contactStore,
+      user,
+      contactId,
+      {
+        listMattersForUser: (candidate) => this.listMattersForUser(candidate),
+        listTaskDeadlines: (firmId, options) => this.listTaskDeadlines(firmId, options),
+        listCalendarSchedulingRequests: (firmId, options) =>
+          this.listCalendarSchedulingRequests(firmId, options),
+      },
+      context,
+    );
   }
 
   async createContactDataQualityResolution(

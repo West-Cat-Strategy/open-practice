@@ -87,6 +87,7 @@ describe("select-validation contract", () => {
 
   it("routes domain source changes through domain build before downstream checks", () => {
     assert.deepEqual(selectCommands(["packages/domain/src/index.ts"]), [
+      COMMANDS.architectureCheck,
       COMMANDS.domainTest,
       COMMANDS.domainTypecheck,
       COMMANDS.domainBuild,
@@ -120,6 +121,7 @@ describe("select-validation contract", () => {
     assert.deepEqual(
       selectCommands(["apps/web/next.config.mjs", "apps/web/app/api-base-urls.ts"]),
       [
+        COMMANDS.architectureCheck,
         COMMANDS.dockerAppSmoke,
         COMMANDS.e2eDocker,
         COMMANDS.webTest,
@@ -264,6 +266,7 @@ describe("select-validation contract", () => {
       "README.md",
     ]);
     assert.deepEqual(runSelector(["--base-plus-dirty", "origin/main"], { cwd: "/repo", exec }), [
+      COMMANDS.architectureCheck,
       COMMANDS.formatCheck,
       COMMANDS.docsCheck,
       COMMANDS.policyCheck,

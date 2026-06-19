@@ -11,7 +11,12 @@ import { hasFirmWideLedgerAccess, requireStaffAccess } from "../../http/auth-gua
 import { parseRequestPart } from "../../http/validation.js";
 import { appendRouteAuditEvent } from "../audit-events.js";
 import type { ApiRouteDependencies } from "../types.js";
-import { assertBillingTimestampUnlocked, assertMatterAccess, idParamsSchema } from "./shared.js";
+import {
+  assertBillingTimestampUnlocked,
+  assertMatterAccess,
+  idParamsSchema,
+  orderByMatterIds,
+} from "./shared.js";
 
 const invoiceQuerySchema = z.object({
   matterId: z.string().min(1).optional(),
@@ -64,14 +69,12 @@ export function registerBillingInvoiceRoutes(
       return { invoices: await repository.listInvoices(request.auth.firmId, query) };
     }
 
-    const invoices = (
-      await Promise.all(
-        request.auth.user.assignedMatterIds.map((matterId) =>
-          repository.listInvoices(request.auth.firmId, { ...query, matterId }),
-        ),
-      )
-    ).flat();
-    return { invoices };
+    const assignedMatterIds = request.auth.user.assignedMatterIds;
+    const invoices = await repository.listInvoices(request.auth.firmId, {
+      ...query,
+      matterIds: assignedMatterIds,
+    });
+    return { invoices: orderByMatterIds(invoices, assignedMatterIds) };
   });
 
   server.post("/api/invoices", async (request) => {

@@ -10,6 +10,7 @@ import { parseRequestPart } from "../../http/validation.js";
 import type { ApiAuthContext } from "../../server.js";
 import { appendRouteAuditEvent } from "../audit-events.js";
 import type { ApiRouteDependencies } from "../types.js";
+import { orderByMatterIds } from "./shared.js";
 
 const paymentBodySchema = z.object({
   id: z.string().min(1).optional(),
@@ -73,14 +74,12 @@ export function registerBillingPaymentRoutes(
       return { payments: await repository.listPayments(request.auth.firmId, query) };
     }
 
-    const payments = (
-      await Promise.all(
-        request.auth.user.assignedMatterIds.map((matterId) =>
-          repository.listPayments(request.auth.firmId, { ...query, matterId }),
-        ),
-      )
-    ).flat();
-    return { payments };
+    const assignedMatterIds = request.auth.user.assignedMatterIds;
+    const payments = await repository.listPayments(request.auth.firmId, {
+      ...query,
+      matterIds: assignedMatterIds,
+    });
+    return { payments: orderByMatterIds(payments, assignedMatterIds) };
   });
 
   server.post("/api/payments", async (request) => {

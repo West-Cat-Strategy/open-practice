@@ -23,6 +23,7 @@ import * as schema from "../../schema.js";
 import type {
   ContactDataQualityResolutionListOptions,
   ContactListOptions,
+  ContactVisibilityPreloadContext,
   ContactRelationshipUpdateInput,
   ContactUpdateInput,
   MatterContactAssociationUpdateInput,
@@ -472,12 +473,18 @@ export async function listDrizzleContactPortalGrantsForUser(
   user: User,
   contactId: string,
   dependencies: DrizzleContactDependencies,
+  context: ContactVisibilityPreloadContext = {},
 ): Promise<PortalGrant[]> {
-  const dossiers = await listDrizzleContactDossiersForUser(db, user, dependencies);
-  const dossier = dossiers.find((candidate) => candidate.contact.id === contactId);
+  const dossier =
+    context.visibleDossier?.contact.id === contactId &&
+    context.visibleDossier.contact.firmId === user.firmId
+      ? context.visibleDossier
+      : (await listDrizzleContactDossiersForUser(db, user, dependencies)).find(
+          (candidate) => candidate.contact.id === contactId,
+        );
   if (!dossier) return [];
   const visibleMatterIds = new Set(dossier.matters.map((matter) => matter.matterId));
-  return (await dependencies.listPortalGrants(user.firmId))
+  return (context.portalGrants ?? (await dependencies.listPortalGrants(user.firmId)))
     .filter(
       (grant) =>
         grant.contactId === contactId &&
@@ -492,9 +499,15 @@ export async function listDrizzleContactTimelineForUser(
   user: User,
   contactId: string,
   dependencies: DrizzleContactDependencies,
+  context: ContactVisibilityPreloadContext = {},
 ): Promise<ActivityTimelineEntry[]> {
-  const dossiers = await listDrizzleContactDossiersForUser(db, user, dependencies);
-  const dossier = dossiers.find((candidate) => candidate.contact.id === contactId);
+  const dossier =
+    context.visibleDossier?.contact.id === contactId &&
+    context.visibleDossier.contact.firmId === user.firmId
+      ? context.visibleDossier
+      : (await listDrizzleContactDossiersForUser(db, user, dependencies)).find(
+          (candidate) => candidate.contact.id === contactId,
+        );
   if (!dossier) return [];
   const contact = await getDrizzleContact(db, user.firmId, contactId);
   const visibleMatterIds = new Set(dossier.matters.map((matter) => matter.matterId));
@@ -558,6 +571,7 @@ export async function listDrizzleContactTimelineForUser(
     user,
     contactId,
     dependencies,
+    { visibleDossier: dossier, portalGrants: context.portalGrants },
   )) {
     entries.push({
       id: `portal-grant:${grant.id}`,

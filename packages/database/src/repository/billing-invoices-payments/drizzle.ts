@@ -79,10 +79,16 @@ async function listDrizzleInvoicesById(
 export async function listDrizzleInvoices(
   db: OpenPracticeDatabase,
   firmId: string,
-  options: { matterId?: string; status?: InvoiceRecord["status"] } = {},
+  options: { matterId?: string; matterIds?: string[]; status?: InvoiceRecord["status"] } = {},
 ): Promise<InvoiceWithLines[]> {
   const filters = [eq(schema.invoices.firmId, firmId)];
-  if (options.matterId) filters.push(eq(schema.invoices.matterId, options.matterId));
+  if (options.matterId) {
+    filters.push(eq(schema.invoices.matterId, options.matterId));
+  } else if (options.matterIds) {
+    const matterIds = [...new Set(options.matterIds)];
+    if (matterIds.length === 0) return [];
+    filters.push(inArray(schema.invoices.matterId, matterIds));
+  }
   if (options.status) filters.push(eq(schema.invoices.status, options.status));
   const rows = await db
     .select()
@@ -275,10 +281,16 @@ export async function reconcileDrizzlePayment(
 export async function listDrizzlePayments(
   db: OpenPracticeDatabase,
   firmId: string,
-  options: { matterId?: string; invoiceId?: string } = {},
+  options: { matterId?: string; matterIds?: string[]; invoiceId?: string } = {},
 ): Promise<PaymentWithAllocations[]> {
   const filters = [eq(schema.manualPayments.firmId, firmId)];
-  if (options.matterId) filters.push(eq(schema.manualPayments.matterId, options.matterId));
+  if (options.matterId) {
+    filters.push(eq(schema.manualPayments.matterId, options.matterId));
+  } else if (options.matterIds) {
+    const matterIds = [...new Set(options.matterIds)];
+    if (matterIds.length === 0) return [];
+    filters.push(inArray(schema.manualPayments.matterId, matterIds));
+  }
   if (options.invoiceId) filters.push(eq(schema.manualPayments.invoiceId, options.invoiceId));
   const payments = await db
     .select()
