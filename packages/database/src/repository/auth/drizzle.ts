@@ -98,16 +98,6 @@ export async function createDrizzleUser(db: OpenPracticeDatabase, user: User): P
   };
 }
 
-async function listDrizzleUsers(db: OpenPracticeDatabase, firmId: string): Promise<User[]> {
-  const rows = await db.select().from(schema.users).where(eq(schema.users.firmId, firmId));
-  const assignmentsByUserId = await listDrizzleAssignmentMatterIdsByUserId(
-    db,
-    firmId,
-    rows.map((row) => row.id),
-  );
-  return rows.map((row) => mapUserRow(row, assignmentsByUserId.get(row.id) ?? []));
-}
-
 export async function getDrizzleUserByEmail(
   db: OpenPracticeDatabase,
   firmId: string,
