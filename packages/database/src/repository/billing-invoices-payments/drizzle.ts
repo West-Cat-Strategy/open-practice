@@ -6,7 +6,7 @@ import {
   type ManualPaymentRecord,
   type PaymentAllocationRecord,
 } from "@open-practice/domain";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import type { OpenPracticeDatabase } from "../../runtime.js";
 import * as schema from "../../schema.js";
 import type {
@@ -25,6 +25,57 @@ import {
   paymentInsert,
 } from "../drizzle-mappers.js";
 
+async function listDrizzleInvoiceLinesByInvoiceId(
+  db: OpenPracticeDatabase,
+  firmId: string,
+  invoiceIds: string[],
+): Promise<Map<string, InvoiceLineRecord[]>> {
+  const uniqueInvoiceIds = [...new Set(invoiceIds)];
+  if (uniqueInvoiceIds.length === 0) return new Map();
+  const rows = await db
+    .select()
+    .from(schema.invoiceLines)
+    .where(
+      and(
+        eq(schema.invoiceLines.firmId, firmId),
+        inArray(schema.invoiceLines.invoiceId, uniqueInvoiceIds),
+      ),
+    );
+  const linesByInvoiceId = new Map<string, InvoiceLineRecord[]>();
+  for (const line of rows.map(mapInvoiceLineRow)) {
+    const lines = linesByInvoiceId.get(line.invoiceId) ?? [];
+    lines.push(line);
+    linesByInvoiceId.set(line.invoiceId, lines);
+  }
+  return linesByInvoiceId;
+}
+
+async function listDrizzleInvoicesById(
+  db: OpenPracticeDatabase,
+  firmId: string,
+  invoiceIds: string[],
+): Promise<Map<string, InvoiceWithLines>> {
+  const uniqueInvoiceIds = [...new Set(invoiceIds)];
+  if (uniqueInvoiceIds.length === 0) return new Map();
+  const rows = await db
+    .select()
+    .from(schema.invoices)
+    .where(and(eq(schema.invoices.firmId, firmId), inArray(schema.invoices.id, uniqueInvoiceIds)));
+  const linesByInvoiceId = await listDrizzleInvoiceLinesByInvoiceId(
+    db,
+    firmId,
+    rows.map((row) => row.id),
+  );
+  const invoicesById = new Map<string, InvoiceWithLines>();
+  for (const row of rows) {
+    invoicesById.set(row.id, {
+      ...mapInvoiceRow(row),
+      lines: linesByInvoiceId.get(row.id) ?? [],
+    });
+  }
+  return invoicesById;
+}
+
 export async function listDrizzleInvoices(
   db: OpenPracticeDatabase,
   firmId: string,
@@ -37,13 +88,14 @@ export async function listDrizzleInvoices(
     .select()
     .from(schema.invoices)
     .where(and(...filters));
-  const lines = await db
-    .select()
-    .from(schema.invoiceLines)
-    .where(eq(schema.invoiceLines.firmId, firmId));
+  const linesByInvoiceId = await listDrizzleInvoiceLinesByInvoiceId(
+    db,
+    firmId,
+    rows.map((row) => row.id),
+  );
   return rows.map((row) => ({
     ...mapInvoiceRow(row),
-    lines: lines.filter((line) => line.invoiceId === row.id).map(mapInvoiceLineRow),
+    lines: linesByInvoiceId.get(row.id) ?? [],
   }));
 }
 
@@ -52,16 +104,7 @@ export async function getDrizzleInvoice(
   firmId: string,
   invoiceId: string,
 ): Promise<InvoiceWithLines | undefined> {
-  const [row] = await db
-    .select()
-    .from(schema.invoices)
-    .where(and(eq(schema.invoices.firmId, firmId), eq(schema.invoices.id, invoiceId)));
-  if (!row) return undefined;
-  const lines = await db
-    .select()
-    .from(schema.invoiceLines)
-    .where(eq(schema.invoiceLines.invoiceId, invoiceId));
-  return { ...mapInvoiceRow(row), lines: lines.map(mapInvoiceLineRow) };
+  return (await listDrizzleInvoicesById(db, firmId, [invoiceId])).get(invoiceId);
 }
 
 export async function createDrizzleInvoice(
@@ -108,8 +151,10 @@ export async function createDrizzlePayment(
   if (allocatedCents > input.payment.amountCents) {
     throw new Error("Payment allocations exceed payment amount");
   }
+  const invoiceIds = [...new Set(input.allocations.map((allocation) => allocation.invoiceId))];
+  const invoicesById = await listDrizzleInvoicesById(db, input.payment.firmId, invoiceIds);
   for (const allocation of input.allocations) {
-    const invoice = await getDrizzleInvoice(db, input.payment.firmId, allocation.invoiceId);
+    const invoice = invoicesById.get(allocation.invoiceId);
     if (!invoice) throw new Error("Payment allocation invoice was not found");
     if (allocation.amountCents > invoice.balanceDueCents) {
       throw new Error("Payment allocation exceeds invoice balance");
@@ -121,17 +166,17 @@ export async function createDrizzlePayment(
       .insert(schema.paymentAllocations)
       .values(input.allocations.map(paymentAllocationInsert));
   }
-  for (const allocation of input.allocations) {
-    const invoice = await getDrizzleInvoice(db, input.payment.firmId, allocation.invoiceId);
+  const allocationsByInvoiceId = await listDrizzlePaymentAllocationsForInvoiceIds(
+    db,
+    input.payment.firmId,
+    invoiceIds,
+  );
+  for (const invoiceId of invoiceIds) {
+    const invoice = invoicesById.get(invoiceId);
     if (!invoice) continue;
-    const existingAllocations = await listDrizzlePaymentAllocationsForInvoice(
-      db,
-      input.payment.firmId,
-      allocation.invoiceId,
-    );
     const totals = calculateInvoiceTotals({
       lines: invoice.lines,
-      allocations: existingAllocations,
+      allocations: allocationsByInvoiceId.get(invoiceId) ?? [],
     });
     await updateDrizzleInvoice(db, {
       ...invoice,
@@ -239,16 +284,65 @@ export async function listDrizzlePayments(
     .select()
     .from(schema.manualPayments)
     .where(and(...filters));
-  const allocations = await db
-    .select()
-    .from(schema.paymentAllocations)
-    .where(eq(schema.paymentAllocations.firmId, firmId));
+  const allocationsByPaymentId = await listDrizzlePaymentAllocationsByPaymentIds(
+    db,
+    firmId,
+    payments.map((payment) => payment.id),
+  );
   return payments.map((payment) => ({
     ...mapPaymentRow(payment),
-    allocations: allocations
-      .filter((allocation) => allocation.paymentId === payment.id)
-      .map(mapPaymentAllocationRow),
+    allocations: allocationsByPaymentId.get(payment.id) ?? [],
   }));
+}
+
+async function listDrizzlePaymentAllocationsByPaymentIds(
+  db: OpenPracticeDatabase,
+  firmId: string,
+  paymentIds: string[],
+): Promise<Map<string, PaymentAllocationRecord[]>> {
+  const uniquePaymentIds = [...new Set(paymentIds)];
+  if (uniquePaymentIds.length === 0) return new Map();
+  const rows = await db
+    .select()
+    .from(schema.paymentAllocations)
+    .where(
+      and(
+        eq(schema.paymentAllocations.firmId, firmId),
+        inArray(schema.paymentAllocations.paymentId, uniquePaymentIds),
+      ),
+    );
+  const allocationsByPaymentId = new Map<string, PaymentAllocationRecord[]>();
+  for (const allocation of rows.map(mapPaymentAllocationRow)) {
+    const allocations = allocationsByPaymentId.get(allocation.paymentId) ?? [];
+    allocations.push(allocation);
+    allocationsByPaymentId.set(allocation.paymentId, allocations);
+  }
+  return allocationsByPaymentId;
+}
+
+async function listDrizzlePaymentAllocationsForInvoiceIds(
+  db: OpenPracticeDatabase,
+  firmId: string,
+  invoiceIds: string[],
+): Promise<Map<string, PaymentAllocationRecord[]>> {
+  const uniqueInvoiceIds = [...new Set(invoiceIds)];
+  if (uniqueInvoiceIds.length === 0) return new Map();
+  const rows = await db
+    .select()
+    .from(schema.paymentAllocations)
+    .where(
+      and(
+        eq(schema.paymentAllocations.firmId, firmId),
+        inArray(schema.paymentAllocations.invoiceId, uniqueInvoiceIds),
+      ),
+    );
+  const allocationsByInvoiceId = new Map<string, PaymentAllocationRecord[]>();
+  for (const allocation of rows.map(mapPaymentAllocationRow)) {
+    const allocations = allocationsByInvoiceId.get(allocation.invoiceId) ?? [];
+    allocations.push(allocation);
+    allocationsByInvoiceId.set(allocation.invoiceId, allocations);
+  }
+  return allocationsByInvoiceId;
 }
 
 async function listDrizzlePaymentAllocationsForInvoice(
@@ -256,14 +350,7 @@ async function listDrizzlePaymentAllocationsForInvoice(
   firmId: string,
   invoiceId: string,
 ): Promise<PaymentAllocationRecord[]> {
-  const rows = await db
-    .select()
-    .from(schema.paymentAllocations)
-    .where(
-      and(
-        eq(schema.paymentAllocations.firmId, firmId),
-        eq(schema.paymentAllocations.invoiceId, invoiceId),
-      ),
-    );
-  return rows.map(mapPaymentAllocationRow);
+  return (
+    (await listDrizzlePaymentAllocationsForInvoiceIds(db, firmId, [invoiceId])).get(invoiceId) ?? []
+  );
 }

@@ -39,6 +39,11 @@ export const jobLifecycleRecords = pgTable(
   },
   (table) => ({
     firmStatus: index("job_lifecycle_records_firm_status_idx").on(table.firmId, table.status),
+    firmQueueQueued: index("job_lifecycle_records_firm_queue_queued_idx").on(
+      table.firmId,
+      table.queueName,
+      table.queuedAt,
+    ),
     bullJobId: index("job_lifecycle_records_bull_job_id_idx").on(table.bullJobId),
     firmIdempotency: uniqueIndex("job_lifecycle_records_firm_idempotency_idx").on(
       table.firmId,

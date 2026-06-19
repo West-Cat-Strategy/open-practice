@@ -41,6 +41,7 @@ import {
   emailOutbox,
   emailTemplateDrafts,
   emailTemplatePreviewSnapshots,
+  expenseEntries,
   externalUploadLinks,
   firmSettings,
   inboundEmailAddresses,
@@ -61,7 +62,9 @@ import {
   legalClinicMatterProfiles,
   legalClinicPrograms,
   legalResearchArtifacts,
+  ledgerAccounts,
   manualPayments,
+  matterAssignments,
   mediaDerivatives,
   mediaTranscripts,
   notificationPreferences,
@@ -76,6 +79,7 @@ import {
   signatureProviderEvents,
   signatureRequestSigners,
   signatureRequests,
+  signatureWebhookAttempts,
   totpCredentials,
   ledgerAccountingReviewProfiles,
   trustClientBalances,
@@ -103,18 +107,43 @@ describe("database schema hardening", () => {
     );
   });
 
+  it("indexes matter assignments by user for auth matter scope lookups", () => {
+    const config = getTableConfig(matterAssignments);
+
+    expect(config.indexes.map((index) => index.config.name)).toContain(
+      "matter_assignments_user_matter_idx",
+    );
+  });
+
   it("requires idempotency request fingerprints on trust transactions", () => {
-    const columns = getTableConfig(trustTransactions).columns;
+    const config = getTableConfig(trustTransactions);
+    const columns = config.columns;
     const fingerprint = columns.find((column) => column.name === "request_fingerprint");
 
     expect(fingerprint?.notNull).toBe(true);
+    expect(config.indexes.map((index) => index.config.name)).toContain(
+      "trust_transactions_firm_posted_idx",
+    );
   });
 
   it("defines amount integrity checks for trust ledger entries", () => {
-    const checks = getTableConfig(trustLedgerEntries).checks.map((check) => check.name);
+    const config = getTableConfig(trustLedgerEntries);
+    const checks = config.checks.map((check) => check.name);
 
     expect(checks).toContain("trust_ledger_entries_non_negative_amounts");
     expect(checks).toContain("trust_ledger_entries_one_sided_amount");
+    expect(config.indexes.map((index) => index.config.name)).toEqual(
+      expect.arrayContaining([
+        "trust_ledger_entries_firm_matter_idx",
+        "trust_ledger_entries_transaction_idx",
+      ]),
+    );
+  });
+
+  it("indexes ledger accounts by firm", () => {
+    const config = getTableConfig(ledgerAccounts);
+
+    expect(config.indexes.map((index) => index.config.name)).toContain("ledger_accounts_firm_idx");
   });
 
   it("persists conflict check review snapshots", () => {
@@ -144,7 +173,8 @@ describe("database schema hardening", () => {
   });
 
   it("tracks document ingestion state", () => {
-    const columns = getTableConfig(documents).columns.map((column) => column.name);
+    const config = getTableConfig(documents);
+    const columns = config.columns.map((column) => column.name);
 
     expect(columns).toEqual(
       expect.arrayContaining([
@@ -155,6 +185,12 @@ describe("database schema hardening", () => {
         "supersedes_document_id",
         "superseded_at",
         "verified_at",
+      ]),
+    );
+    expect(config.indexes.map((index) => index.config.name)).toEqual(
+      expect.arrayContaining([
+        "documents_firm_matter_idx",
+        "documents_firm_matter_checksum_status_idx",
       ]),
     );
   });
@@ -707,17 +743,31 @@ describe("database schema hardening", () => {
   });
 
   it("persists signature lifecycle tables", () => {
-    expect(getTableConfig(signatureRequests).columns.map((column) => column.name)).toContain(
-      "requested_by_user_id",
-    );
-    expect(getTableConfig(signatureRequests).columns.map((column) => column.name)).toEqual(
+    const requestConfig = getTableConfig(signatureRequests);
+    const signerConfig = getTableConfig(signatureRequestSigners);
+    const eventConfig = getTableConfig(signatureProviderEvents);
+    const webhookConfig = getTableConfig(signatureWebhookAttempts);
+
+    expect(requestConfig.columns.map((column) => column.name)).toContain("requested_by_user_id");
+    expect(requestConfig.columns.map((column) => column.name)).toEqual(
       expect.arrayContaining(["signer_order", "field_placements", "validation_status"]),
     );
-    expect(getTableConfig(signatureRequestSigners).columns.map((column) => column.name)).toContain(
-      "signature_request_id",
+    expect(requestConfig.indexes.map((index) => index.config.name)).toContain(
+      "signature_requests_firm_matter_idx",
     );
-    expect(getTableConfig(signatureProviderEvents).columns.map((column) => column.name)).toContain(
-      "occurred_at",
+    expect(signerConfig.columns.map((column) => column.name)).toContain("signature_request_id");
+    expect(signerConfig.indexes.map((index) => index.config.name)).toContain(
+      "signature_request_signers_firm_request_idx",
+    );
+    expect(eventConfig.columns.map((column) => column.name)).toContain("occurred_at");
+    expect(eventConfig.indexes.map((index) => index.config.name)).toContain(
+      "signature_provider_events_firm_request_occurred_idx",
+    );
+    expect(webhookConfig.indexes.map((index) => index.config.name)).toEqual(
+      expect.arrayContaining([
+        "signature_webhook_attempts_firm_provider_external_idx",
+        "signature_webhook_attempts_firm_received_idx",
+      ]),
     );
   });
 
@@ -913,7 +963,8 @@ describe("database schema hardening", () => {
     expect(getTableConfig(providerSettings).columns.map((column) => column.name)).toEqual(
       expect.arrayContaining(["firm_id", "kind", "key", "enabled", "encrypted_config"]),
     );
-    expect(getTableConfig(jobLifecycleRecords).columns.map((column) => column.name)).toEqual(
+    const jobLifecycleConfig = getTableConfig(jobLifecycleRecords);
+    expect(jobLifecycleConfig.columns.map((column) => column.name)).toEqual(
       expect.arrayContaining([
         "firm_id",
         "queue_name",
@@ -924,6 +975,9 @@ describe("database schema hardening", () => {
         "max_attempts",
         "metadata",
       ]),
+    );
+    expect(jobLifecycleConfig.indexes.map((index) => index.config.name)).toContain(
+      "job_lifecycle_records_firm_queue_queued_idx",
     );
   });
 
@@ -1414,8 +1468,22 @@ describe("database schema hardening", () => {
   });
 
   it("persists native billing workflow tables", () => {
-    expect(getTableConfig(timeEntries).columns.map((column) => column.name)).toEqual(
+    const timeEntryConfig = getTableConfig(timeEntries);
+    const expenseEntryConfig = getTableConfig(expenseEntries);
+    const invoiceConfig = getTableConfig(invoices);
+    const invoiceLineConfig = getTableConfig(invoiceLines);
+    const manualPaymentConfig = getTableConfig(manualPayments);
+    const paymentAllocationConfig = getTableConfig(paymentAllocations);
+    const trustTransferRequestConfig = getTableConfig(billingTrustTransferRequests);
+
+    expect(timeEntryConfig.columns.map((column) => column.name)).toEqual(
       expect.arrayContaining(["rate_rule_id", "rate_snapshot"]),
+    );
+    expect(timeEntryConfig.indexes.map((index) => index.config.name)).toContain(
+      "time_entries_firm_matter_status_idx",
+    );
+    expect(expenseEntryConfig.indexes.map((index) => index.config.name)).toContain(
+      "expense_entries_firm_matter_status_idx",
     );
     expect(getTableConfig(billingPeriodLocks).columns.map((column) => column.name)).toEqual(
       expect.arrayContaining([
@@ -1441,7 +1509,7 @@ describe("database schema hardening", () => {
         "active",
       ]),
     );
-    expect(getTableConfig(invoices).columns.map((column) => column.name)).toEqual(
+    expect(invoiceConfig.columns.map((column) => column.name)).toEqual(
       expect.arrayContaining([
         "matter_id",
         "invoice_number",
@@ -1453,7 +1521,10 @@ describe("database schema hardening", () => {
         "balance_due_cents",
       ]),
     );
-    expect(getTableConfig(invoiceLines).columns.map((column) => column.name)).toEqual(
+    expect(invoiceConfig.indexes.map((index) => index.config.name)).toContain(
+      "invoices_firm_matter_status_idx",
+    );
+    expect(invoiceLineConfig.columns.map((column) => column.name)).toEqual(
       expect.arrayContaining([
         "invoice_id",
         "kind",
@@ -1464,7 +1535,10 @@ describe("database schema hardening", () => {
         "expense_entry_id",
       ]),
     );
-    expect(getTableConfig(manualPayments).columns.map((column) => column.name)).toEqual(
+    expect(invoiceLineConfig.indexes.map((index) => index.config.name)).toContain(
+      "invoice_lines_firm_invoice_idx",
+    );
+    expect(manualPaymentConfig.columns.map((column) => column.name)).toEqual(
       expect.arrayContaining([
         "received_at",
         "amount_cents",
@@ -1476,8 +1550,20 @@ describe("database schema hardening", () => {
         "reconciliation_evidence",
       ]),
     );
-    expect(getTableConfig(paymentAllocations).columns.map((column) => column.name)).toEqual(
+    expect(manualPaymentConfig.indexes.map((index) => index.config.name)).toEqual(
+      expect.arrayContaining([
+        "manual_payments_firm_matter_idx",
+        "manual_payments_firm_invoice_idx",
+      ]),
+    );
+    expect(paymentAllocationConfig.columns.map((column) => column.name)).toEqual(
       expect.arrayContaining(["payment_id", "invoice_id", "amount_cents", "allocated_at"]),
+    );
+    expect(paymentAllocationConfig.indexes.map((index) => index.config.name)).toEqual(
+      expect.arrayContaining([
+        "payment_allocations_firm_payment_idx",
+        "payment_allocations_firm_invoice_idx",
+      ]),
     );
     expect(getTableConfig(hostedPaymentRequests).columns.map((column) => column.name)).toEqual(
       expect.arrayContaining([
@@ -1499,10 +1585,11 @@ describe("database schema hardening", () => {
         "hosted_payment_requests_cad_currency",
       ]),
     );
-    expect(
-      getTableConfig(billingTrustTransferRequests).columns.map((column) => column.name),
-    ).toEqual(
+    expect(trustTransferRequestConfig.columns.map((column) => column.name)).toEqual(
       expect.arrayContaining(["invoice_id", "amount_cents", "status", "ledger_transaction_id"]),
+    );
+    expect(trustTransferRequestConfig.indexes.map((index) => index.config.name)).toContain(
+      "billing_trust_transfer_requests_firm_matter_status_idx",
     );
   });
 });

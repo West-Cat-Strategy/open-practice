@@ -8,19 +8,29 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 ## At a Glance
 
-| Snapshot              | Value                                                                |
-| --------------------- | -------------------------------------------------------------------- |
-| Current focus         | Active-lane mainline publication and prune closeout complete.        |
-| Next recommended pick | Start the next scoped branch from refreshed `main`.                  |
-| Ready rows            | 0                                                                    |
-| Candidate rows        | 0                                                                    |
-| In progress rows      | 0                                                                    |
-| Review rows           | 0                                                                    |
-| Blocked rows          | 0                                                                    |
-| Archive               | Historical snapshots and proof live in [Archive](archive/README.md). |
-| Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`     |
+| Snapshot              | Value                                                                         |
+| --------------------- | ----------------------------------------------------------------------------- |
+| Current focus         | Database access hot-path efficiency branch implemented with green validation. |
+| Next recommended pick | Review and merge the focused database access efficiency branch.               |
+| Ready rows            | 0                                                                             |
+| Candidate rows        | 0                                                                             |
+| In progress rows      | 0                                                                             |
+| Review rows           | 0                                                                             |
+| Blocked rows          | 0                                                                             |
+| Archive               | Historical snapshots and proof live in [Archive](archive/README.md).          |
+| Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`              |
 
 ## Current Handoff Notes
+
+The 2026-06-18 database access hot-path efficiency branch
+`refactor/db-access-hot-path-efficiency` adds focused internal query/index improvements without
+changing HTTP response shapes, permissions, payment settlement behavior, trust posting behavior,
+provider behavior, or public data boundaries. The slice adds `0065_hot_path_access_indexes.sql`,
+schema assertions for observed hot-path indexes, batched Drizzle user assignment loading,
+selected-parent invoice/payment child-row loading, deduped payment allocation invoice validation,
+SQL pushdowns for simple billing/signature filters, and matter-workspace per-matter grouping. Proof
+is recorded in
+[database access hot-path efficiency proof](validation/OP_DATABASE_ACCESS_HOT_PATH_EFFICIENCY_PROOF_2026-06-18.md).
 
 The 2026-06-17 all-active-lanes integration branch
 `merge/open-practice-active-lanes-2026-06-17` merged the 13 committed dirty lanes plus the clean

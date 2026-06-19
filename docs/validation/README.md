@@ -18,6 +18,13 @@ skipped-check context. The live workboard remains
 
 ## Current Handoff Notes
 
+The 2026-06-18 database access hot-path efficiency proof is recorded in
+[OP_DATABASE_ACCESS_HOT_PATH_EFFICIENCY_PROOF_2026-06-18.md](OP_DATABASE_ACCESS_HOT_PATH_EFFICIENCY_PROOF_2026-06-18.md).
+It covers the focused internal refactor for hot-path schema indexes, batched Drizzle repository
+queries, selected-parent invoice/payment child-row loading, simple SQL filter pushdowns, and
+matter-workspace per-matter grouping while preserving HTTP response shapes, permissions, payment
+settlement behavior, trust posting behavior, provider behavior, and public data boundaries.
+
 The 2026-06-17 all-active-lanes integration proof, with the 2026-06-18 Docker gate closeout, is
 recorded in
 [OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-16.md](OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-16.md).

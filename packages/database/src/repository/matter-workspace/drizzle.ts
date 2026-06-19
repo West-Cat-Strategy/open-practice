@@ -63,6 +63,75 @@ function isFirmWideMatterReader(user: User): boolean {
   return user.role === "owner_admin" || user.role === "auditor";
 }
 
+function groupByMatterId<T extends { matterId?: string }>(records: T[]): Map<string, T[]> {
+  const grouped = new Map<string, T[]>();
+  for (const record of records) {
+    if (!record.matterId) continue;
+    const bucket = grouped.get(record.matterId);
+    if (bucket) {
+      bucket.push(record);
+    } else {
+      grouped.set(record.matterId, [record]);
+    }
+  }
+  return grouped;
+}
+
+function recordsForMatter<T>(grouped: Map<string, T[]>, matterId: string): T[] {
+  return grouped.get(matterId) ?? [];
+}
+
+function groupAuditEventsByMatter(events: AuditEvent[], visibleMatterIds: Set<string>) {
+  const grouped = new Map<string, AuditEvent[]>();
+  for (const event of events) {
+    const matterIds = new Set<string>();
+    if (visibleMatterIds.has(event.resourceId)) matterIds.add(event.resourceId);
+    if (
+      typeof event.metadata.matterId === "string" &&
+      visibleMatterIds.has(event.metadata.matterId)
+    ) {
+      matterIds.add(event.metadata.matterId);
+    }
+    for (const matterId of matterIds) {
+      const bucket = grouped.get(matterId);
+      if (bucket) {
+        bucket.push(event);
+      } else {
+        grouped.set(matterId, [event]);
+      }
+    }
+  }
+  return grouped;
+}
+
+function groupAccessLogsByMatter(input: {
+  accessLogs: AccessLogRecord[];
+  shareLinks: ShareLinkRecord[];
+  externalUploadLinks: ExternalUploadLinkRecord[];
+  visibleMatterIds: Set<string>;
+}) {
+  const shareMatterIds = new Map(input.shareLinks.map((link) => [link.id, link.matterId]));
+  const uploadMatterIds = new Map(
+    input.externalUploadLinks.map((link) => [link.id, link.matterId]),
+  );
+  const grouped = new Map<string, AccessLogRecord[]>();
+  for (const log of input.accessLogs) {
+    const matterId = log.shareLinkId
+      ? shareMatterIds.get(log.shareLinkId)
+      : log.externalUploadLinkId
+        ? uploadMatterIds.get(log.externalUploadLinkId)
+        : undefined;
+    if (!matterId || !input.visibleMatterIds.has(matterId)) continue;
+    const bucket = grouped.get(matterId);
+    if (bucket) {
+      bucket.push(log);
+    } else {
+      grouped.set(matterId, [log]);
+    }
+  }
+  return grouped;
+}
+
 export async function getDrizzleMatterWorkspaceOverview(
   db: OpenPracticeDatabase,
   firmId: string,
@@ -176,48 +245,78 @@ export async function listDrizzleMatterWorkspaceMattersForUser(
       ),
     );
   const lifecycleTransitions = lifecycleRows.map(mapMatterLifecycleTransitionRow);
+  const visibleMatterIdSet = new Set(visibleMatterIds);
+  const contactById = new Map(contacts.map((contact) => [contact.id, contact]));
+  const partiesByMatter = groupByMatterId(allParties);
+  const documentsByMatter = groupByMatterId(documents);
+  const timeEntriesByMatter = groupByMatterId(timeEntries);
+  const expensesByMatter = groupByMatterId(expenses);
+  const grantsByMatter = groupByMatterId(grants);
+  const shareLinksByMatter = groupByMatterId(shareLinks);
+  const externalUploadLinksByMatter = groupByMatterId(externalUploadLinks);
+  const accessLogsByMatter = groupAccessLogsByMatter({
+    accessLogs,
+    shareLinks,
+    externalUploadLinks,
+    visibleMatterIds: visibleMatterIdSet,
+  });
+  const auditEventsByMatter = groupAuditEventsByMatter(audit.events, visibleMatterIdSet);
+  const emailOutboxByMatter = groupByMatterId(emailOutbox);
+  const signatureRequestsByMatter = groupByMatterId(signatureRequests);
+  const intakeSessionsByMatter = groupByMatterId(intakeSessions);
+  const generatedDocumentsByMatter = groupByMatterId(generatedDocuments);
+  const calendarEventsByMatter = groupByMatterId(calendarEvents);
+  const taskDeadlinesByMatter = groupByMatterId(taskDeadlines);
+  const invoicesByMatter = groupByMatterId(invoices);
+  const paymentsByMatter = groupByMatterId(payments);
+  const trustTransferRequestsByMatter = groupByMatterId(trustTransferRequests);
+  const ledgerEntriesByMatter = groupByMatterId(ledger.entries);
+  const lifecycleTransitionsByMatter = groupByMatterId(lifecycleTransitions);
 
   return matterRows.map((row) => {
     const matter = mapMatter(row);
-    const parties = allParties
-      .filter((party) => party.matterId === matter.id)
-      .map((party) => ({
-        ...party,
-        contact: contacts.find((contact) => contact.id === party.contactId)!,
-      }));
-    const matterDocuments = documents.filter((document) => document.matterId === matter.id);
-    const matterTimeEntries = timeEntries.filter((entry) => entry.matterId === matter.id);
-    const matterExpenses = expenses.filter((entry) => entry.matterId === matter.id);
+    const matterParties = recordsForMatter(partiesByMatter, matter.id);
+    const matterContacts = matterParties
+      .map((party) => contactById.get(party.contactId))
+      .filter((contact): contact is Contact => Boolean(contact));
+    const parties = matterParties.map((party) => ({
+      ...party,
+      contact: contactById.get(party.contactId)!,
+    }));
+    const matterDocuments = recordsForMatter(documentsByMatter, matter.id);
+    const matterTimeEntries = recordsForMatter(timeEntriesByMatter, matter.id);
+    const matterExpenses = recordsForMatter(expensesByMatter, matter.id);
+    const matterLedgerEntries = recordsForMatter(ledgerEntriesByMatter, matter.id);
     const activity = buildActivityTimeline({
       firmId: user.firmId,
       matter,
-      contacts,
-      matterParties: allParties,
-      documents,
-      portalGrants: grants,
-      shareLinks,
-      externalUploadLinks,
-      accessLogs,
-      auditEvents: audit.events,
-      emailOutbox,
-      signatureRequests,
-      intakeSessions,
-      generatedDocuments,
-      calendarEvents,
-      taskDeadlines,
-      timeEntries,
-      expenses,
-      invoices,
-      payments,
-      trustTransferRequests,
+      contacts: matterContacts,
+      matterParties,
+      documents: matterDocuments,
+      portalGrants: recordsForMatter(grantsByMatter, matter.id),
+      shareLinks: recordsForMatter(shareLinksByMatter, matter.id),
+      externalUploadLinks: recordsForMatter(externalUploadLinksByMatter, matter.id),
+      accessLogs: recordsForMatter(accessLogsByMatter, matter.id),
+      auditEvents: recordsForMatter(auditEventsByMatter, matter.id),
+      emailOutbox: recordsForMatter(emailOutboxByMatter, matter.id),
+      signatureRequests: recordsForMatter(signatureRequestsByMatter, matter.id),
+      intakeSessions: recordsForMatter(intakeSessionsByMatter, matter.id),
+      generatedDocuments: recordsForMatter(generatedDocumentsByMatter, matter.id),
+      calendarEvents: recordsForMatter(calendarEventsByMatter, matter.id),
+      taskDeadlines: recordsForMatter(taskDeadlinesByMatter, matter.id),
+      timeEntries: matterTimeEntries,
+      expenses: matterExpenses,
+      invoices: recordsForMatter(invoicesByMatter, matter.id),
+      payments: recordsForMatter(paymentsByMatter, matter.id),
+      trustTransferRequests: recordsForMatter(trustTransferRequestsByMatter, matter.id),
       ledgerAccounts: ledger.accounts,
-      ledgerEntries: ledger.entries,
+      ledgerEntries: matterLedgerEntries,
     });
     const trustBalanceCents = matterTrustBalance(
-      ledger.entries,
+      matterLedgerEntries,
       ledger.accounts,
       matter,
-      allParties,
+      matterParties,
     );
     return {
       ...matter,
@@ -227,8 +326,7 @@ export async function listDrizzleMatterWorkspaceMattersForUser(
       expenses: matterExpenses,
       activity,
       trustBalanceCents,
-      lifecycleTransitions: lifecycleTransitions
-        .filter((record) => record.matterId === matter.id)
+      lifecycleTransitions: recordsForMatter(lifecycleTransitionsByMatter, matter.id)
         .sort((left, right) => right.reviewedAt.localeCompare(left.reviewedAt))
         .slice(0, 8),
       setupProfile: buildMatterSetupProfile({

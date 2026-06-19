@@ -30,14 +30,20 @@ export const ledgerAccountType = pgEnum("ledger_account_type", [
   "expense",
 ]);
 
-export const ledgerAccounts = pgTable("ledger_accounts", {
-  id: text("id").primaryKey(),
-  firmId: text("firm_id")
-    .notNull()
-    .references(() => firms.id),
-  name: text("name").notNull(),
-  type: ledgerAccountType("type").notNull(),
-});
+export const ledgerAccounts = pgTable(
+  "ledger_accounts",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    name: text("name").notNull(),
+    type: ledgerAccountType("type").notNull(),
+  },
+  (table) => ({
+    firm: index("ledger_accounts_firm_idx").on(table.firmId),
+  }),
+);
 
 export const trustTransactions = pgTable(
   "trust_transactions",
@@ -59,6 +65,7 @@ export const trustTransactions = pgTable(
       table.firmId,
       table.idempotencyKey,
     ),
+    firmPosted: index("trust_transactions_firm_posted_idx").on(table.firmId, table.postedAt),
   }),
 );
 
@@ -86,6 +93,8 @@ export const trustLedgerEntries = pgTable(
     memo: text("memo").notNull(),
   },
   (table) => ({
+    firmMatter: index("trust_ledger_entries_firm_matter_idx").on(table.firmId, table.matterId),
+    transaction: index("trust_ledger_entries_transaction_idx").on(table.transactionId),
     nonNegativeAmounts: check(
       "trust_ledger_entries_non_negative_amounts",
       sql`${table.debitCents} >= 0 and ${table.creditCents} >= 0`,

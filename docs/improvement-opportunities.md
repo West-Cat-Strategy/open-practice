@@ -27,6 +27,29 @@ branch. Future workflow candidates should compare against the read-only `GET /ap
 projection over redacted job lifecycle records and workflow audit events before proposing a new
 workflow/activity history surface.
 
+### Database Access Efficiency Follow-Ups - 2026-06-18
+
+The 2026-06-18 hot-path efficiency branch intentionally keeps its first slice to indexes, batched
+Drizzle repository reads, selected-parent child-row loading, simple SQL filter pushdowns, and
+matter-workspace grouping. Future candidates should stay behavior-preserving unless promoted
+explicitly, and should compare against that proof before widening scope.
+
+- **Contact visibility and dossier split:** Separate contact-list visibility from deeper
+  matter-linked dossier hydration so general contact screens avoid loading matter-local private
+  relationship/detail rows unnecessarily.
+- **Client portal batch projection:** Build a portal-facing batch projection for existing
+  client-visible grants, actions, documents, billing cues, and messages while preserving current
+  client/matter visibility gates.
+- **Communications and email bulk reads:** Add focused bulk-read helpers for message/email views
+  that currently compose repeated matter or related-resource lookups, without surfacing raw private
+  body text outside existing boundaries.
+- **Operational views and report read models:** Consider durable read-model helpers for high-volume
+  operational dashboards and report slices once the selected views are stable enough to justify
+  pre-shaped query paths.
+- **Filtered audit reads:** Add firm/matter/resource filtered audit repository reads for dashboards
+  that need bounded audit activity, while preserving redaction and audit-chain verification
+  posture.
+
 ### Core-Suite Clio Parity Candidates - 2026-06-04
 
 The 2026-06-04 [core-suite parity gap audit](validation/OP_CLIO_CORE_PARITY_GAP_AUDIT_2026-06-04.md)

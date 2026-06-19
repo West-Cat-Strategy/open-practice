@@ -1,7 +1,68 @@
 import { describe, expect, it } from "vitest";
+import {
+  listDrizzleInvoices,
+  listDrizzlePayments,
+} from "../src/repository/billing-invoices-payments/drizzle.js";
 import { InMemoryOpenPracticeRepository } from "../src/repository/memory.js";
+import type { OpenPracticeDatabase } from "../src/runtime.js";
+import * as schema from "../src/schema.js";
+
+type BillingListTable =
+  | typeof schema.invoices
+  | typeof schema.invoiceLines
+  | typeof schema.manualPayments
+  | typeof schema.paymentAllocations;
+
+function drizzleBillingListDb(input: {
+  rows: Map<BillingListTable, Record<string, unknown>[]>;
+  queriedTables: string[];
+}) {
+  const tableNames = new Map<BillingListTable, string>([
+    [schema.invoices, "invoices"],
+    [schema.invoiceLines, "invoice_lines"],
+    [schema.manualPayments, "manual_payments"],
+    [schema.paymentAllocations, "payment_allocations"],
+  ]);
+  const db = {
+    select: () => ({
+      from: (table: BillingListTable) => ({
+        where: async () => {
+          input.queriedTables.push(tableNames.get(table) ?? "unknown");
+          return input.rows.get(table) ?? [];
+        },
+      }),
+    }),
+  } as unknown as OpenPracticeDatabase;
+  return db;
+}
 
 describe("repository billing invoices and manual payments", () => {
+  it("does not query invoice lines when the selected invoice set is empty", async () => {
+    const queriedTables: string[] = [];
+    const db = drizzleBillingListDb({
+      queriedTables,
+      rows: new Map([[schema.invoices, []]]),
+    });
+
+    await expect(
+      listDrizzleInvoices(db, "firm-west-legal", { matterId: "matter-no-invoices" }),
+    ).resolves.toEqual([]);
+    expect(queriedTables).toEqual(["invoices"]);
+  });
+
+  it("does not query payment allocations when the selected payment set is empty", async () => {
+    const queriedTables: string[] = [];
+    const db = drizzleBillingListDb({
+      queriedTables,
+      rows: new Map([[schema.manualPayments, []]]),
+    });
+
+    await expect(
+      listDrizzlePayments(db, "firm-west-legal", { matterId: "matter-no-payments" }),
+    ).resolves.toEqual([]);
+    expect(queriedTables).toEqual(["manual_payments"]);
+  });
+
   it("keeps pending manual payments from changing invoice balance until reconciliation", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const invoiceBefore = (await repository.getInvoice("firm-west-legal", "invoice-001"))!;

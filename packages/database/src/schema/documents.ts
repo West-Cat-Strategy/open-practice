@@ -21,38 +21,50 @@ export const documentClassification = pgEnum("document_classification", [
   "identity",
 ]);
 
-export const documents = pgTable("documents", {
-  id: text("id").primaryKey(),
-  firmId: text("firm_id")
-    .notNull()
-    .references(() => firms.id),
-  matterId: text("matter_id")
-    .notNull()
-    .references(() => matters.id),
-  title: text("title").notNull(),
-  storageKey: text("storage_key").notNull(),
-  checksumSha256: text("checksum_sha256").notNull(),
-  sizeBytes: integer("size_bytes"),
-  version: integer("version").notNull().default(1),
-  classification: documentClassification("classification").notNull(),
-  legalHold: boolean("legal_hold").notNull().default(false),
-  uploadStatus: text("upload_status").notNull().default("intent_created"),
-  checksumStatus: text("checksum_status").notNull().default("pending"),
-  scanStatus: text("scan_status").notNull().default("pending"),
-  reviewStatus: text("review_status").notNull().default("not_required"),
-  reviewDecision: text("review_decision"),
-  reviewReason: text("review_reason"),
-  reviewMetadata: jsonb("review_metadata").$type<Record<string, unknown>>().notNull().default({}),
-  reviewedByUserId: text("reviewed_by_user_id").references(() => users.id),
-  reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
-  externalUploadLinkId: text("external_upload_link_id").references(() => externalUploadLinks.id),
-  duplicateOfDocumentId: text("duplicate_of_document_id"),
-  supersedesDocumentId: text("supersedes_document_id"),
-  supersededAt: timestamp("superseded_at", { withTimezone: true }),
-  uploadedAt: timestamp("uploaded_at", { withTimezone: true }),
-  verifiedAt: timestamp("verified_at", { withTimezone: true }),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const documents = pgTable(
+  "documents",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    matterId: text("matter_id")
+      .notNull()
+      .references(() => matters.id),
+    title: text("title").notNull(),
+    storageKey: text("storage_key").notNull(),
+    checksumSha256: text("checksum_sha256").notNull(),
+    sizeBytes: integer("size_bytes"),
+    version: integer("version").notNull().default(1),
+    classification: documentClassification("classification").notNull(),
+    legalHold: boolean("legal_hold").notNull().default(false),
+    uploadStatus: text("upload_status").notNull().default("intent_created"),
+    checksumStatus: text("checksum_status").notNull().default("pending"),
+    scanStatus: text("scan_status").notNull().default("pending"),
+    reviewStatus: text("review_status").notNull().default("not_required"),
+    reviewDecision: text("review_decision"),
+    reviewReason: text("review_reason"),
+    reviewMetadata: jsonb("review_metadata").$type<Record<string, unknown>>().notNull().default({}),
+    reviewedByUserId: text("reviewed_by_user_id").references(() => users.id),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    externalUploadLinkId: text("external_upload_link_id").references(() => externalUploadLinks.id),
+    duplicateOfDocumentId: text("duplicate_of_document_id"),
+    supersedesDocumentId: text("supersedes_document_id"),
+    supersededAt: timestamp("superseded_at", { withTimezone: true }),
+    uploadedAt: timestamp("uploaded_at", { withTimezone: true }),
+    verifiedAt: timestamp("verified_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    firmMatter: index("documents_firm_matter_idx").on(table.firmId, table.matterId),
+    firmMatterChecksumStatus: index("documents_firm_matter_checksum_status_idx").on(
+      table.firmId,
+      table.matterId,
+      table.checksumSha256,
+      table.checksumStatus,
+    ),
+  }),
+);
 
 export const documentVersions = pgTable(
   "document_versions",
