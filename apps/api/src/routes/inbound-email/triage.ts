@@ -150,7 +150,7 @@ export function registerInboundEmailTriageRoutes(
         action: "update",
         matterId: message.matterId,
       });
-    } else if (!targetMatterId) {
+    } else {
       assertInboundEmailAccess(request.auth, {
         resource: "inbound_email",
         action: "update",

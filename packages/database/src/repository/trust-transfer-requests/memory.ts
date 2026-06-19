@@ -59,6 +59,15 @@ export function updateMemoryTrustTransferRequest(
   ) {
     throw new Error("Trust transfer request update conflict");
   }
+  if (options.requireLedgerTransactionUnlinked && updates.ledgerTransactionId) {
+    const duplicate = store.trustTransferRequests.find(
+      (request) =>
+        request.firmId === firmId &&
+        request.id !== requestId &&
+        request.ledgerTransactionId === updates.ledgerTransactionId,
+    );
+    if (duplicate) throw new Error("Trust transfer request update conflict");
+  }
   const updated: TrustTransferRequestRecord = { ...existing, ...updates };
   store.trustTransferRequests = store.trustTransferRequests.map((request) =>
     request.firmId === firmId && request.id === requestId ? clone(updated) : request,

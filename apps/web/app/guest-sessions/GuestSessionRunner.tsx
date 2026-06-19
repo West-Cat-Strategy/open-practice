@@ -7,7 +7,6 @@ import {
   publicTokenHeaders,
   publicTokenNetworkErrorMessage,
   readPublicTokenError,
-  scrubLegacyPublicTokenPath,
 } from "../publicTokenClient";
 import { PublicStatusMessage, PublicTokenShell } from "../publicTokenUi";
 import type { PublicGuestSessionResponse } from "../types";
@@ -30,10 +29,6 @@ export default function GuestSessionRunner({ apiBaseUrl, token }: GuestSessionRu
   const [status, setStatus] = useState("Loading guest session...");
   const [checkingIn, setCheckingIn] = useState(false);
   const attentionItems = guestSessionAttentionItems(payload);
-
-  useEffect(() => {
-    scrubLegacyPublicTokenPath("/guest-sessions", token);
-  }, [token]);
 
   useEffect(() => {
     let cancelled = false;

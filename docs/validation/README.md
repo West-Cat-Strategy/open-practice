@@ -45,6 +45,15 @@ payment/trust boundaries, and synthetic-only proof posture. The proof records se
 dependency, docs, policy, Docker app-smoke, Docker E2E, `pnpm ci:local`, and `git diff --check`
 validation as passing.
 
+The 2026-06-19 security scan remediation proof is recorded in
+[OP_SECURITY_SCAN_REMEDIATION_PROOF_2026-06-19.md](OP_SECURITY_SCAN_REMEDIATION_PROOF_2026-06-19.md).
+It covers all ten findings from
+`/tmp/codex-security-scans/open-practice/e680c230_20260619T050725Z/report.md`, including
+inbound-email unscoped assignment authorization, external-upload capacity accounting, portal
+workspace principal filtering, outbound webhook IPv6/NAT64 SSRF guards, trust-transfer ledger-link
+single-use enforcement, Nodemailer `9.0.1`, and removal of legacy public path-token web pages while
+preserving hash-token entry pages and review-only billing/trust/provider boundaries.
+
 The 2026-06-18 database access hot-path efficiency proof is recorded in
 [OP_DATABASE_ACCESS_HOT_PATH_EFFICIENCY_PROOF_2026-06-18.md](OP_DATABASE_ACCESS_HOT_PATH_EFFICIENCY_PROOF_2026-06-18.md).
 It covers the focused internal refactor for hot-path schema indexes, batched Drizzle repository

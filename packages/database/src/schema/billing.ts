@@ -346,5 +346,10 @@ export const billingTrustTransferRequests = pgTable(
       table.matterId,
       table.status,
     ),
+    ledgerTransactionSingleUse: uniqueIndex(
+      "billing_trust_transfer_requests_ledger_transaction_single_use_idx",
+    )
+      .on(table.ledgerTransactionId)
+      .where(sql`${table.ledgerTransactionId} is not null`),
   }),
 );

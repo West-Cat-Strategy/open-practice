@@ -1052,6 +1052,78 @@ describe("external upload routes", () => {
     );
   });
 
+  it("counts aged incomplete upload intents against public upload capacity", async () => {
+    class AgedIntentRepository extends InMemoryOpenPracticeRepository {
+      override async listMatterDocuments(
+        firmId: string,
+        matterId: string,
+      ): ReturnType<InMemoryOpenPracticeRepository["listMatterDocuments"]> {
+        const documents = await super.listMatterDocuments(firmId, matterId);
+        return documents.map((document) =>
+          document.externalUploadLinkId === "external-upload-aged-intent" &&
+          document.uploadStatus === "intent_created"
+            ? { ...document, createdAt: "2026-04-29T00:00:00.000Z" }
+            : document,
+        );
+      }
+    }
+    const repository = new AgedIntentRepository();
+    const { server } = testServer({ repository, s3: s3Config() });
+    const token = await createDirectToken({
+      repository,
+      id: "external-upload-aged-intent",
+      expiresAt: "2099-01-01T00:00:00.000Z",
+      maxUploads: 1,
+      usedUploads: 0,
+    });
+
+    const firstIntent = await server.inject({
+      method: "POST",
+      url: `/api/portal/external-uploads/${token}/intents`,
+      headers: { "user-agent": "external-upload-aged-intent-test" },
+      payload: { filename: "first.pdf", checksumSha256: checksum, fileSizeBytes },
+    });
+    expect(firstIntent.statusCode).toBe(200);
+
+    const secondIntent = await server.inject({
+      method: "POST",
+      url: `/api/portal/external-uploads/${token}/intents`,
+      headers: { "user-agent": "external-upload-aged-intent-test" },
+      payload: { filename: "second.pdf", checksumSha256: checksum, fileSizeBytes },
+    });
+
+    expect(secondIntent.statusCode).toBe(403);
+    expect(secondIntent.json()).toMatchObject({
+      message: "External upload link is not available",
+    });
+    await expect(repository.listExternalUploadLinks("firm-west-legal")).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "external-upload-aged-intent", usedUploads: 0 }),
+      ]),
+    );
+    await expect(repository.listMatterDocuments("firm-west-legal", "matter-001")).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          externalUploadLinkId: "external-upload-aged-intent",
+          uploadStatus: "intent_created",
+        }),
+      ]),
+    );
+    await expect(repository.listAccessLogs("firm-west-legal")).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          externalUploadLinkId: "external-upload-aged-intent",
+          resourceType: "external_upload_link",
+          metadata: expect.objectContaining({
+            outcome: "denied",
+            reason: "upload_limit",
+            pendingUploadCount: 1,
+          }),
+        }),
+      ]),
+    );
+  });
+
   it("rate-limits public external upload intents without leaking token material", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const { server } = testServer({ repository, s3: s3Config() });

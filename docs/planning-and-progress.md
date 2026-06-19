@@ -10,8 +10,8 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 | Snapshot              | Value                                                                |
 | --------------------- | -------------------------------------------------------------------- |
-| Current focus         | Self-hosting optimization branch validation passed.                  |
-| Next recommended pick | Review/merge the self-hosting branch or start the next scoped lane.  |
+| Current focus         | 2026-06-19 active-lane integration in progress.                      |
+| Next recommended pick | Complete mainline validation, push, and prune only after parity.     |
 | Ready rows            | 0                                                                    |
 | Candidate rows        | 0                                                                    |
 | In progress rows      | 0                                                                    |
@@ -32,6 +32,18 @@ and synthetic-only proof data. Proof is recorded in
 [self-hosting optimization proof](validation/OP_SELF_HOSTING_OPTIMIZATION_PROOF_2026-06-19.md).
 Selected package, docs, policy, dependency, Docker app-smoke, Docker E2E, `pnpm ci:local`, and
 `git diff --check` validation passed in the sibling worktree.
+
+The 2026-06-19 `security/e680c230-remediation-20260619` branch remediates all ten findings from
+`/tmp/codex-security-scans/open-practice/e680c230_20260619T050725Z/report.md` in the sibling
+worktree `/Users/bryan/projects/open-practice-security-e680c230-remediation`. It tightens unscoped
+inbound-email assignment authorization, external-upload pending-intent capacity checks, portal
+workspace principal filtering, outbound webhook NAT64/site-local IPv6 denial, trust-transfer
+ledger-link uniqueness, and Nodemailer SMTP hardening, then removes the four legacy public
+path-token pages while keeping hash-token entry pages. Proof is recorded in
+[security scan remediation proof](validation/OP_SECURITY_SCAN_REMEDIATION_PROOF_2026-06-19.md).
+The live Postgres migration replay is environment-blocked until local Docker/Postgres is available;
+`db:check`, `migrations:check`, schema assertions, memory repository coverage, and API conflict
+coverage are green.
 
 The 2026-06-18 database access hot-path efficiency branch
 `refactor/db-access-hot-path-efficiency` adds focused internal query/index improvements without

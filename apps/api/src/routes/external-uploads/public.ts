@@ -110,14 +110,11 @@ function serializePublicStatusDocument(document: DocumentRecord): Record<string,
 function activePendingExternalUploadCount(input: {
   documents: DocumentRecord[];
   linkId: string;
-  now: Date;
 }): number {
-  const staleBefore = input.now.getTime() - SIGNED_URL_EXPIRES_IN_SECONDS * 1000;
   return input.documents.filter(
     (document) =>
       externalUploadLinkIdForDocument(document) === input.linkId &&
-      document.uploadStatus === "intent_created" &&
-      Date.parse(document.createdAt ?? "") > staleBefore,
+      document.uploadStatus === "intent_created",
   ).length;
 }
 
@@ -133,7 +130,6 @@ async function assertExternalUploadIntentCapacity(input: {
   const pendingUploadCount = activePendingExternalUploadCount({
     documents,
     linkId: input.link.id,
-    now: new Date(),
   });
   if (input.link.usedUploads + pendingUploadCount < input.link.maxUploads) return;
   await recordAccessLog(requireExternalUploadRepository(input.repository), {

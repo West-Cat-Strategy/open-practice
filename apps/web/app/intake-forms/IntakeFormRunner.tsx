@@ -9,7 +9,6 @@ import {
   publicTokenErrorMessage,
   publicTokenNetworkErrorMessage,
   readPublicTokenError,
-  scrubLegacyPublicTokenPath,
 } from "../publicTokenClient";
 import { PublicTokenNeedsAttention } from "../publicTokenActions";
 import { PublicStatusMessage, PublicTokenShell } from "../publicTokenUi";
@@ -50,10 +49,6 @@ export default function IntakeFormRunner({ apiBaseUrl, token }: IntakeFormRunner
   const [clientSubmissionId] = useState(() => crypto.randomUUID());
   const draftSnapshotRef = useRef("");
   const loadedDraftRef = useRef(false);
-
-  useEffect(() => {
-    scrubLegacyPublicTokenPath("/intake-forms", token);
-  }, [token]);
 
   useEffect(() => {
     let cancelled = false;

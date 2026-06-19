@@ -42,6 +42,8 @@ export class SmtpMailSender implements MailSender {
       subject: message.subject,
       text: message.text,
       html: message.html,
+      disableFileAccess: true,
+      disableUrlAccess: true,
     });
 
     return {

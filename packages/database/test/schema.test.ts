@@ -1591,5 +1591,8 @@ describe("database schema hardening", () => {
     expect(trustTransferRequestConfig.indexes.map((index) => index.config.name)).toContain(
       "billing_trust_transfer_requests_firm_matter_status_idx",
     );
+    expect(trustTransferRequestConfig.indexes.map((index) => index.config.name)).toContain(
+      "billing_trust_transfer_requests_ledger_transaction_single_use_idx",
+    );
   });
 });

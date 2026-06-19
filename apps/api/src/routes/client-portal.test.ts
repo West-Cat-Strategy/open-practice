@@ -105,6 +105,67 @@ async function addClientPortalRecords(repository: InMemoryOpenPracticeRepository
     expiresAt: durableLinkExpiry,
   });
 
+  const clientMeetingEvent = await repository.getCalendarEvent(
+    "firm-west-legal",
+    "matter-001",
+    "calendar-event-002",
+  );
+  if (!clientMeetingEvent) throw new Error("Client meeting event missing from test setup");
+  await repository.upsertCalendarEvent({
+    ...clientMeetingEvent,
+    updatedAt: "2026-05-20T14:50:00.000Z",
+    attendees: [
+      ...(clientMeetingEvent.attendees ?? []),
+      {
+        id: "calendar-attendee-client-portal-ada",
+        firmId: "firm-west-legal",
+        matterId: "matter-001",
+        eventId: "calendar-event-002",
+        name: "Ada Morgan",
+        email: "ada@example.test",
+        role: "required",
+        responseStatus: "needs_action",
+        invitationStatus: "not_sent",
+        createdAt: "2026-05-20T14:50:00.000Z",
+        updatedAt: "2026-05-20T14:50:00.000Z",
+        createdByUserId: "user-admin",
+        updatedByUserId: "user-admin",
+      },
+    ],
+  });
+  await repository.upsertCalendarEvent({
+    id: "calendar-event-other-client-portal-001",
+    firmId: "firm-west-legal",
+    matterId: "matter-001",
+    uid: "calendar-event-other-client-portal-001@open-practice.local",
+    title: "Other client preparation call",
+    startsAt: "2026-05-08T18:00:00.000Z",
+    endsAt: "2026-05-08T18:30:00.000Z",
+    status: "tentative",
+    sequence: 0,
+    createdAt: "2026-05-20T14:51:00.000Z",
+    updatedAt: "2026-05-20T14:51:00.000Z",
+    createdByUserId: "user-admin",
+    updatedByUserId: "user-admin",
+    attendees: [
+      {
+        id: "calendar-attendee-client-portal-other",
+        firmId: "firm-west-legal",
+        matterId: "matter-001",
+        eventId: "calendar-event-other-client-portal-001",
+        name: "Other Client",
+        email: "other-client@example.test",
+        role: "required",
+        responseStatus: "needs_action",
+        invitationStatus: "not_sent",
+        createdAt: "2026-05-20T14:51:00.000Z",
+        updatedAt: "2026-05-20T14:51:00.000Z",
+        createdByUserId: "user-admin",
+        updatedByUserId: "user-admin",
+      },
+    ],
+  });
+
   await repository.createSignatureRequest({
     request: {
       id: "signature-client-portal-001",
@@ -258,6 +319,35 @@ async function addClientPortalRecords(repository: InMemoryOpenPracticeRepository
     createdByUserId: "user-admin",
     updatedByUserId: "user-admin",
     metadata: { providerRoomId: "private-room-id" },
+  });
+
+  await repository.createCalendarMeetingSession({
+    id: "meeting-session-other-client-001",
+    firmId: "firm-west-legal",
+    matterId: "matter-001",
+    eventId: "calendar-event-other-client-portal-001",
+    status: "lobby_open",
+    retentionUntil: futureIso(14 * dayMs),
+    createdAt: "2026-05-20T15:05:00.000Z",
+    updatedAt: "2026-05-20T15:05:00.000Z",
+    createdByUserId: "user-admin",
+    updatedByUserId: "user-admin",
+    metadata: {},
+  });
+  await repository.createCalendarGuestLink({
+    id: "guest-other-client-001",
+    firmId: "firm-west-legal",
+    matterId: "matter-001",
+    eventId: "calendar-event-other-client-portal-001",
+    sessionId: "meeting-session-other-client-001",
+    tokenHash: "secret-other-guest-token-hash",
+    status: "issued",
+    expiresAt: actionExpiry,
+    createdAt: "2026-05-20T15:06:00.000Z",
+    updatedAt: "2026-05-20T15:06:00.000Z",
+    createdByUserId: "user-admin",
+    updatedByUserId: "user-admin",
+    metadata: { providerRoomId: "private-other-room-id" },
   });
 
   const email: EmailOutboxRecord = {
@@ -908,8 +998,6 @@ describe("client portal routes", () => {
     const families = body.actions.map((action) => action.family);
     expect(families).toEqual(
       expect.arrayContaining([
-        "secure_share",
-        "external_upload",
         "intake",
         "guest_session",
         "receipt",
@@ -919,6 +1007,8 @@ describe("client portal routes", () => {
         "signature",
       ]),
     );
+    expect(families).not.toContain("secure_share");
+    expect(families).not.toContain("external_upload");
     expect(body.matterActions).toEqual([
       expect.objectContaining({
         matterNumber: "2026-0001",
@@ -930,9 +1020,8 @@ describe("client portal routes", () => {
       expect.arrayContaining([
         expect.objectContaining({ family: "client_update", status: "sent" }),
         expect.objectContaining({ family: "receipt", status: "open" }),
-        expect.objectContaining({ family: "external_upload", status: "retry_requested" }),
         expect.objectContaining({ family: "guest_session", status: "issued" }),
-        expect.objectContaining({ family: "client_action", status: "open" }),
+        expect.objectContaining({ family: "client_action", status: "intent_created" }),
         expect.objectContaining({ family: "payment_request", status: "sent" }),
       ]),
     );
@@ -950,10 +1039,17 @@ describe("client portal routes", () => {
     ).toEqual(["client-update:email-client-001"]);
 
     const serialized = JSON.stringify(body);
+    expect(serialized).not.toContain("secure-share:share-client-001");
+    expect(serialized).not.toContain("external-upload:external-upload-client-001");
+    expect(serialized).not.toContain("doc-external-client-001");
+    expect(serialized).not.toContain("guest-session:guest-other-client-001");
+    expect(serialized).not.toContain("client-action:conversation:matter-001");
+    expect(serialized).not.toContain("redacted message thread");
     expect(serialized).not.toContain("secret-share-token-hash");
     expect(serialized).not.toContain("secret-upload-token-hash");
     expect(serialized).not.toContain("secret-intake-token-hash");
     expect(serialized).not.toContain("secret-guest-token-hash");
+    expect(serialized).not.toContain("secret-other-guest-token-hash");
     expect(serialized).not.toContain("secret-receipt-token-hash");
     expect(serialized).not.toContain("PRIVATE HTML BODY");
     expect(serialized).not.toContain("PRIVATE TEXT BODY");
@@ -962,6 +1058,7 @@ describe("client portal routes", () => {
     expect(serialized).not.toContain("office@example.test");
     expect(serialized).not.toContain("private-intake-storage-key");
     expect(serialized).not.toContain("private-room-id");
+    expect(serialized).not.toContain("private-other-room-id");
     expect(serialized).not.toContain("PRIVATE client message topic");
     expect(serialized).not.toContain("privateThreadMetadata");
     expect(serialized).not.toContain("/payments/private-client-path");

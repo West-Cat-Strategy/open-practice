@@ -86,7 +86,80 @@ function isDeniedIpv4(host: string): boolean {
   );
 }
 
+function parseIpv6Words(host: string): number[] | undefined {
+  if (!host.includes(":")) return undefined;
+  const compressionParts = host.split("::");
+  if (compressionParts.length > 2) return undefined;
+
+  const parseSide = (side: string): number[] | undefined => {
+    if (!side) return [];
+    const parts = side.split(":");
+    const words: number[] = [];
+    for (const [index, part] of parts.entries()) {
+      if (!part) return undefined;
+      if (index === parts.length - 1 && part.includes(".")) {
+        const octets = parseIpv4(part);
+        if (!octets) return undefined;
+        words.push((octets[0]! << 8) | octets[1]!, (octets[2]! << 8) | octets[3]!);
+        continue;
+      }
+      const word = Number.parseInt(part, 16);
+      if (!Number.isInteger(word) || word < 0 || word > 0xffff) return undefined;
+      words.push(word);
+    }
+    return words;
+  };
+
+  const left = parseSide(compressionParts[0] ?? "");
+  const right = parseSide(compressionParts[1] ?? "");
+  if (!left || !right) return undefined;
+  if (compressionParts.length === 1) return left.length === 8 ? left : undefined;
+  const zeroCount = 8 - left.length - right.length;
+  if (zeroCount < 1) return undefined;
+  return [...left, ...Array.from({ length: zeroCount }, () => 0), ...right];
+}
+
+function ipv4FromWords(high: number, low: number): string {
+  return `${(high >> 8) & 0xff}.${high & 0xff}.${(low >> 8) & 0xff}.${low & 0xff}`;
+}
+
 function isDeniedIpv6(host: string): boolean {
+  const words = parseIpv6Words(host);
+  if (words) {
+    if (words.every((word) => word === 0)) return true;
+    if (words.slice(0, 7).every((word) => word === 0) && words[7] === 1) return true;
+    if ((words[0]! & 0xfe00) === 0xfc00) return true;
+    if ((words[0]! & 0xffc0) === 0xfe80) return true;
+    if ((words[0]! & 0xffc0) === 0xfec0) return true;
+    if ((words[0]! & 0xff00) === 0xff00) return true;
+    if (
+      words.slice(0, 5).every((word) => word === 0) &&
+      words[5] === 0xffff &&
+      isDeniedIpv4(ipv4FromWords(words[6]!, words[7]!))
+    ) {
+      return true;
+    }
+    if (
+      words[0] === 0x0064 &&
+      words[1] === 0xff9b &&
+      words[2] === 0 &&
+      words[3] === 0 &&
+      words[4] === 0 &&
+      words[5] === 0 &&
+      isDeniedIpv4(ipv4FromWords(words[6]!, words[7]!))
+    ) {
+      return true;
+    }
+    if (
+      words[0] === 0x0064 &&
+      words[1] === 0xff9b &&
+      words[2] === 0x0001 &&
+      isDeniedIpv4(ipv4FromWords(words[3]!, words[4]!))
+    ) {
+      return true;
+    }
+  }
+
   const mapped = host.match(/(?:^|:)ffff:(?<suffix>[0-9a-f:.]+)$/i);
   if (mapped?.groups?.suffix) {
     const suffix = mapped.groups.suffix;
