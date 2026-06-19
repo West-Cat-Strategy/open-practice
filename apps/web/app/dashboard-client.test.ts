@@ -2903,7 +2903,7 @@ describe("dashboard client behavior", () => {
       title: "Share Links",
     });
     expect(navigationSections.find((section) => section.key === "externalUploads")).toMatchObject({
-      area: "workspace",
+      area: "operations",
       enabled: false,
       key: "externalUploads",
       label: "Uploads",

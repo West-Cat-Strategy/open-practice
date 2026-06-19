@@ -17,6 +17,9 @@ describe("dashboard shell state helpers", () => {
     expect(readDashboardRequestedSection("?matter=one&section=billing")).toBe("billing");
     expect(readDashboardRequestedSection("?section=externalUploads")).toBe("externalUploads");
     expect(readDashboardRequestedSection("?matter=one")).toBeNull();
+    expect(readDashboardRequestedSection("?matter=one", "/workspace/communications")).toBe(
+      "communications",
+    );
   });
 
   it("builds stable dashboard history state", () => {
@@ -28,7 +31,7 @@ describe("dashboard shell state helpers", () => {
       buildDashboardHistoryEntry("http://localhost:3000/?matter=one#detail", "contacts"),
     ).toEqual({
       state: { section: "contacts" },
-      url: "/?matter=one&section=contacts#detail",
+      url: "/workspace/contacts?matter=one#detail",
     });
   });
 });

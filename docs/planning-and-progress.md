@@ -73,6 +73,13 @@ provider behavior, public/private data boundaries, and schema/dependency posture
 in
 [review remediation proof](validation/OP_REVIEW_REMEDIATION_PROOF_2026-06-19.md).
 
+The 2026-06-19 `refactor/staff-ui-ux-page-overhaul-20260619` branch splits the staff
+single-dashboard experience into canonical workspace, finance, operations, and review pages while
+preserving legacy `?section=` links, public runner routes, client portal behavior, API contracts,
+server-side authorization, settlement/trust behavior, provider/worker behavior, and synthetic-only
+proof data. Proof is recorded in
+[staff UI/UX page overhaul proof](validation/OP_STAFF_UI_UX_PAGE_OVERHAUL_PROOF_2026-06-19.md).
+
 The 2026-06-18 database access hot-path efficiency branch
 `refactor/db-access-hot-path-efficiency` adds focused internal query/index improvements without
 changing HTTP response shapes, permissions, payment settlement behavior, trust posting behavior,

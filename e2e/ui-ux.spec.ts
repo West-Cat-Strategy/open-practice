@@ -40,6 +40,7 @@ const matterlessSectionHeadings: Record<(typeof matterlessDeepLinkSections)[numb
 const sectionSentinels: Record<OpenPracticeRouteId, RegExp[]> = {
   matters: [/Activity and files/i, /Documents, time, and expenses/i],
   contacts: [/Contact dossiers/i],
+  communications: [/Client communications/i, /Email delivery history/i],
   funds: [/Trust controls workbench/i],
   billing: [/Create draft invoice/i],
   documents: [/Document processing workbench/i],
@@ -72,8 +73,27 @@ const dashboardSections = routeCatalog
     title: entry.title,
   }));
 
+const staffPageScreenshotSections = [
+  "matters",
+  "contacts",
+  "communications",
+  "billing",
+  "funds",
+  "calendar",
+  "intake",
+  "queues",
+] as const satisfies readonly OpenPracticeRouteId[];
+
 function labelPattern(label: string): RegExp {
   return new RegExp(`^${label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(\\b|$)`);
+}
+
+function primaryNavigationItem(page: Page, label: string) {
+  const primaryNavigation = page.getByLabel("Primary");
+  return primaryNavigation
+    .getByRole("link", { name: labelPattern(label) })
+    .or(primaryNavigation.getByRole("button", { name: labelPattern(label) }))
+    .first();
 }
 
 async function expectSectionSentinels(page: Page, sectionId: OpenPracticeRouteId): Promise<void> {
@@ -119,10 +139,7 @@ async function sweepDashboardSections({
     await page.goto(app.url(section.path));
     await expectPageHealthy(page);
 
-    const sidebarButton = page
-      .getByLabel("Primary")
-      .getByRole("button", { name: labelPattern(section.label) })
-      .first();
+    const sidebarButton = primaryNavigationItem(page, section.label);
     await expect(sidebarButton, `${section.title} sidebar entry`).toBeVisible();
 
     const expectedDisabled = disabledSections.has(section.id);
@@ -240,6 +257,29 @@ test.describe("UI/UX screenshot QA", () => {
     await sweepDashboardSections({ app, disabledSections: new Set(), page, testInfo });
   });
 
+  test("captures selected staff page screenshots at desktop and mobile widths @host-chromium-only", async ({
+    app,
+    page,
+  }, testInfo) => {
+    testInfo.setTimeout(240_000);
+
+    for (const width of [1280, 520]) {
+      await page.setViewportSize({ width, height: 900 });
+      const sizeName = width === 520 ? "mobile" : "desktop";
+
+      for (const sectionId of staffPageScreenshotSections) {
+        const section = routeCatalog.find((entry) => entry.id === sectionId)!;
+        await page.goto(app.url(section.path));
+        await expectPageHealthy(page);
+        await expectSectionSentinels(page, sectionId);
+        await expectDashboardSectionHealthy(page, `${section.title} ${sizeName}`);
+        await attachUiScreenshot(page, testInfo, `staff-${sectionId}-${sizeName}`, {
+          fullPage: true,
+        });
+      }
+    }
+  });
+
   test("surfaces unavailable dashboard deep links without echoing raw query values", async ({
     app,
     page,
@@ -319,6 +359,7 @@ test.describe("UI/UX screenshot QA", () => {
   test("keeps dashboard rail and sidebar controls stable", async ({ app, page }, testInfo) => {
     await page.goto(app.url("/"));
     await expectPageHealthy(page);
+    await attachUiScreenshot(page, testInfo, "dashboard-review-rail-expanded");
 
     const reviewToggle = page.getByRole("button", { name: "Toggle review tools" });
     await expect(reviewToggle).toHaveAttribute("aria-controls", "dashboard-review-rail");

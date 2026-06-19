@@ -3,6 +3,7 @@ import type { DashboardSectionKey } from "@open-practice/domain";
 export type OpenPracticeRouteId =
   | "matters"
   | "contacts"
+  | "communications"
   | "billing"
   | "documents"
   | "research"
@@ -25,6 +26,7 @@ export type OpenPracticeDashboardSectionKey =
   | DashboardSectionKey
   | "shares"
   | "externalUploads"
+  | "communications"
   | "admin"
   | "queues";
 
@@ -90,7 +92,7 @@ export const routeCatalog: readonly OpenPracticeRouteCatalogEntry[] = [
     id: "matters",
     title: "Matters",
     shortLabel: "Matters",
-    path: "/?section=matters",
+    path: "/workspace/matters",
     sectionKey: "matters",
     area: "workspace",
     availability: "firm",
@@ -102,7 +104,7 @@ export const routeCatalog: readonly OpenPracticeRouteCatalogEntry[] = [
     id: "contacts",
     title: "Contacts",
     shortLabel: "Contacts",
-    path: "/?section=contacts",
+    path: "/workspace/contacts",
     sectionKey: "contacts",
     area: "workspace",
     availability: "firm",
@@ -111,10 +113,22 @@ export const routeCatalog: readonly OpenPracticeRouteCatalogEntry[] = [
     showInSidebar: true,
   },
   {
+    id: "communications",
+    title: "Communications",
+    shortLabel: "Comms",
+    path: "/workspace/communications",
+    sectionKey: "communications",
+    area: "workspace",
+    availability: "mixed",
+    requiresMatterContext: false,
+    order: 16,
+    showInSidebar: true,
+  },
+  {
     id: "funds",
     title: "Trust Funds",
     shortLabel: "Funds",
-    path: "/?section=funds",
+    path: "/finance/trust-funds",
     sectionKey: "funds",
     area: "finance",
     availability: "mixed",
@@ -126,7 +140,7 @@ export const routeCatalog: readonly OpenPracticeRouteCatalogEntry[] = [
     id: "billing",
     title: "Billing",
     shortLabel: "Billing",
-    path: "/?section=billing",
+    path: "/finance/billing",
     sectionKey: "billing",
     area: "finance",
     availability: "mixed",
@@ -138,7 +152,7 @@ export const routeCatalog: readonly OpenPracticeRouteCatalogEntry[] = [
     id: "documents",
     title: "Documents",
     shortLabel: "Documents",
-    path: "/?section=documents",
+    path: "/workspace/documents",
     sectionKey: "documents",
     area: "workspace",
     availability: "mixed",
@@ -150,7 +164,7 @@ export const routeCatalog: readonly OpenPracticeRouteCatalogEntry[] = [
     id: "research",
     title: "Research",
     shortLabel: "Research",
-    path: "/?section=research",
+    path: "/workspace/research",
     sectionKey: "research",
     area: "workspace",
     availability: "mixed",
@@ -162,7 +176,7 @@ export const routeCatalog: readonly OpenPracticeRouteCatalogEntry[] = [
     id: "shares",
     title: "Share Links",
     shortLabel: "Shares",
-    path: "/?section=shares",
+    path: "/operations/share-links",
     sectionKey: "shares",
     area: "operations",
     availability: "mixed",
@@ -174,9 +188,9 @@ export const routeCatalog: readonly OpenPracticeRouteCatalogEntry[] = [
     id: "externalUploads",
     title: "External Uploads",
     shortLabel: "Uploads",
-    path: "/?section=externalUploads",
+    path: "/operations/external-uploads",
     sectionKey: "externalUploads",
-    area: "workspace",
+    area: "operations",
     availability: "mixed",
     requiresMatterContext: true,
     order: 44,
@@ -186,7 +200,7 @@ export const routeCatalog: readonly OpenPracticeRouteCatalogEntry[] = [
     id: "drafting",
     title: "Drafting",
     shortLabel: "Drafting",
-    path: "/?section=drafting",
+    path: "/workspace/drafting",
     sectionKey: "drafting",
     area: "workspace",
     availability: "mixed",
@@ -198,7 +212,7 @@ export const routeCatalog: readonly OpenPracticeRouteCatalogEntry[] = [
     id: "tasks",
     title: "Tasks",
     shortLabel: "Tasks",
-    path: "/?section=tasks",
+    path: "/operations/tasks",
     sectionKey: "tasks",
     area: "operations",
     availability: "firm",
@@ -210,7 +224,7 @@ export const routeCatalog: readonly OpenPracticeRouteCatalogEntry[] = [
     id: "calendar",
     title: "Calendar Radar",
     shortLabel: "Calendar",
-    path: "/?section=calendar",
+    path: "/workspace/calendar",
     sectionKey: "calendar",
     area: "workspace",
     availability: "mixed",
@@ -222,7 +236,7 @@ export const routeCatalog: readonly OpenPracticeRouteCatalogEntry[] = [
     id: "signatures",
     title: "Signatures",
     shortLabel: "Signatures",
-    path: "/?section=signatures",
+    path: "/operations/signatures",
     sectionKey: "signatures",
     area: "operations",
     availability: "mixed",
@@ -234,7 +248,7 @@ export const routeCatalog: readonly OpenPracticeRouteCatalogEntry[] = [
     id: "intake",
     title: "Intake",
     shortLabel: "Intake",
-    path: "/?section=intake",
+    path: "/operations/intake",
     sectionKey: "intake",
     area: "operations",
     availability: "mixed",
@@ -246,7 +260,7 @@ export const routeCatalog: readonly OpenPracticeRouteCatalogEntry[] = [
     id: "audit",
     title: "Audit Review",
     shortLabel: "Audit",
-    path: "/?section=audit",
+    path: "/review/audit",
     sectionKey: "audit",
     area: "review",
     availability: "firm",
@@ -258,7 +272,7 @@ export const routeCatalog: readonly OpenPracticeRouteCatalogEntry[] = [
     id: "reports",
     title: "Reports",
     shortLabel: "Reports",
-    path: "/?section=reports",
+    path: "/review/reports",
     sectionKey: "reports",
     area: "review",
     availability: "firm",
@@ -270,7 +284,7 @@ export const routeCatalog: readonly OpenPracticeRouteCatalogEntry[] = [
     id: "admin",
     title: "Admin Readiness",
     shortLabel: "Admin",
-    path: "/?section=admin",
+    path: "/review/admin-readiness",
     sectionKey: "admin",
     area: "review",
     availability: "firm",
@@ -282,7 +296,7 @@ export const routeCatalog: readonly OpenPracticeRouteCatalogEntry[] = [
     id: "queues",
     title: "Operational Queues",
     shortLabel: "Queues",
-    path: "/?section=queues",
+    path: "/operations/queues",
     sectionKey: "queues",
     area: "operations",
     availability: "firm",
@@ -293,6 +307,9 @@ export const routeCatalog: readonly OpenPracticeRouteCatalogEntry[] = [
 ];
 
 const routeById = new Map(routeCatalog.map((entry) => [entry.id, entry] as const));
+const routeByCanonicalPath = new Map(
+  routeCatalog.map((entry) => [normalizeRouteCatalogPath(entry.path), entry] as const),
+);
 const defaultDashboardSectionKey = "matters" satisfies DashboardNavigationSectionKey;
 
 export function getRouteCatalogEntry(id: OpenPracticeRouteId): OpenPracticeRouteCatalogEntry {
@@ -318,6 +335,7 @@ export function getSidebarRouteCatalogEntries(): OpenPracticeRouteCatalogEntry[]
 export function buildSidebarNavigationSections(input: {
   billingCanView: boolean;
   capabilitySections: RouteCatalogSectionCapability[];
+  communicationsEnabled?: boolean;
   shareLinksEnabled?: boolean;
   externalUploadsEnabled?: boolean;
   adminReadinessEnabled?: boolean;
@@ -329,6 +347,9 @@ export function buildSidebarNavigationSections(input: {
   );
   const hasBillingCapability = input.capabilitySections.some(
     (section) => section.key === "billing",
+  );
+  const hasCommunicationsCapability = input.capabilitySections.some(
+    (section) => section.key === "communications",
   );
   const hasShareLinksCapability = input.capabilitySections.some(
     (section) => section.key === "shares",
@@ -383,6 +404,19 @@ export function buildSidebarNavigationSections(input: {
         requiresMatterContext: billingEntry.requiresMatterContext,
       });
     }
+  }
+  if (!hasCommunicationsCapability) {
+    const communicationsEntry = getRouteCatalogEntry("communications");
+    displayCandidates.push({
+      key: "communications",
+      label: communicationsEntry.shortLabel,
+      title: communicationsEntry.title,
+      area: communicationsEntry.area,
+      availability: communicationsEntry.availability,
+      enabled: input.communicationsEnabled ?? true,
+      order: communicationsEntry.order,
+      requiresMatterContext: communicationsEntry.requiresMatterContext,
+    });
   }
   if (!hasShareLinksCapability) {
     const shareLinksEntry = getRouteCatalogEntry("shares");
@@ -525,7 +559,11 @@ export function resolveDashboardRouteSelection(input: {
 }
 
 export function getDashboardSectionPath(sectionKey: DashboardNavigationSectionKey): string {
-  return `/?section=${sectionKey}`;
+  const entry = findRouteCatalogEntryBySection(sectionKey);
+  if (!entry) {
+    throw new Error(`Unknown Open Practice dashboard section: ${sectionKey}`);
+  }
+  return entry.path;
 }
 
 export function buildDashboardSectionUrl(
@@ -533,13 +571,22 @@ export function buildDashboardSectionUrl(
   sectionKey: DashboardNavigationSectionKey,
 ): string {
   const url = new URL(currentHref, "http://open-practice.local");
-  url.searchParams.set("section", sectionKey);
+  url.pathname = getDashboardSectionPath(sectionKey);
+  url.searchParams.delete("section");
   return `${url.pathname}${url.search}${url.hash}`;
 }
 
+function normalizeRouteCatalogPath(pathname: string): string {
+  const normalized = pathname.trim() || "/";
+  return normalized.length > 1 ? normalized.replace(/\/+$/, "") : normalized;
+}
+
 export function matchRouteCatalogEntry(path: string): OpenPracticeRouteCatalogEntry | null {
-  const [, query = ""] = path.split("?");
-  const section = new URLSearchParams(query).get("section");
-  if (!section) return getRouteCatalogEntry("matters");
-  return findRouteCatalogEntryBySection(section);
+  const url = new URL(path, "http://open-practice.local");
+  const section = url.searchParams.get("section")?.trim();
+  if (section) return findRouteCatalogEntryBySection(section);
+
+  const normalizedPath = normalizeRouteCatalogPath(url.pathname);
+  if (normalizedPath === "/") return getRouteCatalogEntry("matters");
+  return routeByCanonicalPath.get(normalizedPath) ?? null;
 }

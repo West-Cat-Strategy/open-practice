@@ -19,6 +19,10 @@ const syntheticConfigEncryptionKey = "base64:AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBk
 const dockerComposeBaseArgs = ["compose", "-p", "open-practice-e2e"];
 const nextEnvPath = join(root, "apps/web/next-env.d.ts");
 
+function dockerHostPort(envName, fallback) {
+  return Number(process.env[envName] ?? fallback);
+}
+
 function prefixedLine(prefix, chunk, writer) {
   for (const line of chunk.toString().split(/\r?\n/)) {
     if (line.trim()) writer(`[${prefix}] ${line}\n`);
@@ -340,9 +344,9 @@ async function ensureMinioBucket(env) {
 async function startDockerRuntime() {
   const apiPort = Number(process.env.E2E_DOCKER_API_PORT ?? 34120);
   const webPort = Number(process.env.E2E_DOCKER_WEB_PORT ?? 33120);
-  const postgresPort = Number(process.env.OPEN_PRACTICE_DOCKER_POSTGRES_HOST_PORT ?? 35432);
-  const redisPort = Number(process.env.OPEN_PRACTICE_DOCKER_REDIS_HOST_PORT ?? 36379);
-  const minioPort = Number(process.env.OPEN_PRACTICE_DOCKER_MINIO_HOST_PORT ?? 39000);
+  const postgresPort = dockerHostPort("OPEN_PRACTICE_DOCKER_POSTGRES_HOST_PORT", 35432);
+  const redisPort = dockerHostPort("OPEN_PRACTICE_DOCKER_REDIS_HOST_PORT", 36379);
+  const minioPort = dockerHostPort("OPEN_PRACTICE_DOCKER_MINIO_HOST_PORT", 39000);
   const apiBaseUrl = `http://localhost:${apiPort}`;
   const webBaseUrl = `http://localhost:${webPort}`;
   dockerDatabaseName = `open_practice_e2e_${Date.now()}`;

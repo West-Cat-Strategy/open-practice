@@ -365,9 +365,9 @@
 
 .secondary-button:disabled {
   cursor: default;
-  background: rgba(35, 38, 35, 0.58);
-  color: rgba(247, 243, 232, 0.62);
-  border-color: rgba(233, 226, 214, 0.1);
+  background: var(--surface-muted);
+  color: var(--muted);
+  border-color: var(--line);
 }
 
 .review-row {
