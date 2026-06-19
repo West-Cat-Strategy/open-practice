@@ -17,7 +17,7 @@ import {
   type TaskDeadlineRecord,
   type User,
 } from "@open-practice/domain";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import type { OpenPracticeDatabase } from "../../runtime.js";
 import * as schema from "../../schema.js";
 import type {
@@ -56,6 +56,17 @@ export interface DrizzleContactDependencies {
   ): Promise<IntakeVariableProposal[]>;
 }
 
+function hasFirmWideContactVisibility(user: User): boolean {
+  return ["owner_admin", "auditor"].includes(user.role);
+}
+
+function contactListSqlFilters(firmId: string, options: ContactListOptions = {}) {
+  const filters = [eq(schema.contacts.firmId, firmId)];
+  if (options.kind) filters.push(eq(schema.contacts.kind, options.kind));
+  if (options.status) filters.push(eq(schema.contacts.status, options.status));
+  return filters;
+}
+
 export async function listDrizzleContactDossiersForUser(
   db: OpenPracticeDatabase,
   user: User,
@@ -82,10 +93,9 @@ export async function listDrizzleContactDossiersForUser(
         .where(eq(schema.matterParties.firmId, user.firmId))
     ).map((party) => party.contactId),
   );
-  const hasFirmWideContactVisibility = ["owner_admin", "auditor"].includes(user.role);
   const contacts = firmContacts.filter(
     (contact) =>
-      hasFirmWideContactVisibility ||
+      hasFirmWideContactVisibility(user) ||
       linkedContactIds.has(contact.id) ||
       (contact.createdByUserId === user.id && !allMatterLinkedContactIds.has(contact.id)),
   );
@@ -155,20 +165,115 @@ function contactMatchesOptions(contact: Contact, options: ContactListOptions = {
     .some((value) => value.toLowerCase().includes(query));
 }
 
+function sortedPagedContacts(contacts: Contact[], options: ContactListOptions = {}): Contact[] {
+  const offset = options.offset ?? 0;
+  const limit = options.limit ?? 100;
+  return contacts
+    .filter((contact) => contactMatchesOptions(contact, options))
+    .sort((left, right) => left.displayName.localeCompare(right.displayName))
+    .slice(offset, offset + limit);
+}
+
+async function listFirmWideContactRows(
+  db: OpenPracticeDatabase,
+  user: User,
+  options: ContactListOptions,
+): Promise<Contact[]> {
+  return (
+    await db
+      .select()
+      .from(schema.contacts)
+      .where(and(...contactListSqlFilters(user.firmId, options)))
+  ).map(mapContactRow);
+}
+
+async function listMatterScopedContactRows(
+  db: OpenPracticeDatabase,
+  user: User,
+  options: ContactListOptions,
+): Promise<Contact[]> {
+  const assignedMatterIds = [...new Set(user.assignedMatterIds)].filter(Boolean);
+  const linkedContactIds = new Set<string>();
+  if (assignedMatterIds.length > 0) {
+    for (const party of await db
+      .select({ contactId: schema.matterParties.contactId })
+      .from(schema.matterParties)
+      .where(
+        and(
+          eq(schema.matterParties.firmId, user.firmId),
+          inArray(schema.matterParties.matterId, assignedMatterIds),
+        ),
+      )) {
+      linkedContactIds.add(party.contactId);
+    }
+  }
+
+  const creatorContacts = (
+    await db
+      .select()
+      .from(schema.contacts)
+      .where(
+        and(
+          ...contactListSqlFilters(user.firmId, options),
+          eq(schema.contacts.createdByUserId, user.id),
+        ),
+      )
+  )
+    .map(mapContactRow)
+    .filter((contact) => contact.firmId === user.firmId && contact.createdByUserId === user.id);
+
+  const creatorLinkedContactIds = new Set<string>();
+  const creatorContactIds = creatorContacts.map((contact) => contact.id);
+  if (creatorContactIds.length > 0) {
+    for (const party of await db
+      .select({ contactId: schema.matterParties.contactId })
+      .from(schema.matterParties)
+      .where(
+        and(
+          eq(schema.matterParties.firmId, user.firmId),
+          inArray(schema.matterParties.contactId, creatorContactIds),
+        ),
+      )) {
+      creatorLinkedContactIds.add(party.contactId);
+    }
+  }
+
+  const linkedContacts =
+    linkedContactIds.size > 0
+      ? (
+          await db
+            .select()
+            .from(schema.contacts)
+            .where(
+              and(
+                ...contactListSqlFilters(user.firmId, options),
+                inArray(schema.contacts.id, [...linkedContactIds]),
+              ),
+            )
+        )
+          .map(mapContactRow)
+          .filter((contact) => contact.firmId === user.firmId && linkedContactIds.has(contact.id))
+      : [];
+
+  const contactsById = new Map<string, Contact>();
+  for (const contact of linkedContacts) contactsById.set(contact.id, contact);
+  for (const contact of creatorContacts) {
+    if (!creatorLinkedContactIds.has(contact.id)) contactsById.set(contact.id, contact);
+  }
+  return [...contactsById.values()];
+}
+
 export async function listDrizzleContactsForUser(
   db: OpenPracticeDatabase,
   user: User,
   dependencies: DrizzleContactDependencies,
   options: ContactListOptions = {},
 ): Promise<Contact[]> {
-  const dossiers = await listDrizzleContactDossiersForUser(db, user, dependencies);
-  const offset = options.offset ?? 0;
-  const limit = options.limit ?? 100;
-  return dossiers
-    .map((dossier) => dossier.contact)
-    .filter((contact) => contactMatchesOptions(contact, options))
-    .sort((left, right) => left.displayName.localeCompare(right.displayName))
-    .slice(offset, offset + limit);
+  void dependencies;
+  const contacts = hasFirmWideContactVisibility(user)
+    ? await listFirmWideContactRows(db, user, options)
+    : await listMatterScopedContactRows(db, user, options);
+  return sortedPagedContacts(contacts, options);
 }
 
 export async function createDrizzleContact(

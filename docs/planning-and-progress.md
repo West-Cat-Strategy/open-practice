@@ -10,8 +10,8 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 | Snapshot              | Value                                                                |
 | --------------------- | -------------------------------------------------------------------- |
-| Current focus         | Active-lane mainline publication and prune closeout complete.        |
-| Next recommended pick | Start the next scoped branch from refreshed `main`.                  |
+| Current focus         | Contact list database efficiency branch ready for review.            |
+| Next recommended pick | Review and merge `refactor/contact-list-efficiency`.                 |
 | Ready rows            | 0                                                                    |
 | Candidate rows        | 0                                                                    |
 | In progress rows      | 0                                                                    |
@@ -21,6 +21,14 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 | Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`     |
 
 ## Current Handoff Notes
+
+The 2026-06-18 `refactor/contact-list-efficiency` branch is the second-wave database efficiency
+slice for lightweight contact list reads. It keeps `/api/contacts` response shape, authorization,
+search, sort, pagination, redaction posture, and dossier/detail/history/export behavior unchanged
+while making `listDrizzleContactsForUser` avoid full contact dossier construction. Firm-wide
+contact readers query contacts directly; matter-scoped users derive visible contact IDs from
+assigned-matter parties plus standalone contacts they created. Proof is recorded in
+[contact list database efficiency proof](validation/OP_CONTACT_LIST_DATABASE_EFFICIENCY_PROOF_2026-06-18.md).
 
 The 2026-06-17 all-active-lanes integration branch
 `merge/open-practice-active-lanes-2026-06-17` merged the 13 committed dirty lanes plus the clean

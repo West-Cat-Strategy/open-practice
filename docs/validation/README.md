@@ -18,6 +18,13 @@ skipped-check context. The live workboard remains
 
 ## Current Handoff Notes
 
+The 2026-06-18 contact list database efficiency proof is recorded in
+[OP_CONTACT_LIST_DATABASE_EFFICIENCY_PROOF_2026-06-18.md](OP_CONTACT_LIST_DATABASE_EFFICIENCY_PROOF_2026-06-18.md).
+It covers the Drizzle-only contact-list refactor that keeps `/api/contacts` behavior unchanged
+while avoiding full dossier hydration for lightweight list reads, preserving matter-scoped
+visibility, standalone creator visibility, search/sort/pagination compatibility, and the existing
+dossier/detail/history/export boundaries.
+
 The 2026-06-17 all-active-lanes integration proof, with the 2026-06-18 Docker gate closeout, is
 recorded in
 [OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-16.md](OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-16.md).

@@ -27,6 +27,18 @@ branch. Future workflow candidates should compare against the read-only `GET /ap
 projection over redacted job lifecycle records and workflow audit events before proposing a new
 workflow/activity history surface.
 
+### Database Access Efficiency Follow-Ups - 2026-06-18
+
+The contact list/dossier split candidate is implemented in the
+`refactor/contact-list-efficiency` branch. The Drizzle `/api/contacts` list path now avoids full
+dossier hydration while preserving public response shape, search/sort/pagination compatibility,
+matter-scoped access, standalone creator visibility, and dossier/detail/history/export behavior.
+
+Remaining database-efficiency candidates should stay separate from this shipped slice: client portal
+batch projections, communications/email bulk reads, operational/report read models, and filtered
+audit reads remain future work only after comparing against existing visibility and redaction
+boundaries.
+
 ### Core-Suite Clio Parity Candidates - 2026-06-04
 
 The 2026-06-04 [core-suite parity gap audit](validation/OP_CLIO_CORE_PARITY_GAP_AUDIT_2026-06-04.md)
