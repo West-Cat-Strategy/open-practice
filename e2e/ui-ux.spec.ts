@@ -281,6 +281,31 @@ test.describe("UI/UX screenshot QA", () => {
     }
   });
 
+  test("keeps the first-matter starter workspace readable at review breakpoints @matterless", async ({
+    app,
+    page,
+  }, testInfo) => {
+    expect(process.env.DEV_AUTH_FIRM_ID).toBe("firm-matterless-e2e");
+    expect(process.env.DEV_AUTH_USER_ID).toBe("user-matterless-admin");
+
+    for (const width of [1100, 760, 720, 520]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(app.url("/?section=matters"));
+      await expectPageHealthy(page);
+
+      await expect(page.getByRole("heading", { name: "Create the first matter" })).toBeVisible();
+      await expect(page.getByText("Starter intake")).toBeVisible();
+      await expect(page.getByRole("button", { name: /Create matter/i })).toBeVisible();
+      await expect(page.locator(".first-matter-panel")).toBeVisible();
+      await expectNavigationLabelsReadable(page, `first matter ${width}px`);
+      await expectNoUnexpectedHorizontalOverflow(page, `first matter ${width}px`);
+      await expectNoVisibleUiCollisions(page, `first matter ${width}px`);
+      await attachUiScreenshot(page, testInfo, `dashboard-first-matter-${width}px`, {
+        fullPage: true,
+      });
+    }
+  });
+
   test("keeps the client portal workspace readable at desktop and mobile widths @client-portal", async ({
     app,
     page,

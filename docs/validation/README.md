@@ -18,6 +18,13 @@ skipped-check context. The live workboard remains
 
 ## Current Handoff Notes
 
+The 2026-06-19 UI overlap resilience proof is recorded in
+[OP_UI_OVERLAP_RESILIENCE_PROOF_2026-06-19.md](OP_UI_OVERLAP_RESILIENCE_PROOF_2026-06-19.md).
+It covers the first-matter zero-matter workspace layout hardening, first-matter/zero-matter E2E
+collision-selector coverage, matterless breakpoint browser proof, and the current host/Docker
+environment blockers while preserving API payloads, authorization, matter creation semantics,
+setup behavior, provider behavior, payment settlement, trust posting, and public data boundaries.
+
 The 2026-06-18 database access hot-path efficiency proof is recorded in
 [OP_DATABASE_ACCESS_HOT_PATH_EFFICIENCY_PROOF_2026-06-18.md](OP_DATABASE_ACCESS_HOT_PATH_EFFICIENCY_PROOF_2026-06-18.md).
 It covers the focused internal refactor for hot-path schema indexes, batched Drizzle repository

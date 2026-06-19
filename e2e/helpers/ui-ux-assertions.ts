@@ -1,6 +1,11 @@
 import { expect, type Page, type TestInfo } from "@playwright/test";
 
-const screenshotProjects = new Set(["host-chromium", "host-mobile-chromium", "docker-chromium"]);
+const screenshotProjects = new Set([
+  "host-chromium",
+  "host-mobile-chromium",
+  "docker-chromium",
+  "matterless-chromium",
+]);
 
 const layoutSelectors = [
   ".dashboard-topbar",
@@ -9,6 +14,17 @@ const layoutSelectors = [
   ".dashboard-matter-context",
   ".matter-detail-panel",
   ".matter-action-strip",
+  ".matter-workspace-grid",
+  ".zero-matter-workspace-grid",
+  ".first-matter-panel",
+  ".first-matter-layout",
+  ".first-matter-form-grid",
+  ".first-matter-kind-field",
+  ".first-matter-controls",
+  ".first-matter-input",
+  ".first-matter-submit",
+  ".segmented-control",
+  ".segmented-control button",
   ".context-rail",
   ".context-rail-placeholder",
   ".panel-header",
@@ -65,6 +81,13 @@ const collisionParentSelectors = [
   ".panel-header",
   ".detail-grid",
   ".activity-grid",
+  ".matter-workspace-grid",
+  ".zero-matter-workspace-grid",
+  ".first-matter-layout",
+  ".first-matter-form-grid",
+  ".first-matter-kind-field",
+  ".first-matter-controls",
+  ".segmented-control",
   ".party-list",
   ".row-actions",
   ".billing-capture-grid",
