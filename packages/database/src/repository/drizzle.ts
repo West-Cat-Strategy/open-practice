@@ -209,6 +209,7 @@ import {
   convertDrizzlePublicConsultationIntakeToMatter,
   createDrizzleMatterLifecycleTransition,
   createDrizzleMatterWithClient,
+  executeDrizzleMatterLifecycleCommand,
   listDrizzleMatterLifecycleTransitions,
 } from "./matter-lifecycle/drizzle.js";
 import {
@@ -530,6 +531,15 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     input: Parameters<OpenPracticeRepository["createMatterLifecycleTransition"]>[0],
   ): ReturnType<OpenPracticeRepository["createMatterLifecycleTransition"]> {
     return createDrizzleMatterLifecycleTransition(this.db, input);
+  }
+
+  async executeMatterLifecycleCommand(
+    input: Parameters<OpenPracticeRepository["executeMatterLifecycleCommand"]>[0],
+  ): ReturnType<OpenPracticeRepository["executeMatterLifecycleCommand"]> {
+    return executeDrizzleMatterLifecycleCommand(this.db, input, {
+      getUser: (firmId, userId) => this.getUser(firmId, userId),
+      listMattersForUser: (user) => this.listMattersForUser(user),
+    });
   }
 
   async listContactDossiersForUser(

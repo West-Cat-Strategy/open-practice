@@ -451,6 +451,7 @@ import {
   createMemoryMatterLifecycleTransition,
   convertMemoryPublicConsultationIntakeToMatter,
   createMemoryMatterWithClient,
+  executeMemoryMatterLifecycleCommand,
   listMemoryMatterLifecycleTransitions,
   type MemoryMatterLifecycleStore,
 } from "./matter-lifecycle/memory.js";
@@ -1608,6 +1609,15 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     input: Parameters<OpenPracticeRepository["createMatterLifecycleTransition"]>[0],
   ): ReturnType<OpenPracticeRepository["createMatterLifecycleTransition"]> {
     return createMemoryMatterLifecycleTransition(this.matterLifecycleStore, input, {
+      appendAuditEvent: (event) => this.appendAuditEvent(event),
+      listMattersForUser: (user) => this.listMattersForUser(user),
+    });
+  }
+
+  async executeMatterLifecycleCommand(
+    input: Parameters<OpenPracticeRepository["executeMatterLifecycleCommand"]>[0],
+  ): ReturnType<OpenPracticeRepository["executeMatterLifecycleCommand"]> {
+    return executeMemoryMatterLifecycleCommand(this.matterLifecycleStore, input, {
       appendAuditEvent: (event) => this.appendAuditEvent(event),
       listMattersForUser: (user) => this.listMattersForUser(user),
     });

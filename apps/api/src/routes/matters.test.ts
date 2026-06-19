@@ -474,6 +474,240 @@ describe("matter routes", () => {
     expect(firmWide.statusCode).toBe(200);
   });
 
+  it("executes pause and reopen lifecycle commands after latest ready review evidence", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const [before] = await repository.listMattersForUser(user("licensee", ["matter-001"]));
+    const pauseRecord = await repository.createMatterLifecycleTransition({
+      id: "matter-lifecycle-api-ready-pause",
+      firmId,
+      matterId: "matter-001",
+      transition: "pause",
+      readiness: "ready",
+      reason: "Synthetic pause review is ready.",
+      reviewedByUserId: "user-licensee",
+      reviewedAt: "2026-06-19T12:00:00.000Z",
+      createdAt: "2026-06-19T12:00:00.000Z",
+      auditEventId: "audit-matter-lifecycle-api-ready-pause",
+    });
+    const pause = await testServer(user("licensee", ["matter-001"]), repository).inject({
+      method: "POST",
+      url: "/api/matters/matter-001/lifecycle-commands",
+      payload: {
+        command: "pause",
+        expectedStatus: "open",
+        transitionRecordId: pauseRecord.id,
+        reason: "Synthetic operator confirmed pause execution.",
+        idempotencyKey: "synthetic-api-pause-command-key",
+      },
+    });
+
+    expect(pause.statusCode).toBe(200);
+    expect(pause.json()).toMatchObject({
+      matter: {
+        id: "matter-001",
+        status: "paused",
+        trustBalanceCents: before?.trustBalanceCents,
+      },
+      lifecycleCommand: {
+        command: "pause",
+        matterId: "matter-001",
+        transitionRecordId: pauseRecord.id,
+        beforeStatus: "open",
+        expectedStatus: "open",
+        afterStatus: "paused",
+        executedByUserId: "user-licensee",
+        reviewFirst: true,
+        consequences: {
+          matterStatusChanged: true,
+          closedOnChanged: false,
+          portalAccessChanged: false,
+          taskChanged: false,
+          assignmentChanged: false,
+          billingChanged: false,
+          trustChanged: false,
+          cleanupRun: false,
+        },
+      },
+    });
+    expect(pause.json<{ matter: MatterSummary }>().matter.closedOn).toBe(before?.closedOn);
+    expect(pause.json().matter.timeEntries).toHaveLength(before?.timeEntries.length ?? 0);
+    expect(pause.json().matter.expenses).toHaveLength(before?.expenses.length ?? 0);
+
+    const reopenRecord = await repository.createMatterLifecycleTransition({
+      id: "matter-lifecycle-api-ready-reopen",
+      firmId,
+      matterId: "matter-001",
+      transition: "reopen",
+      readiness: "ready",
+      reason: "Synthetic reopen review is ready.",
+      reviewedByUserId: "user-licensee",
+      reviewedAt: "2026-06-19T12:10:00.000Z",
+      createdAt: "2026-06-19T12:10:00.000Z",
+      auditEventId: "audit-matter-lifecycle-api-ready-reopen",
+    });
+    const reopen = await testServer(user("licensee", ["matter-001"]), repository).inject({
+      method: "POST",
+      url: "/api/matters/matter-001/lifecycle-commands",
+      payload: {
+        command: "reopen",
+        expectedStatus: "paused",
+        transitionRecordId: reopenRecord.id,
+        reason: "Synthetic operator confirmed reopen execution.",
+        idempotencyKey: "synthetic-api-reopen-command-key",
+      },
+    });
+
+    expect(reopen.statusCode).toBe(200);
+    expect(reopen.json()).toMatchObject({
+      matter: { id: "matter-001", status: "open" },
+      lifecycleCommand: {
+        command: "reopen",
+        beforeStatus: "paused",
+        expectedStatus: "paused",
+        afterStatus: "open",
+        consequences: {
+          billingChanged: false,
+          trustChanged: false,
+          cleanupRun: false,
+        },
+      },
+    });
+    expect(reopen.json<{ matter: MatterSummary }>().matter.closedOn).toBe(before?.closedOn);
+    const audit = await repository.listAuditEvents(firmId);
+    expect(audit.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          action: "matter.lifecycle_command_executed",
+          resourceId: "matter-001",
+          metadata: expect.objectContaining({
+            transitionRecordId: pauseRecord.id,
+            lifecycleCommand: "pause",
+            reasonPresent: true,
+            idempotencyKeyPresent: true,
+            billingChanged: false,
+            trustChanged: false,
+            cleanupRun: false,
+          }),
+        }),
+      ]),
+    );
+    expect(JSON.stringify(audit.events)).not.toContain("Synthetic operator confirmed");
+    expect(JSON.stringify(audit.events)).not.toContain("synthetic-api-pause-command-key");
+    expect(JSON.stringify(audit.events)).not.toContain("synthetic-api-reopen-command-key");
+  });
+
+  it("keeps lifecycle command routes staff-only and matter-scoped", async () => {
+    const client = await testServer(user("client_external", ["matter-001"])).inject({
+      method: "POST",
+      url: "/api/matters/matter-001/lifecycle-commands",
+      payload: {
+        command: "pause",
+        expectedStatus: "open",
+        transitionRecordId: "matter-lifecycle-api-ready-pause",
+        reason: "Synthetic operator confirmed pause execution.",
+        idempotencyKey: "synthetic-client-command-key",
+      },
+    });
+    const crossMatter = await testServer(user("licensee", ["matter-001"])).inject({
+      method: "POST",
+      url: "/api/matters/matter-002/lifecycle-commands",
+      payload: {
+        command: "pause",
+        expectedStatus: "open",
+        transitionRecordId: "matter-lifecycle-api-ready-pause",
+        reason: "Synthetic operator confirmed pause execution.",
+        idempotencyKey: "synthetic-cross-matter-command-key",
+      },
+    });
+
+    expect(client.statusCode).toBe(403);
+    expect(crossMatter.statusCode).toBe(403);
+  });
+
+  it("rejects lifecycle commands without latest ready matching evidence", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const ready = await repository.createMatterLifecycleTransition({
+      id: "matter-lifecycle-api-stale-pause",
+      firmId,
+      matterId: "matter-001",
+      transition: "pause",
+      readiness: "ready",
+      reason: "Synthetic pause review was ready earlier.",
+      reviewedByUserId: "user-licensee",
+      reviewedAt: "2026-06-19T12:00:00.000Z",
+      createdAt: "2026-06-19T12:00:00.000Z",
+      auditEventId: "audit-matter-lifecycle-api-stale-pause",
+    });
+    await repository.createMatterLifecycleTransition({
+      id: "matter-lifecycle-api-blocked-pause",
+      firmId,
+      matterId: "matter-001",
+      transition: "pause",
+      readiness: "blocked",
+      reason: "Synthetic pause review is blocked.",
+      blockers: ["Synthetic blocker."],
+      reviewedByUserId: "user-licensee",
+      reviewedAt: "2026-06-19T12:10:00.000Z",
+      createdAt: "2026-06-19T12:10:00.000Z",
+      auditEventId: "audit-matter-lifecycle-api-blocked-pause",
+    });
+
+    const stale = await testServer(user("licensee", ["matter-001"]), repository).inject({
+      method: "POST",
+      url: "/api/matters/matter-001/lifecycle-commands",
+      payload: {
+        command: "pause",
+        expectedStatus: "open",
+        transitionRecordId: ready.id,
+        reason: "Synthetic operator confirmed pause execution.",
+        idempotencyKey: "synthetic-stale-command-key",
+      },
+    });
+    const missing = await testServer(user("licensee", ["matter-001"]), repository).inject({
+      method: "POST",
+      url: "/api/matters/matter-001/lifecycle-commands",
+      payload: {
+        command: "reopen",
+        expectedStatus: "paused",
+        transitionRecordId: "matter-lifecycle-missing-reopen",
+        reason: "Synthetic operator confirmed reopen execution.",
+        idempotencyKey: "synthetic-missing-command-key",
+      },
+    });
+
+    expect(stale.statusCode).toBe(409);
+    expect(missing.statusCode).toBe(409);
+    const [after] = await repository.listMattersForUser(user("licensee", ["matter-001"]));
+    expect(after.status).toBe("open");
+  });
+
+  it("validates lifecycle command bodies before execution", async () => {
+    const unsupported = await testServer(user("licensee", ["matter-001"])).inject({
+      method: "POST",
+      url: "/api/matters/matter-001/lifecycle-commands",
+      payload: {
+        command: "close",
+        expectedStatus: "open",
+        transitionRecordId: "matter-lifecycle-close",
+        reason: "Synthetic close command is not in this slice.",
+        idempotencyKey: "synthetic-close-command-key",
+      },
+    });
+    const missingIdempotencyKey = await testServer(user("licensee", ["matter-001"])).inject({
+      method: "POST",
+      url: "/api/matters/matter-001/lifecycle-commands",
+      payload: {
+        command: "pause",
+        expectedStatus: "open",
+        transitionRecordId: "matter-lifecycle-pause",
+        reason: "Synthetic pause command needs an idempotency key.",
+      },
+    });
+
+    expect(unsupported.statusCode).toBe(400);
+    expect(missingIdempotencyKey.statusCode).toBe(400);
+  });
+
   it("validates lifecycle transition review evidence", async () => {
     const missingReason = await testServer(user("licensee", ["matter-001"])).inject({
       method: "POST",

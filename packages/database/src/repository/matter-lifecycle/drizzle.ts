@@ -1,7 +1,11 @@
 import {
   appendAuditEvent,
+  buildMatterLifecycleCommandAuditMetadata,
+  buildMatterLifecycleCommandExecution,
   buildMatterLifecycleTransitionAuditMetadata,
   buildMatterLifecycleTransitionRecord,
+  matterLifecycleCommandRequiredStatus,
+  matterLifecycleTargetStatus,
   type ContactIdentifier,
   type Matter,
   type MatterLifecycleTransitionRecord,
@@ -15,6 +19,7 @@ import type {
   ConvertPublicConsultationIntakeInput,
   CreateMatterWithClientInput,
 } from "../matter-lifecycle-contracts.js";
+import { MatterLifecycleCommandError } from "../matter-lifecycle-contracts.js";
 import type { MatterSummary } from "../matter-workspace-contracts.js";
 import { mapMatter, mapMatterLifecycleTransitionRow } from "../drizzle-mappers.js";
 import { mapPublicConsultationIntakeRow } from "../public-consultation-intakes/mappers.js";
@@ -409,4 +414,180 @@ export async function createDrizzleMatterLifecycleTransition(
 
     return mapMatterLifecycleTransitionRow(row);
   });
+}
+
+function commandStatusMismatch(message: string): MatterLifecycleCommandError {
+  return new MatterLifecycleCommandError("MATTER_LIFECYCLE_EXPECTED_STATUS_MISMATCH", message);
+}
+
+function commandNotAvailable(command: string): MatterLifecycleCommandError {
+  return new MatterLifecycleCommandError(
+    "MATTER_LIFECYCLE_COMMAND_NOT_AVAILABLE",
+    `Matter lifecycle command ${command} is not available from the current matter status`,
+  );
+}
+
+function commandReadinessNotReady(): MatterLifecycleCommandError {
+  return new MatterLifecycleCommandError(
+    "MATTER_LIFECYCLE_READINESS_NOT_READY",
+    "Lifecycle command requires the latest ready review evidence",
+  );
+}
+
+export async function executeDrizzleMatterLifecycleCommand(
+  db: OpenPracticeDatabase,
+  input: Parameters<
+    import("../matter-lifecycle-contracts.js").MatterLifecycleRepository["executeMatterLifecycleCommand"]
+  >[0],
+  dependencies: DrizzleMatterLifecycleDependencies,
+): ReturnType<
+  import("../matter-lifecycle-contracts.js").MatterLifecycleRepository["executeMatterLifecycleCommand"]
+> {
+  const lifecycleCommand = await db.transaction(async (tx) => {
+    const [matterRow] = await tx
+      .select()
+      .from(schema.matters)
+      .where(and(eq(schema.matters.firmId, input.firmId), eq(schema.matters.id, input.matterId)));
+    if (!matterRow) {
+      throw new MatterLifecycleCommandError(
+        "MATTER_LIFECYCLE_MATTER_NOT_FOUND",
+        "Matter was not found",
+      );
+    }
+    const [actorRow] = await tx
+      .select({ id: schema.users.id })
+      .from(schema.users)
+      .where(
+        and(eq(schema.users.firmId, input.firmId), eq(schema.users.id, input.executedByUserId)),
+      );
+    if (!actorRow) throw new Error(`Unknown user ${input.executedByUserId}`);
+
+    const matter = mapMatter(matterRow);
+    const requiredStatus = matterLifecycleCommandRequiredStatus(input.command);
+    if (input.expectedStatus !== requiredStatus) {
+      throw commandStatusMismatch(
+        `Matter lifecycle command ${input.command} expected status must be ${requiredStatus}`,
+      );
+    }
+    if (matter.status !== input.expectedStatus) throw commandNotAvailable(input.command);
+
+    const [latestForCommandRow] = await tx
+      .select()
+      .from(schema.matterLifecycleTransitionRecords)
+      .where(
+        and(
+          eq(schema.matterLifecycleTransitionRecords.firmId, input.firmId),
+          eq(schema.matterLifecycleTransitionRecords.matterId, input.matterId),
+          eq(schema.matterLifecycleTransitionRecords.transition, input.command),
+        ),
+      )
+      .orderBy(desc(schema.matterLifecycleTransitionRecords.reviewedAt))
+      .limit(1);
+    const latestForCommand = latestForCommandRow
+      ? mapMatterLifecycleTransitionRow(latestForCommandRow)
+      : undefined;
+    if (
+      !latestForCommand ||
+      latestForCommand.id !== input.transitionRecordId ||
+      latestForCommand.readiness !== "ready" ||
+      latestForCommand.currentStatus !== matter.status ||
+      latestForCommand.targetStatus !== matterLifecycleTargetStatus(input.command)
+    ) {
+      throw commandReadinessNotReady();
+    }
+
+    const execution = buildMatterLifecycleCommandExecution({
+      command: input.command,
+      matterId: input.matterId,
+      transitionRecordId: input.transitionRecordId,
+      beforeStatus: matter.status,
+      expectedStatus: input.expectedStatus,
+      reason: input.reason,
+      idempotencyKey: input.idempotencyKey,
+      executedAt: input.executedAt,
+      executedByUserId: input.executedByUserId,
+    });
+    const [updatedMatterRow] = await tx
+      .update(schema.matters)
+      .set({ status: execution.afterStatus })
+      .where(
+        and(
+          eq(schema.matters.firmId, input.firmId),
+          eq(schema.matters.id, input.matterId),
+          eq(schema.matters.status, input.expectedStatus),
+          sql`exists (
+            select 1
+            from matter_lifecycle_transition_records command_record
+            where command_record.id = ${input.transitionRecordId}
+              and command_record.firm_id = ${input.firmId}
+              and command_record.matter_id = ${input.matterId}
+              and command_record.transition = ${input.command}
+              and command_record.current_status = ${input.expectedStatus}
+              and command_record.target_status = ${execution.afterStatus}
+              and command_record.readiness = 'ready'
+              and not exists (
+                select 1
+                from matter_lifecycle_transition_records newer_record
+                where newer_record.firm_id = command_record.firm_id
+                  and newer_record.matter_id = command_record.matter_id
+                  and newer_record.transition = command_record.transition
+                  and newer_record.reviewed_at > command_record.reviewed_at
+              )
+          )`,
+        ),
+      )
+      .returning();
+    if (!updatedMatterRow) {
+      const [currentMatterRow] = await tx
+        .select({ status: schema.matters.status })
+        .from(schema.matters)
+        .where(and(eq(schema.matters.firmId, input.firmId), eq(schema.matters.id, input.matterId)));
+      if (!currentMatterRow || currentMatterRow.status !== input.expectedStatus) {
+        throw commandStatusMismatch("Matter status changed during command");
+      }
+      throw commandReadinessNotReady();
+    }
+
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${input.firmId}, 0))`);
+    const [previousRow] = await tx
+      .select()
+      .from(schema.auditEvents)
+      .where(eq(schema.auditEvents.firmId, input.firmId))
+      .orderBy(desc(schema.auditEvents.sequence))
+      .limit(1);
+    const previous = previousRow
+      ? {
+          ...previousRow,
+          occurredAt: previousRow.occurredAt.toISOString(),
+          metadata: previousRow.metadata as Record<string, unknown>,
+        }
+      : undefined;
+    const audit = appendAuditEvent(previous, {
+      id: input.auditEventId,
+      firmId: input.firmId,
+      actorId: input.executedByUserId,
+      action: "matter.lifecycle_command_executed",
+      resourceType: "matter",
+      resourceId: input.matterId,
+      occurredAt: input.executedAt,
+      metadata: buildMatterLifecycleCommandAuditMetadata(execution, {
+        reason: input.reason,
+        idempotencyKey: input.idempotencyKey,
+      }),
+    });
+    await tx.insert(schema.auditEvents).values({
+      ...audit,
+      occurredAt: new Date(audit.occurredAt),
+      metadata: audit.metadata,
+    });
+    return execution;
+  });
+
+  const actor = await dependencies.getUser(input.firmId, input.executedByUserId);
+  if (!actor) throw new Error(`Unknown user ${input.executedByUserId}`);
+  const matter = (await dependencies.listMattersForUser(actor)).find(
+    (candidate) => candidate.id === input.matterId,
+  );
+  if (!matter) throw new Error(`Updated matter ${input.matterId} was not visible`);
+  return { matter, lifecycleCommand };
 }

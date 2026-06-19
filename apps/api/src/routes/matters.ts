@@ -1,20 +1,27 @@
 import { randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import type {
-  MatterSummary,
-  OpenPracticeRepository,
-  PracticeOverview,
+import {
+  MatterLifecycleCommandError,
+  type MatterSummary,
+  type OpenPracticeRepository,
+  type PracticeOverview,
 } from "@open-practice/database";
 import type {
   ConflictCandidate,
   ContactIdentifier,
+  MatterLifecycleCommand,
   MatterLifecycleTransition,
   MatterLifecycleReadiness,
+  MatterStatus,
   ProfessionalRole,
   User,
 } from "@open-practice/domain";
-import { matterLifecycleReadinessValues, matterLifecycleTransitions } from "@open-practice/domain";
+import {
+  matterLifecycleCommands,
+  matterLifecycleReadinessValues,
+  matterLifecycleTransitions,
+} from "@open-practice/domain";
 import { requireAccess, requireStaffAccess } from "../http/auth-guards.js";
 import { ApiHttpError } from "../http/response.js";
 import { parseRequestPart } from "../http/validation.js";
@@ -73,6 +80,14 @@ const lifecycleTransitionBodySchema = z.object({
   readiness: z.enum(matterLifecycleReadinessValues),
   reason: z.string().trim().min(1).max(240),
   blockers: z.array(z.string().trim().min(1).max(160)).max(8).optional(),
+});
+
+const lifecycleCommandBodySchema = z.object({
+  command: z.enum(matterLifecycleCommands),
+  expectedStatus: z.enum(["open", "paused"]),
+  transitionRecordId: z.string().trim().min(1),
+  reason: z.string().trim().min(1).max(240),
+  idempotencyKey: z.string().trim().min(1).max(160),
 });
 
 function scopedOverview(input: {
@@ -148,6 +163,13 @@ function summarizeConflictResults(results: ConflictCandidate[]) {
       detailsRedacted: true,
     },
   };
+}
+
+function rethrowMatterLifecycleCommandError(error: unknown): never {
+  if (error instanceof MatterLifecycleCommandError) {
+    throw new ApiHttpError(409, error.code, error.message, error.details);
+  }
+  throw error;
 }
 
 export function registerMatterRoutes(
@@ -271,6 +293,40 @@ export function registerMatterRoutes(
 
     reply.code(201);
     return record;
+  });
+
+  server.post("/api/matters/:matterId/lifecycle-commands", async (request) => {
+    const staffAccess = requireStaffAccess(request.auth);
+    if (!staffAccess.ok) throw staffAccess.error;
+    const params = parseRequestPart(matterParamsSchema, request.params, "params");
+    const access = requireAccess(request.auth, {
+      resource: "matter",
+      action: "update",
+      matterId: params.matterId,
+    });
+    if (!access.ok) throw access.error;
+    await requireVisibleMatter({
+      repository: options.repository,
+      user: request.auth.user,
+      matterId: params.matterId,
+    });
+    const body = parseRequestPart(lifecycleCommandBodySchema, request.body, "body");
+    try {
+      return await options.repository.executeMatterLifecycleCommand({
+        firmId: request.auth.firmId,
+        matterId: params.matterId,
+        command: body.command as MatterLifecycleCommand,
+        expectedStatus: body.expectedStatus as MatterStatus,
+        transitionRecordId: body.transitionRecordId,
+        reason: body.reason,
+        idempotencyKey: body.idempotencyKey,
+        executedByUserId: request.auth.user.id,
+        executedAt: new Date().toISOString(),
+        auditEventId: prefixedId("audit"),
+      });
+    } catch (error) {
+      rethrowMatterLifecycleCommandError(error);
+    }
   });
 
   server.post("/api/conflicts/check", async (request) => {

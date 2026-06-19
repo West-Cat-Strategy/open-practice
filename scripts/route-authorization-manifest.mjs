@@ -302,6 +302,15 @@ export const ROUTE_AUTHORIZATION_MANIFEST = [
   ),
   authRoute(
     "registerMatterRoutes",
+    "apps/api/src/routes/matters.test.ts",
+    "POST",
+    "/api/matters/:matterId/lifecycle-commands",
+    "matter",
+    "update",
+    "required",
+  ),
+  authRoute(
+    "registerMatterRoutes",
     "apps/api/src/server.test.ts",
     "POST",
     "/api/conflicts/check",

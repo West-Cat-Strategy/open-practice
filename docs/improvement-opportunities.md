@@ -229,9 +229,13 @@ surface.
     `POST /api/matters/:matterId/lifecycle-commands` contract and pause/close/archive/reopen
     consequences across portal visibility, billing, tasks, assignments, audit metadata, and cleanup
     boundaries.
-  - **Remaining gap:** Future work should only implement explicit lifecycle commands after a
-    separate implementation scope is approved. The shipped journal remains evidence-only and does
-    not mutate matter status.
+  - **Shipped runtime slice:** OP-T160 implements the first review-gated
+    `POST /api/matters/:matterId/lifecycle-commands` runtime path for `pause` and `reopen` only:
+    `open -> paused` and `paused -> open`, gated by the latest matching ready journal evidence,
+    with safe audit metadata and no `closedOn`, portal, task, assignment, billing, trust, retention,
+    or cleanup side effects.
+  - **Remaining gap:** Future work should only add `close`, `archive`, or `closed|archived -> open`
+    reopen after a separate implementation scope is approved and the side-effect proof is explicit.
   - **References:** `primeroims__primero`, `arkcase__arkcase`, and `jlawyerorg__j-lawyer-org`.
   - **Reuse and snippets:** AGPL/LGPL/reference-only; no direct snippets.
 

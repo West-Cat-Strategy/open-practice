@@ -154,6 +154,49 @@ describe("audit event taxonomy", () => {
     });
   });
 
+  it("classifies matter lifecycle command audit metadata as matter-scoped", () => {
+    const classification = classifyAuditEvent(
+      auditEvent({
+        action: "matter.lifecycle_command_executed",
+        resourceType: "matter",
+        resourceId: "matter-001",
+        metadata: {
+          matterId: "matter-001",
+          transitionRecordId: "matter-lifecycle-pause",
+          lifecycleCommand: "pause",
+          beforeStatus: "open",
+          expectedStatus: "open",
+          afterStatus: "paused",
+          executedByUserId: "user-licensee",
+          reasonPresent: true,
+          idempotencyKeyPresent: true,
+          matterStatusChanged: true,
+          closedOnChanged: false,
+          portalAccessChanged: false,
+          taskChanged: false,
+          assignmentChanged: false,
+          billingChanged: false,
+          trustChanged: false,
+          cleanupRun: false,
+          reviewFirst: true,
+        },
+      }),
+    );
+
+    expect(classification).toMatchObject({
+      category: "matter_lifecycle",
+      known: true,
+      matterScope: "matter",
+      resourceTypeMatches: true,
+    });
+    expect(classification.metadataHints.resource).toEqual(
+      expect.arrayContaining(["lifecycleCommand", "idempotencyKeyPresent", "cleanupRun"]),
+    );
+    expect(classification.metadataHints.actor).toEqual(
+      expect.arrayContaining(["executedByUserId"]),
+    );
+  });
+
   it("classifies connector registry and outbox events as firm-scoped", () => {
     expect(
       classifyAuditEvent(

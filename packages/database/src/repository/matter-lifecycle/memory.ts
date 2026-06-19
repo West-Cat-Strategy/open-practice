@@ -1,6 +1,10 @@
 import {
+  buildMatterLifecycleCommandAuditMetadata,
+  buildMatterLifecycleCommandExecution,
   buildMatterLifecycleTransitionAuditMetadata,
   buildMatterLifecycleTransitionRecord,
+  matterLifecycleCommandRequiredStatus,
+  matterLifecycleTargetStatus,
   type AuditEvent,
   type Contact,
   type ContactIdentifier,
@@ -12,6 +16,7 @@ import {
   type User,
 } from "@open-practice/domain";
 import { clone } from "../contracts.js";
+import { MatterLifecycleCommandError } from "../matter-lifecycle-contracts.js";
 import type {
   ConvertPublicConsultationIntakeInput,
   CreateMatterWithClientInput,
@@ -304,4 +309,107 @@ export async function createMemoryMatterLifecycleTransition(
     metadata: buildMatterLifecycleTransitionAuditMetadata(record),
   });
   return clone(record);
+}
+
+function commandStatusMismatch(message: string): MatterLifecycleCommandError {
+  return new MatterLifecycleCommandError("MATTER_LIFECYCLE_EXPECTED_STATUS_MISMATCH", message);
+}
+
+function commandNotAvailable(command: string): MatterLifecycleCommandError {
+  return new MatterLifecycleCommandError(
+    "MATTER_LIFECYCLE_COMMAND_NOT_AVAILABLE",
+    `Matter lifecycle command ${command} is not available from the current matter status`,
+  );
+}
+
+function commandReadinessNotReady(): MatterLifecycleCommandError {
+  return new MatterLifecycleCommandError(
+    "MATTER_LIFECYCLE_READINESS_NOT_READY",
+    "Lifecycle command requires the latest ready review evidence",
+  );
+}
+
+export async function executeMemoryMatterLifecycleCommand(
+  store: MemoryMatterLifecycleStore,
+  input: Parameters<
+    import("../matter-lifecycle-contracts.js").MatterLifecycleRepository["executeMatterLifecycleCommand"]
+  >[0],
+  dependencies: MemoryMatterLifecycleDependencies,
+): ReturnType<
+  import("../matter-lifecycle-contracts.js").MatterLifecycleRepository["executeMatterLifecycleCommand"]
+> {
+  const matterIndex = store.matters.findIndex(
+    (candidate) => candidate.firmId === input.firmId && candidate.id === input.matterId,
+  );
+  if (matterIndex < 0) {
+    throw new MatterLifecycleCommandError(
+      "MATTER_LIFECYCLE_MATTER_NOT_FOUND",
+      "Matter was not found",
+    );
+  }
+  const actor = store.users.find(
+    (user) => user.firmId === input.firmId && user.id === input.executedByUserId,
+  );
+  if (!actor) throw new Error(`Unknown user ${input.executedByUserId}`);
+
+  const matter = store.matters[matterIndex];
+  const requiredStatus = matterLifecycleCommandRequiredStatus(input.command);
+  if (input.expectedStatus !== requiredStatus) {
+    throw commandStatusMismatch(
+      `Matter lifecycle command ${input.command} expected status must be ${requiredStatus}`,
+    );
+  }
+  if (matter.status !== input.expectedStatus) throw commandNotAvailable(input.command);
+
+  const latestForCommand = store.matterLifecycleTransitions
+    .filter(
+      (record) =>
+        record.firmId === input.firmId &&
+        record.matterId === input.matterId &&
+        record.transition === input.command,
+    )
+    .sort((left, right) => right.reviewedAt.localeCompare(left.reviewedAt))[0];
+  if (
+    !latestForCommand ||
+    latestForCommand.id !== input.transitionRecordId ||
+    latestForCommand.readiness !== "ready" ||
+    latestForCommand.currentStatus !== matter.status ||
+    latestForCommand.targetStatus !== matterLifecycleTargetStatus(input.command)
+  ) {
+    throw commandReadinessNotReady();
+  }
+
+  const lifecycleCommand = buildMatterLifecycleCommandExecution({
+    command: input.command,
+    matterId: input.matterId,
+    transitionRecordId: input.transitionRecordId,
+    beforeStatus: matter.status,
+    expectedStatus: input.expectedStatus,
+    reason: input.reason,
+    idempotencyKey: input.idempotencyKey,
+    executedAt: input.executedAt,
+    executedByUserId: input.executedByUserId,
+  });
+  store.matters = store.matters.map((candidate, index) =>
+    index === matterIndex ? { ...candidate, status: lifecycleCommand.afterStatus } : candidate,
+  );
+  await dependencies.appendAuditEvent({
+    id: input.auditEventId,
+    firmId: input.firmId,
+    actorId: input.executedByUserId,
+    action: "matter.lifecycle_command_executed",
+    resourceType: "matter",
+    resourceId: input.matterId,
+    occurredAt: input.executedAt,
+    metadata: buildMatterLifecycleCommandAuditMetadata(lifecycleCommand, {
+      reason: input.reason,
+      idempotencyKey: input.idempotencyKey,
+    }),
+  });
+
+  const matterSummary = (await dependencies.listMattersForUser(actor)).find(
+    (candidate) => candidate.id === input.matterId,
+  );
+  if (!matterSummary) throw new Error(`Updated matter ${input.matterId} was not visible`);
+  return { matter: matterSummary, lifecycleCommand };
 }
