@@ -87,13 +87,8 @@ function auditEventTouchesMatter(event: AuditEvent, matterId: string): boolean {
   );
 }
 
-function serializeMatterScopedAuditEvents(input: {
-  audit: Awaited<ReturnType<OpenPracticeRepository["listAuditEvents"]>>;
-  matterId: string;
-}) {
-  const events = input.audit.events.filter((event) =>
-    auditEventTouchesMatter(event, input.matterId),
-  );
+function serializeMatterScopedAuditEvents(input: { events: AuditEvent[]; matterId: string }) {
+  const events = input.events.filter((event) => auditEventTouchesMatter(event, input.matterId));
   return {
     generatedAt: new Date().toISOString(),
     scope: { kind: "matter", matterId: input.matterId },
@@ -138,7 +133,9 @@ export function registerAuditRoutes(
     if (!matterAccess.ok) throw matterAccess.error;
 
     return serializeMatterScopedAuditEvents({
-      audit: await options.repository.listAuditEvents(request.auth.firmId),
+      events: await options.repository.listFilteredAuditEvents(request.auth.firmId, {
+        matterId: query.matterId,
+      }),
       matterId: query.matterId,
     });
   });

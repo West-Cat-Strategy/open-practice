@@ -470,6 +470,13 @@
       "when": 1781568010000,
       "tag": "0066_trust_transfer_ledger_transaction_single_use",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1781568011000,
+      "tag": "0067_filtered_audit_read_indexes",
+      "breakpoints": true
     }
   ]
 }

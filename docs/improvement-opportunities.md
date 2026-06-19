@@ -40,6 +40,11 @@ The email outbox child-row bulk-read slice is implemented in
 batched for `/api/mail/outbox` and the outbound portion of `/api/communications/inbox` using
 optional repository `emailIds` filters while preserving route shape, authorization, redaction,
 provider, receipt, queue/retry, trust, and payment boundaries.
+The filtered audit repository read slice is implemented in
+`refactor/filtered-audit-repository-reads-20260619`: matter-scoped `/api/audit` reads and the Trust
+Controls `financialCommandJournal` use bounded audit repository reads while preserving response
+shape, authorization, redaction, full-chain verification posture, export/download full-log behavior,
+trust posting, and settlement boundaries.
 
 Future candidates should stay behavior-preserving unless promoted explicitly, and should compare
 against the shipped database-efficiency proofs before widening scope.
@@ -53,9 +58,6 @@ against the shipped database-efficiency proofs before widening scope.
 - **Operational views and report read models:** Consider durable read-model helpers for high-volume
   operational dashboards and report slices once the selected views are stable enough to justify
   pre-shaped query paths.
-- **Filtered audit reads:** Add firm/matter/resource filtered audit repository reads for dashboards
-  that need bounded audit activity, while preserving redaction and audit-chain verification
-  posture.
 
 ### Core-Suite Clio Parity Candidates - 2026-06-04
 
@@ -182,8 +184,8 @@ surface.
     recording, queue/retry behavior, live settlement, trust posting, schema, migration, or
     dependency change.
   - **Remaining database-efficiency follow-ups:** Inbound attachment/conversation aggregation,
-    client portal batch projections, operational-view read-model inputs, and filtered audit reads
-    remain separate candidates and should keep their own privacy and chain-validity proof.
+    client portal batch projections, and operational-view read-model inputs remain separate
+    candidates and should keep their own privacy and chain-validity proof.
 
 - **Inbound provider webhook intake boundary**
   - **Shipped slice:** The first Mailgun raw-MIME provider webhook validates the provider

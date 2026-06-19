@@ -102,8 +102,12 @@ describe("database schema hardening", () => {
       expect.arrayContaining(["firm_id", "sequence", "previous_hash", "hash"]),
     );
     expect(config.columns.find((column) => column.name === "sequence")?.notNull).toBe(true);
-    expect(config.indexes.map((index) => index.config.name)).toContain(
-      "audit_events_firm_sequence_idx",
+    expect(config.indexes.map((index) => index.config.name)).toEqual(
+      expect.arrayContaining([
+        "audit_events_firm_sequence_idx",
+        "audit_events_firm_action_sequence_idx",
+        "audit_events_firm_resource_sequence_idx",
+      ]),
     );
   });
 

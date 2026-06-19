@@ -5,6 +5,7 @@ import {
   ledgerAccountingReviewSummary,
   ledgerBankFeedReconciliationReviewSummary,
   buildFinancialCommandJournal,
+  financialCommandJournalActions,
   ledgerControlsDiagnostics,
   ledgerPostingRequestReviewSummary,
   ledgerReconciliationFreshnessReview,
@@ -56,9 +57,13 @@ export function registerLedgerReadRoutes(
     const ledger = await repository.getLedger(request.auth.firmId, query);
     const postingRequests = await repository.listLedgerPostingRequests(request.auth.firmId, query);
     const visibleTransactionIds = new Set(ledger.entries.map((entry) => entry.transactionId));
-    const [allApprovals, audit] = await Promise.all([
+    const [allApprovals, audit, financialCommandAuditEvents] = await Promise.all([
       repository.listLedgerTransactionApprovals(request.auth.firmId),
       repository.listAuditEvents(request.auth.firmId),
+      repository.listFilteredAuditEvents(request.auth.firmId, {
+        actions: financialCommandJournalActions,
+        ...(query.matterId ? { matterId: query.matterId } : {}),
+      }),
     ]);
     const approvals = allApprovals.filter((approval) =>
       visibleTransactionIds.has(approval.transactionId),
@@ -113,7 +118,10 @@ export function registerLedgerReadRoutes(
           diagnostics,
         }),
       },
-      financialCommandJournal: buildFinancialCommandJournal({ audit, matterId: query.matterId }),
+      financialCommandJournal: buildFinancialCommandJournal({
+        audit: { events: financialCommandAuditEvents, valid: audit.valid },
+        matterId: query.matterId,
+      }),
       trustControlPolicy: {
         automaticTrustPosting: false,
         transferRequestPosting: "requires_explicit_approval_and_manual_post",

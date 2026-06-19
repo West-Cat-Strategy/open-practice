@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { appendAuditEvent, type AuditEvent } from "./audit.js";
-import { buildFinancialCommandJournal } from "./financial-command-journal.js";
+import {
+  buildFinancialCommandJournal,
+  financialCommandJournalActions,
+} from "./financial-command-journal.js";
 
 function auditEvent(input: {
   id: string;
@@ -23,6 +26,19 @@ function auditEvent(input: {
 }
 
 describe("financial command journal", () => {
+  it("exports the audit actions used by the journal projection", () => {
+    expect(financialCommandJournalActions).toEqual([
+      "trust_transfer_request.approved",
+      "trust_transfer_request.rejected",
+      "trust_transfer_request.linked",
+      "ledger.transaction_approval.decided",
+      "invoice.approved",
+      "ledger.reconciliation.created",
+      "ledger.reconciliation_exception_resolution.recorded",
+      "manual_payment.reconciled",
+    ]);
+  });
+
   it("builds an ordered review-only projection from allowlisted audit metadata", () => {
     const journal = buildFinancialCommandJournal({
       audit: {
