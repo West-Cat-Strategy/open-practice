@@ -8,17 +8,17 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 ## At a Glance
 
-| Snapshot              | Value                                                                         |
-| --------------------- | ----------------------------------------------------------------------------- |
-| Current focus         | Database access hot-path efficiency branch implemented with green validation. |
-| Next recommended pick | Review and merge the focused database access efficiency branch.               |
-| Ready rows            | 0                                                                             |
-| Candidate rows        | 0                                                                             |
-| In progress rows      | 0                                                                             |
-| Review rows           | 0                                                                             |
-| Blocked rows          | 0                                                                             |
-| Archive               | Historical snapshots and proof live in [Archive](archive/README.md).          |
-| Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`              |
+| Snapshot              | Value                                                                  |
+| --------------------- | ---------------------------------------------------------------------- |
+| Current focus         | Database efficiency branches are being merged for mainline validation. |
+| Next recommended pick | Complete the email outbox efficiency merge, then run mainline proof.   |
+| Ready rows            | 0                                                                      |
+| Candidate rows        | 0                                                                      |
+| In progress rows      | 0                                                                      |
+| Review rows           | 0                                                                      |
+| Blocked rows          | 0                                                                      |
+| Archive               | Historical snapshots and proof live in [Archive](archive/README.md).   |
+| Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`       |
 
 ## Current Handoff Notes
 
@@ -31,6 +31,14 @@ selected-parent invoice/payment child-row loading, deduped payment allocation in
 SQL pushdowns for simple billing/signature filters, and matter-workspace per-matter grouping. Proof
 is recorded in
 [database access hot-path efficiency proof](validation/OP_DATABASE_ACCESS_HOT_PATH_EFFICIENCY_PROOF_2026-06-18.md).
+
+The 2026-06-18 `refactor/contact-list-efficiency` branch is the second-wave database efficiency
+slice for lightweight contact list reads. It keeps `/api/contacts` response shape, authorization,
+search, sort, pagination, redaction posture, and dossier/detail/history/export behavior unchanged
+while making `listDrizzleContactsForUser` avoid full contact dossier construction. Firm-wide
+contact readers query contacts directly; matter-scoped users derive visible contact IDs from
+assigned-matter parties plus standalone contacts they created. Proof is recorded in
+[contact list database efficiency proof](validation/OP_CONTACT_LIST_DATABASE_EFFICIENCY_PROOF_2026-06-18.md).
 
 The 2026-06-17 all-active-lanes integration branch
 `merge/open-practice-active-lanes-2026-06-17` merged the 13 committed dirty lanes plus the clean

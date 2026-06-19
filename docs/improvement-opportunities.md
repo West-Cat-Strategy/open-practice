@@ -29,14 +29,16 @@ workflow/activity history surface.
 
 ### Database Access Efficiency Follow-Ups - 2026-06-18
 
-The 2026-06-18 hot-path efficiency branch intentionally keeps its first slice to indexes, batched
+The 2026-06-18 hot-path efficiency branch shipped the first database-access slice: indexes, batched
 Drizzle repository reads, selected-parent child-row loading, simple SQL filter pushdowns, and
-matter-workspace grouping. Future candidates should stay behavior-preserving unless promoted
-explicitly, and should compare against that proof before widening scope.
+matter-workspace grouping. The contact list/dossier split candidate is also implemented in the
+`refactor/contact-list-efficiency` branch: the Drizzle `/api/contacts` list path now avoids full
+dossier hydration while preserving public response shape, search/sort/pagination compatibility,
+matter-scoped access, standalone creator visibility, and dossier/detail/history/export behavior.
 
-- **Contact visibility and dossier split:** Separate contact-list visibility from deeper
-  matter-linked dossier hydration so general contact screens avoid loading matter-local private
-  relationship/detail rows unnecessarily.
+Future candidates should stay behavior-preserving unless promoted explicitly, and should compare
+against the shipped database-efficiency proofs before widening scope.
+
 - **Client portal batch projection:** Build a portal-facing batch projection for existing
   client-visible grants, actions, documents, billing cues, and messages while preserving current
   client/matter visibility gates.
