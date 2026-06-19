@@ -21,6 +21,10 @@ Open Practice has a small validation control plane that should stay boring and e
 - `pnpm verify:select -- --files <paths...>` prints recommended commands for a change set and never runs them.
 - `pnpm verify:run -- --files <paths...>` runs selector-selected commands and writes ignored
   command logs under `.tmp/validation-runs/<timestamp>/`.
+- `pnpm verify:select -- --base-plus-dirty <ref>` unions a branch diff with staged, unstaged, and
+  untracked files for final integration handoff selection.
+- `pnpm proof:reconcile -- --proof <path> ...` checks proof-note final paths, selector output,
+  selected commands, skipped-check reasons, and synthetic/privacy wording against a selector input.
 - `pnpm docs:check` validates local Markdown links.
 - `pnpm policy:check` runs the combined local policy/integrity gate: tracked-secret scan, package
   manifest policy, lockfile supply-chain policy, toolchain alignment, env-surface drift,
@@ -50,6 +54,10 @@ Open Practice has a small validation control plane that should stay boring and e
 - `pnpm release:local` runs dependency audits plus the full local gate.
 - `pnpm release:attest` is an optional local Cosign wrapper for explicit artifacts and keys; it does
   not upload to a transparency log by default.
+- `pnpm dev:doctor` is a read-only local preflight for Node, pnpm, Docker, Compose config, default
+  loopback ports, Playwright browser cache, and host-local PostgreSQL encryption-key readiness.
+- `pnpm dev:infra`, `pnpm dev:stack`, `pnpm dev:ps`, `pnpm dev:logs`, `pnpm dev:reset`, and
+  `pnpm dev:seed` wrap common local Compose and synthetic seed-data workflows.
 
 When adding a new package, app, route family, or docs category, update
 [Testing](../testing/TESTING.md) and `scripts/select-validation.mjs` together.

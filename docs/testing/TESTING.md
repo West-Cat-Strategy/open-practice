@@ -24,7 +24,9 @@ API contracts, database schema changes, auth changes, or release handoff.
 | Env surface policy     | `pnpm env:check`                                 | Compares runtime environment names against `.env.example` plus the repo-owned allowlist in `scripts/check-env-surface.mjs`.                                                                                           |
 | Selective validation   | `pnpm verify:select -- --base <git-ref>`         | Prints recommended commands for changed files without running them.                                                                                                                                                   |
 | Selected validation    | `pnpm verify:run -- --files <paths...>`          | Runs selector-chosen commands and writes ignored command logs under `.tmp/validation-runs/<timestamp>/`.                                                                                                              |
+| Final-path selection   | `pnpm verify:select -- --base-plus-dirty <ref>`  | Prints one deterministic command set for a branch diff plus staged, unstaged, and untracked files.                                                                                                                    |
 | Dirty-tree selection   | `pnpm verify:select -- --dirty`                  | Prints recommended commands for staged, unstaged, and untracked working-tree files.                                                                                                                                   |
+| Proof reconciliation   | `pnpm proof:reconcile -- --proof <path> ...`     | Checks proof-note final paths, selector output, selected commands, skipped-check reasons, and synthetic/privacy wording against a selector input mode.                                                                |
 | API contract inventory | `pnpm api:contract`                              | Generates an ignored OpenAPI route/auth inventory from the route authorization manifest under `.tmp/api-contract/openapi.json`.                                                                                       |
 | Architecture check     | `pnpm architecture:check`                        | Checks workspace import direction against the repository guide. Use `pnpm architecture:graph` for an ignored DOT graph artifact.                                                                                      |
 | Formatting             | `pnpm format:check`                              | Required before handoff.                                                                                                                                                                                              |
@@ -68,6 +70,19 @@ Inspect the current dirty working tree, including staged, unstaged, and untracke
 pnpm verify:select -- --dirty
 ```
 
+Inspect the final handoff path set for an integration branch with both committed and local dirty
+work:
+
+```bash
+pnpm verify:select -- --base-plus-dirty origin/main
+```
+
+After writing a proof note, reconcile it against the same path mode before handoff:
+
+```bash
+pnpm proof:reconcile -- --proof docs/validation/EXAMPLE_PROOF.md --base-plus-dirty origin/main
+```
+
 Add `--strict` to any selector mode when you want unmapped paths to fail instead of printing no
 commands for those paths:
 
@@ -91,11 +106,14 @@ Selection rules:
 | Security review tooling and secret scanners      | `pnpm security:review`, `pnpm security:secrets-history`, `pnpm policy:check`, `pnpm test`                                                                                                                                                                                                  |
 | API contract or route auth manifest tooling      | `pnpm api:contract`, `pnpm policy:check`, `pnpm test`                                                                                                                                                                                                                                      |
 | Semgrep privacy-rule config                      | `pnpm security:privacy-rules`, `pnpm policy:check`, `pnpm test`                                                                                                                                                                                                                            |
+| Top-level maintenance docs/ignore files          | `pnpm format:check`, `pnpm docs:check`, `pnpm policy:check`                                                                                                                                                                                                                                |
 | Runtime config, Dockerfiles, or Compose          | `pnpm docker:lint`, `pnpm docker:residual-watch`, `pnpm e2e:docker`, `pnpm format:check`, `pnpm docs:check`, `pnpm policy:check`, `pnpm build`; add `pnpm docker:app-smoke` and `pnpm docker:scan` when app images, commands, or Compose runtime behavior change                           |
 | Root config, local gate, Turbo, TS config        | `pnpm ci:local`                                                                                                                                                                                                                                                                            |
 | Package manifests or lockfile                    | `pnpm ci:local`, `pnpm deps:audit`, `pnpm deps:licenses`, `pnpm deps:supply-chain`, `pnpm deps:osv`, `pnpm license:scan`                                                                                                                                                                   |
 
-Output is deterministic, de-duplicated, and one command per line after a short header.
+Output is deterministic, de-duplicated, and one command per line after a short header. Domain source
+changes include the domain build before downstream package checks so fresh worktrees hydrate shared
+package output before API, provider, worker, or web validation.
 
 `pnpm policy:check` includes `scripts/validate-package-manifests.mjs`, which blocks dependency,
 development dependency, optional dependency, or peer dependency ranges set to `latest` in repo

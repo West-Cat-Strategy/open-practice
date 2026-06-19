@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 
 import {
   COMMANDS,
+  changedFilesFromBasePlusDirty,
   changedFilesFromDirty,
   normalizePath,
   normalizePaths,
@@ -35,7 +36,15 @@ describe("select-validation contract", () => {
     );
   });
 
-  it("preserves legacy unknown-path behavior unless strict mode is requested", () => {
+  it("routes top-level maintenance files through docs and policy checks", () => {
+    assert.deepEqual(selectCommands(["README.md", "CONTRIBUTING.md", ".gitignore"]), [
+      COMMANDS.formatCheck,
+      COMMANDS.docsCheck,
+      COMMANDS.policyCheck,
+    ]);
+  });
+
+  it("preserves unknown-path behavior unless strict mode is requested", () => {
     assert.deepEqual(selectCommands(["notes/random.txt"]), []);
     assert.throws(
       () => selectCommands(["notes/random.txt"], { strict: true }),
@@ -72,6 +81,17 @@ describe("select-validation contract", () => {
       COMMANDS.domainTest,
       COMMANDS.domainTypecheck,
       COMMANDS.domainBuild,
+    ]);
+  });
+
+  it("routes domain source changes through domain build before downstream checks", () => {
+    assert.deepEqual(selectCommands(["packages/domain/src/index.ts"]), [
+      COMMANDS.domainTest,
+      COMMANDS.domainTypecheck,
+      COMMANDS.domainBuild,
+      COMMANDS.apiTest,
+      COMMANDS.providersTest,
+      COMMANDS.workerTest,
     ]);
   });
 
@@ -178,6 +198,15 @@ describe("select-validation contract", () => {
     });
   });
 
+  it("parses base-plus-dirty mode", () => {
+    assert.deepEqual(parseArgs(["--base-plus-dirty", "origin/main"]), {
+      mode: "base-plus-dirty",
+      base: "origin/main",
+      files: null,
+      strict: false,
+    });
+  });
+
   it("selects commands from staged, unstaged, and untracked dirty files", () => {
     const exec = (_command, args) => {
       const key = args.join(" ");
@@ -201,6 +230,36 @@ describe("select-validation contract", () => {
       COMMANDS.webTest,
       COMMANDS.webTypecheck,
       COMMANDS.build,
+    ]);
+  });
+
+  it("selects commands from base diff plus staged, unstaged, and untracked files", () => {
+    const exec = (_command, args) => {
+      const key = args.join(" ");
+      if (key === "diff --name-only origin/main...HEAD") return "packages/domain/src/index.ts\n";
+      if (key === "diff --name-only") return "scripts/select-validation.mjs\n";
+      if (key === "diff --name-only --cached") return "docs/testing/TESTING.md\n";
+      if (key === "ls-files --others --exclude-standard") return "README.md\n";
+      throw new Error(`unexpected git args: ${key}`);
+    };
+
+    assert.deepEqual(changedFilesFromBasePlusDirty("origin/main", exec), [
+      "packages/domain/src/index.ts",
+      "scripts/select-validation.mjs",
+      "docs/testing/TESTING.md",
+      "README.md",
+    ]);
+    assert.deepEqual(runSelector(["--base-plus-dirty", "origin/main"], { cwd: "/repo", exec }), [
+      COMMANDS.formatCheck,
+      COMMANDS.docsCheck,
+      COMMANDS.policyCheck,
+      COMMANDS.test,
+      COMMANDS.domainTest,
+      COMMANDS.domainTypecheck,
+      COMMANDS.domainBuild,
+      COMMANDS.apiTest,
+      COMMANDS.providersTest,
+      COMMANDS.workerTest,
     ]);
   });
 });

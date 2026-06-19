@@ -21,11 +21,17 @@ Use this guide for local runtime setup. Use [Repository Guide](repo-guide.md) fo
 
 ```bash
 pnpm install
+pnpm dev:doctor
 docker compose up -d
 ```
 
 Access the application at `http://localhost:33000`. The stack is fully containerized and coordinates
 automatically. The default Compose ports bind to loopback only.
+
+`pnpm dev:doctor` is read-only. It checks Node and pnpm versions, Docker daemon access,
+`docker compose config`, default loopback port availability, Playwright browser cache presence, and
+host-local PostgreSQL encryption-key readiness. If browser checks are needed on a fresh machine, run
+`pnpm exec playwright install chromium` before the E2E lane.
 
 To validate the built API, Web, and Worker images before leaving the local dev stack running:
 
@@ -54,7 +60,7 @@ local Compose profile as a production deployment profile.
 If you prefer to run services locally for development:
 
 ```bash
-docker compose up -d postgres redis minio mailpit
+pnpm dev:infra
 pnpm dev
 ```
 
@@ -65,13 +71,32 @@ pnpm --filter @open-practice/api dev
 pnpm --filter @open-practice/web dev
 ```
 
+For the default Compose app stack and local recovery:
+
+```bash
+pnpm dev:stack
+pnpm dev:ps
+pnpm dev:logs -- api
+pnpm dev:reset
+```
+
+`pnpm dev:reset` stops containers and removes orphans without deleting named volumes. Volume deletion
+is intentionally opt-in and requires `pnpm dev:reset -- --volumes --yes`; use it only when the local
+PostgreSQL or MinIO state should be discarded. To seed an already migrated local PostgreSQL database
+with existing synthetic sample data, run:
+
+```bash
+DATABASE_URL=postgres://open_practice:open_practice@127.0.0.1:35432/open_practice pnpm dev:seed
+```
+
 ## Runtime Modes
 
 - API defaults to `API_PORT=34000` for host-local development; the Compose API container still listens on `4000`.
 - Web defaults to `WEB_PORT=33000` for host-local development; the Compose web container still listens on `3000`.
 - PostgreSQL is selected when `DATABASE_URL` is set.
 - In-memory persistence is available through `OPEN_PRACTICE_USE_MEMORY_REPO=true` or when no database URL is provided.
-- Development seed data is enabled with `OPEN_PRACTICE_DEV_SEED=true`.
+- Development seed data is enabled with `OPEN_PRACTICE_DEV_SEED=true` during API startup or by
+  running `pnpm dev:seed` explicitly against a local PostgreSQL `DATABASE_URL`.
 - Empty firm/user state exposes first-run setup. Non-production setup requests are limited to
   loopback or the explicit local Docker bridge allowance; production setup is keyless but should be
   completed from an operator-local loopback request before public exposure.
