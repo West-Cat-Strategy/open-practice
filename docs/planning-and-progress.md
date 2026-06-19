@@ -80,6 +80,17 @@ server-side authorization, settlement/trust behavior, provider/worker behavior, 
 proof data. Proof is recorded in
 [staff UI/UX page overhaul proof](validation/OP_STAFF_UI_UX_PAGE_OVERHAUL_PROOF_2026-06-19.md).
 
+The 2026-06-19 `refactor/ui-overlap-resilience-20260619` branch hardens the first-matter
+zero-matter workspace against overlapping labels, inputs, sidecar detail cells, segmented controls,
+and submit/status rows at constrained widths. It adds first-matter selectors to the existing UI/UX
+overflow and collision E2E helpers plus matterless breakpoint coverage for `/?section=matters` at
+`1100`, `760`, `720`, and `520` pixel widths. It preserves API payloads, authorization, matter
+creation semantics, setup behavior, provider behavior, payment settlement, trust posting, and public
+data boundaries. Proof is recorded in
+[UI overlap resilience proof](validation/OP_UI_OVERLAP_RESILIENCE_PROOF_2026-06-19.md), including
+the current host Firefox/WebKit browser-install blocker and Docker Redis port conflict with the
+separate `open-practice-dev` stack.
+
 The 2026-06-18 database access hot-path efficiency branch
 `refactor/db-access-hot-path-efficiency` adds focused internal query/index improvements without
 changing HTTP response shapes, permissions, payment settlement behavior, trust posting behavior,

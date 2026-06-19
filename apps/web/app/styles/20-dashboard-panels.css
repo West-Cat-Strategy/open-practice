@@ -135,19 +135,38 @@
 .first-matter-panel {
   display: grid;
   gap: 16px;
+  min-width: 0;
 }
 
 .first-matter-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(240px, 0.42fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.42fr);
   gap: 16px;
   align-items: start;
+  min-width: 0;
+}
+
+.first-matter-header {
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.first-matter-header > div {
+  min-width: min(100%, 18rem);
+}
+
+.first-matter-header .status-chip {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  text-align: center;
+  white-space: normal;
 }
 
 .first-matter-form-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
   gap: 12px;
+  min-width: 0;
 }
 
 .first-matter-form-grid label,
@@ -157,20 +176,30 @@
 }
 
 .first-matter-kind-field {
+  display: grid;
+  gap: 6px;
   border: 0;
   padding: 0;
   margin: 0;
 }
 
+.first-matter-form-grid label {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+}
+
 .first-matter-input {
   width: 100%;
   max-width: none;
+  min-width: 0;
 }
 
 .segmented-control {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   min-height: 36px;
+  min-width: 0;
   border: 1px solid var(--line);
   border-radius: 8px;
   overflow: hidden;
@@ -183,6 +212,12 @@
   background: transparent;
   color: var(--muted);
   font-weight: 700;
+  line-height: 1.2;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  padding: 8px 10px;
+  text-align: center;
+  white-space: normal;
 }
 
 .segmented-control button:last-child {
@@ -198,13 +233,29 @@
 .first-matter-controls {
   display: grid;
   gap: 12px;
+  min-width: 0;
+}
+
+.first-matter-controls .compact-detail-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 8.5rem), 1fr));
+  margin-bottom: 0;
+}
+
+.first-matter-controls .compact-detail-grid strong {
+  overflow-wrap: anywhere;
 }
 
 .first-matter-submit {
   display: inline-flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
+  justify-content: center;
+  line-height: 1.2;
+  min-width: 0;
+  padding: 10px 12px;
   width: 100%;
+  white-space: normal;
 }
 
 .matter-context-panel .panel-header {
