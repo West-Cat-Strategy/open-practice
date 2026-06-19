@@ -2,12 +2,10 @@ import type { FastifyInstance } from "fastify";
 import {
   type CalendarEventRecord,
   type CalendarGuestLinkRecord,
-  canShareDocumentThroughPortal,
   type ConversationThreadRecord,
   type DocumentRecord,
   type EmailOutboxRecord,
   type EmailReceiptTokenRecord,
-  type ExternalUploadLinkRecord,
   type HostedPaymentRequestRecord,
   type IntakeFormItemActionRecord,
   type IntakeFormLinkRecord,
@@ -18,7 +16,6 @@ import {
   type SignatureProviderStatus,
   type SignatureRequestRecord,
   type SignatureRequestSignerRecord,
-  type ShareLinkRecord,
   type User,
 } from "@open-practice/domain";
 import { ApiHttpError } from "../../http/response.js";
@@ -168,6 +165,29 @@ interface ClientPortalBillingWorkspace {
   matterBills: ClientPortalMatterBillingGroup[];
 }
 
+interface ClientPortalPrincipalFilter {
+  contactIds: Set<string>;
+  grantIds: Set<string>;
+  userEmail: string;
+  userId: string;
+  visibleDocumentIds: Set<string>;
+}
+
+function buildPortalPrincipalFilter(input: {
+  grants: PortalGrant[];
+  contactIds: Set<string>;
+  user: User;
+  visibleDocuments: ClientPortalDocumentSummary[];
+}): ClientPortalPrincipalFilter {
+  return {
+    contactIds: new Set(input.contactIds),
+    grantIds: new Set(input.grants.map((grant) => grant.id)),
+    userEmail: normalizedEmail(input.user.email),
+    userId: input.user.id,
+    visibleDocumentIds: new Set(input.visibleDocuments.map((document) => document.id)),
+  };
+}
+
 function expiredAt(value: string | undefined, now: string): boolean {
   return Boolean(value && Date.parse(value) <= Date.parse(now));
 }
@@ -187,19 +207,6 @@ function receiptStatus(token: EmailReceiptTokenRecord, now: string): string {
   if (token.recordedAt) return "recorded";
   if (expiredAt(token.expiresAt, now)) return "expired";
   return "open";
-}
-
-function shareLinkStatus(link: ShareLinkRecord, now: string): string {
-  if (link.revokedAt) return "revoked";
-  if (expiredAt(link.expiresAt, now)) return "expired";
-  return "active";
-}
-
-function externalUploadLinkStatus(link: ExternalUploadLinkRecord, now: string): string {
-  if (link.revokedAt) return "revoked";
-  if (expiredAt(link.expiresAt, now)) return "expired";
-  if (link.usedUploads >= link.maxUploads) return "upload_limit_reached";
-  return "active";
 }
 
 function guestLinkStatus(link: CalendarGuestLinkRecord, now: string): string {
@@ -332,99 +339,23 @@ function clientUpdateActions(input: {
   });
 }
 
-function secureShareActions(input: {
-  shares: ShareLinkRecord[];
-  documents: DocumentRecord[];
-  grants: PortalGrant[];
-  now: string;
-}): ClientPortalActionSummary[] {
-  return input.shares.map((share) => {
-    const status = shareLinkStatus(share, input.now);
-    const shareableDocumentCount = input.documents.filter((document) =>
-      input.grants.some((grant) =>
-        canShareDocumentThroughPortal({ document, grant, now: input.now }),
-      ),
-    ).length;
-    return {
-      id: `secure-share:${share.id}`,
-      family: "secure_share",
-      matterId: share.matterId,
-      title: status === "active" ? "Secure document share active" : "Secure share status",
-      detail:
-        status === "active"
-          ? `${shareableDocumentCount} reviewed document${
-              shareableDocumentCount === 1 ? "" : "s"
-            } are available through staff-controlled sharing.`
-          : `This secure share is ${status}.`,
-      status,
-      tone: status === "active" ? "ready" : "neutral",
-      updatedAt: share.revokedAt ?? share.createdAt,
-      details: [
-        { label: "Documents", value: String(shareableDocumentCount) },
-        {
-          label: "Email check",
-          value: share.requireEmailVerification ? "required" : "not required",
-        },
-      ],
-    };
-  });
-}
-
-function externalUploadActions(input: {
-  links: ExternalUploadLinkRecord[];
-  documents: DocumentRecord[];
-  now: string;
-}): ClientPortalActionSummary[] {
-  return input.links.map((link) => {
-    const status = externalUploadLinkStatus(link, input.now);
-    const uploadedDocuments = input.documents.filter(
-      (document) => document.externalUploadLinkId === link.id,
-    );
-    const retryDocuments = uploadedDocuments.filter(
-      (document) =>
-        document.reviewStatus === "retry_requested" || document.reviewDecision === "request_retry",
-    );
-    const remainingUploads = Math.max(0, link.maxUploads - link.usedUploads);
-    const hasRetry = retryDocuments.length > 0;
-    return {
-      id: `external-upload:${link.id}`,
-      family: "external_upload",
-      matterId: link.matterId,
-      title:
-        status === "active"
-          ? hasRetry
-            ? "Upload retry requested"
-            : "Upload requested documents"
-          : "External upload status",
-      detail: hasRetry
-        ? `${retryDocuments.length} uploaded document${
-            retryDocuments.length === 1 ? "" : "s"
-          } need retry review.`
-        : `${remainingUploads} upload${remainingUploads === 1 ? "" : "s"} remain for this request.`,
-      status: hasRetry ? "retry_requested" : status,
-      tone: status === "active" && (remainingUploads > 0 || hasRetry) ? "risk" : "neutral",
-      updatedAt: link.revokedAt ?? link.createdAt,
-      details: [
-        { label: "Uploaded", value: String(link.usedUploads) },
-        {
-          label: "Remaining",
-          value: String(remainingUploads),
-          tone: remainingUploads > 0 ? "risk" : "neutral",
-        },
-        { label: "Reviewed", value: String(uploadedDocuments.length) },
-      ],
-    };
-  });
-}
-
 function guestSessionActions(input: {
   guestLinks: CalendarGuestLinkRecord[];
   events: CalendarEventRecord[];
+  principal: ClientPortalPrincipalFilter;
   now: string;
 }): ClientPortalActionSummary[] {
   const eventsById = new Map(input.events.map((event) => [event.id, event]));
-  return input.guestLinks.map((link) => {
+  return input.guestLinks.flatMap((link) => {
     const event = eventsById.get(link.eventId);
+    const eventTargetsCurrentPortalUser = Boolean(
+      event &&
+      ((event.clientContactId && input.principal.contactIds.has(event.clientContactId)) ||
+        event.attendees?.some(
+          (attendee) => normalizedEmail(attendee.email) === input.principal.userEmail,
+        )),
+    );
+    if (!eventTargetsCurrentPortalUser) return [];
     const status = guestLinkStatus(link, input.now);
     return {
       id: `guest-session:${link.id}`,
@@ -445,9 +376,15 @@ function guestSessionActions(input: {
   });
 }
 
-function conversationActions(threads: ConversationThreadRecord[]): ClientPortalActionSummary[] {
-  const visibleThreads = threads.filter(
-    (thread) => thread.status !== "revoked" && !thread.accessRevokedAt,
+function conversationActions(input: {
+  threads: ConversationThreadRecord[];
+  visibleThreadIds: Set<string>;
+}): ClientPortalActionSummary[] {
+  const visibleThreads = input.threads.filter(
+    (thread) =>
+      input.visibleThreadIds.has(thread.id) &&
+      thread.status !== "revoked" &&
+      !thread.accessRevokedAt,
   );
   const openThreads = visibleThreads.filter((thread) => thread.status === "open");
   if (visibleThreads.length === 0) return [];
@@ -809,12 +746,11 @@ async function buildWorkspace(
       itemActions,
       receiptTokens,
       emails,
-      shareLinks,
-      externalUploadLinks,
       documents,
       guestLinks,
       calendarEvents,
       conversationThreads,
+      conversationNotifications,
       invoices,
       paymentRequests,
       portalDocumentAccess,
@@ -824,12 +760,14 @@ async function buildWorkspace(
       repository.listIntakeFormItemActions(user.firmId, {}),
       repository.listEmailReceiptTokens(user.firmId, { matterId: matter.id }),
       repository.listEmailOutbox(user.firmId, { matterId: matter.id, limit: 100 }),
-      repository.listShareLinks(user.firmId, { matterId: matter.id }),
-      repository.listExternalUploadLinks(user.firmId, { matterId: matter.id }),
       repository.listMatterDocuments(user.firmId, matter.id),
       repository.listCalendarGuestLinks(user.firmId, { matterId: matter.id }),
       repository.listCalendarEvents(user.firmId, { matterId: matter.id }),
       repository.listConversationThreads(user.firmId, { matterId: matter.id }),
+      repository.listConversationMessageNotifications(user.firmId, {
+        matterId: matter.id,
+        recipientUserId: user.id,
+      }),
       repository.listInvoices(user.firmId, { matterId: matter.id }),
       repository.listHostedPaymentRequests(user.firmId, { matterId: matter.id }),
       repository.listPortalDocumentAccess(user.firmId, { matterId: matter.id }),
@@ -848,6 +786,17 @@ async function buildWorkspace(
       new Map(clientDocuments.map((document) => [document.id, document])).values(),
     );
     documentsByMatterId.set(matter.id, dedupedClientDocuments);
+    const portalPrincipal = buildPortalPrincipalFilter({
+      grants: matterGrants,
+      contactIds,
+      user,
+      visibleDocuments: dedupedClientDocuments,
+    });
+    const visibleConversationThreadIds = new Set(
+      conversationNotifications
+        .filter((notification) => notification.recipientUserId === portalPrincipal.userId)
+        .map((notification) => notification.threadId),
+    );
 
     const clientSignatures = hasPortalPermission(matterGrants, "sign")
       ? (
@@ -881,16 +830,18 @@ async function buildWorkspace(
     signaturesByMatterId.set(matter.id, clientSignatures);
 
     const matterActions = sortActions([
-      ...(hasPortalPermission(matterGrants, "view_documents")
-        ? secureShareActions({ shares: shareLinks, documents, grants: matterGrants, now })
-        : []),
-      ...(hasPortalPermission(matterGrants, "upload_documents")
-        ? externalUploadActions({ links: externalUploadLinks, documents, now })
-        : []),
       ...(hasPortalPermission(matterGrants, "message")
         ? [
-            ...guestSessionActions({ guestLinks, events: calendarEvents, now }),
-            ...conversationActions(conversationThreads),
+            ...guestSessionActions({
+              guestLinks,
+              events: calendarEvents,
+              principal: portalPrincipal,
+              now,
+            }),
+            ...conversationActions({
+              threads: conversationThreads,
+              visibleThreadIds: visibleConversationThreadIds,
+            }),
           ]
         : []),
       ...Array.from(contactIds).flatMap((contactId) =>

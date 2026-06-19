@@ -6,7 +6,6 @@ import {
   publicTokenHeaders,
   publicTokenNetworkErrorMessage,
   readPublicTokenError,
-  scrubLegacyPublicTokenPath,
 } from "../publicTokenClient";
 import { PublicTokenNeedsAttention } from "../publicTokenActions";
 import { PublicStatusMessage, PublicTokenShell } from "../publicTokenUi";
@@ -52,10 +51,6 @@ export default function ExternalUploadRunner({ apiBaseUrl, token }: ExternalUplo
   const [completedDocument, setCompletedDocument] = useState<PublicExternalUploadDocument | null>(
     null,
   );
-
-  useEffect(() => {
-    scrubLegacyPublicTokenPath("/external-uploads", token);
-  }, [token]);
 
   useEffect(() => {
     let cancelled = false;

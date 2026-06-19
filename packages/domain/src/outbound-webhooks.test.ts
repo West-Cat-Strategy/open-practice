@@ -54,7 +54,12 @@ describe("outbound webhook guardrails", () => {
     expect(isDeniedOutboundWebhookAddress("::ffff:7f00:1")).toBe(true);
     expect(isDeniedOutboundWebhookAddress("::ffff:0a00:5")).toBe(true);
     expect(isDeniedOutboundWebhookAddress("::ffff:c0a8:10")).toBe(true);
+    expect(isDeniedOutboundWebhookAddress("64:ff9b::0a00:0005")).toBe(true);
+    expect(isDeniedOutboundWebhookAddress("64:ff9b::10.0.0.5")).toBe(true);
+    expect(isDeniedOutboundWebhookAddress("[64:ff9b:1:0a00:0005::]")).toBe(true);
+    expect(isDeniedOutboundWebhookAddress("fec0::1")).toBe(true);
     expect(isDeniedOutboundWebhookAddress("203.0.113.10")).toBe(false);
+    expect(isDeniedOutboundWebhookAddress("64:ff9b::cb00:710a")).toBe(false);
   });
 
   it("builds provider-neutral signing metadata without exposing a secret value", () => {

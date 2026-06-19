@@ -1823,7 +1823,33 @@ describe("inbound email routes", () => {
     });
   });
 
-  it("allows authorized staff to triage-route unscoped inbound email to an accessible matter", async () => {
+  it("denies matter-scoped staff claiming a known unscoped inbound email into their matter", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createInboundEmailMessage(
+      message({
+        id: "inbound-message-unscoped",
+        matterId: undefined,
+        addressId: undefined,
+        status: "triage_pending",
+      }),
+    );
+
+    const response = await testServer(repository, user("licensee", ["matter-001"])).inject({
+      method: "PATCH",
+      url: "/api/communications/inbox/inbound-email/inbound-message-unscoped",
+      payload: {
+        matterId: "matter-001",
+        status: "triaged",
+      },
+    });
+
+    expect(response.statusCode).toBe(403);
+    await expect(
+      repository.getInboundEmailMessage(firmId, "inbound-message-unscoped"),
+    ).resolves.toMatchObject({ matterId: undefined, status: "triage_pending" });
+  });
+
+  it("allows owner/admin staff to triage-route unscoped inbound email to an accessible matter", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     await repository.createInboundEmailMessage(
       message({
@@ -1835,7 +1861,7 @@ describe("inbound email routes", () => {
       }),
     );
 
-    const response = await testServer(repository, user("licensee", ["matter-001"])).inject({
+    const response = await testServer(repository).inject({
       method: "PATCH",
       url: "/api/communications/inbox/inbound-email/inbound-message-unscoped",
       payload: {
@@ -1875,7 +1901,7 @@ describe("inbound email routes", () => {
             consentStatus: "consented",
             dueAt: "2026-04-30T18:00:00.000Z",
           },
-          updatedByUserId: "user-licensee",
+          updatedByUserId: "user-admin",
         },
       },
     });
@@ -1884,7 +1910,7 @@ describe("inbound email routes", () => {
     expect(updated?.metadata.staffTriage).toMatchObject({
       privateNotes: [
         expect.objectContaining({
-          authorUserId: "user-licensee",
+          authorUserId: "user-admin",
           text: "Internal call-back context stays staff-only.",
         }),
       ],

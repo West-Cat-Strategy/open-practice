@@ -16,7 +16,6 @@ import {
   publicTokenHeaders,
   publicTokenNetworkErrorMessage,
   readPublicTokenError,
-  scrubLegacyPublicTokenPath,
 } from "../publicTokenClient";
 import { PublicStatusMessage, PublicTokenShell } from "../publicTokenUi";
 import { PublicTokenNeedsAttention } from "../publicTokenActions";
@@ -33,10 +32,6 @@ export default function ShareLinkRunner({ apiBaseUrl, token }: ShareLinkRunnerPr
   const [verificationCode, setVerificationCode] = useState("");
   const [verifying, setVerifying] = useState(false);
   const attentionItems = shareLinkAttentionItems({ payload, verificationRequired });
-
-  useEffect(() => {
-    scrubLegacyPublicTokenPath("/share-links", token);
-  }, [token]);
 
   useEffect(() => {
     let cancelled = false;

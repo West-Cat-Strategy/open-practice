@@ -10,8 +10,8 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 | Snapshot              | Value                                                                |
 | --------------------- | -------------------------------------------------------------------- |
-| Current focus         | Database efficiency merge/push/prune closeout complete.              |
-| Next recommended pick | Start the next scoped branch from refreshed `main`.                  |
+| Current focus         | Security scan `e680c230` remediation is ready for review.            |
+| Next recommended pick | Review remediation proof; rerun live Postgres replay when available. |
 | Ready rows            | 0                                                                    |
 | Candidate rows        | 0                                                                    |
 | In progress rows      | 0                                                                    |
@@ -21,6 +21,18 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 | Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`     |
 
 ## Current Handoff Notes
+
+The 2026-06-19 `security/e680c230-remediation-20260619` branch remediates all ten findings from
+`/tmp/codex-security-scans/open-practice/e680c230_20260619T050725Z/report.md` in the sibling
+worktree `/Users/bryan/projects/open-practice-security-e680c230-remediation`. It tightens unscoped
+inbound-email assignment authorization, external-upload pending-intent capacity checks, portal
+workspace principal filtering, outbound webhook NAT64/site-local IPv6 denial, trust-transfer
+ledger-link uniqueness, and Nodemailer SMTP hardening, then removes the four legacy public
+path-token pages while keeping hash-token entry pages. Proof is recorded in
+[security scan remediation proof](validation/OP_SECURITY_SCAN_REMEDIATION_PROOF_2026-06-19.md).
+The live Postgres migration replay is environment-blocked until local Docker/Postgres is available;
+`db:check`, `migrations:check`, schema assertions, memory repository coverage, and API conflict
+coverage are green.
 
 The 2026-06-18 database access hot-path efficiency branch
 `refactor/db-access-hot-path-efficiency` adds focused internal query/index improvements without

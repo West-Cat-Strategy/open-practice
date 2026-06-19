@@ -74,6 +74,36 @@ describe("repository ledger approvals and reconciliations", () => {
       ledgerTransactionId: "trust-transfer-posting",
       evidence: { linked: true },
     });
+
+    await repository.createTrustTransferRequest({
+      id: "trust-transfer-request-duplicate-ledger",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      clientContactId: "contact-ada",
+      invoiceId: "invoice-001",
+      requestedByUserId: "user-admin",
+      amountCents: 13230,
+      status: "approved",
+      reason: "Synthetic duplicate ledger link attempt.",
+      requestedAt: now,
+      reviewedByUserId: "user-admin",
+      reviewedAt: now,
+      evidence: {},
+    });
+    await expect(
+      repository.updateTrustTransferRequest(
+        "firm-west-legal",
+        "trust-transfer-request-duplicate-ledger",
+        {
+          status: "linked",
+          reviewedByUserId: "user-admin",
+          reviewedAt: now,
+          ledgerTransactionId: "trust-transfer-posting",
+          evidence: { linked: true },
+        },
+        { requireLedgerTransactionUnlinked: true },
+      ),
+    ).rejects.toThrow(/conflict/);
   });
 
   it("keeps trust transfer get/update firm-scoped and clone-safe", async () => {

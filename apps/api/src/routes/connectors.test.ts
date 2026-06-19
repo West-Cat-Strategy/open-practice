@@ -194,10 +194,10 @@ describe("connector routes", () => {
     });
   });
 
-  it("rejects connector delivery URLs whose DNS resolves to private addresses", async () => {
+  it("rejects connector delivery URLs whose DNS resolves to NAT64 private addresses", async () => {
     const server = testServer({
       repository: new InMemoryOpenPracticeRepository(),
-      connectorDnsResolver: async () => ["10.0.0.5"],
+      connectorDnsResolver: async () => ["64:ff9b::0a00:0005"],
     });
 
     const created = await server.inject({
@@ -205,8 +205,8 @@ describe("connector routes", () => {
       url: "/api/connectors",
       payload: {
         type: "generic",
-        key: "synthetic.private-dns",
-        displayName: "Synthetic Private DNS",
+        key: "synthetic.private-nat64-dns",
+        displayName: "Synthetic Private NAT64 DNS",
         status: "enabled",
         configSummary: {
           deliveryUrl: "https://webhooks.example.test/open-practice",
@@ -864,7 +864,7 @@ describe("connector routes", () => {
 
     const privateDnsServer = testServer({
       repository,
-      connectorDnsResolver: async () => ["10.0.0.8"],
+      connectorDnsResolver: async () => ["fec0::8"],
     });
     const privateDnsWebhook = await privateDnsServer.inject({
       method: "POST",

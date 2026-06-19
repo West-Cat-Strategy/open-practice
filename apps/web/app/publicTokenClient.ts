@@ -53,15 +53,6 @@ export function publicTokenFromLocationHash(): string {
   }
 }
 
-export function scrubLegacyPublicTokenPath(pathBase: string, token: string): void {
-  if (typeof window === "undefined" || !token) return;
-  const normalizedBase = pathBase.startsWith("/") ? pathBase : `/${pathBase}`;
-  const legacyPath = `${normalizedBase.replace(/\/+$/, "")}/${encodeURIComponent(token)}`;
-  if (window.location.pathname !== legacyPath) return;
-  const nextUrl = `${normalizedBase}${window.location.search}#${encodeURIComponent(token)}`;
-  window.history.replaceState(null, "", nextUrl);
-}
-
 export async function readPublicTokenError(response: Response): Promise<PublicTokenErrorBody> {
   try {
     return (await response.json()) as PublicTokenErrorBody;

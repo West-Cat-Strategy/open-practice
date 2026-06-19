@@ -717,7 +717,7 @@ describe("worker processors", () => {
     expect(JSON.stringify(attempts)).not.toContain("synthetic-signing-secret");
   });
 
-  it("dead-letters connector destinations that resolve to private addresses", async () => {
+  it("dead-letters connector destinations that resolve to NAT64 private addresses", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     await createConnectorOutboxFixture(repository, {
       connectorId: "connector-private-dns",
@@ -728,7 +728,7 @@ describe("worker processors", () => {
     const result = await processOpenPracticeJob({
       ...connectorJobDefaults(repository),
       connectorSecretResolver: () => "synthetic-signing-secret",
-      connectorDnsResolver: async () => ["10.0.0.12"],
+      connectorDnsResolver: async () => ["64:ff9b:1:0a00:000c::"],
       async connectorHttpDeliverer() {
         throw new Error("Should not deliver");
       },
