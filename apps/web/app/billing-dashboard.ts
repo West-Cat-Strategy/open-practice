@@ -3,6 +3,7 @@ import type {
   BillingDashboardResponse,
   BillingExpenseItem,
   BillingInvoiceSummary,
+  BillingPaymentImportReviewSummary,
   BillingPaymentRequestSummary,
   BillingTimeItem,
 } from "./_features/billing/models";
@@ -77,6 +78,50 @@ export interface PaymentSettlementReviewSummary {
   automaticReconciliation: false;
   trustPosting: false;
   rawWebhookBodyStorage: false;
+}
+
+export interface PaymentImportReviewSummary {
+  recordCount: number;
+  paymentEventCount: number;
+  depositEventCount: number;
+  conflictCount: number;
+  rawProviderPayloadRetained: false;
+  invoiceBalanceMutation: "none";
+  settlementAutomation: false;
+  reconciliationMutation: "none";
+  trustPosting: "none";
+}
+
+export function summarizePaymentImportReviews(
+  records: BillingPaymentImportReviewSummary[],
+): PaymentImportReviewSummary {
+  return {
+    recordCount: records.length,
+    paymentEventCount: records.filter((record) => record.eventFamily === "payment").length,
+    depositEventCount: records.filter((record) => record.eventFamily === "deposit").length,
+    conflictCount: records.filter((record) => record.duplicateCuePresent || record.conflictReason)
+      .length,
+    rawProviderPayloadRetained: false,
+    invoiceBalanceMutation: "none",
+    settlementAutomation: false,
+    reconciliationMutation: "none",
+    trustPosting: "none",
+  };
+}
+
+export function describePaymentImportReview(record: BillingPaymentImportReviewSummary): string {
+  const eventLabel = record.eventStatus.replaceAll("_", " ");
+  const candidateLabel = record.candidateHostedPaymentRequestId
+    ? "payment request candidate"
+    : record.candidateInvoiceId
+      ? "invoice candidate"
+      : "no linked candidate";
+  const conflictLabel = record.conflictReason
+    ? ` · ${record.conflictReason.replaceAll("_", " ")}`
+    : record.duplicateCuePresent
+      ? " · duplicate cue"
+      : "";
+  return `${record.providerLabel} · ${eventLabel} · ${candidateLabel}${conflictLabel}`;
 }
 
 export function summarizePaymentSettlementReview(

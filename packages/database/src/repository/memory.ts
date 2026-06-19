@@ -81,6 +81,7 @@ import {
   type MatterLifecycleTransitionRecord,
   type MatterParty,
   type PaymentAllocationRecord,
+  type PaymentImportReviewRecord,
   type PortalGrant,
   type PortalDocumentAccess,
   type PostedLedgerTransaction,
@@ -128,6 +129,7 @@ import {
   sampleMatterParties,
   sampleMatters,
   samplePaymentAllocations,
+  samplePaymentImportReviewRecords,
   samplePortalGrants,
   sampleSignatureProviderEvents,
   sampleSignatureEnvelopes,
@@ -292,6 +294,11 @@ import {
   updateMemoryHostedPaymentRequest,
   type MemoryHostedPaymentRequestStore,
 } from "./hosted-payment-requests/memory.js";
+import {
+  createMemoryPaymentImportReviewRecord,
+  listMemoryPaymentImportReviewRecords,
+  type MemoryPaymentImportReviewRecordStore,
+} from "./payment-import-review-records/memory.js";
 import {
   createMemoryBillingPeriodLock,
   createMemoryBillingRateRule,
@@ -598,6 +605,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private manualPayments: ManualPaymentRecord[];
   private paymentAllocations: PaymentAllocationRecord[];
   private hostedPaymentRequests: HostedPaymentRequestRecord[];
+  private paymentImportReviewRecords: PaymentImportReviewRecord[];
   private trustTransferRequests: TrustTransferRequestRecord[];
   private ledgerAccounts: LedgerAccount[];
   private ledgerApprovals: LedgerTransactionApprovalRecord[] = [];
@@ -943,6 +951,18 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
       },
       set hostedPaymentRequests(value: HostedPaymentRequestRecord[]) {
         repository.hostedPaymentRequests = value;
+      },
+    };
+  }
+
+  private get paymentImportReviewRecordStore(): MemoryPaymentImportReviewRecordStore {
+    const repository = this;
+    return {
+      get paymentImportReviewRecords() {
+        return repository.paymentImportReviewRecords;
+      },
+      set paymentImportReviewRecords(value: PaymentImportReviewRecord[]) {
+        repository.paymentImportReviewRecords = value;
       },
     };
   }
@@ -1463,6 +1483,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     this.manualPayments = seeded ? clone(sampleManualPayments) : [];
     this.paymentAllocations = seeded ? clone(samplePaymentAllocations) : [];
     this.hostedPaymentRequests = seeded ? clone(sampleHostedPaymentRequests) : [];
+    this.paymentImportReviewRecords = seeded ? clone(samplePaymentImportReviewRecords) : [];
     this.trustTransferRequests = seeded ? clone(sampleTrustTransferRequests) : [];
     this.ledgerAccounts = seeded ? clone(sampleLedgerAccounts) : [];
     this.ledgerStatementMatchRuleProfiles = seeded
@@ -2929,6 +2950,23 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   ): ReturnType<OpenPracticeRepository["updateHostedPaymentRequest"]> {
     return Promise.resolve(
       updateMemoryHostedPaymentRequest(this.hostedPaymentRequestStore, firmId, requestId, updates),
+    );
+  }
+
+  async createPaymentImportReviewRecord(
+    record: Parameters<OpenPracticeRepository["createPaymentImportReviewRecord"]>[0],
+  ): ReturnType<OpenPracticeRepository["createPaymentImportReviewRecord"]> {
+    return Promise.resolve(
+      createMemoryPaymentImportReviewRecord(this.paymentImportReviewRecordStore, record),
+    );
+  }
+
+  async listPaymentImportReviewRecords(
+    firmId: string,
+    options: Parameters<OpenPracticeRepository["listPaymentImportReviewRecords"]>[1] = {},
+  ): ReturnType<OpenPracticeRepository["listPaymentImportReviewRecords"]> {
+    return Promise.resolve(
+      listMemoryPaymentImportReviewRecords(this.paymentImportReviewRecordStore, firmId, options),
     );
   }
 

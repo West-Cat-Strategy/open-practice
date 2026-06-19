@@ -3,9 +3,11 @@
 Date: 2026-06-17 PDT
 
 This packet defines the next safe boundary for future payment processor imports, deposit matching,
-refunds, and chargebacks. It is docs-first policy groundwork only: it does not add live settlement,
-payment processor webhooks, provider payload persistence, invoice mutation, trust posting, bank-feed
-connections, worker replay, UI commands, migrations, dependencies, or runtime behavior.
+refunds, and chargebacks. It began as docs-first policy groundwork and now has one narrow runtime
+slice: staff-only normalized payment import review records for processor evidence cues. The packet
+still does not authorize live settlement, payment processor webhooks, provider payload persistence,
+invoice mutation, trust posting, bank-feed connections, worker replay, provider commands, refunds,
+chargebacks, or deposit matching automation.
 
 ## Source Posture
 
@@ -21,6 +23,28 @@ The boundary builds from the shipped payment and funds proofs:
 - Trust posting approval commands are separate maker-checker controls for selected ledger postings.
   They are not payment settlement, deposit clearing, trust-transfer automation, or certified trust
   accounting.
+- OP-T160 adds provider-neutral payment import review records and Billing dashboard cues. They are
+  normalized reviewer evidence only and do not apply payments, mutate invoice balances, reconcile
+  deposits, handle refunds or chargebacks, or post trust entries.
+
+## First Runtime Slice
+
+OP-T160 implements the first runtime slice under this packet:
+
+- `POST /api/billing/payment-import-review-records` and
+  `GET /api/billing/payment-import-review-records` create and list staff-only normalized review
+  records for authenticated billing staff.
+- Stored fields are provider-neutral: safe provider label, event family/status, safe external IDs,
+  amount/currency, observed/imported timestamps, candidate invoice or hosted payment-request IDs,
+  duplicate/conflict cues, review state, and explicit no-side-effect boundary flags.
+- Idempotency is keyed by `(firm, provider label, external event ID)`: identical normalized
+  evidence returns the existing review record, while changed evidence for the same event is rejected
+  for staff review.
+- Billing dashboard cues show per-matter import counts, event rows, candidate IDs, duplicate and
+  conflict indicators, and explicit copy that the records are normalized evidence only.
+- Deposit matching remains candidate metadata only. The runtime slice creates no matching,
+  reconciliation, ledger, payment, refund, chargeback, notification, provider command, trust
+  transfer, or trust posting action.
 
 ## Safe Import Boundary
 
@@ -43,14 +67,18 @@ hold:
 Synthetic example shape:
 
 ```text
-provider=stripe
-eventFamily=payment_succeeded
+providerLabel=synthetic_processor
+eventFamily=payment
+eventStatus=payment_observed
 externalEventId=evt_synthetic_review_001
 amountCents=125000
 currency=CAD
 candidateInvoiceId=inv_synthetic_review_001
-reviewState=needs_reviewer_evidence
+reviewState=needs_review
 rawPayloadRetained=false
+invoiceBalanceMutation=none
+settlementAutomation=false
+trustPosting=none
 ```
 
 The example is intentionally synthetic and illustrative. It is not an API contract, provider schema,

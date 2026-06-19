@@ -69,6 +69,7 @@ import {
   mediaTranscripts,
   notificationPreferences,
   paymentAllocations,
+  paymentImportReviewRecords,
   portalGrants,
   providerSettings,
   publicConsultationIntakes,
@@ -1474,6 +1475,7 @@ describe("database schema hardening", () => {
     const invoiceLineConfig = getTableConfig(invoiceLines);
     const manualPaymentConfig = getTableConfig(manualPayments);
     const paymentAllocationConfig = getTableConfig(paymentAllocations);
+    const paymentImportReviewConfig = getTableConfig(paymentImportReviewRecords);
     const trustTransferRequestConfig = getTableConfig(billingTrustTransferRequests);
 
     expect(timeEntryConfig.columns.map((column) => column.name)).toEqual(
@@ -1583,6 +1585,43 @@ describe("database schema hardening", () => {
         "hosted_payment_requests_status_value",
         "hosted_payment_requests_positive_amount",
         "hosted_payment_requests_cad_currency",
+      ]),
+    );
+    expect(paymentImportReviewConfig.columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining([
+        "provider_label",
+        "event_family",
+        "event_status",
+        "external_event_id",
+        "external_payment_id",
+        "external_deposit_id",
+        "amount_cents",
+        "candidate_invoice_id",
+        "candidate_hosted_payment_request_id",
+        "duplicate_of_record_id",
+        "conflict_reason",
+        "normalized_evidence_fingerprint",
+        "boundaries",
+      ]),
+    );
+    expect(paymentImportReviewConfig.indexes.map((index) => index.config.name)).toEqual(
+      expect.arrayContaining([
+        "payment_import_review_records_firm_matter_imported_idx",
+        "payment_import_review_records_firm_invoice_idx",
+        "payment_import_review_records_firm_payment_request_idx",
+        "payment_import_review_records_firm_provider_event_idx",
+      ]),
+    );
+    expect(paymentImportReviewConfig.checks.map((check) => check.name)).toEqual(
+      expect.arrayContaining([
+        "payment_import_review_records_provider_label_format",
+        "payment_import_review_records_event_family_value",
+        "payment_import_review_records_event_status_format",
+        "payment_import_review_records_external_event_id_format",
+        "payment_import_review_records_external_payment_id_format",
+        "payment_import_review_records_external_deposit_id_format",
+        "payment_import_review_records_positive_amount",
+        "payment_import_review_records_cad_currency",
       ]),
     );
     expect(trustTransferRequestConfig.columns.map((column) => column.name)).toEqual(

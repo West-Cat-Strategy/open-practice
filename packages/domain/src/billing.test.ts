@@ -14,6 +14,7 @@ import {
   defaultCreditWriteOffPosture,
   defaultBillingExpenseCategoriesForFirm,
   defaultHostedPaymentProcessorState,
+  defaultPaymentImportReviewBoundary,
   defaultPaymentPlanPlaceholder,
   buildPaymentSettlementReview,
   calculateInvoiceTotals,
@@ -23,6 +24,7 @@ import {
   hostedPaymentRequestPath,
   isBillableUnbilled,
   normalizeExpenseCategoryCode,
+  paymentImportReviewHasConflict,
   resolveBillingRateRule,
   summarizeTrustTransferLedgerLink,
   timerDraftMinutesFromWindow,
@@ -393,6 +395,24 @@ describe("billing period locks and rate rules", () => {
         rawWebhookBodyStored: false,
       }),
     });
+  });
+
+  it("keeps processor import review records as normalized cues without side effects", () => {
+    expect(defaultPaymentImportReviewBoundary()).toEqual({
+      rawProviderPayloadRetained: false,
+      invoiceBalanceMutation: "none",
+      settlementAutomation: false,
+      reconciliationMutation: "none",
+      refundHandling: "review_only",
+      chargebackHandling: "review_only",
+      trustPosting: "none",
+      providerCommand: "none",
+      clientNotification: "none",
+      depositMatching: "review_cue_only",
+    });
+    expect(paymentImportReviewHasConflict({})).toBe(false);
+    expect(paymentImportReviewHasConflict({ conflictReason: "candidate_mismatch" })).toBe(true);
+    expect(paymentImportReviewHasConflict({ duplicateOfRecordId: "review-duplicate" })).toBe(true);
   });
 });
 

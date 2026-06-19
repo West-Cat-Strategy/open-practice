@@ -191,6 +191,7 @@ import {
   formatExpenseDraftApiFailure,
   formatDraftInvoiceApiFailure,
   formatTimerDraftApiFailure,
+  summarizePaymentImportReviews,
   summarizePaymentSettlementReview,
   updateBillingDashboardWithExpenseDraft,
   updateBillingDashboardWithCreatedInvoice,
@@ -1932,6 +1933,10 @@ export default function DashboardClient({
   const activeInvoices = activeBilling?.invoices ?? [];
   const activeManualPayments = activeBilling?.payments ?? [];
   const activePaymentRequests = activeBilling?.paymentRequests ?? [];
+  const activePaymentImportReviewRecords = activeBilling?.paymentImportReviewRecords ?? [];
+  const activePaymentImportReviewSummary = summarizePaymentImportReviews(
+    activePaymentImportReviewRecords,
+  );
   const activeSettlementReviewSummary = summarizePaymentSettlementReview(activePaymentRequests);
   const activeBalanceDueCents = activeInvoices.reduce(
     (sum, invoice) => sum + invoice.balanceDueCents,
@@ -6812,6 +6817,8 @@ export default function DashboardClient({
                     activeInvoices={activeInvoices}
                     activeManualPayments={activeManualPayments}
                     activeMatter={activeMatter}
+                    activePaymentImportReviewRecords={activePaymentImportReviewRecords}
+                    activePaymentImportReviewSummary={activePaymentImportReviewSummary}
                     activePaymentRequests={activePaymentRequests}
                     activeSettlementReviewSummary={activeSettlementReviewSummary}
                     activeUnbilledExpenseCents={activeUnbilledExpenseCents}

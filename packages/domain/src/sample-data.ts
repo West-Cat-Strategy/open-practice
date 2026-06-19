@@ -1,4 +1,6 @@
-import type {
+import {
+  defaultPaymentImportReviewBoundary,
+  type PaymentImportReviewRecord,
   HostedPaymentRequestRecord,
   InvoiceLineRecord,
   InvoiceRecord,
@@ -1127,6 +1129,30 @@ export const sampleHostedPaymentRequests: HostedPaymentRequestRecord[] = [
     createdAt: "2026-04-06T17:10:00.000Z",
     updatedAt: "2026-04-06T17:10:00.000Z",
     expiresAt: "2026-05-06T17:00:00.000Z",
+  },
+];
+
+export const samplePaymentImportReviewRecords: PaymentImportReviewRecord[] = [
+  {
+    id: "payment-import-review-001",
+    firmId: sampleFirm.id,
+    matterId: "matter-001",
+    providerLabel: "synthetic_processor",
+    eventFamily: "payment",
+    eventStatus: "payment_observed",
+    externalEventId: "evt_synthetic_import_review_001",
+    externalPaymentId: "pay_synthetic_import_review_001",
+    amountCents: 13230,
+    currency: "CAD",
+    observedAt: "2026-06-19T16:00:00.000Z",
+    importedAt: "2026-06-19T16:05:00.000Z",
+    importedByUserId: "user-licensee",
+    candidateInvoiceId: "invoice-001",
+    candidateHostedPaymentRequestId: "payment-request-001",
+    reviewState: "needs_review",
+    normalizedEvidenceFingerprint: "synthetic-payment-import-review-001",
+    boundaries: defaultPaymentImportReviewBoundary(),
+    updatedAt: "2026-06-19T16:05:00.000Z",
   },
 ];
 

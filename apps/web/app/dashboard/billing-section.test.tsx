@@ -3,7 +3,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import type { BillingDashboardResponse } from "../_features/billing/models";
-import { summarizePaymentSettlementReview } from "../billing-dashboard";
+import {
+  summarizePaymentImportReviews,
+  summarizePaymentSettlementReview,
+} from "../billing-dashboard";
 import { BillingSection } from "./billing-section";
 
 function formatCurrency(value: number): string {
@@ -26,6 +29,8 @@ function buildSyntheticBillingDashboard(): BillingDashboardResponse {
       lockedPeriodCount: 1,
       activeLockedPeriodCount: 1,
       activeRateRuleCount: 1,
+      paymentImportReviewCount: 1,
+      paymentImportConflictCount: 0,
     },
     periodLocks: [
       {
@@ -235,6 +240,37 @@ function buildSyntheticBillingDashboard(): BillingDashboardResponse {
             expiresAt: "2026-07-06T00:00:00.000Z",
           },
         ],
+        paymentImportReviewRecords: [
+          {
+            id: "payment_import_review_synthetic",
+            matterId: "matter_synthetic",
+            providerLabel: "synthetic_processor",
+            eventFamily: "payment",
+            eventStatus: "payment_observed",
+            externalEventId: "evt_synthetic_import_review",
+            externalPaymentIdPresent: true,
+            amountCents: 50000,
+            currency: "CAD",
+            observedAt: "2026-06-07T00:00:00.000Z",
+            importedAt: "2026-06-07T00:05:00.000Z",
+            candidateInvoiceId: "invoice_synthetic",
+            candidateHostedPaymentRequestId: "payment_request_synthetic",
+            duplicateCuePresent: false,
+            reviewState: "needs_review",
+            boundaries: {
+              rawProviderPayloadRetained: false,
+              invoiceBalanceMutation: "none",
+              settlementAutomation: false,
+              reconciliationMutation: "none",
+              refundHandling: "review_only",
+              chargebackHandling: "review_only",
+              trustPosting: "none",
+              providerCommand: "none",
+              clientNotification: "none",
+              depositMatching: "review_cue_only",
+            },
+          },
+        ],
       },
     ],
   };
@@ -244,6 +280,7 @@ describe("BillingSection", () => {
   it("renders billing controls, capture drafts, invoices, settlement review, and payments", () => {
     const billingDashboard = buildSyntheticBillingDashboard();
     const activeBilling = billingDashboard.matters[0];
+    const activePaymentImportReviewRecords = activeBilling.paymentImportReviewRecords ?? [];
     const html = renderToStaticMarkup(
       createElement(BillingSection, {
         activeBalanceDueCents: 50000,
@@ -259,6 +296,10 @@ describe("BillingSection", () => {
           practiceArea: "Residential tenancy",
           jurisdiction: "BC",
         },
+        activePaymentImportReviewRecords,
+        activePaymentImportReviewSummary: summarizePaymentImportReviews(
+          activePaymentImportReviewRecords,
+        ),
         activePaymentRequests: activeBilling.paymentRequests,
         activeSettlementReviewSummary: summarizePaymentSettlementReview(
           activeBilling.paymentRequests,
@@ -343,6 +384,10 @@ describe("BillingSection", () => {
     expect(html).toContain("Attach receipt or registry confirmation before billing approval.");
     expect(html).toContain("INV-SYNTHETIC");
     expect(html).toContain("Payment request shells");
+    expect(html).toContain("Processor import review");
+    expect(html).toContain("synthetic_processor");
+    expect(html).toContain("payment observed");
+    expect(html).toContain("No raw payload");
     expect(html).toContain("No invoice balance mutation");
     expect(html).toContain("No automatic reconciliation");
     expect(html).toContain("Synthetic EFT");

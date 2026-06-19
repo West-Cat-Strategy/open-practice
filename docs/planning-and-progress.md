@@ -277,6 +277,14 @@ reviewer evidence, no automatic reconciliation, no provider refund/dispute calls
 notification, and no trust posting. Proof is recorded in
 [Payment import and deposit matching boundary packet proof](validation/OP_PAYMENT_IMPORT_DEPOSIT_MATCHING_BOUNDARY_PACKET_PROOF_2026-06-17.md).
 
+OP-T160 is the first runtime slice under that packet. It adds staff-only provider-neutral payment
+import review records and Billing dashboard cues for normalized processor evidence while keeping
+deposit matching as candidate metadata only. The slice preserves no raw provider payload retention,
+no invoice-balance mutation, no settlement automation, no reconciliation mutation, no refund or
+chargeback handling, no provider commands, no client notifications, and no trust posting. Proof is
+recorded in
+[OP-T160 payment import review records proof](validation/OP-T160_PAYMENT_IMPORT_REVIEW_RECORDS_PROOF_2026-06-19.md).
+
 The 2026-06-16 Signature Request Envelope Metadata branch adds OP-authored signer-order and
 field-placement metadata directly to existing signature requests. Domain validation stays
 provider-neutral, invalid metadata is rejected before provider submission or email/audit side

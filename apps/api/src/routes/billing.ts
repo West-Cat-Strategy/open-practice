@@ -4,6 +4,7 @@ import { registerBillingDashboardRoutes } from "./billing/dashboard.js";
 import { registerBillingExpenseRoutes } from "./billing/expenses.js";
 import { registerBillingExportRoutes } from "./billing/export-requests.js";
 import { registerBillingInvoiceRoutes } from "./billing/invoices.js";
+import { registerBillingPaymentImportReviewRoutes } from "./billing/payment-import-review-records.js";
 import { registerBillingPaymentRoutes } from "./billing/payments.js";
 import { registerBillingPaymentRequestRoutes } from "./billing/payment-requests.js";
 import { registerBillingTimeEntryRoutes } from "./billing/time-entries.js";
@@ -21,6 +22,8 @@ export function registerBillingRoutes(
   registerBillingInvoiceRoutes(server, { repository });
 
   registerBillingPaymentRoutes(server, { repository });
+
+  registerBillingPaymentImportReviewRoutes(server, { repository });
 
   registerBillingPaymentRequestRoutes(server, {
     repository,
