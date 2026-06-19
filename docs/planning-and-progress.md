@@ -10,8 +10,8 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 | Snapshot              | Value                                                                |
 | --------------------- | -------------------------------------------------------------------- |
-| Current focus         | Database efficiency merge/push/prune closeout complete.              |
-| Next recommended pick | Start the next scoped branch from refreshed `main`.                  |
+| Current focus         | Operational efficiency remediation is in review.                     |
+| Next recommended pick | Finish final selector and Docker proof before merge handoff.         |
 | Ready rows            | 0                                                                    |
 | Candidate rows        | 0                                                                    |
 | In progress rows      | 0                                                                    |
@@ -21,6 +21,17 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 | Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`     |
 
 ## Current Handoff Notes
+
+The 2026-06-19 `remediate/ops-efficiency-20260619` branch implements the operational-efficiency
+review remediation in the clean sibling worktree
+`/Users/bryan/projects/open-practice-ops-efficiency-remediation`, after carrying forward the
+Docker-local same-origin web rewrite from the dirty source checkout. It closes the accepted findings
+for Docker-local API routing proof, filtered audit reads without chain-validity claims, client
+portal batching/focused signature lookup, non-outbox communications child-row batching, and
+dashboard/operations SSR fetch parallelism while preserving response shapes, matter-scoped
+authorization, redaction/audit posture, local-dev Docker boundaries, provider behavior, trust/payment
+behavior, and synthetic-only examples. Proof is recorded in
+[operational efficiency remediation proof](validation/OP_OPERATIONAL_EFFICIENCY_REMEDIATION_PROOF_2026-06-19.md).
 
 The 2026-06-18 database access hot-path efficiency branch
 `refactor/db-access-hot-path-efficiency` adds focused internal query/index improvements without

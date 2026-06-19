@@ -1,5 +1,7 @@
 import { type LedgerAccount } from "@open-practice/domain";
 import { describe, expect, it } from "vitest";
+import type { OpenPracticeDatabase } from "../src/runtime.js";
+import { listDrizzleFilteredAuditEvents } from "../src/repository/audit/drizzle.js";
 import { InMemoryOpenPracticeRepository } from "../src/repository/memory.js";
 
 describe("repository audit event ordering", () => {
@@ -60,6 +62,119 @@ describe("repository audit event ordering", () => {
         }),
       ]),
     });
+  });
+});
+
+describe("repository filtered audit event reads", () => {
+  it("filters memory audit events by action, matter, resource, and combined predicates in sequence order", async () => {
+    const repository = new InMemoryOpenPracticeRepository({ seedSampleData: false });
+
+    await repository.appendAuditEvent({
+      id: "audit-resource-matter",
+      firmId: "firm-west-legal",
+      actorId: "user-admin",
+      action: "matter.updated",
+      resourceType: "matter",
+      resourceId: "matter-001",
+      occurredAt: "2026-06-19T17:04:00.000Z",
+      metadata: { safeSummary: "Synthetic matter resource event." },
+    });
+    await repository.appendAuditEvent({
+      id: "audit-metadata-matter-id",
+      firmId: "firm-west-legal",
+      actorId: "user-admin",
+      action: "invoice.approved",
+      resourceType: "invoice",
+      resourceId: "invoice-001",
+      occurredAt: "2026-06-19T17:03:00.000Z",
+      metadata: { matterId: "matter-001", invoiceId: "invoice-001" },
+    });
+    await repository.appendAuditEvent({
+      id: "audit-metadata-matter-ids",
+      firmId: "firm-west-legal",
+      actorId: "user-admin",
+      action: "ledger.transaction_approval.decided",
+      resourceType: "ledger_transaction_approval",
+      resourceId: "approval-001",
+      occurredAt: "2026-06-19T17:02:00.000Z",
+      metadata: { matterIds: ["matter-001", "matter-002"], decision: "approved" },
+    });
+    await repository.appendAuditEvent({
+      id: "audit-previous-matter-id",
+      firmId: "firm-west-legal",
+      actorId: "user-admin",
+      action: "inbound_email.triage.updated",
+      resourceType: "inbound_email",
+      resourceId: "email-001",
+      occurredAt: "2026-06-19T17:01:00.000Z",
+      metadata: { previousMatterId: "matter-001" },
+    });
+    await repository.appendAuditEvent({
+      id: "audit-other-matter",
+      firmId: "firm-west-legal",
+      actorId: "user-admin",
+      action: "invoice.approved",
+      resourceType: "invoice",
+      resourceId: "invoice-002",
+      occurredAt: "2026-06-19T17:00:00.000Z",
+      metadata: { matterId: "matter-002", invoiceId: "invoice-002" },
+    });
+    await repository.appendAuditEvent({
+      id: "audit-other-firm",
+      firmId: "firm-east-legal",
+      actorId: "user-admin",
+      action: "invoice.approved",
+      resourceType: "invoice",
+      resourceId: "invoice-003",
+      occurredAt: "2026-06-19T17:05:00.000Z",
+      metadata: { matterId: "matter-001", invoiceId: "invoice-003" },
+    });
+
+    await expect(
+      repository.listFilteredAuditEvents("firm-west-legal", { actions: ["invoice.approved"] }),
+    ).resolves.toEqual([
+      expect.objectContaining({ id: "audit-metadata-matter-id", sequence: 2 }),
+      expect.objectContaining({ id: "audit-other-matter", sequence: 5 }),
+    ]);
+    await expect(
+      repository.listFilteredAuditEvents("firm-west-legal", { matterId: "matter-001" }),
+    ).resolves.toEqual([
+      expect.objectContaining({ id: "audit-resource-matter", sequence: 1 }),
+      expect.objectContaining({ id: "audit-metadata-matter-id", sequence: 2 }),
+      expect.objectContaining({ id: "audit-metadata-matter-ids", sequence: 3 }),
+      expect.objectContaining({ id: "audit-previous-matter-id", sequence: 4 }),
+    ]);
+    await expect(
+      repository.listFilteredAuditEvents("firm-west-legal", {
+        resourceType: "invoice",
+        resourceId: "invoice-001",
+      }),
+    ).resolves.toEqual([expect.objectContaining({ id: "audit-metadata-matter-id" })]);
+    await expect(
+      repository.listFilteredAuditEvents("firm-west-legal", {
+        actions: ["invoice.approved"],
+        matterId: "matter-001",
+      }),
+    ).resolves.toEqual([expect.objectContaining({ id: "audit-metadata-matter-id" })]);
+  });
+
+  it("does not fall back to a full audit read for empty action filters", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+
+    await expect(
+      repository.listFilteredAuditEvents("firm-west-legal", { actions: [] }),
+    ).resolves.toEqual([]);
+    await expect(
+      listDrizzleFilteredAuditEvents(
+        {
+          select: () => {
+            throw new Error("empty action filters must not query audit_events");
+          },
+        } as unknown as OpenPracticeDatabase,
+        "firm-west-legal",
+        { actions: [] },
+      ),
+    ).resolves.toEqual([]);
   });
 });
 

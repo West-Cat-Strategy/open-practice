@@ -172,14 +172,17 @@ export async function listDrizzleConversationMessageNotifications(
   firmId: string,
   options: {
     threadId?: string;
+    threadIds?: string[];
     matterId?: string;
     recipientUserId?: string;
     messageId?: string;
   } = {},
 ): Promise<ConversationMessageNotificationRecord[]> {
+  const threadIds = options.threadId ? [options.threadId] : options.threadIds;
+  if (threadIds?.length === 0) return [];
   const filters = [eq(schema.conversationMessageNotifications.firmId, firmId)];
-  if (options.threadId) {
-    filters.push(eq(schema.conversationMessageNotifications.threadId, options.threadId));
+  if (threadIds) {
+    filters.push(inArray(schema.conversationMessageNotifications.threadId, threadIds));
   }
   if (options.matterId) {
     filters.push(eq(schema.conversationMessageNotifications.matterId, options.matterId));
@@ -253,10 +256,12 @@ export async function updateDrizzleConversationMessageNotificationPosture(
 export async function listDrizzleConversationMessages(
   db: OpenPracticeDatabase,
   firmId: string,
-  options: { threadId?: string; matterId?: string } = {},
+  options: { threadId?: string; threadIds?: string[]; matterId?: string } = {},
 ): Promise<ConversationMessageRecord[]> {
+  const threadIds = options.threadId ? [options.threadId] : options.threadIds;
+  if (threadIds?.length === 0) return [];
   const filters = [eq(schema.conversationMessages.firmId, firmId)];
-  if (options.threadId) filters.push(eq(schema.conversationMessages.threadId, options.threadId));
+  if (threadIds) filters.push(inArray(schema.conversationMessages.threadId, threadIds));
   if (options.matterId) filters.push(eq(schema.conversationMessages.matterId, options.matterId));
   const rows = await db
     .select()

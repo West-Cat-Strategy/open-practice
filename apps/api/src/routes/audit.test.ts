@@ -29,6 +29,26 @@ function fakeReportQueue(jobs: Array<{ name: string; data: unknown; jobId?: stri
   } satisfies ApiJobQueue;
 }
 
+class MatterScopedFilteredAuditRepository extends InMemoryOpenPracticeRepository {
+  readonly filteredAuditReads: Array<
+    Parameters<InMemoryOpenPracticeRepository["listFilteredAuditEvents"]>[1]
+  > = [];
+
+  override async listAuditEvents(
+    firmId: Parameters<InMemoryOpenPracticeRepository["listAuditEvents"]>[0],
+  ): ReturnType<InMemoryOpenPracticeRepository["listAuditEvents"]> {
+    throw new Error(`matter-scoped audit route should not read the full audit chain for ${firmId}`);
+  }
+
+  override async listFilteredAuditEvents(
+    firmId: Parameters<InMemoryOpenPracticeRepository["listFilteredAuditEvents"]>[0],
+    filter: Parameters<InMemoryOpenPracticeRepository["listFilteredAuditEvents"]>[1],
+  ): ReturnType<InMemoryOpenPracticeRepository["listFilteredAuditEvents"]> {
+    this.filteredAuditReads.push(filter);
+    return super.listFilteredAuditEvents(firmId, filter);
+  }
+}
+
 function testServer(input: {
   repository: InMemoryOpenPracticeRepository;
   reportJobQueue?: ApiJobQueue;
@@ -80,7 +100,7 @@ describe("audit routes", () => {
   });
 
   it("returns matter-scoped audit reads without hash-chain internals", async () => {
-    const repository = new InMemoryOpenPracticeRepository({ seedSampleData: false });
+    const repository = new MatterScopedFilteredAuditRepository({ seedSampleData: false });
     const server = testServer({ repository, role: "firm_member" });
     await repository.appendAuditEvent({
       id: "audit-matter-001",
@@ -117,6 +137,7 @@ describe("audit routes", () => {
     expect(response.json()).not.toHaveProperty("valid");
     expect(response.json().events[0]).not.toHaveProperty("previousHash");
     expect(response.json().events[0]).not.toHaveProperty("hash");
+    expect(repository.filteredAuditReads).toEqual([{ matterId: "matter-001" }]);
     expect(JSON.stringify(response.json())).not.toContain("synthetic private note");
     expect(JSON.stringify(response.json())).not.toContain("audit-matter-002");
   });

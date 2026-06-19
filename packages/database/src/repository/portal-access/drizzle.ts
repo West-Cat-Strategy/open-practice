@@ -31,7 +31,7 @@ import type {
   ShareLinkListOptions,
 } from "../portal-access-contracts.js";
 
-function mapPortalGrantRow(row: typeof schema.portalGrants.$inferSelect): PortalGrant {
+export function mapPortalGrantRow(row: typeof schema.portalGrants.$inferSelect): PortalGrant {
   return {
     id: row.id,
     firmId: row.firmId,

@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import nextConfig, { buildContentSecurityPolicy, validateRelaxedCspFlag } from "../next.config.mjs";
+import nextConfig, {
+  buildApiRewriteDestination,
+  buildApiRewrites,
+  buildContentSecurityPolicy,
+  defaultApiRewriteBaseUrl,
+  validateRelaxedCspFlag,
+} from "../next.config.mjs";
 
 describe("web security headers", () => {
   it("sets baseline hardening headers without exposing the Next powered-by header", async () => {
@@ -91,5 +97,33 @@ describe("web security headers", () => {
         profile: "local-dev",
       }),
     ).not.toThrow();
+  });
+
+  it("keeps same-origin API rewrites disabled outside Docker local dev", async () => {
+    const rewrites = await nextConfig.rewrites?.();
+
+    expect(rewrites).toEqual([]);
+    expect(buildApiRewrites({ localDockerDev: false })).toEqual([]);
+  });
+
+  it("rewrites Docker-local same-origin API requests to the configured server API base", () => {
+    expect(buildApiRewrites({ localDockerDev: true, apiBaseUrl: "http://api:4000" })).toEqual([
+      {
+        source: "/api/:path*",
+        destination: buildApiRewriteDestination("http://api:4000"),
+      },
+    ]);
+    expect(buildApiRewriteDestination("http://api:4000/")).toBe("http://api:4000/api/:path*");
+    expect(buildApiRewrites({ localDockerDev: true, apiBaseUrl: "http://api:4000/" })).toEqual([
+      {
+        source: "/api/:path*",
+        destination: "http://api:4000/api/:path*",
+      },
+    ]);
+  });
+
+  it("uses the Compose API service as the Docker local dev rewrite fallback", () => {
+    expect(defaultApiRewriteBaseUrl({ localDockerDev: true })).toBe("http://api:4000");
+    expect(defaultApiRewriteBaseUrl({ localDockerDev: false })).toBe("http://localhost:4000");
   });
 });

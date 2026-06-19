@@ -1,4 +1,4 @@
-import { integer, jsonb, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { index, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { firms } from "./core.js";
 
 export const auditEvents = pgTable(
@@ -20,5 +20,20 @@ export const auditEvents = pgTable(
   },
   (table) => ({
     firmSequence: uniqueIndex("audit_events_firm_sequence_idx").on(table.firmId, table.sequence),
+    firmActionSequence: index("audit_events_firm_action_sequence_idx").on(
+      table.firmId,
+      table.action,
+      table.sequence,
+    ),
+    firmResourceSequence: index("audit_events_firm_resource_sequence_idx").on(
+      table.firmId,
+      table.resourceType,
+      table.resourceId,
+      table.sequence,
+    ),
+    metadataGin: index("audit_events_metadata_gin_idx").using(
+      "gin",
+      table.metadata.op("jsonb_path_ops"),
+    ),
   }),
 );

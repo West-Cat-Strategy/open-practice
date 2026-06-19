@@ -244,4 +244,81 @@ describe("repository conversation threads", () => {
       readAt: "2026-05-01T12:26:00.000Z",
     });
   });
+
+  it("batch-lists conversation messages and notifications by thread ids", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    for (const id of ["conversation-thread-batch-001", "conversation-thread-batch-002"]) {
+      await repository.createConversationThread({
+        id,
+        firmId: "firm-west-legal",
+        matterId: "matter-001",
+        topic: `Synthetic batch ${id}`,
+        status: "open",
+        exportState: "not_requested",
+        notificationBoundary: "internal_only",
+        createdAt: now,
+        updatedAt: now,
+        createdByUserId: "user-admin",
+        updatedByUserId: "user-admin",
+        metadata: {},
+      });
+      await repository.createConversationMessage({
+        id: `message-${id}`,
+        firmId: "firm-west-legal",
+        matterId: "matter-001",
+        threadId: id,
+        kind: "internal_note",
+        bodyText: "Synthetic staff-only batch body.",
+        authoredAt: id.endsWith("001") ? "2026-05-01T12:30:00.000Z" : "2026-05-01T12:31:00.000Z",
+        authoredByUserId: "user-admin",
+        createdAt: "2026-05-01T12:31:01.000Z",
+        createdByUserId: "user-admin",
+        metadata: {},
+      });
+    }
+
+    await expect(
+      repository.listConversationMessages("firm-west-legal", {
+        threadIds: ["conversation-thread-batch-001", "conversation-thread-batch-002"],
+      }),
+    ).resolves.toEqual([
+      expect.objectContaining({ id: "message-conversation-thread-batch-001" }),
+      expect.objectContaining({ id: "message-conversation-thread-batch-002" }),
+    ]);
+    await expect(
+      repository.listConversationMessages("firm-west-legal", {
+        threadId: "conversation-thread-batch-001",
+        threadIds: ["conversation-thread-batch-002"],
+      }),
+    ).resolves.toEqual([expect.objectContaining({ id: "message-conversation-thread-batch-001" })]);
+    await expect(
+      repository.listConversationMessages("firm-west-legal", { threadIds: [] }),
+    ).resolves.toEqual([]);
+
+    await expect(
+      repository.listConversationMessageNotifications("firm-west-legal", {
+        threadIds: ["conversation-thread-batch-001", "conversation-thread-batch-002"],
+        recipientUserId: "user-staff",
+      }),
+    ).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ threadId: "conversation-thread-batch-001" }),
+        expect.objectContaining({ threadId: "conversation-thread-batch-002" }),
+      ]),
+    );
+    await expect(
+      repository.listConversationMessageNotifications("firm-west-legal", {
+        threadId: "conversation-thread-batch-001",
+        threadIds: ["conversation-thread-batch-002"],
+        recipientUserId: "user-staff",
+      }),
+    ).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ threadId: "conversation-thread-batch-001" }),
+      ]),
+    );
+    await expect(
+      repository.listConversationMessageNotifications("firm-west-legal", { threadIds: [] }),
+    ).resolves.toEqual([]);
+  });
 });

@@ -152,6 +152,7 @@ import type {
   AuthRepository,
   AuthSessionRecord,
 } from "./auth-contracts.js";
+import type { InvoiceWithLines } from "./billing-invoices-payments-contracts.js";
 import type { ConnectorRepository } from "./connector-contracts.js";
 import type { EmailTemplateDraftRepository } from "./email-template-drafts-contracts.js";
 import type { EmailJobsRepository } from "./jobs-email-contracts.js";
@@ -161,6 +162,7 @@ import { clone } from "./contracts.js";
 import { createMemoryAuthRepository, type MemoryAuthStore } from "./auth/memory.js";
 import {
   appendMemoryAuditEvent,
+  listMemoryFilteredAuditEvents,
   listMemoryAuditEvents,
   recordMemoryAuditEvent,
   type MemoryAuditStore,
@@ -372,6 +374,7 @@ import {
 } from "./conversation-threads/memory.js";
 import {
   createMemorySignatureRequest,
+  getMemorySignatureRequest,
   listMemorySignatureProviderEvents,
   listMemorySignatureRequests,
   listMemorySignatureRequestSigners,
@@ -489,6 +492,48 @@ import {
   updateMemoryPortalGrant,
   type MemoryPortalAccessStore,
 } from "./portal-access/memory.js";
+
+function normalizedPortalEmail(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function portalContactEmail(contact: Contact): string | undefined {
+  return contact.identifiers.find((identifier) => identifier.type === "email")?.value;
+}
+
+function activeClientPortalGrant(grant: PortalGrant, now: string): boolean {
+  if (["suspended", "revoked", "expired"].includes(grant.status ?? "active")) return false;
+  if (grant.revokedAt) return false;
+  if (grant.suspendedAt) return false;
+  if (grant.expiresAt && Date.parse(grant.expiresAt) <= Date.parse(now)) return false;
+  return true;
+}
+
+function clientPortalGrantMatchesUser(input: {
+  grant: PortalGrant;
+  contact: Contact;
+  userId: string;
+  userEmail: string;
+}): boolean {
+  if (input.grant.accountUserId) return input.grant.accountUserId === input.userId;
+  const email = portalContactEmail(input.contact);
+  return Boolean(email && normalizedPortalEmail(email) === normalizedPortalEmail(input.userEmail));
+}
+
+function limitEmailsPerMatter(
+  emails: EmailOutboxRecord[],
+  limitPerMatter: number,
+): EmailOutboxRecord[] {
+  if (limitPerMatter <= 0) return [];
+  const countsByMatterId = new Map<string, number>();
+  return emails.filter((email) => {
+    if (!email.matterId) return false;
+    const count = countsByMatterId.get(email.matterId) ?? 0;
+    if (count >= limitPerMatter) return false;
+    countsByMatterId.set(email.matterId, count + 1);
+    return true;
+  });
+}
 
 export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   declare getUser: AuthRepository["getUser"];
@@ -1818,12 +1863,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
 
   async listConversationMessageNotifications(
     firmId: string,
-    options: {
-      threadId?: string;
-      matterId?: string;
-      recipientUserId?: string;
-      messageId?: string;
-    } = {},
+    options: Parameters<OpenPracticeRepository["listConversationMessageNotifications"]>[1] = {},
   ): Promise<ConversationMessageNotificationRecord[]> {
     return listMemoryConversationMessageNotifications(
       this.conversationThreadStore,
@@ -1844,7 +1884,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
 
   async listConversationMessages(
     firmId: string,
-    options: { threadId?: string; matterId?: string } = {},
+    options: Parameters<OpenPracticeRepository["listConversationMessages"]>[1] = {},
   ): Promise<ConversationMessageRecord[]> {
     return listMemoryConversationMessages(this.conversationThreadStore, firmId, options);
   }
@@ -2198,6 +2238,13 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     return listMemoryAuditEvents(this.auditStore, firmId);
   }
 
+  async listFilteredAuditEvents(
+    firmId: string,
+    filter: Parameters<OpenPracticeRepository["listFilteredAuditEvents"]>[1],
+  ): ReturnType<OpenPracticeRepository["listFilteredAuditEvents"]> {
+    return listMemoryFilteredAuditEvents(this.auditStore, firmId, filter);
+  }
+
   async appendAuditEvent(
     event: Parameters<OpenPracticeRepository["appendAuditEvent"]>[0],
   ): ReturnType<OpenPracticeRepository["appendAuditEvent"]> {
@@ -2212,6 +2259,109 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
 
   async listPortalGrants(firmId: string) {
     return listMemoryPortalGrants(this.portalAccessStore, firmId);
+  }
+
+  async listClientPortalGrantContactPairs(
+    input: Parameters<OpenPracticeRepository["listClientPortalGrantContactPairs"]>[0],
+  ): ReturnType<OpenPracticeRepository["listClientPortalGrantContactPairs"]> {
+    return clone(
+      this.portalGrants.flatMap((grant) => {
+        if (grant.firmId !== input.firmId || !activeClientPortalGrant(grant, input.now)) {
+          return [];
+        }
+        const contact = this.contacts.find(
+          (candidate) => candidate.firmId === grant.firmId && candidate.id === grant.contactId,
+        );
+        if (!contact) return [];
+        return clientPortalGrantMatchesUser({
+          grant,
+          contact,
+          userId: input.userId,
+          userEmail: input.userEmail,
+        })
+          ? [{ grant, contact }]
+          : [];
+      }),
+    );
+  }
+
+  async listClientPortalWorkspaceBatch(
+    firmId: string,
+    options: Parameters<OpenPracticeRepository["listClientPortalWorkspaceBatch"]>[1],
+  ): ReturnType<OpenPracticeRepository["listClientPortalWorkspaceBatch"]> {
+    const matterIdSet = new Set(options.matterIds);
+    const signatureRequests = this.signatureRequests.filter(
+      (request) => request.firmId === firmId && matterIdSet.has(request.matterId),
+    );
+    const signatureRequestIds = new Set(signatureRequests.map((request) => request.id));
+    const invoiceLinesByInvoiceId = new Map<string, InvoiceLineRecord[]>();
+    for (const line of this.invoiceLines.filter((line) => line.firmId === firmId)) {
+      invoiceLinesByInvoiceId.set(line.invoiceId, [
+        ...(invoiceLinesByInvoiceId.get(line.invoiceId) ?? []),
+        line,
+      ]);
+    }
+    const invoices: InvoiceWithLines[] = this.invoices
+      .filter((invoice) => invoice.firmId === firmId && matterIdSet.has(invoice.matterId))
+      .map((invoice) => ({
+        ...invoice,
+        lines: invoiceLinesByInvoiceId.get(invoice.id) ?? [],
+      }));
+    const emails = limitEmailsPerMatter(
+      this.emailOutbox
+        .filter(
+          (email) =>
+            email.firmId === firmId && Boolean(email.matterId && matterIdSet.has(email.matterId)),
+        )
+        .sort((left, right) => right.queuedAt.localeCompare(left.queuedAt)),
+      options.emailOutboxLimitPerMatter,
+    );
+
+    return clone({
+      intakeLinks: this.intakeFormLinks.filter(
+        (link) => link.firmId === firmId && matterIdSet.has(link.matterId),
+      ),
+      itemActions: this.intakeFormItemActions.filter(
+        (action) => action.firmId === firmId && matterIdSet.has(action.matterId),
+      ),
+      emails,
+      receiptTokens: this.emailReceiptTokens.filter(
+        (token) => token.firmId === firmId && matterIdSet.has(token.matterId),
+      ),
+      shareLinks: this.shareLinks.filter(
+        (link) => link.firmId === firmId && matterIdSet.has(link.matterId),
+      ),
+      externalUploadLinks: this.externalUploadLinks.filter(
+        (link) => link.firmId === firmId && matterIdSet.has(link.matterId),
+      ),
+      documents: this.documents.filter(
+        (document) => document.firmId === firmId && matterIdSet.has(document.matterId),
+      ),
+      guestLinks: this.calendarGuestLinks.filter(
+        (link) => link.firmId === firmId && matterIdSet.has(link.matterId),
+      ),
+      calendarEvents: this.calendarEvents.filter(
+        (event) =>
+          event.firmId === firmId && Boolean(event.matterId && matterIdSet.has(event.matterId)),
+      ),
+      conversationThreads: this.conversationThreads.filter(
+        (thread) => thread.firmId === firmId && matterIdSet.has(thread.matterId),
+      ),
+      invoices,
+      paymentRequests: this.hostedPaymentRequests.filter(
+        (request) => request.firmId === firmId && matterIdSet.has(request.matterId),
+      ),
+      portalDocumentAccess: this.portalDocumentAccess.filter(
+        (access) => access.firmId === firmId && matterIdSet.has(access.matterId),
+      ),
+      signatureRequests,
+      signatureSigners: this.signatureRequestSigners.filter(
+        (signer) => signer.firmId === firmId && signatureRequestIds.has(signer.signatureRequestId),
+      ),
+      signatureEvents: this.signatureProviderEvents.filter(
+        (event) => event.firmId === firmId && signatureRequestIds.has(event.signatureRequestId),
+      ),
+    });
   }
 
   async createPortalGrant(grant: Parameters<OpenPracticeRepository["createPortalGrant"]>[0]) {
@@ -2381,6 +2531,13 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     options: { matterId?: string } = {},
   ): ReturnType<OpenPracticeRepository["listSignatureRequests"]> {
     return listMemorySignatureRequests(this.signatureStore, firmId, options);
+  }
+
+  async getSignatureRequest(
+    firmId: string,
+    signatureRequestId: string,
+  ): ReturnType<OpenPracticeRepository["getSignatureRequest"]> {
+    return getMemorySignatureRequest(this.signatureStore, firmId, signatureRequestId);
   }
 
   async listSignatureRequestSigners(
@@ -3154,9 +3311,9 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
 
   async listInboundEmailAttachments(
     firmId: string,
-    messageId: string,
+    options: Parameters<OpenPracticeRepository["listInboundEmailAttachments"]>[1],
   ): Promise<InboundEmailAttachmentRecord[]> {
-    return listMemoryInboundEmailAttachments(this.inboundEmailStore, firmId, messageId);
+    return listMemoryInboundEmailAttachments(this.inboundEmailStore, firmId, options);
   }
 
   async promoteInboundEmailAttachmentToDocument(

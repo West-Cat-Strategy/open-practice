@@ -54,6 +54,81 @@ function testServer(input: {
   return server;
 }
 
+class ClientPortalWorkspaceBatchRepository extends InMemoryOpenPracticeRepository {
+  grantContactPairReads = 0;
+  workspaceBatchReads = 0;
+  blockPerSignatureWorkspaceReads = false;
+
+  override async listClientPortalGrantContactPairs(
+    input: Parameters<InMemoryOpenPracticeRepository["listClientPortalGrantContactPairs"]>[0],
+  ): ReturnType<InMemoryOpenPracticeRepository["listClientPortalGrantContactPairs"]> {
+    this.grantContactPairReads += 1;
+    return super.listClientPortalGrantContactPairs(input);
+  }
+
+  override async listClientPortalWorkspaceBatch(
+    firmId: Parameters<InMemoryOpenPracticeRepository["listClientPortalWorkspaceBatch"]>[0],
+    options: Parameters<InMemoryOpenPracticeRepository["listClientPortalWorkspaceBatch"]>[1],
+  ): ReturnType<InMemoryOpenPracticeRepository["listClientPortalWorkspaceBatch"]> {
+    this.workspaceBatchReads += 1;
+    return super.listClientPortalWorkspaceBatch(firmId, options);
+  }
+
+  override async listSignatureRequests(
+    firmId: Parameters<InMemoryOpenPracticeRepository["listSignatureRequests"]>[0],
+    options: Parameters<InMemoryOpenPracticeRepository["listSignatureRequests"]>[1] = {},
+  ): ReturnType<InMemoryOpenPracticeRepository["listSignatureRequests"]> {
+    if (this.blockPerSignatureWorkspaceReads) {
+      throw new Error("Client portal workspace should use the workspace batch signature requests");
+    }
+    return super.listSignatureRequests(firmId, options);
+  }
+
+  override async listSignatureRequestSigners(
+    firmId: Parameters<InMemoryOpenPracticeRepository["listSignatureRequestSigners"]>[0],
+    signatureRequestId: Parameters<
+      InMemoryOpenPracticeRepository["listSignatureRequestSigners"]
+    >[1],
+  ): ReturnType<InMemoryOpenPracticeRepository["listSignatureRequestSigners"]> {
+    if (this.blockPerSignatureWorkspaceReads) {
+      throw new Error("Client portal workspace should use batched signature signers");
+    }
+    return super.listSignatureRequestSigners(firmId, signatureRequestId);
+  }
+
+  override async listSignatureProviderEvents(
+    firmId: Parameters<InMemoryOpenPracticeRepository["listSignatureProviderEvents"]>[0],
+    options: Parameters<InMemoryOpenPracticeRepository["listSignatureProviderEvents"]>[1] = {},
+  ): ReturnType<InMemoryOpenPracticeRepository["listSignatureProviderEvents"]> {
+    if (this.blockPerSignatureWorkspaceReads) {
+      throw new Error("Client portal workspace should use batched signature events");
+    }
+    return super.listSignatureProviderEvents(firmId, options);
+  }
+}
+
+class ClientPortalFocusedSignatureRepository extends InMemoryOpenPracticeRepository {
+  focusedSignatureReads = 0;
+
+  override async getSignatureRequest(
+    firmId: Parameters<InMemoryOpenPracticeRepository["getSignatureRequest"]>[0],
+    signatureRequestId: Parameters<InMemoryOpenPracticeRepository["getSignatureRequest"]>[1],
+  ): ReturnType<InMemoryOpenPracticeRepository["getSignatureRequest"]> {
+    this.focusedSignatureReads += 1;
+    return super.getSignatureRequest(firmId, signatureRequestId);
+  }
+
+  override async listSignatureRequests(
+    firmId: Parameters<InMemoryOpenPracticeRepository["listSignatureRequests"]>[0],
+    options: Parameters<InMemoryOpenPracticeRepository["listSignatureRequests"]>[1] = {},
+  ): ReturnType<InMemoryOpenPracticeRepository["listSignatureRequests"]> {
+    if (!options.matterId) {
+      throw new Error("Client portal signature detail should use focused signature lookup");
+    }
+    return super.listSignatureRequests(firmId, options);
+  }
+}
+
 async function createClientShareableDocument(
   repository: InMemoryOpenPracticeRepository,
   input: { id: string; title?: string },
@@ -705,7 +780,7 @@ describe("client portal routes", () => {
   });
 
   it("returns a redacted logged-in workspace over existing client action records", async () => {
-    const repository = new InMemoryOpenPracticeRepository();
+    const repository = new ClientPortalWorkspaceBatchRepository();
     const setupServer = testServer({ repository });
     const setup = await setupServer.inject({
       method: "POST",
@@ -728,12 +803,16 @@ describe("client portal routes", () => {
     const ledgerBefore = await repository.getLedger("firm-west-legal", { matterId: "matter-001" });
 
     const server = testServer({ repository, authUser: clientAccount! });
+    repository.blockPerSignatureWorkspaceReads = true;
     const response = await server.inject({
       method: "GET",
       url: "/api/client-portal/workspace",
     });
+    repository.blockPerSignatureWorkspaceReads = false;
 
     expect(response.statusCode).toBe(200);
+    expect(repository.grantContactPairReads).toBe(1);
+    expect(repository.workspaceBatchReads).toBe(1);
     const body = response.json<{
       account: { role: string };
       access: { posture: string; activeGrantCount: number };
@@ -1064,6 +1143,39 @@ describe("client portal routes", () => {
         }),
       ]),
     );
+  });
+
+  it("uses a focused signature lookup for client portal signature detail", async () => {
+    const repository = new ClientPortalFocusedSignatureRepository();
+    const setupServer = testServer({ repository });
+    const setup = await setupServer.inject({
+      method: "POST",
+      url: "/api/client-portal/accounts",
+      payload: { matterId: "matter-001", contactId: "contact-ada" },
+    });
+    const setupBody = setup.json<{ account: { email: string } }>();
+    const clientAccount = await repository.getUserByEmail(
+      "firm-west-legal",
+      setupBody.account.email,
+    );
+    expect(clientAccount).toBeTruthy();
+    await addClientPortalRecords(repository);
+
+    const server = testServer({ repository, authUser: clientAccount! });
+    const response = await server.inject({
+      method: "GET",
+      url: "/api/client-portal/signatures/signature-client-portal-001",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(repository.focusedSignatureReads).toBe(1);
+    expect(response.json()).toMatchObject({
+      signature: {
+        id: "signature-client-portal-001",
+        documentTitle: "Client visible disclosure.pdf",
+      },
+    });
+    expect(JSON.stringify(response.json())).not.toContain("private-signing-url");
   });
 
   it("hides revoked per-file document access from the client workspace", async () => {

@@ -4,12 +4,13 @@ import type {
   InboundEmailAttachmentRecord,
   InboundEmailMessageRecord,
 } from "@open-practice/domain";
-import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { OpenPracticeDatabase } from "../../runtime.js";
 import * as schema from "../../schema.js";
 import type {
   InboundAttachmentPromotionInput,
   InboundAttachmentPromotionResult,
+  InboundEmailAttachmentListOptions,
 } from "../inbound-email-contracts.js";
 import {
   mapDocumentRow,
@@ -139,17 +140,23 @@ export async function createDrizzleInboundEmailAttachment(
 export async function listDrizzleInboundEmailAttachments(
   db: OpenPracticeDatabase,
   firmId: string,
-  messageId: string,
+  options: string | InboundEmailAttachmentListOptions,
 ): Promise<InboundEmailAttachmentRecord[]> {
+  const inboundMessageIds =
+    typeof options === "string"
+      ? [options]
+      : options.inboundMessageId
+        ? [options.inboundMessageId]
+        : options.inboundMessageIds;
+  if (inboundMessageIds?.length === 0) return [];
+  const filters = [eq(schema.inboundEmailAttachments.firmId, firmId)];
+  if (inboundMessageIds) {
+    filters.push(inArray(schema.inboundEmailAttachments.inboundMessageId, inboundMessageIds));
+  }
   const rows = await db
     .select()
     .from(schema.inboundEmailAttachments)
-    .where(
-      and(
-        eq(schema.inboundEmailAttachments.firmId, firmId),
-        eq(schema.inboundEmailAttachments.inboundMessageId, messageId),
-      ),
-    );
+    .where(and(...filters));
   return rows.map(mapInboundEmailAttachmentRow);
 }
 

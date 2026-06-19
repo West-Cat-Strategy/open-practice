@@ -40,22 +40,16 @@ The email outbox child-row bulk-read slice is implemented in
 batched for `/api/mail/outbox` and the outbound portion of `/api/communications/inbox` using
 optional repository `emailIds` filters while preserving route shape, authorization, redaction,
 provider, receipt, queue/retry, trust, and payment boundaries.
+The 2026-06-19 operational-efficiency remediation branch
+`remediate/ops-efficiency-20260619` addresses the remaining accepted review findings: Docker-local
+same-origin API routing proof, client portal workspace batching and focused signature lookup,
+non-outbox communications child-row bulk reads, dashboard/operations SSR fetch parallelism, and
+filtered audit reads with no filtered chain-validity claim.
 
-Future candidates should stay behavior-preserving unless promoted explicitly, and should compare
-against the shipped database-efficiency proofs before widening scope.
-
-- **Client portal batch projection:** Build a portal-facing batch projection for existing
-  client-visible grants, actions, documents, billing cues, and messages while preserving current
-  client/matter visibility gates.
-- **Remaining communications and email aggregation:** Keep inbound attachment/conversation
-  aggregation and other non-outbox message bulk reads separate from the shipped outbox child-row
-  slice, without surfacing raw private body text outside existing boundaries.
-- **Operational views and report read models:** Consider durable read-model helpers for high-volume
-  operational dashboards and report slices once the selected views are stable enough to justify
-  pre-shaped query paths.
-- **Filtered audit reads:** Add firm/matter/resource filtered audit repository reads for dashboards
-  that need bounded audit activity, while preserving redaction and audit-chain verification
-  posture.
+Future database-efficiency candidates should stay behavior-preserving unless promoted explicitly,
+compare against the shipped database-efficiency proofs and this remediation branch, and avoid
+re-proposing those addressed findings unless a later production profile supplies new measured
+evidence.
 
 ### Core-Suite Clio Parity Candidates - 2026-06-04
 

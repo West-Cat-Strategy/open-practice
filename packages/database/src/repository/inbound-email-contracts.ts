@@ -22,6 +22,11 @@ export interface InboundAttachmentPromotionResult {
   created: boolean;
 }
 
+export interface InboundEmailAttachmentListOptions {
+  inboundMessageId?: string;
+  inboundMessageIds?: string[];
+}
+
 export interface InboundEmailRepository {
   getInboundEmailAddressByAddress(
     firmId: string,
@@ -50,7 +55,7 @@ export interface InboundEmailRepository {
   ): Promise<InboundEmailAttachmentRecord>;
   listInboundEmailAttachments(
     firmId: string,
-    messageId: string,
+    options: string | InboundEmailAttachmentListOptions,
   ): Promise<InboundEmailAttachmentRecord[]>;
   promoteInboundEmailAttachmentToDocument(
     input: InboundAttachmentPromotionInput,

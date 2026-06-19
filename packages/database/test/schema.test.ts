@@ -102,8 +102,13 @@ describe("database schema hardening", () => {
       expect.arrayContaining(["firm_id", "sequence", "previous_hash", "hash"]),
     );
     expect(config.columns.find((column) => column.name === "sequence")?.notNull).toBe(true);
-    expect(config.indexes.map((index) => index.config.name)).toContain(
-      "audit_events_firm_sequence_idx",
+    expect(config.indexes.map((index) => index.config.name)).toEqual(
+      expect.arrayContaining([
+        "audit_events_firm_sequence_idx",
+        "audit_events_firm_action_sequence_idx",
+        "audit_events_firm_resource_sequence_idx",
+        "audit_events_metadata_gin_idx",
+      ]),
     );
   });
 
@@ -1061,13 +1066,17 @@ describe("database schema hardening", () => {
     expect(getTableConfig(inboundEmailMessages).columns.map((column) => column.name)).toEqual(
       expect.arrayContaining(["message_id", "raw_storage_key", "parsed_text", "labels", "status"]),
     );
-    expect(getTableConfig(inboundEmailAttachments).columns.map((column) => column.name)).toEqual(
+    const inboundAttachmentConfig = getTableConfig(inboundEmailAttachments);
+    expect(inboundAttachmentConfig.columns.map((column) => column.name)).toEqual(
       expect.arrayContaining([
         "inbound_message_id",
         "document_id",
         "storage_key",
         "checksum_sha256",
       ]),
+    );
+    expect(inboundAttachmentConfig.indexes.map((index) => index.config.name)).toContain(
+      "inbound_email_attachments_firm_message_idx",
     );
     expect(getTableConfig(aiTriageRecords).columns.map((column) => column.name)).toEqual(
       expect.arrayContaining([
