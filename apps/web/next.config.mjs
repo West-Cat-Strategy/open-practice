@@ -81,6 +81,11 @@ function originFromUrl(value) {
 }
 
 const apiOrigin = originFromUrl(env.NEXT_PUBLIC_API_BASE_URL ?? env.API_BASE_URL);
+export function defaultApiRewriteBaseUrl({ localDockerDev = dockerLocalDev } = {}) {
+  return localDockerDev ? "http://api:4000" : "http://localhost:4000";
+}
+
+const apiRewriteBaseUrl = env.API_BASE_URL ?? defaultApiRewriteBaseUrl();
 const cspConnectSources = ["'self'", "http://localhost:*", "http://127.0.0.1:*", apiOrigin].filter(
   Boolean,
 );
@@ -122,6 +127,10 @@ if (isProduction) {
   });
 }
 
+export function buildApiRewriteDestination(apiBaseUrl = apiRewriteBaseUrl) {
+  return `${apiBaseUrl.replace(/\/+$/, "")}/api/:path*`;
+}
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   devIndicators: false,
@@ -137,6 +146,14 @@ const nextConfig = {
       {
         source: "/:path*",
         headers: securityHeaders,
+      },
+    ];
+  },
+  async rewrites() {
+    return [
+      {
+        source: "/api/:path*",
+        destination: buildApiRewriteDestination(),
       },
     ];
   },

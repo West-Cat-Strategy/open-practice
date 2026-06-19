@@ -1,6 +1,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import { resolveBrowserApiBaseUrl } from "./api-base-urls";
 import LoginClient from "./login-client";
 import { buildLoginPayload, canSubmitLogin } from "./login-client-utils";
 
@@ -20,5 +21,23 @@ describe("login client single-tenant payload", () => {
       email: "avery@example.test",
       password: "password123",
     });
+  });
+
+  it("uses same-origin API requests for the Docker local dev browser", () => {
+    expect(
+      resolveBrowserApiBaseUrl({
+        OPEN_PRACTICE_DOCKER_LOCAL_DEV: "true",
+        NEXT_PUBLIC_API_BASE_URL: "http://localhost:34000",
+      }),
+    ).toBe("");
+  });
+
+  it("keeps explicit browser API origins outside Docker local dev", () => {
+    expect(
+      resolveBrowserApiBaseUrl({
+        OPEN_PRACTICE_DOCKER_LOCAL_DEV: undefined,
+        NEXT_PUBLIC_API_BASE_URL: "https://api.example.test",
+      }),
+    ).toBe("https://api.example.test");
   });
 });
