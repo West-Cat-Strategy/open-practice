@@ -1,13 +1,34 @@
 import type {
   ContactIdentifier,
   ContactKind,
+  MatterLifecycleCommand,
+  MatterLifecycleCommandExecution,
   MatterLifecycleReadiness,
   MatterLifecycleTransition,
   MatterLifecycleTransitionRecord,
+  MatterStatus,
   Province,
   PublicConsultationIntakeRecord,
 } from "@open-practice/domain";
 import type { MatterSummary } from "./matter-workspace-contracts.js";
+
+export type MatterLifecycleCommandErrorCode =
+  | "MATTER_LIFECYCLE_EXPECTED_STATUS_MISMATCH"
+  | "MATTER_LIFECYCLE_COMMAND_NOT_AVAILABLE"
+  | "MATTER_LIFECYCLE_READINESS_NOT_READY"
+  | "MATTER_LIFECYCLE_MATTER_NOT_FOUND";
+
+export class MatterLifecycleCommandError extends Error {
+  code: MatterLifecycleCommandErrorCode;
+  details?: unknown;
+
+  constructor(code: MatterLifecycleCommandErrorCode, message: string, details?: unknown) {
+    super(message);
+    this.name = "MatterLifecycleCommandError";
+    this.code = code;
+    this.details = details;
+  }
+}
 
 export interface CreateMatterWithClientInput {
   firmId: string;
@@ -70,4 +91,16 @@ export interface MatterLifecycleRepository {
     createdAt: string;
     auditEventId: string;
   }): Promise<MatterLifecycleTransitionRecord>;
+  executeMatterLifecycleCommand(input: {
+    firmId: string;
+    matterId: string;
+    command: MatterLifecycleCommand;
+    expectedStatus: MatterStatus;
+    transitionRecordId: string;
+    reason: string;
+    idempotencyKey: string;
+    executedByUserId: string;
+    executedAt: string;
+    auditEventId: string;
+  }): Promise<{ matter: MatterSummary; lifecycleCommand: MatterLifecycleCommandExecution }>;
 }

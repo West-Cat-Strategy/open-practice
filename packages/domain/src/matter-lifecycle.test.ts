@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildMatterLifecycleCommandAuditMetadata,
+  buildMatterLifecycleCommandExecution,
   buildMatterLifecycleTransitionAuditMetadata,
   buildMatterLifecycleTransitionRecord,
+  matterLifecycleCommandRequiredStatus,
   matterLifecycleTargetStatus,
   summarizeMatterLifecycleTransitions,
 } from "./matter-lifecycle.js";
@@ -14,6 +17,93 @@ describe("matter lifecycle transitions", () => {
     expect(matterLifecycleTargetStatus("close")).toBe("closed");
     expect(matterLifecycleTargetStatus("archive")).toBe("archived");
     expect(matterLifecycleTargetStatus("reopen")).toBe("open");
+  });
+
+  it("maps first-slice commands to required and target statuses", () => {
+    expect(matterLifecycleCommandRequiredStatus("pause")).toBe("open");
+    expect(matterLifecycleTargetStatus("pause")).toBe("paused");
+    expect(matterLifecycleCommandRequiredStatus("reopen")).toBe("paused");
+    expect(matterLifecycleTargetStatus("reopen")).toBe("open");
+  });
+
+  it("builds status-only command summaries with safe audit metadata", () => {
+    const execution = buildMatterLifecycleCommandExecution({
+      command: "pause",
+      matterId: "matter-001",
+      transitionRecordId: "matter-lifecycle-pause",
+      beforeStatus: "open",
+      expectedStatus: "open",
+      reason: "Synthetic operator confirmed the pause packet.",
+      idempotencyKey: "synthetic-pause-command-key",
+      executedAt: reviewedAt,
+      executedByUserId: "user-licensee",
+    });
+
+    expect(execution).toMatchObject({
+      command: "pause",
+      beforeStatus: "open",
+      afterStatus: "paused",
+      reviewFirst: true,
+      consequences: {
+        matterStatusChanged: true,
+        closedOnChanged: false,
+        portalAccessChanged: false,
+        taskChanged: false,
+        assignmentChanged: false,
+        billingChanged: false,
+        trustChanged: false,
+        cleanupRun: false,
+      },
+    });
+    const metadata = buildMatterLifecycleCommandAuditMetadata(execution, {
+      reason: "Synthetic operator confirmed the pause packet.",
+      idempotencyKey: "synthetic-pause-command-key",
+    });
+    expect(metadata).toMatchObject({
+      matterId: "matter-001",
+      transitionRecordId: "matter-lifecycle-pause",
+      lifecycleCommand: "pause",
+      beforeStatus: "open",
+      expectedStatus: "open",
+      afterStatus: "paused",
+      reasonPresent: true,
+      idempotencyKeyPresent: true,
+      closedOnChanged: false,
+      billingChanged: false,
+      trustChanged: false,
+      cleanupRun: false,
+    });
+    expect(JSON.stringify(metadata)).not.toContain("Synthetic operator confirmed");
+    expect(JSON.stringify(metadata)).not.toContain("synthetic-pause-command-key");
+  });
+
+  it("rejects closed or archived reopen command executions", () => {
+    expect(() =>
+      buildMatterLifecycleCommandExecution({
+        command: "reopen",
+        matterId: "matter-001",
+        transitionRecordId: "matter-lifecycle-reopen",
+        beforeStatus: "closed",
+        expectedStatus: "paused",
+        reason: "Synthetic reopen packet is ready.",
+        idempotencyKey: "synthetic-reopen-command-key",
+        executedAt: reviewedAt,
+        executedByUserId: "user-licensee",
+      }),
+    ).toThrow("requires matter status paused");
+    expect(() =>
+      buildMatterLifecycleCommandExecution({
+        command: "reopen",
+        matterId: "matter-001",
+        transitionRecordId: "matter-lifecycle-reopen",
+        beforeStatus: "archived",
+        expectedStatus: "paused",
+        reason: "Synthetic reopen packet is ready.",
+        idempotencyKey: "synthetic-reopen-command-key",
+        executedAt: reviewedAt,
+        executedByUserId: "user-licensee",
+      }),
+    ).toThrow("requires matter status paused");
   });
 
   it("builds concise review-only records and summaries", () => {
