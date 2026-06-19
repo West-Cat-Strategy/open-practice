@@ -660,6 +660,115 @@ describe("communications inbox routes", () => {
     expect(response.body).not.toContain("second-secret");
   });
 
+  it("bulk-loads inbound and conversation child rows from authorized inbox parents", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const firstInbound = inboundMessage({
+      id: "inbound-message-bulk-001",
+      receivedAt: "2026-05-05T12:10:00.000Z",
+    });
+    const secondInbound = inboundMessage({
+      id: "inbound-message-bulk-002",
+      messageId: "<message-bulk-002@example.test>",
+      receivedAt: "2026-05-05T12:20:00.000Z",
+    });
+    await repository.createInboundEmailMessage(firstInbound);
+    await repository.createInboundEmailMessage(secondInbound);
+    await repository.createInboundEmailAttachment({
+      id: "inbound-attachment-bulk-001",
+      firmId,
+      inboundMessageId: firstInbound.id,
+      filename: "private-first.pdf",
+      storageKey: "inbound/private-first.pdf",
+    });
+    await repository.createInboundEmailAttachment({
+      id: "inbound-attachment-bulk-002",
+      firmId,
+      inboundMessageId: secondInbound.id,
+      filename: "private-second.pdf",
+      storageKey: "inbound/private-second.pdf",
+    });
+    for (const threadId of ["conversation-thread-bulk-001", "conversation-thread-bulk-002"]) {
+      await repository.createConversationThread({
+        id: threadId,
+        firmId,
+        matterId: "matter-001",
+        topic: `Synthetic bulk thread ${threadId}`,
+        status: "open",
+        exportState: "not_requested",
+        notificationBoundary: "internal_only",
+        createdAt: now,
+        updatedAt: now,
+        createdByUserId: "user-admin",
+        updatedByUserId: "user-admin",
+        metadata: { privateThreadNote: "must not appear" },
+      });
+      await repository.createConversationMessage({
+        id: `message-${threadId}`,
+        firmId,
+        matterId: "matter-001",
+        threadId,
+        kind: "internal_note",
+        bodyText: "Private bulk message body must not appear.",
+        authoredAt: threadId.endsWith("001")
+          ? "2026-05-05T12:40:00.000Z"
+          : "2026-05-05T12:41:00.000Z",
+        authoredByUserId: "user-admin",
+        createdAt: "2026-05-05T12:41:01.000Z",
+        createdByUserId: "user-admin",
+        metadata: {},
+      });
+    }
+    const listedAttachments = vi.spyOn(repository, "listInboundEmailAttachments");
+    const listedMessages = vi.spyOn(repository, "listConversationMessages");
+    const listedNotifications = vi.spyOn(repository, "listConversationMessageNotifications");
+
+    const response = await testServer(repository, user("licensee", ["matter-001"])).inject({
+      method: "GET",
+      url: "/api/communications/inbox?matterId=matter-001",
+    });
+
+    expect(response.statusCode).toBe(200);
+    const payload = response.json();
+    const listedInboundIds = payload.inboundEmail.map((message: { id: string }) => message.id);
+    const listedThreadIds = payload.conversations.map((thread: { id: string }) => thread.id);
+    expect(new Set(listedInboundIds)).toEqual(new Set([firstInbound.id, secondInbound.id]));
+    expect(new Set(listedThreadIds)).toEqual(
+      new Set(["conversation-thread-bulk-001", "conversation-thread-bulk-002"]),
+    );
+    expect(listedAttachments).toHaveBeenCalledTimes(1);
+    expect(listedAttachments).toHaveBeenCalledWith(firmId, {
+      inboundMessageIds: listedInboundIds,
+    });
+    expect(listedMessages).toHaveBeenCalledTimes(1);
+    expect(listedMessages).toHaveBeenCalledWith(firmId, { threadIds: listedThreadIds });
+    expect(listedNotifications).toHaveBeenCalledTimes(1);
+    expect(listedNotifications).toHaveBeenCalledWith(firmId, {
+      threadIds: listedThreadIds,
+      recipientUserId: "user-licensee",
+    });
+    expect(payload.inboundEmail).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: firstInbound.id, attachmentCount: 1 }),
+        expect.objectContaining({ id: secondInbound.id, attachmentCount: 1 }),
+      ]),
+    );
+    expect(payload.channelHistory).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "conversation-thread:conversation-thread-bulk-001",
+          messageCount: 1,
+        }),
+        expect.objectContaining({
+          id: "conversation-thread:conversation-thread-bulk-002",
+          messageCount: 1,
+        }),
+      ]),
+    );
+    expect(response.body).not.toContain("Private bulk message body");
+    expect(response.body).not.toContain("inbound/private-first.pdf");
+    expect(response.body).not.toContain("inbound/private-second.pdf");
+  });
+
   it("denies cross-matter aggregate reads", async () => {
     const repository = new InMemoryOpenPracticeRepository();
 

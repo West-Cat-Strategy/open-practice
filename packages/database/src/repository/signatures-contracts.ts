@@ -16,6 +16,10 @@ export interface SignatureRepository {
     firmId: string,
     options?: { matterId?: string },
   ): Promise<SignatureRequestRecord[]>;
+  getSignatureRequest(
+    firmId: string,
+    signatureRequestId: string,
+  ): Promise<SignatureRequestRecord | undefined>;
   listSignatureRequestSigners(
     firmId: string,
     signatureRequestId: string,

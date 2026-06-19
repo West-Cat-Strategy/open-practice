@@ -484,6 +484,13 @@
       "when": 1781568012000,
       "tag": "0068_payment_import_review_records",
       "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1781568013000,
+      "tag": "0069_inbound_attachment_message_index",
+      "breakpoints": true
     }
   ]
 }

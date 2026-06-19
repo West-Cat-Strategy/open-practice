@@ -31,5 +31,9 @@ export const auditEvents = pgTable(
       table.resourceId,
       table.sequence,
     ),
+    metadataGin: index("audit_events_metadata_gin_idx").using(
+      "gin",
+      table.metadata.op("jsonb_path_ops"),
+    ),
   }),
 );

@@ -61,18 +61,27 @@ export const inboundEmailMessages = pgTable(
   }),
 );
 
-export const inboundEmailAttachments = pgTable("inbound_email_attachments", {
-  id: text("id").primaryKey(),
-  firmId: text("firm_id")
-    .notNull()
-    .references(() => firms.id),
-  inboundMessageId: text("inbound_message_id")
-    .notNull()
-    .references(() => inboundEmailMessages.id),
-  documentId: text("document_id").references(() => documents.id),
-  filename: text("filename").notNull(),
-  contentType: text("content_type"),
-  sizeBytes: integer("size_bytes"),
-  storageKey: text("storage_key").notNull(),
-  checksumSha256: text("checksum_sha256"),
-});
+export const inboundEmailAttachments = pgTable(
+  "inbound_email_attachments",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    inboundMessageId: text("inbound_message_id")
+      .notNull()
+      .references(() => inboundEmailMessages.id),
+    documentId: text("document_id").references(() => documents.id),
+    filename: text("filename").notNull(),
+    contentType: text("content_type"),
+    sizeBytes: integer("size_bytes"),
+    storageKey: text("storage_key").notNull(),
+    checksumSha256: text("checksum_sha256"),
+  },
+  (table) => ({
+    firmMessage: index("inbound_email_attachments_firm_message_idx").on(
+      table.firmId,
+      table.inboundMessageId,
+    ),
+  }),
+);

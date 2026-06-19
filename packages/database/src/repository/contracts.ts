@@ -6,6 +6,7 @@ import type { BillingInvoicePaymentRepository } from "./billing-invoices-payment
 import type { BillingControlsRepository } from "./billing-controls-contracts.js";
 import type { CalendarCredentialRepository } from "./calendar-credentials-contracts.js";
 import type { CalendarEventsRepository } from "./calendar-events-contracts.js";
+import type { ClientPortalWorkspaceRepository } from "./client-portal-workspace-contracts.js";
 import type { ConflictCheckRepository } from "./conflict-checks-contracts.js";
 import type { ConnectorRepository } from "./connector-contracts.js";
 import type { ContactRepository } from "./contacts-contracts.js";
@@ -45,6 +46,7 @@ export * from "./billing-invoices-payments-contracts.js";
 export * from "./billing-controls-contracts.js";
 export * from "./calendar-credentials-contracts.js";
 export * from "./calendar-events-contracts.js";
+export * from "./client-portal-workspace-contracts.js";
 export * from "./conflict-checks-contracts.js";
 export * from "./connector-contracts.js";
 export * from "./contacts-contracts.js";
@@ -237,6 +239,7 @@ export interface OpenPracticeRepository
     AiOperationalProposalRepository,
     CalendarCredentialRepository,
     CalendarEventsRepository,
+    ClientPortalWorkspaceRepository,
     ConflictCheckRepository,
     DocumentAssemblyRepository,
     DocumentRepository,

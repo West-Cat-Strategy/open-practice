@@ -133,16 +133,19 @@ export function listMemoryConversationMessageNotifications(
   firmId: string,
   options: {
     threadId?: string;
+    threadIds?: string[];
     matterId?: string;
     recipientUserId?: string;
     messageId?: string;
   } = {},
 ): ConversationMessageNotificationRecord[] {
+  const threadIds = options.threadId ? [options.threadId] : options.threadIds;
+  if (threadIds?.length === 0) return [];
   return clone(
     store.conversationMessageNotifications
       .filter((notification) => {
         if (notification.firmId !== firmId) return false;
-        if (options.threadId && notification.threadId !== options.threadId) return false;
+        if (threadIds && !threadIds.includes(notification.threadId)) return false;
         if (options.matterId && notification.matterId !== options.matterId) return false;
         if (options.recipientUserId && notification.recipientUserId !== options.recipientUserId)
           return false;
@@ -192,13 +195,15 @@ export function updateMemoryConversationMessageNotificationPosture(
 export function listMemoryConversationMessages(
   store: MemoryConversationThreadStore,
   firmId: string,
-  options: { threadId?: string; matterId?: string } = {},
+  options: { threadId?: string; threadIds?: string[]; matterId?: string } = {},
 ): ConversationMessageRecord[] {
+  const threadIds = options.threadId ? [options.threadId] : options.threadIds;
+  if (threadIds?.length === 0) return [];
   return clone(
     store.conversationMessages
       .filter((message) => {
         if (message.firmId !== firmId) return false;
-        if (options.threadId && message.threadId !== options.threadId) return false;
+        if (threadIds && !threadIds.includes(message.threadId)) return false;
         if (options.matterId && message.matterId !== options.matterId) return false;
         return true;
       })

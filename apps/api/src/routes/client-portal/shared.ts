@@ -76,18 +76,12 @@ export async function clientContactGrantPairs(
   user: User,
   now: string,
 ): Promise<Array<{ grant: PortalGrant; contact: Contact }>> {
-  const grants = await repository.listPortalGrants(user.firmId);
-  const pairs = await Promise.all(
-    grants
-      .filter((grant) => activePortalGrant(grant, now))
-      .map(async (grant) => {
-        const contact = await repository.getContact(grant.firmId, grant.contactId);
-        return contact && portalGrantMatchesUser(grant, contact, user)
-          ? { grant, contact }
-          : undefined;
-      }),
-  );
-  return pairs.filter((pair): pair is { grant: PortalGrant; contact: Contact } => Boolean(pair));
+  return repository.listClientPortalGrantContactPairs({
+    firmId: user.firmId,
+    userId: user.id,
+    userEmail: user.email,
+    now,
+  });
 }
 
 export function uniquePermissions(grants: PortalGrant[]): PortalGrant["permissions"] {

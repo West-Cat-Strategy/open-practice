@@ -43,6 +43,23 @@ export async function listDrizzleSignatureRequests(
   return rows.map(mapSignatureRequestRow);
 }
 
+export async function getDrizzleSignatureRequest(
+  db: OpenPracticeDatabase,
+  firmId: string,
+  signatureRequestId: string,
+): Promise<SignatureRequestRecord | undefined> {
+  const [row] = await db
+    .select()
+    .from(schema.signatureRequests)
+    .where(
+      and(
+        eq(schema.signatureRequests.firmId, firmId),
+        eq(schema.signatureRequests.id, signatureRequestId),
+      ),
+    );
+  return row ? mapSignatureRequestRow(row) : undefined;
+}
+
 export async function listDrizzleSignatureRequestSigners(
   db: OpenPracticeDatabase,
   firmId: string,

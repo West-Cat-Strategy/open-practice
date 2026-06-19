@@ -8,6 +8,7 @@ import { clone } from "../contracts.js";
 import type {
   InboundAttachmentPromotionInput,
   InboundAttachmentPromotionResult,
+  InboundEmailAttachmentListOptions,
 } from "../inbound-email-contracts.js";
 
 export interface MemoryInboundEmailStore {
@@ -119,11 +120,20 @@ export function createMemoryInboundEmailAttachment(
 export function listMemoryInboundEmailAttachments(
   store: MemoryInboundEmailStore,
   firmId: string,
-  messageId: string,
+  options: string | InboundEmailAttachmentListOptions,
 ): InboundEmailAttachmentRecord[] {
+  const inboundMessageIds =
+    typeof options === "string"
+      ? [options]
+      : options.inboundMessageId
+        ? [options.inboundMessageId]
+        : options.inboundMessageIds;
+  if (inboundMessageIds?.length === 0) return [];
   return clone(
     store.inboundEmailAttachments.filter(
-      (attachment) => attachment.firmId === firmId && attachment.inboundMessageId === messageId,
+      (attachment) =>
+        attachment.firmId === firmId &&
+        (!inboundMessageIds || inboundMessageIds.includes(attachment.inboundMessageId)),
     ),
   );
 }

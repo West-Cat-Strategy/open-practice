@@ -79,73 +79,87 @@ function emptyTaskDeadlineWorkbench(): TaskDeadlineWorkbenchResponse {
 export async function loadOperationsDashboardResources(
   headers: Record<string, string>,
 ): Promise<OperationsDashboardResources> {
-  const taskWorkbench = await apiGetOptional<TaskDeadlineWorkbenchResponse>(
-    "/api/tasks/workbench",
-    emptyTaskDeadlineWorkbench(),
-    headers,
-  );
-  const workerRuns: WorkerRunsDashboardResponse = {
-    all: await apiGetOptional<WorkerRunsResponse>(
+  const [
+    taskWorkbench,
+    allWorkerRuns,
+    emailWorkerRuns,
+    ocrWorkerRuns,
+    workerHealth,
+    workflowHistory,
+    providerStatus,
+    operationalViews,
+    operationalViewDefinitions,
+    aiOperationalProposals,
+    reportingWorkspace,
+  ] = await Promise.all([
+    apiGetOptional<TaskDeadlineWorkbenchResponse>(
+      "/api/tasks/workbench",
+      emptyTaskDeadlineWorkbench(),
+      headers,
+    ),
+    apiGetOptional<WorkerRunsResponse>(
       buildWorkerRunsPath("all"),
       emptyWorkerRunsResponse(),
       headers,
       emptyWorkerRunsResponse("access_denied"),
     ),
-    email: await apiGetOptional<WorkerRunsResponse>(
+    apiGetOptional<WorkerRunsResponse>(
       buildWorkerRunsPath("email"),
       emptyWorkerRunsResponse(),
       headers,
       emptyWorkerRunsResponse("access_denied"),
     ),
-    ocr: await apiGetOptional<WorkerRunsResponse>(
+    apiGetOptional<WorkerRunsResponse>(
       buildWorkerRunsPath("ocr"),
       emptyWorkerRunsResponse(),
       headers,
       emptyWorkerRunsResponse("access_denied"),
     ),
+    apiGetOptional<WorkerHealthResponse>(
+      buildWorkerHealthPath(),
+      emptyWorkerHealthResponse(),
+      headers,
+      emptyWorkerHealthResponse(),
+    ),
+    apiGetOptional<WorkflowHistoryResponse>(
+      buildWorkflowHistoryPath(),
+      emptyWorkflowHistoryResponse(),
+      headers,
+      emptyWorkflowHistoryResponse("access_denied"),
+    ),
+    apiGetOptional<ProvidersStatusResponse>(
+      buildProvidersStatusPath(),
+      emptyProvidersStatusResponse(),
+      headers,
+      emptyProvidersStatusResponse("access_denied"),
+    ),
+    apiGetOptional<OperationalViewsResponse>("/api/operational-views", { views: [] }, headers, {
+      views: [],
+    }),
+    apiGetOptional<OperationalViewDefinitionsResponse>(
+      "/api/operational-views/definitions",
+      { definitions: [] },
+      headers,
+      { definitions: [] },
+    ),
+    apiGetOptional<AiOperationalProposalsResponse>(
+      buildAiOperationalProposalsPath(),
+      emptyAiOperationalProposalsResponse(),
+      headers,
+      emptyAiOperationalProposalsResponse(),
+    ),
+    apiGetOptional<StaffReportingWorkspaceResponse>(
+      "/api/reports/workspace",
+      emptyStaffReportingWorkspace(),
+      headers,
+      emptyStaffReportingWorkspace(),
+    ),
+  ]);
+  const workerRuns: WorkerRunsDashboardResponse = {
+    all: allWorkerRuns,
+    email: emailWorkerRuns,
+    ocr: ocrWorkerRuns,
   };
-  const workerHealth = await apiGetOptional<WorkerHealthResponse>(
-    buildWorkerHealthPath(),
-    emptyWorkerHealthResponse(),
-    headers,
-    emptyWorkerHealthResponse(),
-  );
-  const workflowHistory = await apiGetOptional<WorkflowHistoryResponse>(
-    buildWorkflowHistoryPath(),
-    emptyWorkflowHistoryResponse(),
-    headers,
-    emptyWorkflowHistoryResponse("access_denied"),
-  );
-  const providerStatus = await apiGetOptional<ProvidersStatusResponse>(
-    buildProvidersStatusPath(),
-    emptyProvidersStatusResponse(),
-    headers,
-    emptyProvidersStatusResponse("access_denied"),
-  );
-  const operationalViews = await apiGetOptional<OperationalViewsResponse>(
-    "/api/operational-views",
-    { views: [] },
-    headers,
-    { views: [] },
-  );
-  const operationalViewDefinitions = await apiGetOptional<OperationalViewDefinitionsResponse>(
-    "/api/operational-views/definitions",
-    { definitions: [] },
-    headers,
-    { definitions: [] },
-  );
-  const aiOperationalProposals = await apiGetOptional<AiOperationalProposalsResponse>(
-    buildAiOperationalProposalsPath(),
-    emptyAiOperationalProposalsResponse(),
-    headers,
-    emptyAiOperationalProposalsResponse(),
-  );
-  const reportingWorkspace = await apiGetOptional<StaffReportingWorkspaceResponse>(
-    "/api/reports/workspace",
-    emptyStaffReportingWorkspace(),
-    headers,
-    emptyStaffReportingWorkspace(),
-  );
 
   return {
     aiOperationalProposals,

@@ -34,11 +34,11 @@ API contracts, database schema changes, auth changes, or release handoff.
 | Type checking          | `pnpm typecheck`                                 | Runs Turbo package type checks.                                                                                                                                                                                       |
 | Tests                  | `pnpm test`                                      | Runs package test suites.                                                                                                                                                                                             |
 | Host browser E2E       | `pnpm e2e:host`                                  | Runs Playwright against a synthetic memory-backed API plus Next.js web runtime across Chromium desktop/mobile, Firefox, and WebKit.                                                                                   |
-| Docker browser E2E     | `pnpm e2e:docker`                                | Runs Playwright against a disposable PostgreSQL-backed runtime with Redis, MinIO, and Mailpit infrastructure.                                                                                                         |
+| Docker browser E2E     | `pnpm e2e:docker`                                | Runs Playwright against a disposable PostgreSQL-backed runtime with Redis, MinIO, and Mailpit infrastructure; Docker-local web browser API calls stay same-origin through the Next rewrite.                           |
 | Matterless browser E2E | `pnpm e2e:matterless`                            | Runs the dedicated Chromium matterless-auth coverage against the host memory runtime.                                                                                                                                 |
 | Client portal E2E      | `pnpm e2e:client-portal`                         | Runs the dedicated Chromium client-portal auth coverage against the host memory runtime.                                                                                                                              |
 | Accessibility E2E      | `pnpm e2e:a11y`                                  | Runs the dedicated Chromium rendered accessibility lane with axe against synthetic staff and public-token pages.                                                                                                      |
-| Docker app image smoke | `pnpm docker:app-smoke`                          | Pulls Redis, builds wrapped local service images plus API/Web/Worker images, starts the local Compose stack, migrates the default Compose database, checks API/web readiness, and supports app-image footprint proof. |
+| Docker app image smoke | `pnpm docker:app-smoke`                          | Pulls Redis, builds wrapped local service images plus API/Web/Worker images, starts the local Compose stack, migrates the default Compose database, checks API/web readiness, proves the web-origin setup-status rewrite, and supports app-image footprint proof. |
 | Docker static lint     | `pnpm docker:lint`                               | Runs optional local Hadolint and Checkov checks when installed; skips with local evidence when missing.                                                                                                               |
 | Docker image scan      | `pnpm docker:scan`                               | Runs optional local Trivy image scanning when installed; pair with `pnpm docker:app-smoke` so app images exist.                                                                                                       |
 | Self-host Compose gate | `pnpm selfhost:check -- --env-file <path>`       | Validates self-host env values and rendered `docker-compose.selfhost.yml` posture without starting the stack.                                                                                                         |
@@ -100,6 +100,7 @@ Selection rules:
 | `packages/domain/**`                             | `pnpm --filter @open-practice/domain test`, `pnpm --filter @open-practice/domain typecheck`, `pnpm --filter @open-practice/domain build`; source files also add API, providers, and worker tests                                                                                           |
 | `packages/database/**` or any `migrations/` path | `pnpm --filter @open-practice/database test`, `pnpm --filter @open-practice/database db:check`, `pnpm migrations:check`, `pnpm migrations:lint`, `pnpm --filter @open-practice/database typecheck`, `pnpm --filter @open-practice/database build`, `pnpm --filter @open-practice/api test` |
 | `packages/providers/**`                          | `pnpm --filter @open-practice/providers test`, `pnpm --filter @open-practice/providers typecheck`, `pnpm --filter @open-practice/providers build`, `pnpm --filter @open-practice/api test`, worker test and typecheck                                                                      |
+| Docker-local web API routing                     | `pnpm docker:app-smoke`, `pnpm e2e:docker`, `pnpm --filter @open-practice/web test`, `pnpm --filter @open-practice/web typecheck`, `pnpm build` for `apps/web/next.config.mjs` or `apps/web/app/api-base-urls.ts`                                                                          |
 | `apps/web/**`                                    | `pnpm --filter @open-practice/web test`, `pnpm --filter @open-practice/web typecheck`, `pnpm build`                                                                                                                                                                                        |
 | `e2e/**` or `playwright.config.*`                | `pnpm e2e:host`, `pnpm e2e:docker`, `node scripts/run-e2e.mjs first-run`, `pnpm e2e:matterless`, `pnpm e2e:client-portal`, `pnpm e2e:a11y`                                                                                                                                                 |
 | `docs/**`                                        | `pnpm format:check`, `pnpm docs:check`, `pnpm policy:check`                                                                                                                                                                                                                                |
@@ -213,9 +214,12 @@ routing so those variants remain runnable without appearing as normal host-suite
 
 `pnpm e2e:docker` starts Compose infrastructure for PostgreSQL, Redis, MinIO, and Mailpit, creates a
 disposable e2e database, runs migrations, prepares the MinIO bucket, starts host API/web/worker
-processes against those services, and cleans up the disposable database after Playwright exits. Use
-this tier for external upload, object-storage, queue, and release-readiness browser proof. If Docker
-or a required local port is unavailable, report the skipped Docker check with the blocker.
+processes against those services, and cleans up the disposable database after Playwright exits. The
+web/browser side sets `OPEN_PRACTICE_DOCKER_LOCAL_DEV=true` so browser API calls stay same-origin
+through the local Next rewrite while server-side API calls continue to use `API_BASE_URL`. Use this
+tier for external upload, object-storage, queue, Docker-local routing, and release-readiness browser
+proof. If Docker or a required local port is unavailable, report the skipped Docker check with the
+blocker.
 
 `node scripts/run-e2e.mjs first-run` starts an unseeded host memory runtime and runs the first-run
 setup wizard project. Use it when setup gating, owner bootstrap, optional email configuration, or
@@ -237,9 +241,11 @@ chromium` and retry.
 
 `pnpm docker:app-smoke` proves the built API, Web, and Worker images directly. By default it uses a
 disposable Compose project, alternate loopback ports, and disposable volumes so it does not disturb a
-running dev stack. Add `-- --refresh` when the proof needs pinned Redis pulls and `--pull` image
-rebuilds. Use `pnpm docker:app-smoke -- --keep-up` to validate and leave the default dev stack
-running on web `33000` and API `34000`. For footprint work, pair the smoke result with
+running dev stack. It checks direct API health, the web root, and web-origin `/api/setup/status` so
+Docker-local same-origin rewrites prove they reach the API setup-status shape. Add `-- --refresh`
+when the proof needs pinned Redis pulls and `--pull` image rebuilds. Use
+`pnpm docker:app-smoke -- --keep-up` to validate and leave the default dev stack running on web
+`33000` and API `34000`. For footprint work, pair the smoke result with
 `docker image inspect open-practice-dev-api open-practice-dev-web open-practice-dev-worker --format '{{.RepoTags}} {{.Size}}'`
 so the proof records before/after API, Web, and Worker image sizes.
 

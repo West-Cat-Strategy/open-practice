@@ -35,6 +35,18 @@ export function listMemorySignatureRequests(
   );
 }
 
+export function getMemorySignatureRequest(
+  store: MemorySignatureStore,
+  firmId: string,
+  signatureRequestId: string,
+): SignatureRequestRecord | undefined {
+  return clone(
+    store.signatureRequests.find(
+      (request) => request.firmId === firmId && request.id === signatureRequestId,
+    ),
+  );
+}
+
 export function listMemorySignatureRequestSigners(
   store: MemorySignatureStore,
   firmId: string,

@@ -124,9 +124,7 @@ async function getClientVisibleSignature(input: {
     }
   | undefined
 > {
-  const request = (await input.repository.listSignatureRequests(input.user.firmId)).find(
-    (candidate) => candidate.id === input.signatureId,
-  );
+  const request = await input.repository.getSignatureRequest(input.user.firmId, input.signatureId);
   if (!request) return undefined;
   const grants = await visibleMatterSignGrants({
     repository: input.repository,

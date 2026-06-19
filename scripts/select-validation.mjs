@@ -367,6 +367,10 @@ function isApiContractTooling(path) {
   );
 }
 
+function isDockerLocalWebApiRouting(path) {
+  return path === "apps/web/next.config.mjs" || path === "apps/web/app/api-base-urls.ts";
+}
+
 export function normalizePaths(paths, cwd = process.cwd()) {
   return [...new Set(paths.map((path) => normalizePath(path, cwd)).filter(Boolean))].sort();
 }
@@ -428,6 +432,11 @@ export function classifyPath(path) {
     commands.add(COMMANDS.webTest);
     commands.add(COMMANDS.webTypecheck);
     commands.add(COMMANDS.build);
+  }
+
+  if (isDockerLocalWebApiRouting(path)) {
+    commands.add(COMMANDS.dockerAppSmoke);
+    commands.add(COMMANDS.e2eDocker);
   }
 
   if (isE2EPath(path)) {

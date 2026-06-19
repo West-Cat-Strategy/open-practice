@@ -3,11 +3,13 @@ import { z } from "zod";
 import type {
   AccessRequest,
   ContactDossier,
+  ConversationMessageNotificationRecord,
   ConversationMessageRecord,
   ConversationThreadRecord,
   EmailEventRecord,
   EmailOutboxRecord,
   EmailReceiptTokenRecord,
+  InboundEmailAttachmentRecord,
   InboundEmailMessageRecord,
 } from "@open-practice/domain";
 import { requireAccess } from "../../http/auth-guards.js";
@@ -181,6 +183,51 @@ function latestReceiptTokenByEmailId(
     receiptTokenByEmailId.set(receiptToken.emailId, receiptToken);
   }
   return receiptTokenByEmailId;
+}
+
+function groupInboundAttachmentsByMessageId(
+  attachments: InboundEmailAttachmentRecord[],
+  visibleMessageIds: string[],
+): Map<string, InboundEmailAttachmentRecord[]> {
+  const visibleMessageIdSet = new Set(visibleMessageIds);
+  const attachmentsByMessageId = new Map<string, InboundEmailAttachmentRecord[]>(
+    visibleMessageIds.map((messageId) => [messageId, []]),
+  );
+  for (const attachment of attachments) {
+    if (!visibleMessageIdSet.has(attachment.inboundMessageId)) continue;
+    attachmentsByMessageId.get(attachment.inboundMessageId)?.push(attachment);
+  }
+  return attachmentsByMessageId;
+}
+
+function groupConversationMessagesByThreadId(
+  messages: ConversationMessageRecord[],
+  visibleThreadIds: string[],
+): Map<string, ConversationMessageRecord[]> {
+  const visibleThreadIdSet = new Set(visibleThreadIds);
+  const messagesByThreadId = new Map<string, ConversationMessageRecord[]>(
+    visibleThreadIds.map((threadId) => [threadId, []]),
+  );
+  for (const message of messages) {
+    if (!visibleThreadIdSet.has(message.threadId)) continue;
+    messagesByThreadId.get(message.threadId)?.push(message);
+  }
+  return messagesByThreadId;
+}
+
+function groupConversationNotificationsByThreadId(
+  notifications: ConversationMessageNotificationRecord[],
+  visibleThreadIds: string[],
+): Map<string, ConversationMessageNotificationRecord[]> {
+  const visibleThreadIdSet = new Set(visibleThreadIds);
+  const notificationsByThreadId = new Map<string, ConversationMessageNotificationRecord[]>(
+    visibleThreadIds.map((threadId) => [threadId, []]),
+  );
+  for (const notification of notifications) {
+    if (!visibleThreadIdSet.has(notification.threadId)) continue;
+    notificationsByThreadId.get(notification.threadId)?.push(notification);
+  }
+  return notificationsByThreadId;
 }
 
 function lastEventAt(email: EmailOutboxRecord, events: EmailEventRecord[]): string {
@@ -548,11 +595,36 @@ export function registerCommunicationsInboxRoutes(
       repository.listProviderSettings(request.auth.firmId, { kind: "inbound_email" }),
       repository.listProviderSettings(request.auth.firmId, { kind: "smtp" }),
     ]);
-    const inboundWithAttachments = await Promise.all(
-      inboundMessages.map(async (message) => ({
-        message,
-        attachments: await repository.listInboundEmailAttachments(request.auth.firmId, message.id),
-      })),
+    const inboundMessageIds = inboundMessages.map((message) => message.id);
+    const inboundAttachments = await repository.listInboundEmailAttachments(request.auth.firmId, {
+      inboundMessageIds,
+    });
+    const attachmentsByInboundMessageId = groupInboundAttachmentsByMessageId(
+      inboundAttachments,
+      inboundMessageIds,
+    );
+    const inboundWithAttachments = inboundMessages.map((message) => ({
+      message,
+      attachments: attachmentsByInboundMessageId.get(message.id) ?? [],
+    }));
+
+    const conversationThreadIds = conversationThreads.map((thread) => thread.id);
+    const [conversationMessages, conversationNotifications] = await Promise.all([
+      repository.listConversationMessages(request.auth.firmId, {
+        threadIds: conversationThreadIds,
+      }),
+      repository.listConversationMessageNotifications(request.auth.firmId, {
+        threadIds: conversationThreadIds,
+        recipientUserId: request.auth.user.id,
+      }),
+    ]);
+    const conversationMessagesByThreadId = groupConversationMessagesByThreadId(
+      conversationMessages,
+      conversationThreadIds,
+    );
+    const conversationNotificationsByThreadId = groupConversationNotificationsByThreadId(
+      conversationNotifications,
+      conversationThreadIds,
     );
     const outboundEmailIds = uniqueEmailIds(outboundEmails);
     const [outboundEmailEvents, receiptTokens] = await Promise.all([
@@ -568,18 +640,11 @@ export function registerCommunicationsInboxRoutes(
       email,
       events: eventsByOutboundEmailId.get(email.id) ?? [],
     }));
-    const conversationMessageSummaries = await Promise.all(
-      conversationThreads.map(async (thread) => ({
-        thread,
-        messages: await repository.listConversationMessages(request.auth.firmId, {
-          threadId: thread.id,
-        }),
-        notifications: await repository.listConversationMessageNotifications(request.auth.firmId, {
-          threadId: thread.id,
-          recipientUserId: request.auth.user.id,
-        }),
-      })),
-    );
+    const conversationMessageSummaries = conversationThreads.map((thread) => ({
+      thread,
+      messages: conversationMessagesByThreadId.get(thread.id) ?? [],
+      notifications: conversationNotificationsByThreadId.get(thread.id) ?? [],
+    }));
     const clientUpdateDraftRequests = buildClientUpdateDraftRequests(conversationMessageSummaries);
     const contactCues = contactDossiers
       .filter((dossier) => dossier.matters.some((matter) => matter.matterId === query.matterId))

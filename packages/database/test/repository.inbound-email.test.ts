@@ -183,6 +183,40 @@ describe("repository inbound email", () => {
     });
   });
 
+  it("batch-lists inbound attachments with singular precedence and empty-array semantics", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const first = await createInboundMessageWithAttachment(repository, {
+      messageId: "inbound-message-batch-001",
+      attachmentId: "inbound-attachment-batch-001",
+    });
+    const second = await createInboundMessageWithAttachment(repository, {
+      messageId: "inbound-message-batch-002",
+      attachmentId: "inbound-attachment-batch-002",
+    });
+
+    await expect(
+      repository.listInboundEmailAttachments("firm-west-legal", {
+        inboundMessageIds: [first.message.id, second.message.id],
+      }),
+    ).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: first.attachment.id, inboundMessageId: first.message.id }),
+        expect.objectContaining({ id: second.attachment.id, inboundMessageId: second.message.id }),
+      ]),
+    );
+    await expect(
+      repository.listInboundEmailAttachments("firm-west-legal", {
+        inboundMessageId: first.message.id,
+        inboundMessageIds: [second.message.id],
+      }),
+    ).resolves.toEqual([
+      expect.objectContaining({ id: first.attachment.id, inboundMessageId: first.message.id }),
+    ]);
+    await expect(
+      repository.listInboundEmailAttachments("firm-west-legal", { inboundMessageIds: [] }),
+    ).resolves.toEqual([]);
+  });
+
   it("marks promoted inbound attachments as duplicates within the same matter", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const { message, attachment } = await createInboundMessageWithAttachment(repository, {

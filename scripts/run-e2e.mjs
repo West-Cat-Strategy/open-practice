@@ -2,7 +2,7 @@
 
 import { spawn } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
@@ -247,6 +247,13 @@ function runtimeEnv(input) {
   };
 }
 
+export function withDockerLocalDevEnv(env) {
+  return {
+    ...env,
+    OPEN_PRACTICE_DOCKER_LOCAL_DEV: "true",
+  };
+}
+
 async function startHostRuntime(options = {}) {
   const apiPort = Number(
     process.env[options.apiPortEnv ?? "E2E_HOST_API_PORT"] ?? options.defaultApiPort ?? 34110,
@@ -392,10 +399,11 @@ async function startDockerRuntime() {
   startApi(env);
   await waitForUrl("API", `${apiBaseUrl}/health`);
   spawnLongLived("worker", "pnpm", ["--filter", "@open-practice/worker", "dev"], { env });
-  startWeb(env);
+  const webEnv = withDockerLocalDevEnv(env);
+  startWeb(webEnv);
   await waitForUrl("web", webBaseUrl, { timeoutMs: 90_000 });
 
-  return env;
+  return webEnv;
 }
 
 async function main() {
@@ -469,13 +477,19 @@ async function main() {
   await runPlaywright(env, projects);
 }
 
-main()
-  .catch((error) => {
-    process.stderr.write(
-      `${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`,
-    );
-    process.exitCode = 1;
-  })
-  .finally(async () => {
-    await cleanup();
-  });
+function isCliEntrypoint() {
+  return Boolean(process.argv[1]) && import.meta.url === pathToFileURL(process.argv[1]).href;
+}
+
+if (isCliEntrypoint()) {
+  main()
+    .catch((error) => {
+      process.stderr.write(
+        `${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`,
+      );
+      process.exitCode = 1;
+    })
+    .finally(async () => {
+      await cleanup();
+    });
+}

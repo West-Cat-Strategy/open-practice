@@ -2,6 +2,7 @@
 
 import { spawn } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
+import { pathToFileURL } from "node:url";
 
 const args = process.argv.slice(2).filter((arg) => arg !== "--");
 const keepUp = args.includes("--keep-up");
@@ -43,6 +44,7 @@ const composeEnv = {
 };
 const apiHealthUrl = `http://127.0.0.1:${ports.api}/health`;
 const webUrl = `http://127.0.0.1:${ports.web}/`;
+const webSetupStatusUrl = new URL("/api/setup/status", webUrl).href;
 let passed = false;
 
 function prefixedLine(prefix, chunk, writer) {
@@ -115,6 +117,20 @@ async function waitForUrl(name, url, options = {}) {
     await delay(options.intervalMs ?? 750);
   }
   throw new Error(`${name} was not ready at ${url}: ${lastError}`);
+}
+
+export function assertSetupStatusShape(value) {
+  if (
+    value === null ||
+    typeof value !== "object" ||
+    Array.isArray(value) ||
+    typeof value.required !== "boolean" ||
+    typeof value.blocked !== "boolean"
+  ) {
+    throw new Error(
+      `Expected setup status JSON with boolean required and blocked, got ${JSON.stringify(value)}`,
+    );
+  }
 }
 
 async function cleanup() {
@@ -197,20 +213,30 @@ async function main() {
     throw new Error(`Expected PostgreSQL-backed API health, got ${JSON.stringify(healthBody)}`);
   }
   await waitForUrl("web", webUrl, { timeoutMs: 90_000, acceptStatus: [307, 308] });
+  const setupStatus = await waitForUrl("web setup status rewrite", webSetupStatusUrl, {
+    timeoutMs: 90_000,
+  });
+  assertSetupStatusShape(await setupStatus.json());
 
   console.log(
-    `Docker app smoke passed: ${apiHealthUrl} is PostgreSQL-backed and ${webUrl} serves.`,
+    `Docker app smoke passed: ${apiHealthUrl} is PostgreSQL-backed, ${webUrl} serves, and ${webSetupStatusUrl} returns API setup status JSON.`,
   );
   passed = true;
 }
 
-main()
-  .catch((error) => {
-    process.stderr.write(
-      `${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`,
-    );
-    process.exitCode = 1;
-  })
-  .finally(async () => {
-    await cleanup();
-  });
+function isCliEntrypoint() {
+  return Boolean(process.argv[1]) && import.meta.url === pathToFileURL(process.argv[1]).href;
+}
+
+if (isCliEntrypoint()) {
+  main()
+    .catch((error) => {
+      process.stderr.write(
+        `${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`,
+      );
+      process.exitCode = 1;
+    })
+    .finally(async () => {
+      await cleanup();
+    });
+}

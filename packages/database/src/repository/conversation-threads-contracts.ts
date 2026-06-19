@@ -71,6 +71,7 @@ export interface ConversationThreadRepository {
     firmId: string,
     options?: {
       threadId?: string;
+      threadIds?: string[];
       matterId?: string;
       recipientUserId?: string;
       messageId?: string;
@@ -85,7 +86,7 @@ export interface ConversationThreadRepository {
   }): Promise<ConversationMessageNotificationRecord | undefined>;
   listConversationMessages(
     firmId: string,
-    options: { threadId?: string; matterId?: string },
+    options: { threadId?: string; threadIds?: string[]; matterId?: string },
   ): Promise<ConversationMessageRecord[]>;
   createConversationMessage(message: ConversationMessageRecord): Promise<ConversationMessageRecord>;
 }

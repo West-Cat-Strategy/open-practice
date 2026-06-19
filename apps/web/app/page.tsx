@@ -26,14 +26,10 @@ import {
 } from "./_shared/server-api";
 import { loadAuditProjection } from "./_features/audit/server-resources";
 import { loadCalendarDashboardResources } from "./_features/calendar/server-resources";
-import type { CalendarDashboardResponse } from "./_features/calendar/models";
 import { loadCommunicationsInboxResources } from "./_features/communications/server-resources";
 import { loadContactDashboardResources } from "./_features/contacts/server-resources";
-import type { DocumentAssemblyDashboardResponse } from "./_features/document-assembly/models";
-import type { EmailDeliveryDashboardResponse } from "./_features/email-delivery/models";
 import { loadEmailDeliveryDashboardResources } from "./_features/email-delivery/server-resources";
 import { loadEmailTemplateDashboardResources } from "./_features/email-templates/server-resources";
-import type { ExternalUploadsDashboardResponse } from "./_features/external-uploads/models";
 import { loadExternalUploadsDashboardResources } from "./_features/external-uploads/server-resources";
 import { loadShareLinksStatus } from "./_features/share-links/server-resources";
 import { loadBillingDashboardData } from "./_features/billing/server-resources";
@@ -122,20 +118,6 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
   }
   const { capabilities, overview, matters, signatures, intake, queues, contactDossiers } =
     coreResources;
-  const { contactReviewQueue, contactDataQualityResolutions } = await loadContactDashboardResources(
-    {
-      contactCount: contactDossiers.length,
-      headers,
-    },
-  );
-  const operationsResources = await loadOperationsDashboardResources(headers);
-  const connectorOperations = await loadConnectorOperations(headers);
-  const auditProjection = await loadAuditProjection(headers);
-  const billing = await loadBillingDashboardData({ headers, matters, session });
-  const { trustControls, jurisdictionalTrustReport } = await loadDashboardTrustResources({
-    headers,
-    matters,
-  });
   const canViewDrafting = capabilities.sections.some(
     (section) => section.key === "drafting" && section.enabled,
   );
@@ -148,59 +130,9 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
   const canViewResearch = capabilities.sections.some(
     (section) => section.key === "research" && section.enabled,
   );
-  const drafting: DraftingDashboardResponse = canViewDrafting
-    ? await loadDraftingDashboardData({
-        matters,
-        listTemplates: () =>
-          apiGet<DraftingDashboardResponse["templates"]>(
-            "/api/draft-templates?activeOnly=true",
-            headers,
-          ),
-        listDraftsForMatter: (matterId) =>
-          apiGet<DraftingDashboardResponse["draftsByMatterId"][string]>(
-            `/api/drafts?matterId=${encodeURIComponent(matterId)}`,
-            headers,
-          ),
-      })
-    : { templates: [], draftsByMatterId: {} };
-  const calendar: CalendarDashboardResponse = await loadCalendarDashboardResources({
-    enabled: canViewCalendar,
-    headers,
-    matters,
-  });
-  const emailDeliveryHistory: EmailDeliveryDashboardResponse =
-    await loadEmailDeliveryDashboardResources({ headers, matters });
-  const emailTemplates = await loadEmailTemplateDashboardResources({ headers, matters });
-  const communicationsInbox = await loadCommunicationsInboxResources({ headers, matters });
-  const documentProcessing: DocumentProcessingDashboardResponse = canViewDocuments
-    ? await loadDocumentProcessingDashboardData({
-        matters,
-        getWorkbench: (matterId) =>
-          apiGetOptional<DocumentProcessingWorkbenchResponse>(
-            buildDocumentProcessingWorkbenchPath(matterId),
-            emptyDocumentProcessingWorkbench(matterId),
-            headers,
-            emptyDocumentProcessingWorkbench(matterId, "access_denied"),
-          ),
-      })
-    : { workbenchesByMatterId: {} };
-  const documentAssembly: DocumentAssemblyDashboardResponse =
-    await loadDocumentAssemblyDashboardResources({
-      enabled: canViewDocuments,
-      headers,
-      matters,
-    });
-  const legalResearch = await loadLegalResearchDashboardResources({
-    enabled: canViewResearch,
-    headers,
-    matters,
-  });
-  const shareLinksStatus = await loadShareLinksStatus(headers);
-  const externalUploads: ExternalUploadsDashboardResponse =
-    await loadExternalUploadsDashboardResources({ headers, matters });
-  const intakeForms = await loadIntakeFormsDashboardResources({ headers, matters });
-  const intakePipeline = await loadIntakePipelineResources(headers);
-  const publicConsultation = await loadPublicConsultationDashboardResources(headers);
+  const canCreateMatter = capabilities.sections.some(
+    (section) => section.key === "matters" && section.actions.includes("create"),
+  );
   const emptyEmailSettings: EmailSettingsResponse = {
     settings: {
       key: "default",
@@ -224,7 +156,92 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
       missingFields: ["config"],
     },
   };
-  const [emailSettings, imapSettings] = await Promise.all([
+  const [
+    { contactReviewQueue, contactDataQualityResolutions },
+    operationsResources,
+    connectorOperations,
+    auditProjection,
+    billing,
+    { trustControls, jurisdictionalTrustReport },
+    drafting,
+    calendar,
+    emailDeliveryHistory,
+    emailTemplates,
+    communicationsInbox,
+    documentProcessing,
+    documentAssembly,
+    legalResearch,
+    shareLinksStatus,
+    externalUploads,
+    intakeForms,
+    intakePipeline,
+    publicConsultation,
+    emailSettings,
+    imapSettings,
+    legalClinic,
+  ] = await Promise.all([
+    loadContactDashboardResources({
+      contactCount: contactDossiers.length,
+      headers,
+    }),
+    loadOperationsDashboardResources(headers),
+    loadConnectorOperations(headers),
+    loadAuditProjection(headers),
+    loadBillingDashboardData({ headers, matters, session }),
+    loadDashboardTrustResources({
+      headers,
+      matters,
+    }),
+    canViewDrafting
+      ? loadDraftingDashboardData({
+          matters,
+          listTemplates: () =>
+            apiGet<DraftingDashboardResponse["templates"]>(
+              "/api/draft-templates?activeOnly=true",
+              headers,
+            ),
+          listDraftsForMatter: (matterId) =>
+            apiGet<DraftingDashboardResponse["draftsByMatterId"][string]>(
+              `/api/drafts?matterId=${encodeURIComponent(matterId)}`,
+              headers,
+            ),
+        })
+      : ({ templates: [], draftsByMatterId: {} } satisfies DraftingDashboardResponse),
+    loadCalendarDashboardResources({
+      enabled: canViewCalendar,
+      headers,
+      matters,
+    }),
+    loadEmailDeliveryDashboardResources({ headers, matters }),
+    loadEmailTemplateDashboardResources({ headers, matters }),
+    loadCommunicationsInboxResources({ headers, matters }),
+    canViewDocuments
+      ? loadDocumentProcessingDashboardData({
+          matters,
+          getWorkbench: (matterId) =>
+            apiGetOptional<DocumentProcessingWorkbenchResponse>(
+              buildDocumentProcessingWorkbenchPath(matterId),
+              emptyDocumentProcessingWorkbench(matterId),
+              headers,
+              emptyDocumentProcessingWorkbench(matterId, "access_denied"),
+            ),
+        })
+      : ({ workbenchesByMatterId: {} } satisfies DocumentProcessingDashboardResponse),
+    loadDocumentAssemblyDashboardResources({
+      enabled: canViewDocuments,
+      headers,
+      matters,
+    }),
+    loadLegalResearchDashboardResources({
+      enabled: canViewResearch,
+      headers,
+      matters,
+    }),
+    loadShareLinksStatus(headers),
+    loadExternalUploadsDashboardResources({ headers, matters }),
+    loadIntakeFormsDashboardResources({ headers, matters }),
+    loadIntakePipelineResources(headers),
+    loadPublicConsultationDashboardResources(headers),
     apiGetOptional<EmailSettingsResponse>(
       "/api/email/settings",
       emptyEmailSettings,
@@ -237,14 +254,11 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
       headers,
       emptyImapSettings,
     ),
+    loadLegalClinicDashboardResources({
+      headers,
+      matters,
+    }),
   ]);
-  const legalClinic = await loadLegalClinicDashboardResources({
-    headers,
-    matters,
-  });
-  const canCreateMatter = capabilities.sections.some(
-    (section) => section.key === "matters" && section.actions.includes("create"),
-  );
   const navigationSections = applyMatterAvailabilityToNavigation(
     buildSidebarNavigationSections({
       billingCanView: billing.canView,

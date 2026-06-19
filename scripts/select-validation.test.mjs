@@ -116,6 +116,19 @@ describe("select-validation contract", () => {
     ]);
   });
 
+  it("routes Docker-local web API routing changes through web and Docker validation", () => {
+    assert.deepEqual(
+      selectCommands(["apps/web/next.config.mjs", "apps/web/app/api-base-urls.ts"]),
+      [
+        COMMANDS.dockerAppSmoke,
+        COMMANDS.e2eDocker,
+        COMMANDS.webTest,
+        COMMANDS.webTypecheck,
+        COMMANDS.build,
+      ],
+    );
+  });
+
   it("routes database migrations through the migration parity check", () => {
     assert.deepEqual(
       selectCommands([

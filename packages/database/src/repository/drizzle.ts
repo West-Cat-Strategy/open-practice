@@ -1,21 +1,35 @@
 import {
   type BillingPeriodLockRecord,
   type BillingRateRuleRecord,
+  type CalendarEventRecord,
+  type CalendarGuestLinkRecord,
   type Contact,
   type ConversationMessageRecord,
   type ConversationMessageNotificationRecord,
   type ConversationThreadRecord,
   type DocumentRecord,
+  type EmailOutboxRecord,
+  type EmailReceiptTokenRecord,
+  type ExternalUploadLinkRecord,
+  type HostedPaymentRequestRecord,
   type InboundEmailAddressRecord,
   type InboundEmailAttachmentRecord,
   type InboundEmailMessageRecord,
+  type IntakeFormItemActionRecord,
+  type IntakeFormLinkRecord,
   type LegalClinicMatterProfile,
   type LegalClinicProgram,
   type MatterParty,
+  type PortalDocumentAccess,
+  type PortalGrant,
+  type ShareLinkRecord,
+  type SignatureProviderEventRecord,
+  type SignatureRequestRecord,
+  type SignatureRequestSignerRecord,
   type TaskDeadlineRecord,
   type User,
 } from "@open-practice/domain";
-import { eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import type { OpenPracticeDatabase } from "../runtime.js";
 import * as schema from "../schema.js";
 import type { ProviderConfigCipher } from "../config-encryption.js";
@@ -32,6 +46,7 @@ import type { EmailTemplateDraftRepository } from "./email-template-drafts-contr
 import type { EmailJobsRepository } from "./jobs-email-contracts.js";
 import type { FirmSettingsRepository } from "./firm-settings-contracts.js";
 import type { ProviderSettingsRepository } from "./provider-settings-contracts.js";
+import type { InvoiceWithLines } from "./billing-invoices-payments-contracts.js";
 import { createDrizzleAuthRepository } from "./auth/drizzle.js";
 import {
   appendDrizzleAuditEvent,
@@ -224,10 +239,26 @@ import {
 } from "./setup/drizzle.js";
 
 import {
+  mapCalendarEventRow,
+  mapCalendarGuestLinkRow,
   mapContactRelationshipRow,
   mapContactRow,
+  mapConversationThreadRow,
   mapDocumentRow,
+  mapEmailOutboxRow,
+  mapEmailReceiptTokenRow,
+  mapExternalUploadLinkRow,
+  mapHostedPaymentRequestRow,
+  mapIntakeFormItemActionRow,
+  mapIntakeFormLinkRow,
+  mapInvoiceLineRow,
+  mapInvoiceRow,
   mapMatterPartyRow,
+  mapPortalDocumentAccessRow,
+  mapShareLinkRow,
+  mapSignatureProviderEventRow,
+  mapSignatureRequestRow,
+  mapSignatureRequestSignerRow,
 } from "./drizzle-mappers.js";
 import { createDrizzleProviderSettingsRepository } from "./provider-settings/drizzle.js";
 import {
@@ -288,6 +319,7 @@ import {
 } from "./conversation-threads/drizzle.js";
 import {
   createDrizzleSignatureRequest,
+  getDrizzleSignatureRequest,
   listDrizzleSignatureProviderEvents,
   listDrizzleSignatureRequests,
   listDrizzleSignatureRequestSigners,
@@ -338,11 +370,54 @@ import {
   listDrizzlePortalDocumentAccess,
   listDrizzlePortalGrants,
   listDrizzleShareLinks,
+  mapPortalGrantRow,
   revokeDrizzlePortalDocumentAccess,
   revokeDrizzleExternalUploadLink,
   revokeDrizzleShareLink,
   updateDrizzlePortalGrant,
 } from "./portal-access/drizzle.js";
+
+function normalizedPortalEmail(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function portalContactEmail(contact: Contact): string | undefined {
+  return contact.identifiers.find((identifier) => identifier.type === "email")?.value;
+}
+
+function activeClientPortalGrant(grant: PortalGrant, now: string): boolean {
+  if (["suspended", "revoked", "expired"].includes(grant.status ?? "active")) return false;
+  if (grant.revokedAt) return false;
+  if (grant.suspendedAt) return false;
+  if (grant.expiresAt && Date.parse(grant.expiresAt) <= Date.parse(now)) return false;
+  return true;
+}
+
+function clientPortalGrantMatchesUser(input: {
+  grant: PortalGrant;
+  contact: Contact;
+  userId: string;
+  userEmail: string;
+}): boolean {
+  if (input.grant.accountUserId) return input.grant.accountUserId === input.userId;
+  const email = portalContactEmail(input.contact);
+  return Boolean(email && normalizedPortalEmail(email) === normalizedPortalEmail(input.userEmail));
+}
+
+function limitEmailsPerMatter(
+  emails: EmailOutboxRecord[],
+  limitPerMatter: number,
+): EmailOutboxRecord[] {
+  if (limitPerMatter <= 0) return [];
+  const countsByMatterId = new Map<string, number>();
+  return emails.filter((email) => {
+    if (!email.matterId) return false;
+    const count = countsByMatterId.get(email.matterId) ?? 0;
+    if (count >= limitPerMatter) return false;
+    countsByMatterId.set(email.matterId, count + 1);
+    return true;
+  });
+}
 
 export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
   declare getUser: AuthRepository["getUser"];
@@ -766,12 +841,7 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
 
   async listConversationMessageNotifications(
     firmId: string,
-    options: {
-      threadId?: string;
-      matterId?: string;
-      recipientUserId?: string;
-      messageId?: string;
-    } = {},
+    options: Parameters<OpenPracticeRepository["listConversationMessageNotifications"]>[1] = {},
   ): Promise<ConversationMessageNotificationRecord[]> {
     return listDrizzleConversationMessageNotifications(this.db, firmId, options);
   }
@@ -788,7 +858,7 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
 
   async listConversationMessages(
     firmId: string,
-    options: { threadId?: string; matterId?: string } = {},
+    options: Parameters<OpenPracticeRepository["listConversationMessages"]>[1] = {},
   ): Promise<ConversationMessageRecord[]> {
     return listDrizzleConversationMessages(this.db, firmId, options);
   }
@@ -1125,6 +1195,268 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     return listDrizzlePortalGrants(this.db, firmId);
   }
 
+  async listClientPortalGrantContactPairs(
+    input: Parameters<OpenPracticeRepository["listClientPortalGrantContactPairs"]>[0],
+  ): ReturnType<OpenPracticeRepository["listClientPortalGrantContactPairs"]> {
+    const rows = await this.db
+      .select({ grant: schema.portalGrants, contact: schema.contacts })
+      .from(schema.portalGrants)
+      .innerJoin(
+        schema.contacts,
+        and(
+          eq(schema.contacts.firmId, schema.portalGrants.firmId),
+          eq(schema.contacts.id, schema.portalGrants.contactId),
+        ),
+      )
+      .where(eq(schema.portalGrants.firmId, input.firmId));
+    return rows.flatMap((row) => {
+      const grant = mapPortalGrantRow(row.grant);
+      const contact = mapContactRow(row.contact);
+      if (!activeClientPortalGrant(grant, input.now)) return [];
+      return clientPortalGrantMatchesUser({
+        grant,
+        contact,
+        userId: input.userId,
+        userEmail: input.userEmail,
+      })
+        ? [{ grant, contact }]
+        : [];
+    });
+  }
+
+  async listClientPortalWorkspaceBatch(
+    firmId: string,
+    options: Parameters<OpenPracticeRepository["listClientPortalWorkspaceBatch"]>[1],
+  ): ReturnType<OpenPracticeRepository["listClientPortalWorkspaceBatch"]> {
+    const matterIds = [...new Set(options.matterIds)];
+    if (matterIds.length === 0) {
+      return {
+        intakeLinks: [],
+        itemActions: [],
+        emails: [],
+        receiptTokens: [],
+        shareLinks: [],
+        externalUploadLinks: [],
+        documents: [],
+        guestLinks: [],
+        calendarEvents: [],
+        conversationThreads: [],
+        invoices: [],
+        paymentRequests: [],
+        portalDocumentAccess: [],
+        signatureRequests: [],
+        signatureSigners: [],
+        signatureEvents: [],
+      };
+    }
+
+    const [
+      intakeLinkRows,
+      itemActionRows,
+      emailRows,
+      receiptTokenRows,
+      shareLinkRows,
+      externalUploadLinkRows,
+      documentRows,
+      guestLinkRows,
+      calendarEventRows,
+      conversationThreadRows,
+      invoiceRows,
+      paymentRequestRows,
+      portalDocumentAccessRows,
+      signatureRequestRows,
+    ] = await Promise.all([
+      this.db
+        .select()
+        .from(schema.intakeFormLinks)
+        .where(
+          and(
+            eq(schema.intakeFormLinks.firmId, firmId),
+            inArray(schema.intakeFormLinks.matterId, matterIds),
+          ),
+        ),
+      this.db
+        .select()
+        .from(schema.intakeFormItemActions)
+        .where(
+          and(
+            eq(schema.intakeFormItemActions.firmId, firmId),
+            inArray(schema.intakeFormItemActions.matterId, matterIds),
+          ),
+        ),
+      this.db
+        .select()
+        .from(schema.emailOutbox)
+        .where(
+          and(
+            eq(schema.emailOutbox.firmId, firmId),
+            inArray(schema.emailOutbox.matterId, matterIds),
+          ),
+        )
+        .orderBy(desc(schema.emailOutbox.queuedAt)),
+      this.db
+        .select()
+        .from(schema.emailReceiptTokens)
+        .where(
+          and(
+            eq(schema.emailReceiptTokens.firmId, firmId),
+            inArray(schema.emailReceiptTokens.matterId, matterIds),
+          ),
+        ),
+      this.db
+        .select()
+        .from(schema.shareLinks)
+        .where(
+          and(eq(schema.shareLinks.firmId, firmId), inArray(schema.shareLinks.matterId, matterIds)),
+        ),
+      this.db
+        .select()
+        .from(schema.externalUploadLinks)
+        .where(
+          and(
+            eq(schema.externalUploadLinks.firmId, firmId),
+            inArray(schema.externalUploadLinks.matterId, matterIds),
+          ),
+        ),
+      this.db
+        .select()
+        .from(schema.documents)
+        .where(
+          and(eq(schema.documents.firmId, firmId), inArray(schema.documents.matterId, matterIds)),
+        ),
+      this.db
+        .select()
+        .from(schema.calendarGuestLinks)
+        .where(
+          and(
+            eq(schema.calendarGuestLinks.firmId, firmId),
+            inArray(schema.calendarGuestLinks.matterId, matterIds),
+          ),
+        ),
+      this.db
+        .select()
+        .from(schema.calendarEvents)
+        .where(
+          and(
+            eq(schema.calendarEvents.firmId, firmId),
+            inArray(schema.calendarEvents.matterId, matterIds),
+          ),
+        ),
+      this.db
+        .select()
+        .from(schema.conversationThreads)
+        .where(
+          and(
+            eq(schema.conversationThreads.firmId, firmId),
+            inArray(schema.conversationThreads.matterId, matterIds),
+          ),
+        ),
+      this.db
+        .select()
+        .from(schema.invoices)
+        .where(
+          and(eq(schema.invoices.firmId, firmId), inArray(schema.invoices.matterId, matterIds)),
+        ),
+      this.db
+        .select()
+        .from(schema.hostedPaymentRequests)
+        .where(
+          and(
+            eq(schema.hostedPaymentRequests.firmId, firmId),
+            inArray(schema.hostedPaymentRequests.matterId, matterIds),
+          ),
+        ),
+      this.db
+        .select()
+        .from(schema.portalDocumentAccess)
+        .where(
+          and(
+            eq(schema.portalDocumentAccess.firmId, firmId),
+            inArray(schema.portalDocumentAccess.matterId, matterIds),
+          ),
+        ),
+      this.db
+        .select()
+        .from(schema.signatureRequests)
+        .where(
+          and(
+            eq(schema.signatureRequests.firmId, firmId),
+            inArray(schema.signatureRequests.matterId, matterIds),
+          ),
+        ),
+    ]);
+
+    const invoiceIds = invoiceRows.map((invoice) => invoice.id);
+    const signatureRequestIds = signatureRequestRows.map((signature) => signature.id);
+    const [invoiceLineRows, signatureSignerRows, signatureEventRows] = await Promise.all([
+      invoiceIds.length > 0
+        ? this.db
+            .select()
+            .from(schema.invoiceLines)
+            .where(
+              and(
+                eq(schema.invoiceLines.firmId, firmId),
+                inArray(schema.invoiceLines.invoiceId, invoiceIds),
+              ),
+            )
+        : Promise.resolve([]),
+      signatureRequestIds.length > 0
+        ? this.db
+            .select()
+            .from(schema.signatureRequestSigners)
+            .where(
+              and(
+                eq(schema.signatureRequestSigners.firmId, firmId),
+                inArray(schema.signatureRequestSigners.signatureRequestId, signatureRequestIds),
+              ),
+            )
+        : Promise.resolve([]),
+      signatureRequestIds.length > 0
+        ? this.db
+            .select()
+            .from(schema.signatureProviderEvents)
+            .where(
+              and(
+                eq(schema.signatureProviderEvents.firmId, firmId),
+                inArray(schema.signatureProviderEvents.signatureRequestId, signatureRequestIds),
+              ),
+            )
+            .orderBy(schema.signatureProviderEvents.occurredAt)
+        : Promise.resolve([]),
+    ]);
+
+    const linesByInvoiceId = new Map<string, ReturnType<typeof mapInvoiceLineRow>[]>();
+    for (const line of invoiceLineRows.map(mapInvoiceLineRow)) {
+      linesByInvoiceId.set(line.invoiceId, [...(linesByInvoiceId.get(line.invoiceId) ?? []), line]);
+    }
+    const invoices: InvoiceWithLines[] = invoiceRows.map((invoice) => ({
+      ...mapInvoiceRow(invoice),
+      lines: linesByInvoiceId.get(invoice.id) ?? [],
+    }));
+
+    return {
+      intakeLinks: intakeLinkRows.map(mapIntakeFormLinkRow),
+      itemActions: itemActionRows.map(mapIntakeFormItemActionRow),
+      emails: limitEmailsPerMatter(
+        emailRows.map(mapEmailOutboxRow),
+        options.emailOutboxLimitPerMatter,
+      ),
+      receiptTokens: receiptTokenRows.map(mapEmailReceiptTokenRow),
+      shareLinks: shareLinkRows.map(mapShareLinkRow),
+      externalUploadLinks: externalUploadLinkRows.map(mapExternalUploadLinkRow),
+      documents: documentRows.map(mapDocumentRow),
+      guestLinks: guestLinkRows.map(mapCalendarGuestLinkRow),
+      calendarEvents: calendarEventRows.map(mapCalendarEventRow),
+      conversationThreads: conversationThreadRows.map(mapConversationThreadRow),
+      invoices,
+      paymentRequests: paymentRequestRows.map(mapHostedPaymentRequestRow),
+      portalDocumentAccess: portalDocumentAccessRows.map(mapPortalDocumentAccessRow),
+      signatureRequests: signatureRequestRows.map(mapSignatureRequestRow),
+      signatureSigners: signatureSignerRows.map(mapSignatureRequestSignerRow),
+      signatureEvents: signatureEventRows.map(mapSignatureProviderEventRow),
+    };
+  }
+
   async createPortalGrant(grant: Parameters<OpenPracticeRepository["createPortalGrant"]>[0]) {
     return createDrizzlePortalGrant(this.db, grant);
   }
@@ -1287,6 +1619,13 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     options: { matterId?: string } = {},
   ): ReturnType<OpenPracticeRepository["listSignatureRequests"]> {
     return listDrizzleSignatureRequests(this.db, firmId, options);
+  }
+
+  async getSignatureRequest(
+    firmId: string,
+    signatureRequestId: string,
+  ): ReturnType<OpenPracticeRepository["getSignatureRequest"]> {
+    return getDrizzleSignatureRequest(this.db, firmId, signatureRequestId);
   }
 
   async listSignatureRequestSigners(
@@ -2069,9 +2408,9 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
 
   async listInboundEmailAttachments(
     firmId: string,
-    messageId: string,
+    options: Parameters<OpenPracticeRepository["listInboundEmailAttachments"]>[1],
   ): Promise<InboundEmailAttachmentRecord[]> {
-    return listDrizzleInboundEmailAttachments(this.db, firmId, messageId);
+    return listDrizzleInboundEmailAttachments(this.db, firmId, options);
   }
 
   async promoteInboundEmailAttachmentToDocument(

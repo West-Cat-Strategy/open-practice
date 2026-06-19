@@ -1,11 +1,13 @@
 import type { FastifyInstance } from "fastify";
 import {
+  canShareDocumentThroughPortal,
   type CalendarEventRecord,
   type CalendarGuestLinkRecord,
   type ConversationThreadRecord,
   type DocumentRecord,
   type EmailOutboxRecord,
   type EmailReceiptTokenRecord,
+  type ExternalUploadLinkRecord,
   type HostedPaymentRequestRecord,
   type IntakeFormItemActionRecord,
   type IntakeFormLinkRecord,
@@ -16,6 +18,7 @@ import {
   type SignatureProviderStatus,
   type SignatureRequestRecord,
   type SignatureRequestSignerRecord,
+  type ShareLinkRecord,
   type User,
 } from "@open-practice/domain";
 import { ApiHttpError } from "../../http/response.js";
@@ -209,6 +212,19 @@ function receiptStatus(token: EmailReceiptTokenRecord, now: string): string {
   return "open";
 }
 
+function shareLinkStatus(link: ShareLinkRecord, now: string): string {
+  if (link.revokedAt) return "revoked";
+  if (expiredAt(link.expiresAt, now)) return "expired";
+  return "active";
+}
+
+function externalUploadLinkStatus(link: ExternalUploadLinkRecord, now: string): string {
+  if (link.revokedAt) return "revoked";
+  if (expiredAt(link.expiresAt, now)) return "expired";
+  if (link.usedUploads >= link.maxUploads) return "upload_limit_reached";
+  return "active";
+}
+
 function guestLinkStatus(link: CalendarGuestLinkRecord, now: string): string {
   if (link.revokedAt) return "revoked";
   if (expiredAt(link.expiresAt, now)) return "expired";
@@ -335,6 +351,91 @@ function clientUpdateActions(input: {
             ? "risk"
             : "neutral",
       updatedAt: email.sentAt ?? email.failedAt ?? email.lastAttemptAt ?? email.queuedAt,
+    };
+  });
+}
+
+function secureShareActions(input: {
+  shares: ShareLinkRecord[];
+  documents: DocumentRecord[];
+  grants: PortalGrant[];
+  now: string;
+}): ClientPortalActionSummary[] {
+  return input.shares.map((share) => {
+    const status = shareLinkStatus(share, input.now);
+    const shareableDocumentCount = input.documents.filter((document) =>
+      input.grants.some((grant) =>
+        canShareDocumentThroughPortal({ document, grant, now: input.now }),
+      ),
+    ).length;
+    return {
+      id: `secure-share:${share.id}`,
+      family: "secure_share",
+      matterId: share.matterId,
+      title: status === "active" ? "Secure document share active" : "Secure share status",
+      detail:
+        status === "active"
+          ? `${shareableDocumentCount} reviewed document${
+              shareableDocumentCount === 1 ? "" : "s"
+            } are available through staff-controlled sharing.`
+          : `This secure share is ${status}.`,
+      status,
+      tone: status === "active" ? "ready" : "neutral",
+      updatedAt: share.revokedAt ?? share.createdAt,
+      details: [
+        { label: "Documents", value: String(shareableDocumentCount) },
+        {
+          label: "Email check",
+          value: share.requireEmailVerification ? "required" : "not required",
+        },
+      ],
+    };
+  });
+}
+
+function externalUploadActions(input: {
+  links: ExternalUploadLinkRecord[];
+  documents: DocumentRecord[];
+  now: string;
+}): ClientPortalActionSummary[] {
+  return input.links.map((link) => {
+    const status = externalUploadLinkStatus(link, input.now);
+    const uploadedDocuments = input.documents.filter(
+      (document) => document.externalUploadLinkId === link.id,
+    );
+    const retryDocuments = uploadedDocuments.filter(
+      (document) =>
+        document.reviewStatus === "retry_requested" || document.reviewDecision === "request_retry",
+    );
+    const remainingUploads = Math.max(0, link.maxUploads - link.usedUploads);
+    const hasRetry = retryDocuments.length > 0;
+    return {
+      id: `external-upload:${link.id}`,
+      family: "external_upload",
+      matterId: link.matterId,
+      title:
+        status === "active"
+          ? hasRetry
+            ? "Upload retry requested"
+            : "Upload requested documents"
+          : "External upload status",
+      detail: hasRetry
+        ? `${retryDocuments.length} uploaded document${
+            retryDocuments.length === 1 ? "" : "s"
+          } need retry review.`
+        : `${remainingUploads} upload${remainingUploads === 1 ? "" : "s"} remain for this request.`,
+      status: hasRetry ? "retry_requested" : status,
+      tone: status === "active" && (remainingUploads > 0 || hasRetry) ? "risk" : "neutral",
+      updatedAt: link.revokedAt ?? link.createdAt,
+      details: [
+        { label: "Uploaded", value: String(link.usedUploads) },
+        {
+          label: "Remaining",
+          value: String(remainingUploads),
+          tone: remainingUploads > 0 ? "risk" : "neutral",
+        },
+        { label: "Reviewed", value: String(uploadedDocuments.length) },
+      ],
     };
   });
 }
@@ -716,6 +817,30 @@ function uniqueGrantCoverageCount(grants: PortalGrant[]): number {
   return new Set(grants.map(grantCoverageKey)).size;
 }
 
+function groupByMatterId<T extends { matterId: string }>(records: T[]): Map<string, T[]> {
+  const recordsByMatterId = new Map<string, T[]>();
+  for (const record of records) {
+    recordsByMatterId.set(record.matterId, [
+      ...(recordsByMatterId.get(record.matterId) ?? []),
+      record,
+    ]);
+  }
+  return recordsByMatterId;
+}
+
+function groupBySignatureRequestId<T extends { signatureRequestId: string }>(
+  records: T[],
+): Map<string, T[]> {
+  const recordsBySignatureRequestId = new Map<string, T[]>();
+  for (const record of records) {
+    recordsBySignatureRequestId.set(record.signatureRequestId, [
+      ...(recordsBySignatureRequestId.get(record.signatureRequestId) ?? []),
+      record,
+    ]);
+  }
+  return recordsBySignatureRequestId;
+}
+
 async function buildWorkspace(
   repository: ApiRouteDependencies["repository"],
   user: User,
@@ -731,6 +856,34 @@ async function buildWorkspace(
   const visibleMatterSummaries = matterSummaries.filter((matter) =>
     grants.some((grant) => portalGrantVisibleOnMatter(grant, matter)),
   );
+  const workspaceBatch = await repository.listClientPortalWorkspaceBatch(user.firmId, {
+    matterIds: visibleMatterSummaries.map((matter) => matter.id),
+    emailOutboxLimitPerMatter: 100,
+  });
+  const intakeLinksByMatterId = groupByMatterId(workspaceBatch.intakeLinks);
+  const itemActionsByMatterId = groupByMatterId(workspaceBatch.itemActions);
+  const receiptTokensByMatterId = groupByMatterId(workspaceBatch.receiptTokens);
+  const emailsByMatterId = groupByMatterId(
+    workspaceBatch.emails.filter((email): email is EmailOutboxRecord & { matterId: string } =>
+      Boolean(email.matterId),
+    ),
+  );
+  const shareLinksByMatterId = groupByMatterId(workspaceBatch.shareLinks);
+  const externalUploadLinksByMatterId = groupByMatterId(workspaceBatch.externalUploadLinks);
+  const documentsByRawMatterId = groupByMatterId(workspaceBatch.documents);
+  const guestLinksByMatterId = groupByMatterId(workspaceBatch.guestLinks);
+  const calendarEventsByMatterId = groupByMatterId(
+    workspaceBatch.calendarEvents.filter(
+      (event): event is CalendarEventRecord & { matterId: string } => Boolean(event.matterId),
+    ),
+  );
+  const conversationThreadsByMatterId = groupByMatterId(workspaceBatch.conversationThreads);
+  const invoicesByMatterId = groupByMatterId(workspaceBatch.invoices);
+  const paymentRequestsByMatterId = groupByMatterId(workspaceBatch.paymentRequests);
+  const portalDocumentAccessByMatterId = groupByMatterId(workspaceBatch.portalDocumentAccess);
+  const signatureRequestsByMatterId = groupByMatterId(workspaceBatch.signatureRequests);
+  const signatureSignersByRequestId = groupBySignatureRequestId(workspaceBatch.signatureSigners);
+  const signatureEventsByRequestId = groupBySignatureRequestId(workspaceBatch.signatureEvents);
 
   const actionsByMatterId = new Map<string, ClientPortalActionSummary[]>();
   const billingByMatterId = new Map<string, ClientPortalBillSummary[]>();
@@ -741,38 +894,27 @@ async function buildWorkspace(
       .filter((grant) => grant.matterId === matter.id)
       .filter((grant) => portalGrantVisibleOnMatter(grant, matter));
     const contactIds = new Set(matterGrants.map((grant) => grant.contactId));
-    const [
-      intakeLinks,
-      itemActions,
-      receiptTokens,
-      emails,
-      documents,
-      guestLinks,
-      calendarEvents,
-      conversationThreads,
-      conversationNotifications,
-      invoices,
-      paymentRequests,
-      portalDocumentAccess,
-      signatureRequests,
-    ] = await Promise.all([
-      repository.listIntakeFormLinks(user.firmId, { matterId: matter.id }),
-      repository.listIntakeFormItemActions(user.firmId, {}),
-      repository.listEmailReceiptTokens(user.firmId, { matterId: matter.id }),
-      repository.listEmailOutbox(user.firmId, { matterId: matter.id, limit: 100 }),
-      repository.listMatterDocuments(user.firmId, matter.id),
-      repository.listCalendarGuestLinks(user.firmId, { matterId: matter.id }),
-      repository.listCalendarEvents(user.firmId, { matterId: matter.id }),
-      repository.listConversationThreads(user.firmId, { matterId: matter.id }),
-      repository.listConversationMessageNotifications(user.firmId, {
+    const intakeLinks = intakeLinksByMatterId.get(matter.id) ?? [];
+    const itemActions = itemActionsByMatterId.get(matter.id) ?? [];
+    const receiptTokens = receiptTokensByMatterId.get(matter.id) ?? [];
+    const emails = emailsByMatterId.get(matter.id) ?? [];
+    const shareLinks = shareLinksByMatterId.get(matter.id) ?? [];
+    const externalUploadLinks = externalUploadLinksByMatterId.get(matter.id) ?? [];
+    const documents = documentsByRawMatterId.get(matter.id) ?? [];
+    const guestLinks = guestLinksByMatterId.get(matter.id) ?? [];
+    const calendarEvents = calendarEventsByMatterId.get(matter.id) ?? [];
+    const conversationThreads = conversationThreadsByMatterId.get(matter.id) ?? [];
+    const invoices = invoicesByMatterId.get(matter.id) ?? [];
+    const paymentRequests = paymentRequestsByMatterId.get(matter.id) ?? [];
+    const portalDocumentAccess = portalDocumentAccessByMatterId.get(matter.id) ?? [];
+    const signatureRequests = signatureRequestsByMatterId.get(matter.id) ?? [];
+    const conversationNotifications = await repository.listConversationMessageNotifications(
+      user.firmId,
+      {
         matterId: matter.id,
         recipientUserId: user.id,
-      }),
-      repository.listInvoices(user.firmId, { matterId: matter.id }),
-      repository.listHostedPaymentRequests(user.firmId, { matterId: matter.id }),
-      repository.listPortalDocumentAccess(user.firmId, { matterId: matter.id }),
-      repository.listSignatureRequests(user.firmId, { matterId: matter.id }),
-    ]);
+      },
+    );
     const grantsById = new Map(matterGrants.map((grant) => [grant.id, grant]));
     const documentsById = new Map(documents.map((document) => [document.id, document]));
     const clientDocuments = portalDocumentAccess.flatMap((access) => {
@@ -799,37 +941,35 @@ async function buildWorkspace(
     );
 
     const clientSignatures = hasPortalPermission(matterGrants, "sign")
-      ? (
-          await Promise.all(
-            signatureRequests.map(async (signature) => {
-              const [signers, events] = await Promise.all([
-                repository.listSignatureRequestSigners(user.firmId, signature.id),
-                repository.listSignatureProviderEvents(user.firmId, {
-                  signatureRequestId: signature.id,
-                }),
-              ]);
-              return signers
-                .filter((signer) => normalizedEmail(signer.email) === normalizedEmail(user.email))
-                .map((signer) => {
-                  const signerEvent = latestSignerEvent(events, signer.id);
-                  const signerStatus = signerEvent?.status ?? signer.status;
-                  const document = dedupedClientDocuments.find(
-                    (candidate) => candidate.id === signature.documentId,
-                  );
-                  return signatureSummary({
-                    request: signature,
-                    signer,
-                    signerStatus,
-                    documentTitle: document?.title,
-                  });
-                });
-            }),
-          )
-        ).flat()
+      ? signatureRequests.flatMap((signature) => {
+          const signers = signatureSignersByRequestId.get(signature.id) ?? [];
+          const events = signatureEventsByRequestId.get(signature.id) ?? [];
+          return signers
+            .filter((signer) => normalizedEmail(signer.email) === normalizedEmail(user.email))
+            .map((signer) => {
+              const signerEvent = latestSignerEvent(events, signer.id);
+              const signerStatus = signerEvent?.status ?? signer.status;
+              const document = dedupedClientDocuments.find(
+                (candidate) => candidate.id === signature.documentId,
+              );
+              return signatureSummary({
+                request: signature,
+                signer,
+                signerStatus,
+                documentTitle: document?.title,
+              });
+            });
+        })
       : [];
     signaturesByMatterId.set(matter.id, clientSignatures);
 
     const matterActions = sortActions([
+      ...(hasPortalPermission(matterGrants, "view_documents")
+        ? secureShareActions({ shares: shareLinks, documents, grants: matterGrants, now })
+        : []),
+      ...(hasPortalPermission(matterGrants, "upload_documents")
+        ? externalUploadActions({ links: externalUploadLinks, documents, now })
+        : []),
       ...(hasPortalPermission(matterGrants, "message")
         ? [
             ...guestSessionActions({
