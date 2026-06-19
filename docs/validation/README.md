@@ -18,6 +18,24 @@ skipped-check context. The live workboard remains
 
 ## Current Handoff Notes
 
+The 2026-06-19 local security tooling proof is recorded in
+[OP_LOCAL_SECURITY_TOOLING_PROOF_2026-06-19.md](OP_LOCAL_SECURITY_TOOLING_PROOF_2026-06-19.md).
+It covers the local-only `pnpm security:review` packet writer, tracked-secret-scan JSON evidence
+without matched secret serialization, optional Gitleaks/Semgrep/OSV/ScanCode/Hadolint/Checkov/
+Trivy/Cosign local wrappers, selector updates for security review tooling, and docs for local
+security review packets while preserving the no-external-SaaS/no-GitHub-Actions/no-Dependabot/
+no-CodeQL-default/no-remote-required-checks posture and avoiding runtime product/API/schema
+changes.
+
+The 2026-06-19 local tooling ratchets proof is recorded in
+[OP_LOCAL_TOOLING_RATCHETS_PROOF_2026-06-19.md](OP_LOCAL_TOOLING_RATCHETS_PROOF_2026-06-19.md).
+It covers local-only selector, toolchain, environment-surface, dependency-review, license, and
+rendered accessibility QA additions plus `verify:run`, lockfile supply-chain policy, architecture
+import checks, API contract inventory, migration lint, Docker lint/scan wrappers, OSV scanning,
+source-license scanning, and release attestation while preserving the no-GitHub-Actions/
+no-Dependabot/no-CodeQL-default/no-remote-required-checks posture and avoiding runtime
+product/API/schema changes.
+
 The 2026-06-18 database access hot-path efficiency proof is recorded in
 [OP_DATABASE_ACCESS_HOT_PATH_EFFICIENCY_PROOF_2026-06-18.md](OP_DATABASE_ACCESS_HOT_PATH_EFFICIENCY_PROOF_2026-06-18.md).
 It covers the focused internal refactor for hot-path schema indexes, batched Drizzle repository

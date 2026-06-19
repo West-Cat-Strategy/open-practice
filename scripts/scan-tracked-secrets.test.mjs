@@ -1,10 +1,15 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
 
-import { scanSecretPaths, scanTextForSecrets } from "./scan-tracked-secrets.mjs";
+import {
+  buildSecretScanReport,
+  runSecretScan,
+  scanSecretPaths,
+  scanTextForSecrets,
+} from "./scan-tracked-secrets.mjs";
 
 const openAiKeyFixture = `sk-proj-${"1234567890abcdefghijklmnopqrstuvwxyz"}`;
 const stripeLiveRestrictedKeyFixture = `rk_${"live"}_${"1234567890abcdef"}`;
@@ -57,5 +62,50 @@ describe("secret scanner", () => {
       { file: largeFile, reason: "large_file", sizeBytes: 5 * 1024 * 1024 + 2 },
     ]);
     assert.deepEqual(scanSecretPaths([artifactDir], { scanLargeFiles: true }).skipped, []);
+  });
+
+  it("builds JSON reports without matched secret values", () => {
+    const report = buildSecretScanReport({
+      explicitPaths: ["artifact.log"],
+      files: ["artifact.log"],
+      findings: scanTextForSecrets("artifact.log", `token=${openAiKeyFixture}\n`),
+      skipped: [],
+    });
+
+    const serialized = JSON.stringify(report);
+    assert.equal(report.scope.mode, "explicit_paths");
+    assert.deepEqual(report.findings, [
+      {
+        file: "artifact.log",
+        line: 1,
+        column: 7,
+        type: "OpenAI API key",
+      },
+    ]);
+    assert.equal(serialized.includes(openAiKeyFixture), false);
+  });
+
+  it("writes JSON output before returning failed findings", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "open-practice-secret-json-"));
+    const artifactDir = path.join(dir, "release");
+    const unsafeFile = path.join(artifactDir, "unsafe.log");
+    const jsonPath = path.join(dir, "scan.json");
+    mkdirSync(artifactDir);
+    writeFileSync(unsafeFile, `stripe=${stripeLiveRestrictedKeyFixture}\n`);
+
+    const previousExitCode = process.exitCode;
+    process.exitCode = undefined;
+    try {
+      const result = runSecretScan(["--path", artifactDir, "--json-output", jsonPath]);
+      assert.equal(process.exitCode, 1);
+      assert.equal(result.findings.length, 1);
+    } finally {
+      process.exitCode = previousExitCode;
+    }
+
+    const saved = JSON.parse(readFileSync(jsonPath, "utf8"));
+    assert.equal(saved.scope.mode, "explicit_paths");
+    assert.equal(saved.findings[0].type, "Stripe live secret key");
+    assert.equal(JSON.stringify(saved).includes(stripeLiveRestrictedKeyFixture), false);
   });
 });

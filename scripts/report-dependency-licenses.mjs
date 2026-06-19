@@ -9,6 +9,7 @@ const REVIEW_REQUIRED_LICENSE_PATTERNS = [
   /(^|\b)AGPL/i,
   /(^|\b)GPL/i,
   /LGPL/i,
+  /MPL/i,
   /EUPL/i,
   /CC-BY/i,
   /BlueOak/i,

@@ -102,6 +102,8 @@ describe("security-hot-path-rescan contract", () => {
             "--fileParallelism=false",
           ],
         },
+        { id: "selector-pnpm-architecture-check", command: "pnpm", args: ["architecture:check"] },
+        { id: "selector-pnpm-api-contract", command: "pnpm", args: ["api:contract"] },
         { id: "selector-policy-check", command: "pnpm", args: ["policy:check"] },
         {
           id: "selector-database-test",
@@ -114,6 +116,7 @@ describe("security-hot-path-rescan contract", () => {
           args: ["--filter", "@open-practice/database", "db:check"],
         },
         { id: "selector-migrations-check", command: "pnpm", args: ["migrations:check"] },
+        { id: "selector-pnpm-migrations-lint", command: "pnpm", args: ["migrations:lint"] },
         {
           id: "selector-database-typecheck",
           command: "pnpm",

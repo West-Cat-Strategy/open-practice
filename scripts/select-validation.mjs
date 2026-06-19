@@ -5,8 +5,10 @@ import { relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 export const COMMANDS = {
+  apiContract: "pnpm api:contract",
   apiTest: "pnpm --filter @open-practice/api test",
   apiTypecheck: "pnpm --filter @open-practice/api typecheck",
+  architectureCheck: "pnpm architecture:check",
   build: "pnpm build",
   ciLocal: "pnpm ci:local",
   databaseBuild: "pnpm --filter @open-practice/database build",
@@ -15,22 +17,33 @@ export const COMMANDS = {
   databaseTypecheck: "pnpm --filter @open-practice/database typecheck",
   depsAudit: "pnpm deps:audit",
   depsLicenses: "pnpm deps:licenses",
+  depsOsv: "pnpm deps:osv",
+  depsSupplyChain: "pnpm deps:supply-chain",
+  dockerLint: "pnpm docker:lint",
+  dockerScan: "pnpm docker:scan",
   dockerAppSmoke: "pnpm docker:app-smoke",
   dockerResidualWatch: "pnpm docker:residual-watch",
   docsCheck: "pnpm docs:check",
+  domainBuild: "pnpm --filter @open-practice/domain build",
   domainTest: "pnpm --filter @open-practice/domain test",
   domainTypecheck: "pnpm --filter @open-practice/domain typecheck",
+  e2eA11y: "pnpm e2e:a11y",
   e2eClientPortal: "pnpm e2e:client-portal",
   e2eDocker: "pnpm e2e:docker",
   e2eFirstRun: "node scripts/run-e2e.mjs first-run",
   e2eHost: "pnpm e2e:host",
   e2eMatterless: "pnpm e2e:matterless",
   formatCheck: "pnpm format:check",
+  licenseScan: "pnpm license:scan",
   migrationsCheck: "pnpm migrations:check",
+  migrationsLint: "pnpm migrations:lint",
   policyCheck: "pnpm policy:check",
   providersBuild: "pnpm --filter @open-practice/providers build",
   providersTest: "pnpm --filter @open-practice/providers test",
   providersTypecheck: "pnpm --filter @open-practice/providers typecheck",
+  securityPrivacyRules: "pnpm security:privacy-rules",
+  securityReview: "pnpm security:review",
+  securitySecretsHistory: "pnpm security:secrets-history",
   test: "pnpm test",
   webTest: "pnpm --filter @open-practice/web test",
   webTypecheck: "pnpm --filter @open-practice/web typecheck",
@@ -43,22 +56,35 @@ export const COMMAND_ORDER = [
   COMMANDS.ciLocal,
   COMMANDS.depsAudit,
   COMMANDS.depsLicenses,
+  COMMANDS.depsSupplyChain,
+  COMMANDS.depsOsv,
+  COMMANDS.licenseScan,
+  COMMANDS.securityReview,
+  COMMANDS.securitySecretsHistory,
+  COMMANDS.securityPrivacyRules,
+  COMMANDS.architectureCheck,
+  COMMANDS.apiContract,
+  COMMANDS.dockerLint,
   COMMANDS.dockerResidualWatch,
   COMMANDS.dockerAppSmoke,
+  COMMANDS.dockerScan,
   COMMANDS.e2eHost,
   COMMANDS.e2eDocker,
   COMMANDS.e2eFirstRun,
   COMMANDS.e2eMatterless,
   COMMANDS.e2eClientPortal,
+  COMMANDS.e2eA11y,
   COMMANDS.formatCheck,
   COMMANDS.docsCheck,
   COMMANDS.policyCheck,
   COMMANDS.test,
   COMMANDS.domainTest,
   COMMANDS.domainTypecheck,
+  COMMANDS.domainBuild,
   COMMANDS.databaseTest,
   COMMANDS.databaseCheck,
   COMMANDS.migrationsCheck,
+  COMMANDS.migrationsLint,
   COMMANDS.databaseTypecheck,
   COMMANDS.databaseBuild,
   COMMANDS.apiTest,
@@ -209,7 +235,20 @@ function isRootConfig(path) {
 }
 
 function isDependencyManifest(path) {
-  return path === "package.json" || path.endsWith("/package.json") || path === "pnpm-lock.yaml";
+  return (
+    path === "package.json" ||
+    path.endsWith("/package.json") ||
+    path === "pnpm-lock.yaml" ||
+    path === "pnpm-workspace.yaml"
+  );
+}
+
+function isLicensePolicyPath(path) {
+  return path === "docs/license-policy.md" || path === "docs/reuse-decision-policy.md";
+}
+
+function isRootDoc(path) {
+  return path === "README.md" || path === "CONTRIBUTING.md" || path === "SECURITY.md";
 }
 
 function isRuntimeConfig(path) {
@@ -233,6 +272,17 @@ function isDomainSource(path) {
   return path.startsWith("packages/domain/src/");
 }
 
+function isArchitectureSource(path) {
+  return (
+    path.startsWith("apps/api/") ||
+    path.startsWith("apps/worker/") ||
+    path.startsWith("apps/web/") ||
+    path.startsWith("packages/domain/") ||
+    path.startsWith("packages/database/") ||
+    path.startsWith("packages/providers/")
+  );
+}
+
 function isApiSource(path) {
   return path.startsWith("apps/api/") || /^apps\/api\/src\/routes\/[^/]+\/[^/]+\.ts$/.test(path);
 }
@@ -250,6 +300,26 @@ function isE2EPath(path) {
   );
 }
 
+function isSecurityReviewTooling(path) {
+  return [
+    "scripts/create-security-review.mjs",
+    "scripts/create-security-review.test.mjs",
+    "scripts/run-gitleaks-history-scan.mjs",
+    "scripts/run-semgrep-privacy-rules.mjs",
+    "scripts/scan-tracked-secrets.mjs",
+    "scripts/scan-tracked-secrets.test.mjs",
+    "scripts/security-hot-path-rescan.mjs",
+    "scripts/security-hot-path-rescan.test.mjs",
+  ].includes(path);
+}
+
+function isApiContractTooling(path) {
+  return (
+    path === "scripts/generate-api-contract.mjs" ||
+    path === "scripts/route-authorization-manifest.mjs"
+  );
+}
+
 export function normalizePaths(paths, cwd = process.cwd()) {
   return [...new Set(paths.map((path) => normalizePath(path, cwd)).filter(Boolean))].sort();
 }
@@ -260,7 +330,12 @@ export function classifyPath(path) {
   if (isApiSource(path)) {
     commands.add(COMMANDS.apiTest);
     commands.add(COMMANDS.apiTypecheck);
+    commands.add(COMMANDS.apiContract);
     commands.add(COMMANDS.policyCheck);
+  }
+
+  if (isArchitectureSource(path)) {
+    commands.add(COMMANDS.architectureCheck);
   }
 
   if (path.startsWith("apps/worker/")) {
@@ -273,6 +348,7 @@ export function classifyPath(path) {
   if (path.startsWith("packages/domain/")) {
     commands.add(COMMANDS.domainTest);
     commands.add(COMMANDS.domainTypecheck);
+    commands.add(COMMANDS.domainBuild);
 
     if (isDomainSource(path)) {
       commands.add(COMMANDS.apiTest);
@@ -285,6 +361,7 @@ export function classifyPath(path) {
     commands.add(COMMANDS.databaseTest);
     commands.add(COMMANDS.databaseCheck);
     commands.add(COMMANDS.migrationsCheck);
+    commands.add(COMMANDS.migrationsLint);
     commands.add(COMMANDS.databaseTypecheck);
     commands.add(COMMANDS.databaseBuild);
     commands.add(COMMANDS.apiTest);
@@ -311,9 +388,20 @@ export function classifyPath(path) {
     commands.add(COMMANDS.e2eFirstRun);
     commands.add(COMMANDS.e2eMatterless);
     commands.add(COMMANDS.e2eClientPortal);
+    commands.add(COMMANDS.e2eA11y);
   }
 
   if (path.startsWith("docs/")) {
+    commands.add(COMMANDS.formatCheck);
+    commands.add(COMMANDS.docsCheck);
+    commands.add(COMMANDS.policyCheck);
+  }
+
+  if (isLicensePolicyPath(path)) {
+    commands.add(COMMANDS.licenseScan);
+  }
+
+  if (isRootDoc(path)) {
     commands.add(COMMANDS.formatCheck);
     commands.add(COMMANDS.docsCheck);
     commands.add(COMMANDS.policyCheck);
@@ -324,6 +412,19 @@ export function classifyPath(path) {
     commands.add(COMMANDS.test);
   }
 
+  if (isSecurityReviewTooling(path)) {
+    commands.add(COMMANDS.securityReview);
+    commands.add(COMMANDS.securitySecretsHistory);
+  }
+
+  if (isApiContractTooling(path)) {
+    commands.add(COMMANDS.apiContract);
+  }
+
+  if (path.startsWith(".semgrep/")) {
+    commands.add(COMMANDS.securityPrivacyRules);
+  }
+
   if (isRootConfig(path)) {
     commands.add(COMMANDS.ciLocal);
   }
@@ -332,11 +433,16 @@ export function classifyPath(path) {
     commands.add(COMMANDS.ciLocal);
     commands.add(COMMANDS.depsAudit);
     commands.add(COMMANDS.depsLicenses);
+    commands.add(COMMANDS.depsSupplyChain);
+    commands.add(COMMANDS.depsOsv);
+    commands.add(COMMANDS.licenseScan);
   }
 
   if (isRuntimeConfig(path)) {
+    commands.add(COMMANDS.dockerLint);
     commands.add(COMMANDS.dockerResidualWatch);
     commands.add(COMMANDS.dockerAppSmoke);
+    commands.add(COMMANDS.dockerScan);
     commands.add(COMMANDS.e2eDocker);
     commands.add(COMMANDS.formatCheck);
     commands.add(COMMANDS.docsCheck);

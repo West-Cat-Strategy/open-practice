@@ -1,5 +1,6 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
+  "ignoreBinaries": ["cosign"],
   "ignoreDependencies": [
     "@cyclonedx/cyclonedx-npm",
     "prosemirror-commands",

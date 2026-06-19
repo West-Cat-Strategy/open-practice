@@ -19,6 +19,26 @@ branch cleanup, pull request hygiene, or release handoff for Open Practice.
 - Prefer synthetic examples in issues and pull requests. Do not publish client, matter, credential,
   payment, privileged document, trust/funds, audit-log, or private deployment details.
 
+## Local Security Review Packets
+
+Use the full local security review packet when changing local security tooling, tracked-secret
+scanning, dependency/security evidence, or the hot-path rescan helper:
+
+```bash
+pnpm security:review
+```
+
+The packet writes ignored local evidence under
+`.tmp/open-practice-security-review/<timestamp>/`, including dirty-tree selector output,
+tracked-secret JSON without matched secret values, dependency audit, license JSON, CycloneDX SBOM,
+policy output, the existing hot-path rescan helper, Docker residual watch, and a final secret scan
+over the generated artifact. It also records optional local Gitleaks, Semgrep, OSV, ScanCode,
+Hadolint, Checkov, Trivy, and Cosign wrapper results when those binaries and local inputs are
+available; missing optional tooling is reported as skipped local evidence. It keeps running after
+failed required commands for diagnosis, then exits nonzero if any required command failed. It does
+not enable GitHub Actions, Dependabot, CodeQL default setup, remote required checks, external SaaS
+scans, or a formal Codex Security repository-wide scan.
+
 ## Hot-Path Security Rescans
 
 Use the local hot-path rescan helper after future edits to inbound email serialization or promotion,
@@ -40,9 +60,18 @@ evidence directory is needed.
 ## Local Dependency Maintenance
 
 - Use `pnpm deps:audit` for production and development dependency audits.
+- Use `pnpm deps:supply-chain` for the offline pnpm-lock policy covering non-registry dependency
+  refs, registry drift, missing integrity, and native-build approval drift.
+- Use `pnpm deps:osv` when `osv-scanner` is installed and a local advisory pass is useful alongside
+  `pnpm deps:audit`.
+- Use `pnpm deps:review` when a dependency change needs an ignored local review packet containing
+  outdated, audit, license, package-manager, and lockfile evidence.
+- Use `pnpm license:scan` when ScanCode is installed and copied-source/license-text detection is
+  needed beyond dependency license metadata.
 - Use `pnpm policy:check` for the combined local policy/integrity gate: tracked-secret scanning,
-  package manifest policy, migration parity, OSS reuse, docs links, validation-proof index,
-  local-evidence `.dockerignore` coverage, and architecture boundary checks.
+  package manifest policy, lockfile supply-chain policy, toolchain alignment, env-surface drift,
+  architecture import direction, migration parity, migration lint, OSS reuse, docs links,
+  validation-proof index, local-evidence `.dockerignore` coverage, and architecture boundary checks.
 - For dependency changes, inspect the package path locally with `pnpm list` or `pnpm why`, make the
   smallest manifest or lockfile change, then run `pnpm deps:audit` and `pnpm ci:local`.
 - Pnpm workspace policy lives in `pnpm-workspace.yaml`: keep overrides there, keep required native
@@ -51,10 +80,13 @@ evidence directory is needed.
 - Major updates, runtime dependency updates, vulnerable packages, and license-sensitive updates stay
   manual. Follow [License Policy](../license-policy.md) before adding dependencies or copied
   excerpts.
-- Include Docker surfaces in dependency refreshes. Run `docker compose config`, scan base and service
-  images with Docker Scout when available, prefer deterministic service tags over `latest`, run
-  `pnpm docker:app-smoke` when app image behavior changes, and document residual upstream CVEs that
-  have no safer same-scope image recommendation.
+- Include Docker surfaces in dependency refreshes. Run `docker compose config`, `pnpm docker:lint`,
+  scan base and service images with Docker Scout or `pnpm docker:scan` when available, prefer
+  deterministic service tags over `latest`, run `pnpm docker:app-smoke` when app image behavior
+  changes, and document residual upstream CVEs that have no safer same-scope image recommendation.
+- Use `pnpm release:attest -- --artifact <path> --key <local-key>` only when a local release
+  artifact needs explicit Cosign proof. Keep the default no-transparency-log posture unless a
+  release task explicitly widens it.
 
 ### Docker Dependency Snapshot
 

@@ -1,0 +1,24 @@
+rules:
+  - id: open-practice-private-payload-metadata-key
+    message: Keep raw private payload keys out of durable job, audit, and API metadata.
+    severity: WARNING
+    languages: [typescript]
+    paths:
+      include:
+        - apps/api/src/**/*.ts
+        - apps/worker/src/**/*.ts
+        - packages/database/src/**/*.ts
+      exclude:
+        - "**/*.test.ts"
+    pattern-regex: '\b(metadata|auditMetadata|jobMetadata|lifecycleMetadata)\b[\s\S]{0,240}\b(rawBody|rawText|providerPayload|storageKey|objectKey|secretValue)\b'
+
+  - id: open-practice-dev-auth-production-branch
+    message: Dev-auth environment variables must remain inside explicit non-production/bootstrap paths.
+    severity: WARNING
+    languages: [typescript]
+    paths:
+      include:
+        - apps/api/src/**/*.ts
+      exclude:
+        - "**/*.test.ts"
+    pattern-regex: '\bDEV_AUTH_(USER_ID|FIRM_ID)\b'
