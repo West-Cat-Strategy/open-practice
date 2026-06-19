@@ -923,3 +923,82 @@ Validation results:
 | `pnpm docs:check`   | Passed | Documentation link validation passed with ignored evidence link-target placeholders present.                            |
 | `pnpm policy:check` | Passed | Secrets, package policy, dead-code, migration, OSS reuse, docs, proof index, Docker ignore, and boundary checks passed. |
 | `git diff --check`  | Passed | No whitespace errors.                                                                                                   |
+
+## 2026-06-19 Database Efficiency Merge/Push/Prune Closeout
+
+Scope: merged the three active 2026-06-18 database efficiency lanes through
+`merge/open-practice-db-efficiency`, fast-forwarded and pushed `main`, then pruned only clean merged
+worktrees and branches.
+
+Branch SHAs:
+
+- `refactor/db-access-hot-path-efficiency`: `5949d83f`
+- `refactor/contact-list-efficiency`: `c9b9a79a`
+- `refactor/email-outbox-child-bulk-reads`: `b2c1f92b`
+- Integration branch after merge/lint cleanup: `fd53556d`
+- First `main`/`origin/main` publication parity: `fd53556d`
+
+Integrated changed-path selector:
+
+```bash
+pnpm verify:select -- --base origin/main
+```
+
+Selected commands:
+
+- `pnpm format:check`
+- `pnpm docs:check`
+- `pnpm policy:check`
+- `pnpm --filter @open-practice/database test`
+- `pnpm --filter @open-practice/database db:check`
+- `pnpm migrations:check`
+- `pnpm --filter @open-practice/database typecheck`
+- `pnpm --filter @open-practice/database build`
+- `pnpm --filter @open-practice/api test`
+- `pnpm --filter @open-practice/api typecheck`
+
+Validation results:
+
+| Command                                           | Result | Notes                                                                                                                          |
+| ------------------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------ |
+| `pnpm verify:select -- --base origin/main`        | Passed | Selected the integrated database/API/docs gate listed above.                                                                   |
+| `pnpm format:check`                               | Passed | Prettier check passed.                                                                                                         |
+| `pnpm docs:check`                                 | Passed | Documentation link validation passed.                                                                                          |
+| `pnpm policy:check`                               | Passed | Secrets, package policy, dead-code, migration parity, OSS reuse, docs, proof index, local-evidence, and boundary gates passed. |
+| `pnpm --filter @open-practice/database test`      | Passed | 23 files and 136 tests passed.                                                                                                 |
+| `pnpm --filter @open-practice/database db:check`  | Passed | Drizzle schema check passed.                                                                                                   |
+| `pnpm migrations:check`                           | Passed | 66 SQL files match 66 journal entries.                                                                                         |
+| `pnpm --filter @open-practice/database typecheck` | Passed | Database typecheck passed.                                                                                                     |
+| `pnpm --filter @open-practice/database build`     | Passed | Database build passed.                                                                                                         |
+| `pnpm --filter @open-practice/api test`           | Passed | 42 files and 560 tests passed.                                                                                                 |
+| `pnpm --filter @open-practice/api typecheck`      | Passed | API typecheck passed.                                                                                                          |
+| `pnpm ci:local`                                   | Passed | Initial run found one unused internal helper; after removing it, full verify/build/whitespace gate passed.                     |
+| `pnpm migrations:replay`                          | Passed | First run found local Postgres unavailable; after `docker compose up -d postgres`, 66 migrations replayed and cleaned up.      |
+| `git diff --check`                                | Passed | No whitespace errors.                                                                                                          |
+
+Docker validation was not selected or run for this closeout because no Dockerfile, Compose,
+app-image, object-storage, or Docker-backed runtime path changed.
+
+Publication and prune results:
+
+- `git branch -f main HEAD` fast-forwarded local `main` to the integration branch.
+- `git push origin main` updated `origin/main` from `431c5ee9` to `fd53556d`.
+- `git fetch origin main` followed by `git rev-parse main origin/main HEAD` confirmed parity at
+  `fd53556dd41be7e27c7f0627459a2bb9866a0519`.
+- Removed clean merged worktrees:
+  `/Users/bryan/projects/open-practice-contact-list-efficiency` and
+  `/Users/bryan/projects/open-practice-email-outbox-child-bulk-reads`.
+- Deleted merged local branches:
+  `refactor/db-access-hot-path-efficiency`, `refactor/contact-list-efficiency`, and
+  `refactor/email-outbox-child-bulk-reads`.
+- Ran `git worktree prune` and `git remote prune origin`.
+- Stash count before and after prune stayed `42`; no stashes were touched.
+
+Closeout proof-addendum validation:
+
+| Command             | Result | Notes                                                                                                                   |
+| ------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------- |
+| `pnpm format:check` | Passed | Final proof-addendum formatting check passed.                                                                           |
+| `pnpm docs:check`   | Passed | Documentation link validation passed.                                                                                   |
+| `pnpm policy:check` | Passed | Secrets, package policy, dead-code, migration, OSS reuse, docs, proof index, Docker ignore, and boundary checks passed. |
+| `git diff --check`  | Passed | No whitespace errors.                                                                                                   |
