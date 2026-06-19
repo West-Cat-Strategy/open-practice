@@ -60,6 +60,7 @@ describe("select-validation contract", () => {
         COMMANDS.dockerResidualWatch,
         COMMANDS.dockerAppSmoke,
         COMMANDS.dockerScan,
+        COMMANDS.selfhostCheck,
         COMMANDS.e2eDocker,
         COMMANDS.formatCheck,
         COMMANDS.docsCheck,

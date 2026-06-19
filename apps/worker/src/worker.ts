@@ -75,7 +75,10 @@ export const workerEnvSchema = z.object({
   WORKER_CONCURRENCY: z.coerce.number().int().positive().default(2),
   DATABASE_URL: optionalString,
   OPEN_PRACTICE_USE_MEMORY_REPO: booleanFromEnv,
+  OPEN_PRACTICE_DEV_SEED: booleanFromEnv,
+  OPEN_PRACTICE_ALLOW_DOCKER_BRIDGE_SETUP: booleanFromEnv,
   OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY: optionalConfigEncryptionKey,
+  E2E_MODE: z.enum(["host", "docker"]).optional(),
   S3_ENDPOINT: optionalUrl,
   S3_REGION: z.string().default("local"),
   S3_BUCKET: z.string().default("open-practice-documents"),
@@ -114,6 +117,15 @@ export function validateWorkerReadiness(env: WorkerEnv): void {
     }
     if (env.OPEN_PRACTICE_USE_MEMORY_REPO) {
       throw new Error("OPEN_PRACTICE_USE_MEMORY_REPO cannot be true in production");
+    }
+    if (env.OPEN_PRACTICE_DEV_SEED) {
+      throw new Error("OPEN_PRACTICE_DEV_SEED cannot be true in production");
+    }
+    if (env.OPEN_PRACTICE_ALLOW_DOCKER_BRIDGE_SETUP) {
+      throw new Error("OPEN_PRACTICE_ALLOW_DOCKER_BRIDGE_SETUP cannot be true in production");
+    }
+    if (env.E2E_MODE) {
+      throw new Error("E2E_MODE cannot be configured in production");
     }
   } else if (env.OPEN_PRACTICE_USE_MEMORY_REPO && env.DATABASE_URL) {
     throw new Error(

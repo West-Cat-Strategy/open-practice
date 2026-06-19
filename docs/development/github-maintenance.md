@@ -87,6 +87,9 @@ evidence directory is needed.
 - Use `pnpm release:attest -- --artifact <path> --key <local-key>` only when a local release
   artifact needs explicit Cosign proof. Keep the default no-transparency-log posture unless a
   release task explicitly widens it.
+- For self-host profile changes, run
+  `pnpm selfhost:check -- --env-file docker/selfhost.example.env --allow-synthetic-example` for the
+  synthetic render proof, then repeat with the operator's ignored env file before real startup.
 
 ### Docker Dependency Snapshot
 

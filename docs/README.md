@@ -15,12 +15,14 @@ stay central across docs and code.
 5. [Repository Guide](development/repo-guide.md) maps workspace ownership, boundaries, and common edit paths.
 6. [GitHub Maintenance](development/github-maintenance.md) covers local-only repository gates,
    GitHub settings posture, dependency audits, branch cleanup, and release handoff.
-7. [Application Strengthening Plan](development/application-strengthening-plan.md) records the
+7. [Self-Hosting](development/self-hosting.md) covers the focused single-host Docker profile,
+   same-origin browser API mode, and operator-local first-run setup.
+8. [Application Strengthening Plan](development/application-strengthening-plan.md) records the
    ordered hardening wave and clean-room reference map.
-8. [Testing](testing/TESTING.md) maps change types to validation commands.
-9. [Validation Proof Index](validation/README.md) indexes validation notes and skipped-check context;
-   live ownership and row status stay in [Planning and Progress](planning-and-progress.md).
-10. [API and State Machines](api-and-state-machines.md) records the current API and lifecycle contracts.
+9. [Testing](testing/TESTING.md) maps change types to validation commands.
+10. [Validation Proof Index](validation/README.md) indexes validation notes and skipped-check context;
+    live ownership and row status stay in [Planning and Progress](planning-and-progress.md).
+11. [API and State Machines](api-and-state-machines.md) records the current API and lifecycle contracts.
 
 ## Governance
 

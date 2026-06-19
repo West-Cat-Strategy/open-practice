@@ -10,8 +10,8 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 | Snapshot              | Value                                                                |
 | --------------------- | -------------------------------------------------------------------- |
-| Current focus         | Database efficiency merge/push/prune closeout complete.              |
-| Next recommended pick | Start the next scoped branch from refreshed `main`.                  |
+| Current focus         | Self-hosting optimization branch validation passed.                  |
+| Next recommended pick | Review/merge the self-hosting branch or start the next scoped lane.  |
 | Ready rows            | 0                                                                    |
 | Candidate rows        | 0                                                                    |
 | In progress rows      | 0                                                                    |
@@ -21,6 +21,17 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 | Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`     |
 
 ## Current Handoff Notes
+
+The 2026-06-19 `chore/self-hosting-optimization-20260619` branch adds a focused single-host
+self-hosting lane while keeping the local Compose stack local-only. It adds
+`OPEN_PRACTICE_BROWSER_API_MODE=same-origin` browser routing with a Next `/api/:path*` rewrite,
+`docker-compose.selfhost.yml`, `pnpm selfhost:check`, worker production-readiness ratchets, and a
+self-hosting runbook. It preserves public API response shapes, matter-scoped authorization, audit
+posture, no-live-settlement, no automatic trust posting, the production operator-local setup gate,
+and synthetic-only proof data. Proof is recorded in
+[self-hosting optimization proof](validation/OP_SELF_HOSTING_OPTIMIZATION_PROOF_2026-06-19.md).
+Selected package, docs, policy, dependency, Docker app-smoke, Docker E2E, `pnpm ci:local`, and
+`git diff --check` validation passed in the sibling worktree.
 
 The 2026-06-18 database access hot-path efficiency branch
 `refactor/db-access-hot-path-efficiency` adds focused internal query/index improvements without

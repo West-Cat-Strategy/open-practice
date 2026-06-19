@@ -47,6 +47,11 @@ app serves on loopback. By default it uses an isolated Compose project and dispo
 `-- --refresh` when you need pinned Redis pulls and `--pull` image rebuilds. Use `-- --keep-up` to
 validate and leave the default Compose dev stack running.
 
+For single-host self-hosting behind an operator-managed TLS reverse proxy, use
+[Self-Hosting](self-hosting.md). That profile lives in `docker-compose.selfhost.yml`, uses
+same-origin browser API calls through the web service, and keeps the default development Compose
+stack separate.
+
 For Docker footprint reviews, record API, Web, and Worker image sizes in the validation proof after
 the build finishes:
 
@@ -109,6 +114,9 @@ DATABASE_URL=postgres://open_practice:open_practice@127.0.0.1:35432/open_practic
   owner/admin users can enable or disable that provider from the Queues provider posture panel, and
   OCR queue buttons stay disabled until both the provider and Redis-backed OCR queue are ready.
 - Production rejects memory persistence, dev seed data, development auth helpers, deprecated external-provider env, and unsafe local S3 endpoints.
+- Self-hosted browser API mode is explicit: `OPEN_PRACTICE_BROWSER_API_MODE=same-origin` makes the
+  web app send browser requests to same-origin `/api` paths, and the Next.js server rewrites those
+  requests to the configured internal `API_BASE_URL`.
 
 ## Local Services
 

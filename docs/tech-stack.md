@@ -89,6 +89,7 @@ Worker/provider defaults:
 | `MEDIA_TEMP_DIR`                      | `.tmp/open-practice-media`                              | Local scratch path for future FFmpeg/Whisper processing.                                                                                                                   |
 | `S3_SERVER_SIDE_ENCRYPTION`           | empty                                                   | Optional locally; required as `AES256` in production when S3 is configured so server-owned writes and staff/public upload intents request SSE-S3 encryption.               |
 | `OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY` | empty                                                   | Required for PostgreSQL-backed API and worker runtimes before provider configuration secrets are written or read; accepts a 32-byte base64, base64url, or hex key.         |
+| `OPEN_PRACTICE_BROWSER_API_MODE`      | `external`                                              | Set to `same-origin` for self-hosted web images that should send browser requests to `/api` on the web origin and let Next.js rewrite to private `API_BASE_URL`.           |
 
 ## Privacy Posture
 

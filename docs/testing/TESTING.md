@@ -41,6 +41,7 @@ API contracts, database schema changes, auth changes, or release handoff.
 | Docker app image smoke | `pnpm docker:app-smoke`                          | Pulls Redis, builds wrapped local service images plus API/Web/Worker images, starts the local Compose stack, migrates the default Compose database, checks API/web readiness, and supports app-image footprint proof. |
 | Docker static lint     | `pnpm docker:lint`                               | Runs optional local Hadolint and Checkov checks when installed; skips with local evidence when missing.                                                                                                               |
 | Docker image scan      | `pnpm docker:scan`                               | Runs optional local Trivy image scanning when installed; pair with `pnpm docker:app-smoke` so app images exist.                                                                                                       |
+| Self-host Compose gate | `pnpm selfhost:check -- --env-file <path>`       | Validates self-host env values and rendered `docker-compose.selfhost.yml` posture without starting the stack.                                                                                                         |
 | Database schema check  | `pnpm --filter @open-practice/database db:check` | Required for schema or migration changes.                                                                                                                                                                             |
 | Migration parity       | `pnpm migrations:check`                          | Verifies SQL migration files and Drizzle journal entries stay in lockstep.                                                                                                                                            |
 | Migration lint         | `pnpm migrations:lint`                           | Checks changed SQL migrations for destructive or lock-prone review-required patterns.                                                                                                                                 |
@@ -107,7 +108,7 @@ Selection rules:
 | API contract or route auth manifest tooling      | `pnpm api:contract`, `pnpm policy:check`, `pnpm test`                                                                                                                                                                                                                                      |
 | Semgrep privacy-rule config                      | `pnpm security:privacy-rules`, `pnpm policy:check`, `pnpm test`                                                                                                                                                                                                                            |
 | Top-level maintenance docs/ignore files          | `pnpm format:check`, `pnpm docs:check`, `pnpm policy:check`                                                                                                                                                                                                                                |
-| Runtime config, Dockerfiles, or Compose          | `pnpm docker:lint`, `pnpm docker:residual-watch`, `pnpm e2e:docker`, `pnpm format:check`, `pnpm docs:check`, `pnpm policy:check`, `pnpm build`; add `pnpm docker:app-smoke` and `pnpm docker:scan` when app images, commands, or Compose runtime behavior change                           |
+| Runtime config, Dockerfiles, or Compose          | `pnpm docker:lint`, `pnpm docker:residual-watch`, `pnpm e2e:docker`, `pnpm selfhost:check -- --env-file docker/selfhost.example.env --allow-synthetic-example`, `pnpm format:check`, `pnpm docs:check`, `pnpm policy:check`, `pnpm build`; add `pnpm docker:app-smoke` and `pnpm docker:scan` when app images, commands, or Compose runtime behavior change |
 | Root config, local gate, Turbo, TS config        | `pnpm ci:local`                                                                                                                                                                                                                                                                            |
 | Package manifests or lockfile                    | `pnpm ci:local`, `pnpm deps:audit`, `pnpm deps:licenses`, `pnpm deps:supply-chain`, `pnpm deps:osv`, `pnpm license:scan`                                                                                                                                                                   |
 
@@ -242,6 +243,11 @@ running on web `33000` and API `34000`. For footprint work, pair the smoke resul
 `docker image inspect open-practice-dev-api open-practice-dev-web open-practice-dev-worker --format '{{.RepoTags}} {{.Size}}'`
 so the proof records before/after API, Web, and Worker image sizes.
 
+`pnpm selfhost:check -- --env-file <path>` validates the focused self-host profile before startup.
+Use `-- --env-file docker/selfhost.example.env --allow-synthetic-example` only for the checked-in
+synthetic render proof; real deployments must use an ignored env file with unique secrets and HTTPS
+origins.
+
 ## Change-Type Guidance
 
 - API route, auth, permission, or lifecycle changes: run API tests, typecheck,
@@ -254,7 +260,8 @@ so the proof records before/after API, Web, and Worker image sizes.
 - Dockerfile, Compose, or app-image runtime changes: run selector first, record the exact final path
   set, then include `pnpm docker:lint`, `pnpm docker:residual-watch`,
   `pnpm docker:app-smoke`, `pnpm e2e:docker`, app-image size evidence, and the selected static
-  checks. Add `pnpm docker:scan` when Trivy and the app images are available. If implementation
+  checks. Add `pnpm docker:scan` when Trivy and the app images are available. When self-hosting
+  changes are included, add `pnpm selfhost:check` with the synthetic env example. If implementation
   files are still pending, keep proof rows marked as pending rather than claiming final validation.
 - Documentation-only changes: run `pnpm format:check`, `pnpm docs:check`, and `pnpm policy:check`.
 
