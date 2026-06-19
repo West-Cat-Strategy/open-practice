@@ -10,8 +10,8 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 | Snapshot              | Value                                                                |
 | --------------------- | -------------------------------------------------------------------- |
-| Current focus         | Active-lane mainline publication and prune closeout complete.        |
-| Next recommended pick | Start the next scoped branch from refreshed `main`.                  |
+| Current focus         | Email outbox child-row bulk-read efficiency branch in validation.    |
+| Next recommended pick | Review/merge this narrow branch, then pick the next DB access slice. |
 | Ready rows            | 0                                                                    |
 | Candidate rows        | 0                                                                    |
 | In progress rows      | 0                                                                    |
@@ -21,6 +21,15 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 | Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`     |
 
 ## Current Handoff Notes
+
+The 2026-06-18 email outbox child-row bulk-read branch
+`refactor/email-outbox-child-bulk-reads` is in validation/review. It adds optional page-scoped
+`emailIds` filters to email events and receipt-token repository reads, then uses them from
+`/api/mail/outbox` and the outbound portion of `/api/communications/inbox` so child rows are fetched
+once per visible outbox page instead of once per email. The branch preserves HTTP response shapes,
+authorization, redaction, provider behavior, public receipt behavior, queue/retry behavior,
+settlement/trust posture, and synthetic-only proof data. Proof is recorded in
+[email outbox child-row bulk reads proof](validation/OP_EMAIL_OUTBOX_CHILD_BULK_READS_PROOF_2026-06-18.md).
 
 The 2026-06-17 all-active-lanes integration branch
 `merge/open-practice-active-lanes-2026-06-17` merged the 13 committed dirty lanes plus the clean

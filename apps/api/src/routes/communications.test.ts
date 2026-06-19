@@ -1,5 +1,5 @@
 import Fastify, { type FastifyInstance } from "fastify";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
   EmailEventRecord,
   EmailOutboxRecord,
@@ -576,6 +576,88 @@ describe("communications inbox routes", () => {
         }),
       ]),
     });
+  });
+
+  it("bulk-loads outbound child rows in the communications aggregate", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const firstEmail = emailOutbox();
+    const secondEmail = emailOutbox({
+      id: "email-outbox-002",
+      templateKey: "client.reminder",
+      to: ["second-client@example.test"],
+      cc: [],
+      bcc: [],
+      subject: "Private outbound reminder subject",
+      textBody: "Private outbound reminder body",
+      terminalFailureReason:
+        "Mailbox unavailable for second-client@example.test token=second-secret",
+    });
+    await repository.createQueuedEmailOutbox({
+      email: firstEmail,
+      event: emailEvent(firstEmail.id, {
+        id: "email-event-001",
+        eventType: "queued",
+        providerMessageId: undefined,
+      }),
+      job: emailJob(firstEmail.id),
+    });
+    await repository.createQueuedEmailOutbox({
+      email: secondEmail,
+      event: emailEvent(secondEmail.id, {
+        id: "email-event-002",
+        eventType: "queued",
+        providerMessageId: undefined,
+      }),
+      job: {
+        ...emailJob(secondEmail.id),
+        id: "email-job-002",
+        targetResourceId: secondEmail.id,
+      },
+    });
+
+    const listedEmailEvents = vi.spyOn(repository, "listEmailEvents");
+    const listedReceiptTokens = vi.spyOn(repository, "listEmailReceiptTokens");
+
+    const response = await testServer(repository, user("licensee", ["matter-001"])).inject({
+      method: "GET",
+      url: "/api/communications/inbox?matterId=matter-001",
+    });
+
+    expect(response.statusCode).toBe(200);
+    const payload = response.json();
+    const listedEmailIds = payload.outboundDeliveryHistory.map((email: { id: string }) => email.id);
+    expect(new Set(listedEmailIds)).toEqual(new Set([firstEmail.id, secondEmail.id]));
+    expect(listedEmailEvents).toHaveBeenCalledTimes(1);
+    expect(listedEmailEvents).toHaveBeenCalledWith(firmId, { emailIds: listedEmailIds });
+    expect(listedReceiptTokens).toHaveBeenCalledTimes(1);
+    expect(listedReceiptTokens).toHaveBeenCalledWith(firmId, { emailIds: listedEmailIds });
+    expect(payload.outboundDeliveryHistory).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: firstEmail.id,
+          recipientCount: 3,
+          events: expect.any(Array),
+        }),
+        expect.objectContaining({
+          id: secondEmail.id,
+          recipientCount: 1,
+          failureSummary: "Mailbox unavailable for [redacted-email] token=[redacted]",
+          events: expect.any(Array),
+        }),
+      ]),
+    );
+    expect(payload.channelHistory).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: `outbound-email:${firstEmail.id}`, eventCount: 1 }),
+        expect.objectContaining({ id: `outbound-email:${secondEmail.id}`, eventCount: 1 }),
+      ]),
+    );
+    expect(response.body).not.toContain("Private outbound subject");
+    expect(response.body).not.toContain("Private outbound reminder subject");
+    expect(response.body).not.toContain("client@example.test");
+    expect(response.body).not.toContain("second-client@example.test");
+    expect(response.body).not.toContain("provider-message-private");
+    expect(response.body).not.toContain("second-secret");
   });
 
   it("denies cross-matter aggregate reads", async () => {

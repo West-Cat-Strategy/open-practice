@@ -144,6 +144,17 @@ surface.
   - **Reuse and snippets:** Reference-only for OP-T158; no dependency, copied excerpt, vendored
     asset, or reference-derived code was added.
 
+- **Email outbox child-row bulk reads**
+  - **In-review slice:** The 2026-06-18 `refactor/email-outbox-child-bulk-reads` branch batches
+    outbound email event and receipt-token child rows for `/api/mail/outbox` and the outbound
+    portion of `/api/communications/inbox` using optional repository `emailIds` filters.
+  - **Preserved boundary:** No route shape, authorization, redaction, provider behavior, receipt
+    recording, queue/retry behavior, live settlement, trust posting, schema, migration, or
+    dependency change.
+  - **Remaining database-efficiency follow-ups:** Inbound attachment/conversation aggregation,
+    client portal batch projections, operational-view read-model inputs, and filtered audit reads
+    remain separate candidates and should keep their own privacy and chain-validity proof.
+
 - **Inbound provider webhook intake boundary**
   - **Shipped slice:** The first Mailgun raw-MIME provider webhook validates the provider
     signature, stores raw MIME in object storage, and queues the existing inbound parser. The

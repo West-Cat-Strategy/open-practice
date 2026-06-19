@@ -281,10 +281,12 @@ export async function recordDrizzleEmailReceiptToken(
 export async function listDrizzleEmailReceiptTokens(
   db: OpenPracticeDatabase,
   firmId: string,
-  options: { emailId?: string; matterId?: string } = {},
+  options: { emailId?: string; emailIds?: string[]; matterId?: string } = {},
 ): Promise<EmailReceiptTokenRecord[]> {
+  const emailIds = options.emailId ? [options.emailId] : options.emailIds;
+  if (emailIds?.length === 0) return [];
   const filters = [eq(schema.emailReceiptTokens.firmId, firmId)];
-  if (options.emailId) filters.push(eq(schema.emailReceiptTokens.emailId, options.emailId));
+  if (emailIds) filters.push(inArray(schema.emailReceiptTokens.emailId, emailIds));
   if (options.matterId) filters.push(eq(schema.emailReceiptTokens.matterId, options.matterId));
   const rows = await db
     .select()
@@ -634,10 +636,12 @@ export async function reconcileDrizzleCalendarReminderDelivery(
 export async function listDrizzleEmailEvents(
   db: OpenPracticeDatabase,
   firmId: string,
-  options: { emailId?: string } = {},
+  options: { emailId?: string; emailIds?: string[] } = {},
 ): Promise<EmailEventRecord[]> {
+  const emailIds = options.emailId ? [options.emailId] : options.emailIds;
+  if (emailIds?.length === 0) return [];
   const conditions = [eq(schema.emailEvents.firmId, firmId)];
-  if (options.emailId) conditions.push(eq(schema.emailEvents.emailId, options.emailId));
+  if (emailIds) conditions.push(inArray(schema.emailEvents.emailId, emailIds));
   const rows = await db
     .select()
     .from(schema.emailEvents)
