@@ -6,10 +6,17 @@ Thumbs.db
 .idea/
 .vscode/
 
-# Local environment and secrets. Keep the documented example tracked.
+# Local environment, package auth, and secrets. Keep documented examples tracked.
 .env
 .env.*
-!.env.example
+!.env*.example
+.npmrc
+.pnpmrc
+.yarnrc
+.netrc
+.aws/
+.ssh/
+.secrets/
 *.pem
 *.key
 *.crt
@@ -23,7 +30,6 @@ id_ed25519.*
 
 # Dependencies and package-manager caches
 node_modules/
-**/node_modules/
 .pnpm-store/
 .npm/
 .yarn/
@@ -31,15 +37,16 @@ node_modules/
 
 # Build, framework, and test output
 .turbo/
-**/.turbo/
 .next/
-**/.next/
 dist/
-**/dist/
 build/
-**/build/
 coverage/
-**/coverage/
+.swc/
+.vite/
+.vitest/
+.eslintcache
+output/
+artifacts/
 playwright-report/
 test-results/
 *.tsbuildinfo
@@ -50,7 +57,6 @@ npm-debug.log*
 pnpm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-artifacts/release-local/
 
 # Local service state, uploads, and data snapshots
 .data/
