@@ -13,7 +13,9 @@ API contracts, database schema changes, auth changes, or release handoff.
 | License evidence       | `pnpm deps:licenses`                             | Summarizes dependency license groups and fails only on unknown or unlicensed groups. Use `-- --json-output <path>` for package-level JSON evidence.                                                                   |
 | Dead-code gate         | `pnpm deadcode:check`                            | Runs Knip against unused files, dependencies, unlisted dependencies, unresolved imports, and binaries.                                                                                                                |
 | Selective validation   | `pnpm verify:select -- --base <git-ref>`         | Prints recommended commands for changed files without running them.                                                                                                                                                   |
+| Final-path selection   | `pnpm verify:select -- --base-plus-dirty <ref>`  | Prints one deterministic command set for a branch diff plus staged, unstaged, and untracked files.                                                                                                                    |
 | Dirty-tree selection   | `pnpm verify:select -- --dirty`                  | Prints recommended commands for staged, unstaged, and untracked working-tree files.                                                                                                                                   |
+| Proof reconciliation   | `pnpm proof:reconcile -- --proof <path> ...`     | Checks proof-note final paths, selector output, selected commands, skipped-check reasons, and synthetic/privacy wording against a selector input mode.                                                                |
 | Formatting             | `pnpm format:check`                              | Required before handoff.                                                                                                                                                                                              |
 | Static lint            | `pnpm lint`                                      | Runs Turbo package lint tasks.                                                                                                                                                                                        |
 | Type checking          | `pnpm typecheck`                                 | Runs Turbo package type checks.                                                                                                                                                                                       |
@@ -51,6 +53,19 @@ Inspect the current dirty working tree, including staged, unstaged, and untracke
 pnpm verify:select -- --dirty
 ```
 
+Inspect the final handoff path set for an integration branch with both committed and local dirty
+work:
+
+```bash
+pnpm verify:select -- --base-plus-dirty origin/main
+```
+
+After writing a proof note, reconcile it against the same path mode before handoff:
+
+```bash
+pnpm proof:reconcile -- --proof docs/validation/EXAMPLE_PROOF.md --base-plus-dirty origin/main
+```
+
 Add `--strict` to any selector mode when you want unmapped paths to fail instead of printing no
 commands for those paths:
 
@@ -71,11 +86,14 @@ Selection rules:
 | `e2e/**` or `playwright.config.*`                | `pnpm e2e:host`, `pnpm e2e:docker`, `node scripts/run-e2e.mjs first-run`, `pnpm e2e:matterless`, `pnpm e2e:client-portal`                                                                                                                                          |
 | `docs/**`                                        | `pnpm format:check`, `pnpm docs:check`, `pnpm policy:check`                                                                                                                                                                                                        |
 | `scripts/**`                                     | `pnpm policy:check`, `pnpm test`                                                                                                                                                                                                                                   |
+| Top-level maintenance docs/ignore files          | `pnpm format:check`, `pnpm docs:check`, `pnpm policy:check`                                                                                                                                                                                                        |
 | Runtime config, Dockerfiles, or Compose          | `pnpm docker:residual-watch`, `pnpm e2e:docker`, `pnpm format:check`, `pnpm docs:check`, `pnpm policy:check`, `pnpm build`; add `pnpm docker:app-smoke` when app images, commands, or Compose runtime behavior change                                              |
 | Root config, local gate, Turbo, TS config        | `pnpm ci:local`                                                                                                                                                                                                                                                    |
 | Package manifests or lockfile                    | `pnpm ci:local`, `pnpm deps:audit`, `pnpm deps:licenses`                                                                                                                                                                                                           |
 
-Output is deterministic, de-duplicated, and one command per line after a short header.
+Output is deterministic, de-duplicated, and one command per line after a short header. Domain source
+changes include the domain build before downstream package checks so fresh worktrees hydrate shared
+package output before API, provider, worker, or web validation.
 
 `pnpm policy:check` includes `scripts/validate-package-manifests.mjs`, which blocks dependency,
 development dependency, optional dependency, or peer dependency ranges set to `latest` in repo
@@ -88,11 +106,6 @@ summary. The command highlights copyleft, public-license, and unusual groups for
 fails the local run when a dependency reports an unknown, unlicensed, or empty license group. Use
 `node scripts/report-dependency-licenses.mjs --json` or `pnpm deps:licenses -- --json-output <path>`
 for package-level evidence.
-
-Known follow-up: this table expects domain source changes to include
-`pnpm --filter @open-practice/domain build`, but the current selector output does not emit that
-command. Until the selector and tests are aligned in a tooling slice, add the domain build manually
-when validating domain source changes.
 
 ## Test Coverage Ratchets
 

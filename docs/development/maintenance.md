@@ -19,6 +19,10 @@ handoff. Use [Repository Guide](repo-guide.md) for workspace ownership,
 Open Practice has a small validation control plane that should stay boring and explicit:
 
 - `pnpm verify:select -- --files <paths...>` prints recommended commands for a change set and never runs them.
+- `pnpm verify:select -- --base-plus-dirty <ref>` unions a branch diff with staged, unstaged, and
+  untracked files for final integration handoff selection.
+- `pnpm proof:reconcile -- --proof <path> ...` checks proof-note final paths, selector output,
+  selected commands, skipped-check reasons, and synthetic/privacy wording against a selector input.
 - `pnpm docs:check` validates local Markdown links.
 - `pnpm policy:check` runs the combined local policy/integrity gate: tracked-secret scan, package
   manifest policy, migration parity, OSS reuse validation, docs links, validation-proof index,
@@ -27,16 +31,16 @@ Open Practice has a small validation control plane that should stay boring and e
 - `pnpm ci:local` runs `pnpm verify` and `git diff --check`.
 - `pnpm deps:audit` runs local production and development dependency audits.
 - `pnpm release:local` runs dependency audits plus the full local gate.
+- `pnpm dev:doctor` is a read-only local preflight for Node, pnpm, Docker, Compose config, default
+  loopback ports, Playwright browser cache, and host-local PostgreSQL encryption-key readiness.
+- `pnpm dev:infra`, `pnpm dev:stack`, `pnpm dev:ps`, `pnpm dev:logs`, `pnpm dev:reset`, and
+  `pnpm dev:seed` wrap common local Compose and synthetic seed-data workflows.
 
 When adding a new package, app, route family, or docs category, update
 [Testing](../testing/TESTING.md) and `scripts/select-validation.mjs` together.
 
 ## Known Follow-Ups
 
-- `docs/testing/TESTING.md` expects domain source changes to include
-  `pnpm --filter @open-practice/domain build`, but the current selector output does not emit that
-  command. Keep docs-only cleanups out of `scripts/select-validation.mjs`; align the selector and
-  its tests in a separate tooling slice.
 - The external `/Users/bryan/.codex/skills/maintain-open-practice-docs` skill still points to its
   own `references/docs-workflows.md`. Repo docs remain canonical; refresh external skills only in an
   explicit skill-upkeep task.

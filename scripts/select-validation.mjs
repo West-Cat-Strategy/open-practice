@@ -18,6 +18,7 @@ export const COMMANDS = {
   dockerAppSmoke: "pnpm docker:app-smoke",
   dockerResidualWatch: "pnpm docker:residual-watch",
   docsCheck: "pnpm docs:check",
+  domainBuild: "pnpm --filter @open-practice/domain build",
   domainTest: "pnpm --filter @open-practice/domain test",
   domainTypecheck: "pnpm --filter @open-practice/domain typecheck",
   e2eClientPortal: "pnpm e2e:client-portal",
@@ -56,6 +57,7 @@ export const COMMAND_ORDER = [
   COMMANDS.test,
   COMMANDS.domainTest,
   COMMANDS.domainTypecheck,
+  COMMANDS.domainBuild,
   COMMANDS.databaseTest,
   COMMANDS.databaseCheck,
   COMMANDS.migrationsCheck,
@@ -78,6 +80,7 @@ export function usage() {
   return [
     "Usage:",
     "  node scripts/select-validation.mjs [--strict] --base <git-ref>",
+    "  node scripts/select-validation.mjs [--strict] --base-plus-dirty <git-ref>",
     "  node scripts/select-validation.mjs [--strict] --files <paths...>",
     "  node scripts/select-validation.mjs [--strict] --dirty",
   ].join("\n");
@@ -86,6 +89,7 @@ export function usage() {
 export function parseArgs(rawArgs) {
   const args = rawArgs[0] === "--" ? rawArgs.slice(1) : rawArgs;
   let base = null;
+  let basePlusDirty = null;
   let files = null;
   let dirty = false;
   let strict = false;
@@ -104,8 +108,10 @@ export function parseArgs(rawArgs) {
     }
 
     if (arg === "--base") {
-      if (base !== null || files !== null || dirty) {
-        throw new Error("Use exactly one input mode: --base, --files, or --dirty.");
+      if (base !== null || basePlusDirty !== null || files !== null || dirty) {
+        throw new Error(
+          "Use exactly one input mode: --base, --base-plus-dirty, --files, or --dirty.",
+        );
       }
 
       base = args[index + 1];
@@ -118,9 +124,28 @@ export function parseArgs(rawArgs) {
       continue;
     }
 
+    if (arg === "--base-plus-dirty") {
+      if (base !== null || basePlusDirty !== null || files !== null || dirty) {
+        throw new Error(
+          "Use exactly one input mode: --base, --base-plus-dirty, --files, or --dirty.",
+        );
+      }
+
+      basePlusDirty = args[index + 1];
+      index += 1;
+
+      if (!basePlusDirty || basePlusDirty.startsWith("--")) {
+        throw new Error("--base-plus-dirty requires a git ref.");
+      }
+
+      continue;
+    }
+
     if (arg === "--files") {
-      if (base !== null || files !== null || dirty) {
-        throw new Error("Use exactly one input mode: --base, --files, or --dirty.");
+      if (base !== null || basePlusDirty !== null || files !== null || dirty) {
+        throw new Error(
+          "Use exactly one input mode: --base, --base-plus-dirty, --files, or --dirty.",
+        );
       }
 
       files = args.slice(index + 1);
@@ -128,8 +153,10 @@ export function parseArgs(rawArgs) {
     }
 
     if (arg === "--dirty") {
-      if (base !== null || files !== null || dirty) {
-        throw new Error("Use exactly one input mode: --base, --files, or --dirty.");
+      if (base !== null || basePlusDirty !== null || files !== null || dirty) {
+        throw new Error(
+          "Use exactly one input mode: --base, --base-plus-dirty, --files, or --dirty.",
+        );
       }
 
       dirty = true;
@@ -139,7 +166,7 @@ export function parseArgs(rawArgs) {
     throw new Error(`Unknown argument: ${arg}`);
   }
 
-  if (base === null && files === null && !dirty) {
+  if (base === null && basePlusDirty === null && files === null && !dirty) {
     throw new Error("Missing input mode.");
   }
 
@@ -147,7 +174,18 @@ export function parseArgs(rawArgs) {
     throw new Error("--files requires at least one path.");
   }
 
-  return { mode: dirty ? "dirty" : base === null ? "files" : "base", base, files, strict };
+  return {
+    mode: dirty
+      ? "dirty"
+      : basePlusDirty !== null
+        ? "base-plus-dirty"
+        : base === null
+          ? "files"
+          : "base",
+    base: base ?? basePlusDirty,
+    files,
+    strict,
+  };
 }
 
 function lines(output) {
@@ -168,6 +206,10 @@ export function changedFilesFromDirty(exec = execFileSync) {
     ...lines(exec("git", ["diff", "--name-only", "--cached"], { encoding: "utf8" })),
     ...lines(exec("git", ["ls-files", "--others", "--exclude-standard"], { encoding: "utf8" })),
   ];
+}
+
+export function changedFilesFromBasePlusDirty(base, exec = execFileSync) {
+  return [...changedFilesFromBase(base, exec), ...changedFilesFromDirty(exec)];
 }
 
 export function normalizePath(path, cwd = process.cwd()) {
@@ -225,6 +267,10 @@ function isRuntimeConfig(path) {
   );
 }
 
+function isTopLevelMaintenance(path) {
+  return path === "README.md" || path === "CONTRIBUTING.md" || path === ".gitignore";
+}
+
 function isMigration(path) {
   return path === "migrations" || path.startsWith("migrations/") || path.includes("/migrations/");
 }
@@ -275,6 +321,7 @@ export function classifyPath(path) {
     commands.add(COMMANDS.domainTypecheck);
 
     if (isDomainSource(path)) {
+      commands.add(COMMANDS.domainBuild);
       commands.add(COMMANDS.apiTest);
       commands.add(COMMANDS.providersTest);
       commands.add(COMMANDS.workerTest);
@@ -314,6 +361,12 @@ export function classifyPath(path) {
   }
 
   if (path.startsWith("docs/")) {
+    commands.add(COMMANDS.formatCheck);
+    commands.add(COMMANDS.docsCheck);
+    commands.add(COMMANDS.policyCheck);
+  }
+
+  if (isTopLevelMaintenance(path)) {
     commands.add(COMMANDS.formatCheck);
     commands.add(COMMANDS.docsCheck);
     commands.add(COMMANDS.policyCheck);
@@ -366,6 +419,7 @@ export function selectCommands(paths, { strict = false } = {}) {
 
 export function resolveInputFiles(options, exec = execFileSync) {
   if (options.mode === "base") return changedFilesFromBase(options.base, exec);
+  if (options.mode === "base-plus-dirty") return changedFilesFromBasePlusDirty(options.base, exec);
   if (options.mode === "dirty") return changedFilesFromDirty(exec);
   return options.files;
 }
