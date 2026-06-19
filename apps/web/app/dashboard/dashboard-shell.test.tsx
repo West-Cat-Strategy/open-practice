@@ -33,6 +33,7 @@ const session: SessionResponse = {
 const navIcons = {
   matters: FileText,
   contacts: FileText,
+  communications: FileText,
   billing: FileText,
   documents: FileText,
   research: FileText,
@@ -207,6 +208,31 @@ describe("dashboard shell review rail controls", () => {
     expect(html.indexOf(">Workspace<")).toBeLessThan(html.indexOf(">Finance<"));
     expect(html.indexOf(">Finance<")).toBeLessThan(html.indexOf(">Operations<"));
     expect(html.indexOf(">Operations<")).toBeLessThan(html.indexOf(">Review<"));
+  });
+
+  it("renders enabled navigation as page links when canonical hrefs are supplied", () => {
+    const navigationSections = buildSidebarNavigationSections({
+      billingCanView: true,
+      shareLinksEnabled: true,
+      externalUploadsEnabled: true,
+      capabilitySections: [
+        { key: "matters", enabled: true },
+        { key: "contacts", enabled: true },
+      ],
+    });
+    const html = renderToStaticMarkup(
+      createElement(DashboardSidebar, {
+        activeSection: "communications",
+        getSectionHref: (section) => `/staff/${section}`,
+        navigationSections,
+        navIcons,
+        onSelectSection: () => {},
+      }),
+    );
+
+    expect(html).toContain('href="/staff/communications"');
+    expect(html).toContain('aria-current="page"');
+    expect(html).toContain(">Comms<");
   });
 
   it("allows unavailable route states without marking a sidebar section active", () => {

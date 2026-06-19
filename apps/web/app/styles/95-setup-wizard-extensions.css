@@ -345,8 +345,8 @@
 
 .primary-button:disabled,
 .primary-button.highlight:disabled {
-  background: rgba(63, 185, 173, 0.28);
-  color: rgba(247, 243, 232, 0.72);
+  background: var(--surface-muted);
+  color: var(--muted);
   box-shadow: none;
   transform: none;
 }

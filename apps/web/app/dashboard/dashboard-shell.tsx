@@ -66,12 +66,14 @@ export type DashboardMetric = {
 
 export function DashboardSidebar({
   activeSection,
+  getSectionHref,
   matterState = "populated",
   navigationSections,
   navIcons,
   onSelectSection,
 }: {
   activeSection: LocalDashboardSectionKey | null;
+  getSectionHref?: (section: LocalDashboardSectionKey) => string;
   matterState?: "empty" | "populated";
   navigationSections: OpenPracticeSidebarNavigationSection[];
   navIcons: Record<LocalDashboardSectionKey, LucideIcon>;
@@ -160,26 +162,16 @@ export function DashboardSidebar({
                       disabledReason,
                     });
                     const disabledReasonId = `nav-disabled-${key}`;
-                    return (
-                      <button
-                        aria-current={activeSection === key ? "page" : undefined}
-                        aria-describedby={resolvedDisabledReason ? disabledReasonId : undefined}
-                        className={[
-                          "nav-item",
-                          activeSection === key ? "active" : "",
-                          enabled ? "" : "disabled",
-                        ]
-                          .filter(Boolean)
-                          .join(" ")}
-                        disabled={!enabled}
-                        key={key}
-                        onClick={() => {
-                          if (enabled) onSelectSection(key);
-                        }}
-                        title={resolvedDisabledReason ?? title}
-                        type="button"
-                      >
-                        <Icon size={18} />
+                    const navClassName = [
+                      "nav-item",
+                      activeSection === key ? "active" : "",
+                      enabled ? "" : "disabled",
+                    ]
+                      .filter(Boolean)
+                      .join(" ");
+                    const navContent = (
+                      <>
+                        <Icon aria-hidden="true" size={18} />
                         <span>
                           <strong>{label}</strong>
                           {resolvedDisabledReason ? (
@@ -188,6 +180,36 @@ export function DashboardSidebar({
                             </small>
                           ) : null}
                         </span>
+                      </>
+                    );
+                    if (enabled && getSectionHref) {
+                      return (
+                        <a
+                          aria-current={activeSection === key ? "page" : undefined}
+                          aria-describedby={resolvedDisabledReason ? disabledReasonId : undefined}
+                          className={navClassName}
+                          href={getSectionHref(key)}
+                          key={key}
+                          title={title}
+                        >
+                          {navContent}
+                        </a>
+                      );
+                    }
+                    return (
+                      <button
+                        aria-current={activeSection === key ? "page" : undefined}
+                        aria-describedby={resolvedDisabledReason ? disabledReasonId : undefined}
+                        className={navClassName}
+                        disabled={!enabled}
+                        key={key}
+                        onClick={() => {
+                          if (enabled) onSelectSection(key);
+                        }}
+                        title={resolvedDisabledReason ?? title}
+                        type="button"
+                      >
+                        {navContent}
                       </button>
                     );
                   })}
@@ -604,6 +626,7 @@ export function MatterDetailShell({
   activeSectionLabel,
   children,
   detailPanelRef,
+  getSectionHref,
   matterActionSections,
   onSelectSection,
 }: {
@@ -612,6 +635,7 @@ export function MatterDetailShell({
   activeSectionLabel: string;
   children: ReactNode;
   detailPanelRef: RefObject<HTMLElement | null>;
+  getSectionHref?: (section: LocalDashboardSectionKey) => string;
   matterActionSections: OpenPracticeSidebarNavigationSection[];
   onSelectSection: (section: LocalDashboardSectionKey) => void;
 }) {
@@ -633,13 +657,30 @@ export function MatterDetailShell({
       <div className="matter-action-strip matter-detail-action-strip" aria-label="Matter actions">
         {matterActionSections.map((section) => {
           const disabledReason = describeDisabledNavigationReason(section);
+          const actionClassName =
+            section.key === activeSection ? "action-strip-button active" : "action-strip-button";
+          const actionLabel = disabledReason
+            ? `${section.label}: ${disabledReason}`
+            : section.label;
+          if (section.enabled && getSectionHref) {
+            return (
+              <a
+                aria-current={section.key === activeSection ? "page" : undefined}
+                aria-label={actionLabel}
+                className={actionClassName}
+                href={getSectionHref(section.key)}
+                key={section.key}
+                title={disabledReason ?? section.label}
+              >
+                {section.label}
+              </a>
+            );
+          }
           return (
             <button
               aria-current={section.key === activeSection ? "page" : undefined}
-              aria-label={disabledReason ? `${section.label}: ${disabledReason}` : section.label}
-              className={
-                section.key === activeSection ? "action-strip-button active" : "action-strip-button"
-              }
+              aria-label={actionLabel}
+              className={actionClassName}
               disabled={!section.enabled}
               key={section.key}
               onClick={() => onSelectSection(section.key)}

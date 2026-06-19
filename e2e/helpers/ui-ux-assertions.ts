@@ -1,6 +1,14 @@
 import { expect, type Page, type TestInfo } from "@playwright/test";
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 
-const screenshotProjects = new Set(["host-chromium", "host-mobile-chromium", "docker-chromium"]);
+const screenshotProjects = new Set([
+  "host-chromium",
+  "host-mobile-chromium",
+  "matterless-chromium",
+  "client-portal-chromium",
+  "docker-chromium",
+]);
 
 const layoutSelectors = [
   ".dashboard-topbar",
@@ -98,10 +106,17 @@ export async function attachUiScreenshot(
 ): Promise<void> {
   if (!screenshotProjects.has(testInfo.project.name)) return;
 
-  await testInfo.attach(`ui-${screenshotName(name)}-${testInfo.project.name}`, {
-    body: await page.screenshot({ fullPage: options.fullPage ?? false }),
+  const screenshot = await page.screenshot({ fullPage: options.fullPage ?? false });
+  const attachmentName = `ui-${screenshotName(name)}-${testInfo.project.name}`;
+  await testInfo.attach(attachmentName, {
+    body: screenshot,
     contentType: "image/png",
   });
+  const screenshotDir = process.env.UI_UX_SCREENSHOT_DIR;
+  if (screenshotDir) {
+    await mkdir(screenshotDir, { recursive: true });
+    await writeFile(join(screenshotDir, `${attachmentName}.png`), screenshot);
+  }
 }
 
 export async function expectNoUnexpectedHorizontalOverflow(

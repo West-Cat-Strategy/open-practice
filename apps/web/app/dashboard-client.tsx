@@ -16,6 +16,7 @@ import {
   Gavel,
   Link2,
   LockKeyhole,
+  MessageSquareText,
   Search,
   ShieldCheck,
   Upload,
@@ -42,6 +43,7 @@ import {
   trustPostingRequestReviewBusyKey,
 } from "@open-practice/domain/operational-actions";
 import {
+  buildDashboardSectionUrl,
   isUnavailableDashboardRouteSelection,
   type DashboardNavigationSectionKey,
   type DashboardRouteSelection,
@@ -297,6 +299,7 @@ import {
   dashboardActiveSectionLabel,
 } from "./_features/dashboard/dashboard-shell-model";
 import { useDashboardShellState } from "./_features/dashboard/dashboard-shell-state";
+import type { DashboardNavigationMode } from "./_features/dashboard/dashboard-shell-state";
 import {
   ContextRail,
   DashboardMetrics,
@@ -310,6 +313,7 @@ import {
   type DashboardMetric,
 } from "./dashboard/dashboard-shell";
 import { ContactsSection } from "./dashboard/contacts-section";
+import { CommunicationsSection } from "./dashboard/communications-section";
 import { CalendarSection } from "./dashboard/calendar-section";
 import {
   EmailTemplateDraftsPanel,
@@ -558,6 +562,8 @@ interface DashboardClientProps {
   legalClinic: LegalClinicDashboardResponse;
   legalResearch: LegalResearchDashboardResponse;
   initialRouteSelection: DashboardRouteSelection;
+  initialMatterId?: string;
+  navigationMode?: DashboardNavigationMode;
   overview: PracticeOverview;
   operationalViewDefinitions?: SavedOperationalViewDefinition[];
   operationalViews: OperationalViewsResponse;
@@ -689,6 +695,7 @@ export function formatPortalDocumentAccessFailure(
 const navIcons: Record<LocalDashboardSectionKey, LucideIcon> = {
   matters: Gavel,
   contacts: ContactRound,
+  communications: MessageSquareText,
   funds: Banknote,
   billing: CreditCard,
   reports: BarChart3,
@@ -972,6 +979,8 @@ export default function DashboardClient({
   legalClinic,
   legalResearch,
   initialRouteSelection,
+  initialMatterId,
+  navigationMode = "query",
   overview,
   operationalViewDefinitions = [],
   operationalViews: initialOperationalViews,
@@ -1048,7 +1057,10 @@ export default function DashboardClient({
   const [auditRefreshState, setAuditRefreshState] = useState<DashboardLaneRefreshState>({
     refreshing: false,
   });
-  const [activeMatterId, setActiveMatterId] = useState(initialMatters[0]?.id ?? "");
+  const resolvedInitialMatterId = initialMatters.some((matter) => matter.id === initialMatterId)
+    ? (initialMatterId ?? "")
+    : (initialMatters[0]?.id ?? "");
+  const [activeMatterId, setActiveMatterId] = useState(resolvedInitialMatterId);
   const [lifecycleTransitionForm, setLifecycleTransitionForm] =
     useState<MatterLifecycleTransitionFormState>({
       transition: "pause",
@@ -1957,6 +1969,7 @@ export default function DashboardClient({
         capabilitySections: capabilities.sections,
         hasAccessibleMatter,
         canCreateMatter,
+        communicationsEnabled: true,
         shareLinksEnabled: shareLinksCreateAvailable,
         externalUploadsEnabled: externalUploadCreateAvailable,
         sessionRole: session.user.role,
@@ -1983,6 +1996,7 @@ export default function DashboardClient({
     toggleContextRail,
   } = useDashboardShellState({
     initialRouteSelection,
+    navigationMode,
     navigationSections,
   });
   const routeSelectionUnavailable = isUnavailableDashboardRouteSelection(routeSelection);
@@ -1992,6 +2006,13 @@ export default function DashboardClient({
     activeSection,
     navigationSections,
   });
+  const staffSectionHref = (section: LocalDashboardSectionKey): string => {
+    const currentHref =
+      activeMatter?.id && navigationMode === "path"
+        ? `http://open-practice.local/?matter=${encodeURIComponent(activeMatter.id)}`
+        : "http://open-practice.local/";
+    return buildDashboardSectionUrl(currentHref, section);
+  };
   const activeSavedOperationalViewDefinition = useMemo(
     () =>
       queueOperationalViewDefinitions.find(
@@ -5386,6 +5407,15 @@ export default function DashboardClient({
 
   function selectMatter(matterId: string): void {
     setActiveMatterId(matterId);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("matter", matterId);
+      window.history.replaceState(
+        { ...(window.history.state ?? {}), matter: matterId },
+        "",
+        `${url.pathname}${url.search}${url.hash}`,
+      );
+    }
     setShareOneTimeToken("");
     setExternalUploadToken("");
     setExternalUploadStatus("No link created.");
@@ -6010,6 +6040,7 @@ export default function DashboardClient({
         </a>
         <DashboardSidebar
           activeSection={sidebarActiveSection}
+          getSectionHref={navigationMode === "path" ? staffSectionHref : undefined}
           matterState="empty"
           navigationSections={navigationSections}
           navIcons={navIcons}
@@ -6478,7 +6509,8 @@ export default function DashboardClient({
               </article>
             ) : null}
 
-            {!routeSelectionUnavailable && activeSection === "matters" ? (
+            {!routeSelectionUnavailable &&
+            (activeSection === "matters" || activeSection === "communications") ? (
               <>
                 <UnscopedInboundEmailMatterDraftPanel
                   canCreateMatter={canCreateMatter}
@@ -6502,6 +6534,7 @@ export default function DashboardClient({
 
             {!routeSelectionUnavailable &&
             activeSection !== "matters" &&
+            activeSection !== "communications" &&
             activeSection !== "contacts" &&
             activeSection !== "calendar" &&
             activeSection !== "audit" &&
@@ -6604,6 +6637,7 @@ export default function DashboardClient({
       </a>
       <DashboardSidebar
         activeSection={sidebarActiveSection}
+        getSectionHref={navigationMode === "path" ? staffSectionHref : undefined}
         navigationSections={navigationSections}
         navIcons={navIcons}
         onSelectSection={selectDashboardSection}
@@ -6665,6 +6699,7 @@ export default function DashboardClient({
               activeSection={activeSection}
               activeSectionLabel={activeSectionLabel}
               detailPanelRef={detailPanelRef}
+              getSectionHref={navigationMode === "path" ? staffSectionHref : undefined}
               matterActionSections={matterActionSections}
               onSelectSection={selectDashboardSection}
             >
@@ -6712,6 +6747,33 @@ export default function DashboardClient({
                   onRecordLifecycleTransition={recordMatterLifecycleTransition}
                   onSelectSection={selectDashboardSection}
                   recordingLifecycleTransition={recordingLifecycleTransition}
+                />
+              ) : null}
+
+              {activeSection === "communications" ? (
+                <CommunicationsSection
+                  activeCommunicationsInbox={activeCommunicationsInbox}
+                  activeEmailDeliveries={activeEmailDeliveries}
+                  activeMatter={activeMatter}
+                  compactDate={compactDate}
+                  compactStatus={compactStatus}
+                  emailTemplateDraftsPanel={
+                    <EmailTemplateDraftsPanel
+                      activeMatterId={activeMatter?.id}
+                      form={emailTemplateDraftForm}
+                      onCreatePreviewSnapshot={createEmailTemplatePreviewSnapshot}
+                      onFieldChange={updateEmailTemplateDraftForm}
+                      onNewDraft={startNewEmailTemplateDraft}
+                      onSaveDraft={saveEmailTemplateDraft}
+                      onSelectDraft={selectEmailTemplateDraft}
+                      previewSnapshots={activeEmailTemplatePreviewSnapshots}
+                      previewing={savingEmailTemplatePreviewSnapshot}
+                      saving={savingEmailTemplateDraft}
+                      selectedTemplateDraftId={selectedEmailTemplateDraftId}
+                      status={emailTemplateDraftStatus}
+                      templateDrafts={emailTemplateDrafts}
+                    />
+                  }
                 />
               ) : null}
 

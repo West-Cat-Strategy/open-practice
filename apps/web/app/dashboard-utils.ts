@@ -198,6 +198,9 @@ export function describeDisabledNavigationReason(
   if (section.disabledReason) return section.disabledReason;
   if (section.key === "matters") return "Matters require assigned matter read access.";
   if (section.key === "contacts") return "Contacts require contact read access.";
+  if (section.key === "communications") {
+    return "Communications require matter, email, or inbound review access.";
+  }
   if (section.key === "funds") return "Funds require trust ledger read access.";
   if (section.key === "billing") return "Billing requires trust ledger and billing read access.";
   if (section.key === "documents") return "Documents require matter-scoped document read access.";

@@ -19,6 +19,10 @@ const syntheticConfigEncryptionKey = "base64:AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBk
 const dockerComposeBaseArgs = ["compose", "-p", "open-practice-e2e"];
 const nextEnvPath = join(root, "apps/web/next-env.d.ts");
 
+function dockerHostPort(envName, fallback) {
+  return Number(process.env[envName] ?? fallback);
+}
+
 function prefixedLine(prefix, chunk, writer) {
   for (const line of chunk.toString().split(/\r?\n/)) {
     if (line.trim()) writer(`[${prefix}] ${line}\n`);
@@ -333,15 +337,18 @@ async function ensureMinioBucket(env) {
 async function startDockerRuntime() {
   const apiPort = Number(process.env.E2E_DOCKER_API_PORT ?? 34120);
   const webPort = Number(process.env.E2E_DOCKER_WEB_PORT ?? 33120);
+  const postgresPort = dockerHostPort("OPEN_PRACTICE_DOCKER_POSTGRES_HOST_PORT", 35432);
+  const redisPort = dockerHostPort("OPEN_PRACTICE_DOCKER_REDIS_HOST_PORT", 36379);
+  const minioPort = dockerHostPort("OPEN_PRACTICE_DOCKER_MINIO_HOST_PORT", 39000);
   const apiBaseUrl = `http://localhost:${apiPort}`;
   const webBaseUrl = `http://localhost:${webPort}`;
   dockerDatabaseName = `open_practice_e2e_${Date.now()}`;
-  const databaseUrl = `postgresql://open_practice:open_practice@localhost:35432/${dockerDatabaseName}`;
+  const databaseUrl = `postgresql://open_practice:open_practice@localhost:${postgresPort}/${dockerDatabaseName}`;
   const env = {
     ...runtimeEnv({ mode: "docker", apiPort, webPort, apiBaseUrl, webBaseUrl }),
     DATABASE_URL: databaseUrl,
-    REDIS_URL: "redis://localhost:36379/0",
-    S3_ENDPOINT: "http://localhost:39000",
+    REDIS_URL: `redis://localhost:${redisPort}/0`,
+    S3_ENDPOINT: `http://localhost:${minioPort}`,
     S3_REGION: "local",
     S3_BUCKET: "open-practice-documents",
     S3_ACCESS_KEY: "open_practice",
@@ -372,7 +379,7 @@ async function startDockerRuntime() {
     "-d",
     "open_practice",
   ]);
-  await waitForUrl("minio", "http://localhost:39000/minio/health/ready");
+  await waitForUrl("minio", `http://localhost:${minioPort}/minio/health/ready`);
   await run("docker-db-create", "docker", [
     ...dockerComposeBaseArgs,
     "exec",

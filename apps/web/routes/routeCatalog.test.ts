@@ -27,12 +27,34 @@ function enabledSidebarNavigation(): OpenPracticeSidebarNavigationSection[] {
   }));
 }
 
+const canonicalRoutePaths = {
+  matters: "/workspace/matters",
+  contacts: "/workspace/contacts",
+  communications: "/workspace/communications",
+  documents: "/workspace/documents",
+  research: "/workspace/research",
+  drafting: "/workspace/drafting",
+  calendar: "/workspace/calendar",
+  funds: "/finance/trust-funds",
+  billing: "/finance/billing",
+  tasks: "/operations/tasks",
+  shares: "/operations/share-links",
+  externalUploads: "/operations/external-uploads",
+  signatures: "/operations/signatures",
+  intake: "/operations/intake",
+  queues: "/operations/queues",
+  audit: "/review/audit",
+  reports: "/review/reports",
+  admin: "/review/admin-readiness",
+} satisfies Record<OpenPracticeRouteId, string>;
+
 describe("Open Practice route catalog", () => {
   it("contains the first legal-practice workspace surfaces", () => {
     const routeIds = routeCatalog.map((entry) => entry.id);
     const expected: OpenPracticeRouteId[] = [
       "matters",
       "contacts",
+      "communications",
       "funds",
       "billing",
       "documents",
@@ -56,19 +78,31 @@ describe("Open Practice route catalog", () => {
   it("looks up entries by id and exposes stable dashboard paths", () => {
     expect(getRouteCatalogEntry("billing")).toMatchObject({
       title: "Billing",
-      path: "/?section=billing",
+      path: "/finance/billing",
       area: "finance",
     });
-    expect(getDashboardSectionPath("billing")).toBe("/?section=billing");
+    expect(getDashboardSectionPath("billing")).toBe("/finance/billing");
+    expect(getDashboardSectionPath("communications")).toBe("/workspace/communications");
     expect(buildDashboardSectionUrl("http://localhost:3000/?matter=one#detail", "billing")).toBe(
-      "/?matter=one&section=billing#detail",
+      "/finance/billing?matter=one#detail",
     );
+    expect(
+      buildDashboardSectionUrl(
+        "http://localhost:3000/workspace/documents?matter=one&section=documents#detail",
+        "communications",
+      ),
+    ).toBe("/workspace/communications?matter=one#detail");
+    expect(Object.fromEntries(routeCatalog.map((entry) => [entry.id, entry.path]))).toEqual(
+      canonicalRoutePaths,
+    );
+    expect(new Set(routeCatalog.map((entry) => entry.path)).size).toBe(routeCatalog.length);
   });
 
   it("groups routes by area in display order", () => {
     expect(getRoutesByArea("finance").map((entry) => entry.id)).toEqual(["funds", "billing"]);
     expect(getRoutesByArea("operations").map((entry) => entry.id)).toEqual([
       "shares",
+      "externalUploads",
       "tasks",
       "signatures",
       "intake",
@@ -82,9 +116,9 @@ describe("Open Practice route catalog", () => {
     expect(getRoutesByArea("workspace").map((entry) => entry.id)).toEqual([
       "matters",
       "contacts",
+      "communications",
       "documents",
       "research",
-      "externalUploads",
       "drafting",
       "calendar",
     ]);
@@ -103,6 +137,7 @@ describe("Open Practice route catalog", () => {
     expect(getSidebarRouteCatalogEntries().map((entry) => entry.id)).toEqual([
       "matters",
       "contacts",
+      "communications",
       "funds",
       "billing",
       "documents",
@@ -123,7 +158,15 @@ describe("Open Practice route catalog", () => {
 
   it("matches dashboard section URLs without changing runtime behavior", () => {
     expect(matchRouteCatalogEntry("/")?.id).toBe("matters");
+    expect(matchRouteCatalogEntry("/workspace/contacts")?.id).toBe("contacts");
+    expect(matchRouteCatalogEntry("/workspace/communications")?.id).toBe("communications");
+    expect(matchRouteCatalogEntry("/workspace/documents")?.id).toBe("documents");
+    expect(matchRouteCatalogEntry("/finance/trust-funds")?.id).toBe("funds");
+    expect(matchRouteCatalogEntry("/finance/billing")?.id).toBe("billing");
+    expect(matchRouteCatalogEntry("/operations/external-uploads")?.id).toBe("externalUploads");
+    expect(matchRouteCatalogEntry("/review/admin-readiness")?.id).toBe("admin");
     expect(matchRouteCatalogEntry("/?section=contacts")?.id).toBe("contacts");
+    expect(matchRouteCatalogEntry("/?section=communications")?.id).toBe("communications");
     expect(matchRouteCatalogEntry("/?section=documents")?.id).toBe("documents");
     expect(matchRouteCatalogEntry("/?section=research")?.id).toBe("research");
     expect(matchRouteCatalogEntry("/?section=shares")?.id).toBe("shares");
@@ -135,6 +178,19 @@ describe("Open Practice route catalog", () => {
     expect(matchRouteCatalogEntry("/?section=admin")?.id).toBe("admin");
     expect(matchRouteCatalogEntry("/?section=queues")?.id).toBe("queues");
     expect(matchRouteCatalogEntry("/?section=unknown")).toBeNull();
+  });
+
+  it("keeps staff canonical paths separate from public token routes", () => {
+    const publicEntrypoints = new Set([
+      "/share-links",
+      "/external-uploads",
+      "/intake-forms",
+      "/guest-sessions",
+    ]);
+
+    expect(
+      routeCatalog.map((entry) => entry.path).filter((path) => publicEntrypoints.has(path)),
+    ).toEqual([]);
   });
 
   it("resolves dashboard deep links for enabled sidebar entries", () => {
@@ -268,6 +324,7 @@ describe("Open Practice route catalog", () => {
         ],
         expected: {
           matters: "matched",
+          communications: "matched",
           funds: "matched",
           billing: "matched",
           research: "matched",
@@ -293,6 +350,7 @@ describe("Open Practice route catalog", () => {
         ],
         expected: {
           matters: "matched",
+          communications: "matched",
           documents: "matched",
           research: "matched",
           intake: "matched",
@@ -316,6 +374,7 @@ describe("Open Practice route catalog", () => {
         ],
         expected: {
           matters: "matched",
+          communications: "matched",
           funds: "disabled",
           billing: "disabled",
           documents: "matched",

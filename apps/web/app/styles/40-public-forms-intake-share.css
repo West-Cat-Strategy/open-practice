@@ -422,7 +422,7 @@
   min-height: 42px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: rgba(13, 14, 12, 0.56);
+  background: var(--surface-muted);
   color: var(--ink);
   padding: 0 12px;
 }
@@ -444,7 +444,7 @@
 .search-field textarea:hover,
 .search-field textarea:focus {
   border-color: rgba(63, 185, 173, 0.34);
-  background: rgba(19, 22, 19, 0.8);
+  background: var(--surface-raised);
 }
 
 .primary-button {

@@ -1,0 +1,90 @@
+export const reviewStaffPages = {
+  audit: {
+    key: "audit",
+    id: "review.audit",
+    componentName: "ReviewAuditPage",
+    routeId: "audit",
+    sectionKey: "audit",
+    area: "review",
+    slug: "audit",
+    title: "Audit Review",
+    shortLabel: "Audit",
+    canonicalPath: "/review/audit",
+    currentDashboardHref: "/?section=audit",
+    currentDashboardLabel: "Audit review",
+    scopeLabel: "Firm review",
+    contextLabel: "Audit activity and taxonomy projection",
+    availability: "firm",
+    requiresMatterContext: false,
+    primarySurface:
+      "Audit activity freshness, taxonomy projection issues, matter-scope gaps, and hash-chain posture",
+    sourceModule: "apps/web/app/dashboard/audit-section.tsx",
+    resourceModule: "apps/web/app/_features/audit/server-resources.ts",
+    summary:
+      "Review audit activity freshness, taxonomy projection issues, matter-scope gaps, and hash-chain posture.",
+    guardrails: [
+      "Keep audit events append-only and read-only from this page.",
+      "Do not expose raw private metadata outside existing projections.",
+      "Preserve firm and matter authorization boundaries.",
+    ],
+  },
+  reports: {
+    key: "reports",
+    id: "review.reports",
+    componentName: "ReviewReportsPage",
+    routeId: "reports",
+    sectionKey: "reports",
+    area: "review",
+    slug: "reports",
+    title: "Reports",
+    shortLabel: "Reports",
+    canonicalPath: "/review/reports",
+    currentDashboardHref: "/?section=reports",
+    currentDashboardLabel: "Reporting workspace",
+    scopeLabel: "Firm review",
+    contextLabel: "Report definitions and export history",
+    availability: "firm",
+    requiresMatterContext: false,
+    primarySurface:
+      "Report definitions, bounded projection rows, export profiles, export history, and schedule readiness metadata",
+    sourceModule: "apps/web/app/dashboard/reports-section.tsx",
+    summary:
+      "Review saved report definitions, bounded projection rows, export profiles, export history, and schedule readiness metadata.",
+    guardrails: [
+      "Keep exports manual and request-driven.",
+      "Do not retain raw report bodies or add custom SQL execution.",
+      "Preserve existing report queue and download contracts.",
+    ],
+  },
+  adminReadiness: {
+    key: "admin-readiness",
+    id: "review.admin-readiness",
+    componentName: "ReviewAdminReadinessPage",
+    routeId: "admin",
+    sectionKey: "admin",
+    area: "review",
+    slug: "admin-readiness",
+    title: "Admin Readiness",
+    shortLabel: "Admin",
+    canonicalPath: "/review/admin-readiness",
+    currentDashboardHref: "/?section=admin",
+    currentDashboardLabel: "Admin readiness",
+    scopeLabel: "Firm review",
+    contextLabel: "Access, portability, and operations posture",
+    availability: "firm",
+    requiresMatterContext: false,
+    primarySurface:
+      "Access posture, support boundaries, export readiness, regional posture, backup evidence, and worker readiness",
+    sourceModule: "apps/web/app/dashboard/admin-readiness-section.tsx",
+    summary:
+      "Review access posture, support-access boundaries, export readiness, regional posture, backup evidence, and worker readiness.",
+    guardrails: [
+      "Keep readiness language evidence-based and non-certifying.",
+      "Do not add support impersonation or owner-setup mutation.",
+      "Preserve existing setup, capabilities, reporting, and worker-health contracts.",
+    ],
+  },
+} as const;
+
+export type ReviewStaffPageKey = keyof typeof reviewStaffPages;
+export type ReviewStaffPageDefinition = (typeof reviewStaffPages)[ReviewStaffPageKey];

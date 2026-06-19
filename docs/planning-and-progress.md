@@ -10,17 +10,24 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 | Snapshot              | Value                                                                |
 | --------------------- | -------------------------------------------------------------------- |
-| Current focus         | Database efficiency merge/push/prune closeout complete.              |
-| Next recommended pick | Start the next scoped branch from refreshed `main`.                  |
+| Current focus         | Staff UI/UX page overhaul branch local proof complete.               |
+| Next recommended pick | Review the validated staff page split branch for merge handoff.      |
 | Ready rows            | 0                                                                    |
 | Candidate rows        | 0                                                                    |
 | In progress rows      | 0                                                                    |
-| Review rows           | 0                                                                    |
+| Review rows           | 1                                                                    |
 | Blocked rows          | 0                                                                    |
 | Archive               | Historical snapshots and proof live in [Archive](archive/README.md). |
 | Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`     |
 
 ## Current Handoff Notes
+
+The 2026-06-19 `refactor/staff-ui-ux-page-overhaul-20260619` branch splits the staff
+single-dashboard experience into canonical workspace, finance, operations, and review pages while
+preserving legacy `?section=` links, public runner routes, client portal behavior, API contracts,
+server-side authorization, settlement/trust behavior, provider/worker behavior, and synthetic-only
+proof data. Proof is recorded in
+[staff UI/UX page overhaul proof](validation/OP_STAFF_UI_UX_PAGE_OVERHAUL_PROOF_2026-06-19.md).
 
 The 2026-06-18 database access hot-path efficiency branch
 `refactor/db-access-hot-path-efficiency` adds focused internal query/index improvements without

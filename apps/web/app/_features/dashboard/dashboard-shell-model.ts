@@ -14,6 +14,7 @@ export interface DashboardShellNavigationModelInput {
   capabilitySections: CapabilitiesResponse["sections"];
   hasAccessibleMatter: boolean;
   canCreateMatter: boolean;
+  communicationsEnabled?: boolean;
   shareLinksEnabled: boolean;
   externalUploadsEnabled: boolean;
   sessionRole: SessionResponse["user"]["role"];
@@ -35,6 +36,7 @@ export function buildDashboardShellNavigationModel(
     buildSidebarNavigationSections({
       billingCanView: input.billingCanView,
       capabilitySections: navigationCapabilitySections,
+      communicationsEnabled: input.communicationsEnabled ?? true,
       shareLinksEnabled: input.shareLinksEnabled,
       externalUploadsEnabled: input.externalUploadsEnabled,
       adminReadinessEnabled: ["owner_admin", "auditor"].includes(input.sessionRole),

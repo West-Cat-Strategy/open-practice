@@ -1,8 +1,30 @@
 .app-shell {
+  --bg: #f4f6f2;
+  --bg-rail: #16211d;
+  --surface: #fffefa;
+  --surface-muted: #f0f4ee;
+  --surface-raised: #ffffff;
+  --ink: #16221d;
+  --text: var(--ink);
+  --muted: #66736b;
+  --line: rgba(28, 45, 37, 0.14);
+  --accent: #167d73;
+  --accent-strong: #075f58;
+  --accent-soft: rgba(22, 125, 115, 0.11);
+  --warning: #a95f16;
+  --danger: #a84936;
+  --gold: #9c7114;
+  --blue: #3d6799;
+  --shadow: 0 18px 42px rgba(32, 42, 37, 0.1);
+  --shadow-soft: 0 8px 22px rgba(32, 42, 37, 0.08);
+  color-scheme: light;
   display: grid;
   grid-template-columns: minmax(250px, 280px) minmax(0, 1fr);
   min-height: 100vh;
   overflow-x: hidden;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(244, 246, 242, 0) 240px), var(--bg);
+  color: var(--ink);
 }
 
 .sidebar {
@@ -10,7 +32,7 @@
   top: 0;
   height: 100vh;
   overflow-y: auto;
-  background: linear-gradient(180deg, #18201c 0%, var(--bg-rail) 52%, #101310 100%);
+  background: linear-gradient(180deg, #1c2924 0%, var(--bg-rail) 58%, #111a17 100%);
   color: #f7f2e8;
   padding: 22px 18px;
   display: flex;
@@ -90,17 +112,22 @@ small,
 }
 
 .nav-item {
+  appearance: none;
   position: relative;
   display: flex;
   align-items: center;
   gap: 10px;
+  width: 100%;
   min-height: 42px;
   border: 1px solid transparent;
   border-radius: 8px;
   padding: 8px 11px;
   background: transparent;
   color: rgba(247, 242, 232, 0.76);
+  cursor: pointer;
+  font: inherit;
   text-align: left;
+  text-decoration: none;
   min-width: 0;
 }
 
@@ -117,13 +144,20 @@ small,
 }
 
 .nav-item.active,
+.nav-item[aria-current="page"],
 .nav-item:hover:not(:disabled, .disabled) {
   border-color: rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.075);
   color: #fffdfa;
 }
 
-.nav-item.active::before {
+.nav-item:focus-visible {
+  outline: 2px solid rgba(143, 213, 204, 0.82);
+  outline-offset: 2px;
+}
+
+.nav-item.active::before,
+.nav-item[aria-current="page"]::before {
   position: absolute;
   left: 0;
   width: 3px;
@@ -172,13 +206,20 @@ small,
   line-height: 1.2;
   padding: 0 12px;
   text-align: center;
+  text-decoration: none;
 }
 
 .action-strip-button.active,
+.action-strip-button[aria-current="page"],
 .action-strip-button:hover:not(:disabled) {
   border-color: rgba(63, 185, 173, 0.34);
   background: rgba(63, 185, 173, 0.12);
   color: var(--accent);
+}
+
+.action-strip-button:focus-visible {
+  outline: 2px solid rgba(22, 125, 115, 0.38);
+  outline-offset: 2px;
 }
 
 .action-strip-button:disabled {
@@ -210,6 +251,7 @@ small,
   padding: 28px;
   display: grid;
   gap: 18px;
+  background: transparent;
 }
 
 .topbar {
@@ -218,7 +260,7 @@ small,
   justify-content: space-between;
   gap: 20px;
   min-width: 0;
-  border-bottom: 1px solid rgba(233, 226, 214, 0.1);
+  border-bottom: 1px solid var(--line);
   padding-bottom: 16px;
   animation: contentReveal 180ms ease both;
 }
@@ -271,10 +313,9 @@ h3 {
   justify-content: space-between;
   gap: 14px;
   min-width: 220px;
-  border: 1px solid rgba(233, 226, 214, 0.1);
+  border: 1px solid var(--line);
   border-radius: 8px;
-  background: rgba(18, 20, 18, 0.65);
-  backdrop-filter: blur(12px);
+  background: var(--surface);
   padding: 10px 12px;
   box-shadow: var(--shadow-soft);
   transition:
@@ -284,7 +325,7 @@ h3 {
 
 .user-pill:hover {
   border-color: rgba(63, 185, 173, 0.35);
-  background: rgba(18, 20, 18, 0.85);
+  background: var(--surface-raised);
 }
 
 .user-pill strong {
@@ -304,13 +345,12 @@ h3 {
   grid-template-columns: auto minmax(0, 1fr);
   grid-template-rows: auto auto;
   gap: 7px 10px;
-  border: 1px solid rgba(233, 226, 214, 0.09);
+  border: 1px solid var(--line);
   border-radius: 8px;
-  background: linear-gradient(135deg, rgba(36, 40, 37, 0.65), rgba(24, 27, 25, 0.55));
-  backdrop-filter: blur(12px);
+  background: var(--surface);
   padding: 13px;
   min-height: 80px;
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.22);
+  box-shadow: var(--shadow-soft);
   transition:
     transform var(--transition),
     border-color var(--transition),
@@ -320,11 +360,9 @@ h3 {
 
 .metric-card:hover {
   transform: translateY(-2px);
-  border-color: rgba(63, 185, 173, 0.42);
-  background: linear-gradient(135deg, rgba(36, 40, 37, 0.8), rgba(24, 27, 25, 0.7));
-  box-shadow:
-    0 12px 36px 0 rgba(63, 185, 173, 0.12),
-    0 4px 12px 0 rgba(0, 0, 0, 0.3);
+  border-color: rgba(22, 125, 115, 0.28);
+  background: var(--surface-raised);
+  box-shadow: 0 14px 32px rgba(32, 42, 37, 0.12);
 }
 
 .metric-card svg {

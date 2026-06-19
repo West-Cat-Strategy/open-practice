@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   buildDashboardSectionUrl,
+  matchRouteCatalogEntry,
   resolveDashboardRouteSelection,
   type DashboardNavigationSectionKey,
   type DashboardRouteSelection,
@@ -11,8 +12,13 @@ import {
 
 export const dashboardReviewRailCollapsedStorageKey = "open-practice.dashboard.reviewRailCollapsed";
 
-export function readDashboardRequestedSection(search: string): string | null {
-  return new URLSearchParams(search).get("section");
+export type DashboardNavigationMode = "query" | "path";
+
+export function readDashboardRequestedSection(search: string, pathname = "/"): string | null {
+  const section = new URLSearchParams(search).get("section");
+  if (section) return section;
+  if (pathname === "/") return null;
+  return matchRouteCatalogEntry(`${pathname}${search}`)?.sectionKey ?? null;
 }
 
 export function buildDashboardHistoryState(sectionKey: DashboardNavigationSectionKey) {
@@ -31,9 +37,11 @@ export function buildDashboardHistoryEntry(
 
 export function useDashboardShellState({
   initialRouteSelection,
+  navigationMode = "query",
   navigationSections,
 }: {
   initialRouteSelection: DashboardRouteSelection;
+  navigationMode?: DashboardNavigationMode;
   navigationSections: OpenPracticeSidebarNavigationSection[];
 }) {
   const detailPanelRef = useRef<HTMLElement>(null);
@@ -49,9 +57,18 @@ export function useDashboardShellState({
   const activeSection = routeSelection.sectionKey;
 
   useEffect(() => {
+    if (navigationMode === "path") {
+      setRouteSelection(initialRouteSelection);
+      hasAppliedUrlSectionRef.current = true;
+      return;
+    }
+
     function applySectionFromUrl() {
       const selection = resolveDashboardRouteSelection({
-        requestedSection: readDashboardRequestedSection(window.location.search),
+        requestedSection: readDashboardRequestedSection(
+          window.location.search,
+          window.location.pathname,
+        ),
         navigationSections,
       });
       if (hasAppliedUrlSectionRef.current) shouldFocusDetailRef.current = true;
@@ -62,7 +79,7 @@ export function useDashboardShellState({
     applySectionFromUrl();
     window.addEventListener("popstate", applySectionFromUrl);
     return () => window.removeEventListener("popstate", applySectionFromUrl);
-  }, [navigationSections]);
+  }, [initialRouteSelection, navigationMode, navigationSections]);
 
   useEffect(() => {
     if (!shouldFocusDetailRef.current) return;
@@ -109,6 +126,10 @@ export function useDashboardShellState({
       }),
     );
     const historyEntry = buildDashboardHistoryEntry(window.location.href, sectionKey);
+    if (navigationMode === "path") {
+      window.location.assign(historyEntry.url);
+      return;
+    }
     window.history.pushState(historyEntry.state, "", historyEntry.url);
   }
 
