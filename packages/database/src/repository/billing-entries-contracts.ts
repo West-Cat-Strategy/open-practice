@@ -3,7 +3,7 @@ import type { BillingExpenseCategoryRecord, ExpenseEntry, TimeEntry } from "@ope
 export interface BillingEntriesRepository {
   listTimeEntries(
     firmId: string,
-    options?: { matterId?: string; status?: TimeEntry["billingStatus"] },
+    options?: { matterId?: string; matterIds?: string[]; status?: TimeEntry["billingStatus"] },
   ): Promise<TimeEntry[]>;
   getTimeEntry(firmId: string, entryId: string): Promise<TimeEntry | undefined>;
   createTimeEntry(entry: TimeEntry): Promise<TimeEntry>;
@@ -26,7 +26,7 @@ export interface BillingEntriesRepository {
   ): Promise<TimeEntry>;
   listExpenseEntries(
     firmId: string,
-    options?: { matterId?: string; status?: ExpenseEntry["billingStatus"] },
+    options?: { matterId?: string; matterIds?: string[]; status?: ExpenseEntry["billingStatus"] },
   ): Promise<ExpenseEntry[]>;
   getExpenseEntry(firmId: string, entryId: string): Promise<ExpenseEntry | undefined>;
   createExpenseEntry(entry: ExpenseEntry): Promise<ExpenseEntry>;

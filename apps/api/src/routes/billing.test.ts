@@ -227,6 +227,192 @@ describe("billing routes", () => {
     }
   });
 
+  it("batches broad staff billing lists over assigned matters only", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const listCalls = {
+      timeEntries: [] as Array<Parameters<InMemoryOpenPracticeRepository["listTimeEntries"]>[1]>,
+      expenseEntries: [] as Array<
+        Parameters<InMemoryOpenPracticeRepository["listExpenseEntries"]>[1]
+      >,
+      invoices: [] as Array<Parameters<InMemoryOpenPracticeRepository["listInvoices"]>[1]>,
+      payments: [] as Array<Parameters<InMemoryOpenPracticeRepository["listPayments"]>[1]>,
+    };
+    const listTimeEntries = repository.listTimeEntries.bind(repository);
+    const listExpenseEntries = repository.listExpenseEntries.bind(repository);
+    const listInvoices = repository.listInvoices.bind(repository);
+    const listPayments = repository.listPayments.bind(repository);
+    repository.listTimeEntries = async (firmId, options) => {
+      listCalls.timeEntries.push(options);
+      return listTimeEntries(firmId, options);
+    };
+    repository.listExpenseEntries = async (firmId, options) => {
+      listCalls.expenseEntries.push(options);
+      return listExpenseEntries(firmId, options);
+    };
+    repository.listInvoices = async (firmId, options) => {
+      listCalls.invoices.push(options);
+      return listInvoices(firmId, options);
+    };
+    repository.listPayments = async (firmId, options) => {
+      listCalls.payments.push(options);
+      return listPayments(firmId, options);
+    };
+
+    await repository.createTimeEntry({
+      id: "time-assigned-batch-list",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      userId: "user-staff",
+      performedAt: "2026-05-01T15:00:00.000Z",
+      minutes: 20,
+      rateCents: 18000,
+      narrative: "Synthetic assigned matter time.",
+      billable: true,
+      billingStatus: "approved",
+    });
+    await repository.createTimeEntry({
+      id: "time-unassigned-batch-list",
+      firmId: "firm-west-legal",
+      matterId: "matter-002",
+      userId: "user-admin",
+      performedAt: "2026-05-01T16:00:00.000Z",
+      minutes: 25,
+      rateCents: 18000,
+      narrative: "Synthetic unassigned matter time.",
+      billable: true,
+      billingStatus: "approved",
+    });
+    await repository.createExpenseEntry({
+      id: "expense-assigned-batch-list",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      incurredAt: "2026-05-01T17:00:00.000Z",
+      amountCents: 1400,
+      category: "Courier",
+      description: "Synthetic assigned matter expense.",
+      reimbursable: true,
+      billingStatus: "approved",
+    });
+    await repository.createExpenseEntry({
+      id: "expense-unassigned-batch-list",
+      firmId: "firm-west-legal",
+      matterId: "matter-002",
+      incurredAt: "2026-05-01T18:00:00.000Z",
+      amountCents: 1600,
+      category: "Courier",
+      description: "Synthetic unassigned matter expense.",
+      reimbursable: true,
+      billingStatus: "approved",
+    });
+    await repository.createInvoice({
+      invoice: {
+        id: "invoice-assigned-batch-list",
+        firmId: "firm-west-legal",
+        matterId: "matter-001",
+        invoiceNumber: "INV-SYN-BATCH-001",
+        status: "issued",
+        createdByUserId: "user-staff",
+        createdAt: "2026-05-02T12:00:00.000Z",
+        subtotalCents: 1000,
+        taxCents: 0,
+        totalCents: 1000,
+        paidCents: 0,
+        balanceDueCents: 1000,
+      },
+      lines: [],
+    });
+    await repository.createInvoice({
+      invoice: {
+        id: "invoice-unassigned-batch-list",
+        firmId: "firm-west-legal",
+        matterId: "matter-002",
+        invoiceNumber: "INV-SYN-BATCH-002",
+        status: "issued",
+        createdByUserId: "user-admin",
+        createdAt: "2026-05-02T13:00:00.000Z",
+        subtotalCents: 1000,
+        taxCents: 0,
+        totalCents: 1000,
+        paidCents: 0,
+        balanceDueCents: 1000,
+      },
+      lines: [],
+    });
+    await repository.createPayment({
+      payment: {
+        id: "payment-assigned-batch-list",
+        firmId: "firm-west-legal",
+        matterId: "matter-001",
+        invoiceId: "invoice-assigned-batch-list",
+        receivedAt: "2026-05-03T12:00:00.000Z",
+        amountCents: 250,
+        method: "eft",
+        status: "pending_reconciliation",
+        receivedByUserId: "user-staff",
+        evidence: { source: "synthetic-assigned-payment" },
+      },
+      allocations: [],
+    });
+    await repository.createPayment({
+      payment: {
+        id: "payment-unassigned-batch-list",
+        firmId: "firm-west-legal",
+        matterId: "matter-002",
+        invoiceId: "invoice-unassigned-batch-list",
+        receivedAt: "2026-05-03T13:00:00.000Z",
+        amountCents: 250,
+        method: "eft",
+        status: "pending_reconciliation",
+        receivedByUserId: "user-admin",
+        evidence: { source: "synthetic-unassigned-payment" },
+      },
+      allocations: [],
+    });
+
+    const server = testServer({ repository });
+    const headers = {
+      "x-open-practice-user-id": "user-staff",
+      "x-open-practice-firm-id": "firm-west-legal",
+    };
+    const timeEntries = await server.inject({ method: "GET", url: "/api/time-entries", headers });
+    const expenseEntries = await server.inject({
+      method: "GET",
+      url: "/api/expense-entries",
+      headers,
+    });
+    const invoices = await server.inject({ method: "GET", url: "/api/invoices", headers });
+    const payments = await server.inject({ method: "GET", url: "/api/payments", headers });
+
+    expect(timeEntries.statusCode).toBe(200);
+    expect(expenseEntries.statusCode).toBe(200);
+    expect(invoices.statusCode).toBe(200);
+    expect(payments.statusCode).toBe(200);
+    const timeEntryIds = timeEntries
+      .json<{ entries: Array<{ id: string }> }>()
+      .entries.map((entry) => entry.id);
+    const expenseEntryIds = expenseEntries
+      .json<{ entries: Array<{ id: string }> }>()
+      .entries.map((entry) => entry.id);
+    const invoiceIds = invoices
+      .json<{ invoices: Array<{ id: string }> }>()
+      .invoices.map((invoice) => invoice.id);
+    const paymentIds = payments
+      .json<{ payments: Array<{ id: string }> }>()
+      .payments.map((payment) => payment.id);
+    expect(timeEntryIds).toContain("time-assigned-batch-list");
+    expect(timeEntryIds).not.toContain("time-unassigned-batch-list");
+    expect(expenseEntryIds).toContain("expense-assigned-batch-list");
+    expect(expenseEntryIds).not.toContain("expense-unassigned-batch-list");
+    expect(invoiceIds).toContain("invoice-assigned-batch-list");
+    expect(invoiceIds).not.toContain("invoice-unassigned-batch-list");
+    expect(paymentIds).toContain("payment-assigned-batch-list");
+    expect(paymentIds).not.toContain("payment-unassigned-batch-list");
+    expect(listCalls.timeEntries).toEqual([{ matterIds: ["matter-001"] }]);
+    expect(listCalls.expenseEntries).toEqual([{ matterIds: ["matter-001"] }]);
+    expect(listCalls.invoices).toEqual([{ matterIds: ["matter-001"] }]);
+    expect(listCalls.payments).toEqual([{ matterIds: ["matter-001"] }]);
+  });
+
   it("denies non-billing roles from the billing dashboard", async () => {
     const response = await testServer().inject({
       method: "GET",

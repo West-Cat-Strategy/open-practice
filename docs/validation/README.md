@@ -18,6 +18,15 @@ skipped-check context. The live workboard remains
 
 ## Current Handoff Notes
 
+The 2026-06-19 review remediation proof is recorded in
+[OP_REVIEW_REMEDIATION_PROOF_2026-06-19.md](OP_REVIEW_REMEDIATION_PROOF_2026-06-19.md).
+It covers the focused implementation follow-through from the efficiency/code-quality review:
+contact dossier/preload reuse, indexed contact dossier inputs, batched assigned-matter billing
+list reads, route authorization manifest extraction, external-upload dashboard request-helper
+extraction, and selector/domain-build alignment while preserving HTTP response shapes,
+authorization, redaction, payment settlement behavior, trust posting behavior, provider behavior,
+and public/private data boundaries.
+
 The 2026-06-18 database access hot-path efficiency proof is recorded in
 [OP_DATABASE_ACCESS_HOT_PATH_EFFICIENCY_PROOF_2026-06-18.md](OP_DATABASE_ACCESS_HOT_PATH_EFFICIENCY_PROOF_2026-06-18.md).
 It covers the focused internal refactor for hot-path schema indexes, batched Drizzle repository

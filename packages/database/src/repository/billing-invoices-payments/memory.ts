@@ -19,17 +19,31 @@ export interface MemoryBillingInvoicePaymentStore {
   paymentAllocations: PaymentAllocationRecord[];
 }
 
+function matchesBillingMatter(
+  matterId: string,
+  options: { matterId?: string; matterIds?: string[] },
+): boolean {
+  if (options.matterId) return matterId === options.matterId;
+  if (options.matterIds) return options.matterIds.includes(matterId);
+  return true;
+}
+
+function hasEmptyMatterIds(options: { matterId?: string; matterIds?: string[] }): boolean {
+  return !options.matterId && options.matterIds?.length === 0;
+}
+
 export function listMemoryInvoices(
   store: MemoryBillingInvoicePaymentStore,
   firmId: string,
-  options: { matterId?: string; status?: InvoiceRecord["status"] } = {},
+  options: { matterId?: string; matterIds?: string[]; status?: InvoiceRecord["status"] } = {},
 ): InvoiceWithLines[] {
+  if (hasEmptyMatterIds(options)) return [];
   return clone(
     store.invoices
       .filter(
         (invoice) =>
           invoice.firmId === firmId &&
-          (!options.matterId || invoice.matterId === options.matterId) &&
+          matchesBillingMatter(invoice.matterId, options) &&
           (!options.status || invoice.status === options.status),
       )
       .map((invoice) => ({
@@ -196,14 +210,15 @@ export function reconcileMemoryPayment(
 export function listMemoryPayments(
   store: MemoryBillingInvoicePaymentStore,
   firmId: string,
-  options: { matterId?: string; invoiceId?: string } = {},
+  options: { matterId?: string; matterIds?: string[]; invoiceId?: string } = {},
 ): PaymentWithAllocations[] {
+  if (hasEmptyMatterIds(options)) return [];
   return clone(
     store.manualPayments
       .filter(
         (payment) =>
           payment.firmId === firmId &&
-          (!options.matterId || payment.matterId === options.matterId) &&
+          matchesBillingMatter(payment.matterId, options) &&
           (!options.invoiceId || payment.invoiceId === options.invoiceId),
       )
       .map((payment) => ({

@@ -612,31 +612,45 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
   async listContactPortalGrantsForUser(
     user: User,
     contactId: string,
+    context?: Parameters<OpenPracticeRepository["listContactPortalGrantsForUser"]>[2],
   ): ReturnType<OpenPracticeRepository["listContactPortalGrantsForUser"]> {
-    return listDrizzleContactPortalGrantsForUser(this.db, user, contactId, {
-      listMattersForUser: (candidate) => this.listMattersForUser(candidate),
-      listPortalGrants: (firmId) => this.listPortalGrants(firmId),
-      listTaskDeadlines: (firmId, options) => this.listTaskDeadlines(firmId, options),
-      listCalendarSchedulingRequests: (firmId, options) =>
-        this.listCalendarSchedulingRequests(firmId, options),
-      listIntakeVariableProposals: (firmId, options) =>
-        this.listIntakeVariableProposals(firmId, options),
-    });
+    return listDrizzleContactPortalGrantsForUser(
+      this.db,
+      user,
+      contactId,
+      {
+        listMattersForUser: (candidate) => this.listMattersForUser(candidate),
+        listPortalGrants: (firmId) => this.listPortalGrants(firmId),
+        listTaskDeadlines: (firmId, options) => this.listTaskDeadlines(firmId, options),
+        listCalendarSchedulingRequests: (firmId, options) =>
+          this.listCalendarSchedulingRequests(firmId, options),
+        listIntakeVariableProposals: (firmId, options) =>
+          this.listIntakeVariableProposals(firmId, options),
+      },
+      context,
+    );
   }
 
   async listContactTimelineForUser(
     user: User,
     contactId: string,
+    context?: Parameters<OpenPracticeRepository["listContactTimelineForUser"]>[2],
   ): ReturnType<OpenPracticeRepository["listContactTimelineForUser"]> {
-    return listDrizzleContactTimelineForUser(this.db, user, contactId, {
-      listMattersForUser: (candidate) => this.listMattersForUser(candidate),
-      listPortalGrants: (firmId) => this.listPortalGrants(firmId),
-      listTaskDeadlines: (firmId, options) => this.listTaskDeadlines(firmId, options),
-      listCalendarSchedulingRequests: (firmId, options) =>
-        this.listCalendarSchedulingRequests(firmId, options),
-      listIntakeVariableProposals: (firmId, options) =>
-        this.listIntakeVariableProposals(firmId, options),
-    });
+    return listDrizzleContactTimelineForUser(
+      this.db,
+      user,
+      contactId,
+      {
+        listMattersForUser: (candidate) => this.listMattersForUser(candidate),
+        listPortalGrants: (firmId) => this.listPortalGrants(firmId),
+        listTaskDeadlines: (firmId, options) => this.listTaskDeadlines(firmId, options),
+        listCalendarSchedulingRequests: (firmId, options) =>
+          this.listCalendarSchedulingRequests(firmId, options),
+        listIntakeVariableProposals: (firmId, options) =>
+          this.listIntakeVariableProposals(firmId, options),
+      },
+      context,
+    );
   }
 
   async createContactDataQualityResolution(

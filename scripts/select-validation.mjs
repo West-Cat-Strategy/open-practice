@@ -18,6 +18,7 @@ export const COMMANDS = {
   dockerAppSmoke: "pnpm docker:app-smoke",
   dockerResidualWatch: "pnpm docker:residual-watch",
   docsCheck: "pnpm docs:check",
+  domainBuild: "pnpm --filter @open-practice/domain build",
   domainTest: "pnpm --filter @open-practice/domain test",
   domainTypecheck: "pnpm --filter @open-practice/domain typecheck",
   e2eClientPortal: "pnpm e2e:client-portal",
@@ -56,6 +57,7 @@ export const COMMAND_ORDER = [
   COMMANDS.test,
   COMMANDS.domainTest,
   COMMANDS.domainTypecheck,
+  COMMANDS.domainBuild,
   COMMANDS.databaseTest,
   COMMANDS.databaseCheck,
   COMMANDS.migrationsCheck,
@@ -273,6 +275,7 @@ export function classifyPath(path) {
   if (path.startsWith("packages/domain/")) {
     commands.add(COMMANDS.domainTest);
     commands.add(COMMANDS.domainTypecheck);
+    commands.add(COMMANDS.domainBuild);
 
     if (isDomainSource(path)) {
       commands.add(COMMANDS.apiTest);

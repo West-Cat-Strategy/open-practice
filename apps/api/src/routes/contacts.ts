@@ -727,9 +727,16 @@ async function loadContactHistoryExport(input: {
     contactId: input.contactId,
     matterId: input.matterId,
   });
-  const [portalGrants, timeline, resolutions] = await Promise.all([
-    input.repository.listContactPortalGrantsForUser(input.user, input.contactId),
-    input.repository.listContactTimelineForUser(input.user, input.contactId),
+  const portalGrants = await input.repository.listContactPortalGrantsForUser(
+    input.user,
+    input.contactId,
+    { visibleDossier: dossier },
+  );
+  const [timeline, resolutions] = await Promise.all([
+    input.repository.listContactTimelineForUser(input.user, input.contactId, {
+      visibleDossier: dossier,
+      portalGrants,
+    }),
     input.repository.listContactDataQualityResolutions(input.firmId, {
       contactId: input.contactId,
       matterId: input.matterId,
@@ -1284,6 +1291,7 @@ export function registerContactRoutes(
     const portalGrants = await options.repository.listContactPortalGrantsForUser(
       request.auth.user,
       params.contactId,
+      { visibleDossier: dossier },
     );
     return serializeContactDetail(dossier, portalGrants);
   });
@@ -1908,10 +1916,11 @@ export function registerContactRoutes(
     if (!access.ok) throw access.error;
     const params = parseRequestPart(contactParamsSchema, request.params, "params");
     const dossiers = await options.repository.listContactDossiersForUser(request.auth.user);
-    findVisibleDossier(dossiers, params.contactId);
+    const dossier = findVisibleDossier(dossiers, params.contactId);
     const grants = await options.repository.listContactPortalGrantsForUser(
       request.auth.user,
       params.contactId,
+      { visibleDossier: dossier },
     );
     return { grants };
   });
@@ -1963,10 +1972,11 @@ export function registerContactRoutes(
     const params = parseRequestPart(portalGrantParamsSchema, request.params, "params");
     const body = parseRequestPart(portalGrantUpdateBodySchema, request.body, "body");
     const dossiers = await options.repository.listContactDossiersForUser(request.auth.user);
-    findVisibleDossier(dossiers, params.contactId);
+    const dossier = findVisibleDossier(dossiers, params.contactId);
     const currentGrants = await options.repository.listContactPortalGrantsForUser(
       request.auth.user,
       params.contactId,
+      { visibleDossier: dossier },
     );
     const currentGrant = currentGrants.find((grant) => grant.id === params.grantId);
     if (!currentGrant) {
@@ -2022,10 +2032,11 @@ export function registerContactRoutes(
     const params = parseRequestPart(contactParamsSchema, request.params, "params");
     const query = parseRequestPart(contactTimelineQuerySchema, request.query, "query");
     const dossiers = await options.repository.listContactDossiersForUser(request.auth.user);
-    findVisibleDossier(dossiers, params.contactId);
+    const dossier = findVisibleDossier(dossiers, params.contactId);
     const timeline = await options.repository.listContactTimelineForUser(
       request.auth.user,
       params.contactId,
+      { visibleDossier: dossier },
     );
     return { timeline: filterContactTimelineEntries(timeline, query.activity) };
   });

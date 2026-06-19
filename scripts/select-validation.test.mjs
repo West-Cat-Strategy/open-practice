@@ -65,6 +65,18 @@ describe("select-validation contract", () => {
       COMMANDS.depsLicenses,
       COMMANDS.domainTest,
       COMMANDS.domainTypecheck,
+      COMMANDS.domainBuild,
+    ]);
+  });
+
+  it("routes domain source changes through the domain build after typecheck", () => {
+    assert.deepEqual(selectCommands(["packages/domain/src/ledger.ts"]), [
+      COMMANDS.domainTest,
+      COMMANDS.domainTypecheck,
+      COMMANDS.domainBuild,
+      COMMANDS.apiTest,
+      COMMANDS.providersTest,
+      COMMANDS.workerTest,
     ]);
   });
 

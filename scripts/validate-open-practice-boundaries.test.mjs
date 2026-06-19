@@ -13,6 +13,15 @@ import {
   collectUntrackedRegistrarFailures,
   evaluateBoundaryPolicy,
 } from "./validate-open-practice-boundaries.mjs";
+import {
+  ROUTE_AUTHORIZATION_MANIFEST,
+  routeAuthorizationKey,
+} from "./route-authorization-manifest.mjs";
+import {
+  BILLING_ROUTE_AUTHORIZATION_MANIFEST,
+  INVOICE_GUARD_RESOURCE,
+  PAYMENT_GUARD_RESOURCE,
+} from "./route-authorization/billing.mjs";
 
 function validServer() {
   const imports = ROUTE_REGISTRARS.map(
@@ -427,6 +436,46 @@ import { createMemoryContactRepository } from "./contacts/memory.js";
       failures.includes(
         "GET /api/ghost in route authorization manifest is not registered by API route files.",
       ),
+    );
+  });
+
+  it("flattens billing helper entries into the root route authorization manifest", () => {
+    const exportedBillingEntries = ROUTE_AUTHORIZATION_MANIFEST.filter(
+      (entry) => entry.registrar === "registerBillingRoutes",
+    );
+
+    assert.equal(exportedBillingEntries.length, BILLING_ROUTE_AUTHORIZATION_MANIFEST.length);
+    assert.deepEqual(
+      exportedBillingEntries.map(routeAuthorizationKey),
+      BILLING_ROUTE_AUTHORIZATION_MANIFEST.map(routeAuthorizationKey),
+    );
+    assert.deepEqual(exportedBillingEntries, BILLING_ROUTE_AUTHORIZATION_MANIFEST);
+  });
+
+  it("keeps invoice and payment billing guards on the existing permission resources", () => {
+    assert.equal(INVOICE_GUARD_RESOURCE, "time_entry");
+    assert.equal(PAYMENT_GUARD_RESOURCE, "expense_entry");
+
+    const invoiceEntries = BILLING_ROUTE_AUTHORIZATION_MANIFEST.filter(
+      (entry) => entry.path === "/api/invoices" || entry.path.startsWith("/api/invoices/"),
+    );
+    const paymentEntries = BILLING_ROUTE_AUTHORIZATION_MANIFEST.filter(
+      (entry) =>
+        entry.path === "/api/payments" ||
+        entry.path.startsWith("/api/payments/") ||
+        entry.path === "/api/billing/payment-requests" ||
+        entry.path.startsWith("/api/billing/payment-requests/"),
+    );
+
+    assert.ok(invoiceEntries.length > 0);
+    assert.ok(paymentEntries.length > 0);
+    assert.deepEqual(
+      new Set(invoiceEntries.map((entry) => entry.auth.resource)),
+      new Set(["time_entry"]),
+    );
+    assert.deepEqual(
+      new Set(paymentEntries.map((entry) => entry.auth.resource)),
+      new Set(["expense_entry"]),
     );
   });
 

@@ -33,10 +33,6 @@ When adding a new package, app, route family, or docs category, update
 
 ## Known Follow-Ups
 
-- `docs/testing/TESTING.md` expects domain source changes to include
-  `pnpm --filter @open-practice/domain build`, but the current selector output does not emit that
-  command. Keep docs-only cleanups out of `scripts/select-validation.mjs`; align the selector and
-  its tests in a separate tooling slice.
 - The external `/Users/bryan/.codex/skills/maintain-open-practice-docs` skill still points to its
   own `references/docs-workflows.md`. Repo docs remain canonical; refresh external skills only in an
   explicit skill-upkeep task.

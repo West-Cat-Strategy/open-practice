@@ -22,6 +22,7 @@ import {
 import type {
   ContactDataQualityResolutionListOptions,
   ContactListOptions,
+  ContactVisibilityPreloadContext,
   ContactRelationshipUpdateInput,
   ContactUpdateInput,
   MatterContactAssociationUpdateInput,
@@ -271,13 +272,19 @@ export async function listMemoryContactPortalGrantsForUser(
   user: User,
   contactId: string,
   dependencies: MemoryContactDependencies,
+  context: ContactVisibilityPreloadContext = {},
 ): Promise<PortalGrant[]> {
-  const dossiers = await listMemoryContactDossiersForUser(store, user, dependencies);
-  const dossier = dossiers.find((candidate) => candidate.contact.id === contactId);
+  const dossier =
+    context.visibleDossier?.contact.id === contactId &&
+    context.visibleDossier.contact.firmId === user.firmId
+      ? context.visibleDossier
+      : (await listMemoryContactDossiersForUser(store, user, dependencies)).find(
+          (candidate) => candidate.contact.id === contactId,
+        );
   if (!dossier) return [];
   const visibleMatterIds = new Set(dossier.matters.map((matter) => matter.matterId));
   return clone(
-    store.portalGrants
+    (context.portalGrants ?? store.portalGrants)
       .filter(
         (grant) =>
           grant.firmId === user.firmId &&
@@ -293,9 +300,15 @@ export async function listMemoryContactTimelineForUser(
   user: User,
   contactId: string,
   dependencies: MemoryContactDependencies,
+  context: ContactVisibilityPreloadContext = {},
 ): Promise<ActivityTimelineEntry[]> {
-  const dossiers = await listMemoryContactDossiersForUser(store, user, dependencies);
-  const dossier = dossiers.find((candidate) => candidate.contact.id === contactId);
+  const dossier =
+    context.visibleDossier?.contact.id === contactId &&
+    context.visibleDossier.contact.firmId === user.firmId
+      ? context.visibleDossier
+      : (await listMemoryContactDossiersForUser(store, user, dependencies)).find(
+          (candidate) => candidate.contact.id === contactId,
+        );
   if (!dossier) return [];
   const visibleMatterIds = new Set(dossier.matters.map((matter) => matter.matterId));
   const contact = store.contacts.find(
@@ -361,6 +374,7 @@ export async function listMemoryContactTimelineForUser(
     user,
     contactId,
     dependencies,
+    { visibleDossier: dossier, portalGrants: context.portalGrants },
   )) {
     entries.push({
       id: `portal-grant:${grant.id}`,

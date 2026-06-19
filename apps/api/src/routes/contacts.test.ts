@@ -873,6 +873,51 @@ describe("contact routes", () => {
     expect(serializedAudit).not.toContain("Synthetic private");
   });
 
+  it("reuses authorized contact dossiers on detail, portal, timeline, and export paths", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const originalListContactDossiersForUser =
+      repository.listContactDossiersForUser.bind(repository);
+    let dossierReads = 0;
+    repository.listContactDossiersForUser = async (authUser) => {
+      dossierReads += 1;
+      return originalListContactDossiersForUser(authUser);
+    };
+    const server = testServer({ repository, user: user("owner_admin") });
+
+    dossierReads = 0;
+    const detail = await server.inject({ method: "GET", url: "/api/contacts/contact-ada" });
+    expect(detail.statusCode).toBe(200);
+    expect(dossierReads).toBe(1);
+
+    dossierReads = 0;
+    const portal = await server.inject({
+      method: "GET",
+      url: "/api/contacts/contact-ada/portal-access",
+    });
+    expect(portal.statusCode).toBe(200);
+    expect(dossierReads).toBe(1);
+
+    dossierReads = 0;
+    const timeline = await server.inject({
+      method: "GET",
+      url: "/api/contacts/contact-ada/timeline",
+    });
+    expect(timeline.statusCode).toBe(200);
+    expect(dossierReads).toBe(1);
+
+    dossierReads = 0;
+    const historyExport = await server.inject({
+      method: "POST",
+      url: "/api/contacts/contact-ada/history-export",
+      payload: {
+        purpose: "staff_review",
+        reviewReason: "Synthetic staff review reason for contact preload export.",
+      },
+    });
+    expect(historyExport.statusCode).toBe(200);
+    expect(dossierReads).toBe(1);
+  });
+
   it("queues contact-history export requests and regenerates completed downloads", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const jobs: QueuedReportJob[] = [];

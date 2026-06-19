@@ -295,6 +295,50 @@ describe("contact dossiers", () => {
     expect(JSON.stringify(ada.relationships)).not.toContain("contact-river");
   });
 
+  it("keeps indexed portal grants and relationships scoped to visible contact matters", () => {
+    const hiddenMatterGrant = {
+      ...samplePortalGrants[0]!,
+      id: "grant-hidden-matter",
+      matterId: "matter-002",
+      contactId: "contact-ada",
+      createdAt: "2026-05-30T12:00:00.000Z",
+    };
+    const dossiers = buildContactDossiers({
+      firmId: "firm-west-legal",
+      contacts: sampleContacts.filter((contact) => contact.id !== "contact-northstar"),
+      matters: sampleMatters.filter((matter) => matter.id === "matter-001"),
+      matterParties: sampleMatterParties,
+      portalGrants: [hiddenMatterGrant, ...samplePortalGrants],
+      contactRelationships: sampleContactRelationships,
+      now: "2026-05-29T12:00:00.000Z",
+    });
+
+    const ada = dossiers.find((dossier) => dossier.contact.id === "contact-ada")!;
+    expect(ada.portal).toEqual({
+      activeGrantCount: 1,
+      permissionLabels: ["message", "sign", "upload_documents", "view_documents"],
+    });
+    expect(ada.matters).toEqual([
+      expect.objectContaining({
+        matterId: "matter-001",
+        portalActive: true,
+        portalPermissions: ["message", "sign", "upload_documents", "view_documents"],
+      }),
+    ]);
+    expect(ada.relationships).toEqual([
+      expect.objectContaining({
+        id: "contact-relationship-ada-river-counterparty",
+        direction: "outbound",
+        relatedContact: { kind: "organization", displayName: "River City Rentals Inc." },
+        visibleMatterIds: ["matter-001"],
+      }),
+    ]);
+    const serialized = JSON.stringify(dossiers);
+    expect(serialized).not.toContain("grant-hidden-matter");
+    expect(serialized).not.toContain("matter-002");
+    expect(serialized).not.toContain("North Star Holdings");
+  });
+
   it("marks adverse party links without adding conflict-check records", () => {
     const dossiers = buildContactDossiers({
       firmId: "firm-west-legal",

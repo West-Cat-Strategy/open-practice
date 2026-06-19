@@ -89,11 +89,6 @@ fails the local run when a dependency reports an unknown, unlicensed, or empty l
 `node scripts/report-dependency-licenses.mjs --json` or `pnpm deps:licenses -- --json-output <path>`
 for package-level evidence.
 
-Known follow-up: this table expects domain source changes to include
-`pnpm --filter @open-practice/domain build`, but the current selector output does not emit that
-command. Until the selector and tests are aligned in a tooling slice, add the domain build manually
-when validating domain source changes.
-
 ## Test Coverage Ratchets
 
 `pnpm policy:check` includes `scripts/validate-open-practice-boundaries.mjs`. That gate now treats

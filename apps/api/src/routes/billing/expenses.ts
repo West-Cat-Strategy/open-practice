@@ -20,6 +20,7 @@ import {
   assertMatterAccess,
   billingEntryQuerySchema,
   idParamsSchema,
+  orderByMatterIds,
 } from "./shared.js";
 
 const expenseEntryBodySchema = z
@@ -146,14 +147,12 @@ export function registerBillingExpenseRoutes(
       return { entries: await repository.listExpenseEntries(request.auth.firmId, query) };
     }
 
-    const entries = (
-      await Promise.all(
-        request.auth.user.assignedMatterIds.map((matterId) =>
-          repository.listExpenseEntries(request.auth.firmId, { ...query, matterId }),
-        ),
-      )
-    ).flat();
-    return { entries };
+    const assignedMatterIds = request.auth.user.assignedMatterIds;
+    const entries = await repository.listExpenseEntries(request.auth.firmId, {
+      ...query,
+      matterIds: assignedMatterIds,
+    });
+    return { entries: orderByMatterIds(entries, assignedMatterIds) };
   });
 
   server.post("/api/expense-entries", async (request) => {

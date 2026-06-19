@@ -490,6 +490,19 @@ function uniquePermissions(grants: PortalGrant[]): PortalGrant["permissions"] {
   return Array.from(new Set(grants.flatMap((grant) => grant.permissions))).sort();
 }
 
+function matterContactKey(matterId: string, contactId: string): string {
+  return `${matterId}::${contactId}`;
+}
+
+function appendIndexedValue<K, V>(index: Map<K, V[]>, key: K, value: V): void {
+  const values = index.get(key);
+  if (values) {
+    values.push(value);
+    return;
+  }
+  index.set(key, [value]);
+}
+
 export function validateContactRecord(contact: Contact): void {
   if (!contact.firmId.trim()) throw new Error("Contact requires a firm id");
   if (!contact.displayName.trim()) throw new Error("Contact display name is required");
@@ -1362,12 +1375,36 @@ export function buildContactDossiers(input: BuildContactDossiersInput): ContactD
   );
   const visibleMatterIds = new Set(visibleMatterById.keys());
   const visibleContacts = Array.from(contactById.values());
-  const activePortalGrants = input.portalGrants.filter(
-    (grant) =>
-      grant.firmId === input.firmId &&
-      visibleMatterById.has(grant.matterId) &&
-      isActiveGrant(grant, now),
-  );
+  const activePortalGrantsByContactId = new Map<string, PortalGrant[]>();
+  const activePortalGrantsByMatterContact = new Map<string, PortalGrant[]>();
+  for (const grant of input.portalGrants) {
+    if (
+      grant.firmId !== input.firmId ||
+      !visibleMatterById.has(grant.matterId) ||
+      !isActiveGrant(grant, now)
+    ) {
+      continue;
+    }
+    appendIndexedValue(activePortalGrantsByContactId, grant.contactId, grant);
+    appendIndexedValue(
+      activePortalGrantsByMatterContact,
+      matterContactKey(grant.matterId, grant.contactId),
+      grant,
+    );
+  }
+  const contactRelationshipsByContactId = new Map<string, ContactRelationshipRecord[]>();
+  for (const relationship of input.contactRelationships ?? []) {
+    if (relationship.firmId !== input.firmId) continue;
+    if (relationship.matterId && !visibleMatterIds.has(relationship.matterId)) continue;
+    appendIndexedValue(contactRelationshipsByContactId, relationship.contactId, relationship);
+    if (relationship.relatedContactId !== relationship.contactId) {
+      appendIndexedValue(
+        contactRelationshipsByContactId,
+        relationship.relatedContactId,
+        relationship,
+      );
+    }
+  }
   const retentionHoldReviewsByMatterId = new Map(
     (input.matterRetentionHoldReviews ?? [])
       .filter((review) => review.matterId && visibleMatterById.has(review.matterId))
@@ -1382,9 +1419,9 @@ export function buildContactDossiers(input: BuildContactDossiersInput): ContactD
     const contact = contactById.get(party.contactId);
     if (!matter || !contact) continue;
 
-    const grants = activePortalGrants.filter(
-      (grant) => grant.matterId === party.matterId && grant.contactId === party.contactId,
-    );
+    const grants =
+      activePortalGrantsByMatterContact.get(matterContactKey(party.matterId, party.contactId)) ??
+      [];
     const links = linksByContactId.get(party.contactId) ?? [];
     links.push({
       associationId: party.id,
@@ -1414,7 +1451,7 @@ export function buildContactDossiers(input: BuildContactDossiersInput): ContactD
     .map((contactId) => {
       const contact = contactById.get(contactId)!;
       const matters = linksByContactId.get(contactId) ?? [];
-      const contactGrants = activePortalGrants.filter((grant) => grant.contactId === contactId);
+      const contactGrants = activePortalGrantsByContactId.get(contactId) ?? [];
       const sortedMatters = matters.sort((left, right) =>
         left.matterNumber.localeCompare(right.matterNumber),
       );
@@ -1422,7 +1459,7 @@ export function buildContactDossiers(input: BuildContactDossiersInput): ContactD
         contactId,
         firmId: input.firmId,
         contactById,
-        relationships: input.contactRelationships ?? [],
+        relationships: contactRelationshipsByContactId.get(contactId) ?? [],
         visibleMatterIds,
       });
       return {

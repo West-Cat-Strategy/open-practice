@@ -16,7 +16,7 @@ export interface PaymentWithAllocations extends ManualPaymentRecord {
 export interface BillingInvoicePaymentRepository {
   listInvoices(
     firmId: string,
-    options?: { matterId?: string; status?: InvoiceRecord["status"] },
+    options?: { matterId?: string; matterIds?: string[]; status?: InvoiceRecord["status"] },
   ): Promise<InvoiceWithLines[]>;
   getInvoice(firmId: string, invoiceId: string): Promise<InvoiceWithLines | undefined>;
   createInvoice(input: {
@@ -38,6 +38,6 @@ export interface BillingInvoicePaymentRepository {
   }): Promise<PaymentWithAllocations>;
   listPayments(
     firmId: string,
-    options?: { matterId?: string; invoiceId?: string },
+    options?: { matterId?: string; matterIds?: string[]; invoiceId?: string },
   ): Promise<PaymentWithAllocations[]>;
 }

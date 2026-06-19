@@ -23,6 +23,11 @@ export interface ContactListOptions {
   offset?: number;
 }
 
+export interface ContactVisibilityPreloadContext {
+  visibleDossier?: ContactDossier;
+  portalGrants?: PortalGrant[];
+}
+
 export interface ContactUpdateInput {
   firmId: string;
   contactId: string;
@@ -124,8 +129,16 @@ export interface ContactRepository {
     input: MatterContactAssociationUpdateInput,
   ): Promise<MatterParty | undefined>;
   getContact(firmId: string, contactId: string): Promise<Contact | undefined>;
-  listContactTimelineForUser(user: User, contactId: string): Promise<ActivityTimelineEntry[]>;
-  listContactPortalGrantsForUser(user: User, contactId: string): Promise<PortalGrant[]>;
+  listContactTimelineForUser(
+    user: User,
+    contactId: string,
+    context?: ContactVisibilityPreloadContext,
+  ): Promise<ActivityTimelineEntry[]>;
+  listContactPortalGrantsForUser(
+    user: User,
+    contactId: string,
+    context?: ContactVisibilityPreloadContext,
+  ): Promise<PortalGrant[]>;
   createContactDataQualityResolution(
     resolution: ContactDataQualityResolutionRecord,
   ): Promise<ContactDataQualityResolutionRecord>;

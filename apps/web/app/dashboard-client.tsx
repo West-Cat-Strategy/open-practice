@@ -68,10 +68,6 @@ import {
   isSameDraftDocument,
 } from "./drafting-dashboard";
 import {
-  buildExternalUploadReviewPayload,
-  buildExternalUploadReviewPath,
-  buildExternalUploadCreatePayload,
-  buildExternalUploadRevokePath,
   canCreateExternalUpload,
   externalUploadCreateControlDisabled,
   upsertExternalUploadDocument,
@@ -79,6 +75,11 @@ import {
   type ExternalUploadReviewDecision,
   type ExternalUploadReviewReason,
 } from "./external-uploads-dashboard";
+import {
+  requestExternalUploadDocumentReview,
+  requestExternalUploadLinkCreation,
+  requestExternalUploadLinkRevocation,
+} from "./_features/external-uploads/client-resources";
 import {
   buildIntakeTemplatePreviewPayload,
   buildIntakeFormReviewDecisionPath,
@@ -351,7 +352,6 @@ import type {
 } from "./_features/billing/models";
 import type { DocumentAssemblyDashboardResponse } from "./_features/document-assembly/models";
 import type {
-  ExternalUploadCreateResponse,
   ExternalUploadReviewItem,
   ExternalUploadRevokeResponse,
   ExternalUploadsDashboardResponse,
@@ -3956,21 +3956,15 @@ export default function DashboardClient({
     setCreatingExternalUpload(true);
     setExternalUploadToken("");
     setExternalUploadStatus("Creating link...");
-    let payload: ExternalUploadCreateResponse;
+    let payload: Awaited<ReturnType<typeof requestExternalUploadLinkCreation>>;
     try {
-      payload = await requestDashboardJson<ExternalUploadCreateResponse>(
+      payload = await requestExternalUploadLinkCreation({
         apiBaseUrl,
-        "/api/external-uploads",
-        {
-          method: "POST",
-          headers: devHeaders,
-          payload: buildExternalUploadCreatePayload({
-            matterId: activeMatter.id,
-            maxUploads: externalUploadMaxUploads,
-            expiresAtLocal: externalUploadExpiresAt,
-          }),
-        },
-      );
+        headers: devHeaders,
+        matterId: activeMatter.id,
+        maxUploads: externalUploadMaxUploads,
+        expiresAtLocal: externalUploadExpiresAt,
+      });
     } catch (error) {
       setExternalUploadStatus(`Create failed: ${dashboardApiStatus(error)}`);
       setCreatingExternalUpload(false);
@@ -3992,13 +3986,10 @@ export default function DashboardClient({
   async function revokeExternalUploadLink(uploadId: string): Promise<void> {
     setRevokingExternalUploadId(uploadId);
     setExternalUploadStatus("Revoking link...");
-    const response = await fetch(`${apiBaseUrl}${buildExternalUploadRevokePath(uploadId)}`, {
-      method: "POST",
-      credentials: "include",
-      headers: {
-        ...devHeaders,
-        "Content-Type": "application/json",
-      },
+    const response = await requestExternalUploadLinkRevocation({
+      apiBaseUrl,
+      headers: devHeaders,
+      uploadId,
     });
 
     if (!response.ok) {
@@ -4021,21 +4012,14 @@ export default function DashboardClient({
     const note = externalUploadReviewNotesByDocumentId[document.id];
     setReviewingExternalUploadDocumentId(`${document.id}:${decision}`);
     setExternalUploadStatus("Updating upload review...");
-    const response = await fetch(`${apiBaseUrl}${buildExternalUploadReviewPath(document.id)}`, {
-      method: "PATCH",
-      credentials: "include",
-      headers: {
-        ...devHeaders,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(
-        buildExternalUploadReviewPayload({
-          decision,
-          reason,
-          duplicateOfDocumentId: document.duplicateOfDocumentId,
-          note,
-        }),
-      ),
+    const response = await requestExternalUploadDocumentReview({
+      apiBaseUrl,
+      headers: devHeaders,
+      documentId: document.id,
+      decision,
+      reason,
+      duplicateOfDocumentId: document.duplicateOfDocumentId,
+      note,
     });
 
     if (!response.ok) {
