@@ -161,6 +161,21 @@ export const paymentSettlementPaymentStatuses = [
 
 export type PaymentSettlementPaymentStatus = (typeof paymentSettlementPaymentStatuses)[number];
 
+export const paymentImportEventFamilies = ["payment", "deposit"] as const;
+
+export type PaymentImportEventFamily = (typeof paymentImportEventFamilies)[number];
+
+export type PaymentImportReviewState = "needs_review";
+
+export const paymentImportReviewConflictReasons = [
+  "duplicate",
+  "candidate_mismatch",
+  "amount_mismatch",
+  "status_conflict",
+] as const;
+
+export type PaymentImportReviewConflictReason = (typeof paymentImportReviewConflictReasons)[number];
+
 export type TrustTransferRequestStatus =
   | "pending_approval"
   | "approved"
@@ -399,6 +414,44 @@ export interface PaymentProcessorProvider {
   ): Promise<PaymentProcessorCheckoutSession>;
 }
 
+export interface PaymentImportReviewBoundary {
+  rawProviderPayloadRetained: false;
+  invoiceBalanceMutation: "none";
+  settlementAutomation: false;
+  reconciliationMutation: "none";
+  refundHandling: "review_only";
+  chargebackHandling: "review_only";
+  trustPosting: "none";
+  providerCommand: "none";
+  clientNotification: "none";
+  depositMatching: "review_cue_only";
+}
+
+export interface PaymentImportReviewRecord {
+  id: string;
+  firmId: string;
+  matterId: string;
+  providerLabel: string;
+  eventFamily: PaymentImportEventFamily;
+  eventStatus: string;
+  externalEventId: string;
+  externalPaymentId?: string;
+  externalDepositId?: string;
+  amountCents: number;
+  currency: "CAD";
+  observedAt?: string;
+  importedAt: string;
+  importedByUserId: string;
+  candidateInvoiceId?: string;
+  candidateHostedPaymentRequestId?: string;
+  duplicateOfRecordId?: string;
+  conflictReason?: PaymentImportReviewConflictReason;
+  reviewState: PaymentImportReviewState;
+  normalizedEvidenceFingerprint: string;
+  boundaries: PaymentImportReviewBoundary;
+  updatedAt: string;
+}
+
 export interface TrustTransferRequestRecord {
   id: string;
   firmId: string;
@@ -555,6 +608,27 @@ export function buildPaymentSettlementReview(input: {
     ...input,
     status: "needs_review",
   };
+}
+
+export function defaultPaymentImportReviewBoundary(): PaymentImportReviewBoundary {
+  return {
+    rawProviderPayloadRetained: false,
+    invoiceBalanceMutation: "none",
+    settlementAutomation: false,
+    reconciliationMutation: "none",
+    refundHandling: "review_only",
+    chargebackHandling: "review_only",
+    trustPosting: "none",
+    providerCommand: "none",
+    clientNotification: "none",
+    depositMatching: "review_cue_only",
+  };
+}
+
+export function paymentImportReviewHasConflict(
+  record: Pick<PaymentImportReviewRecord, "conflictReason" | "duplicateOfRecordId">,
+): boolean {
+  return Boolean(record.conflictReason || record.duplicateOfRecordId);
 }
 
 export function hostedPaymentRequestPath(requestId: string): string {

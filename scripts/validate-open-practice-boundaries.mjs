@@ -275,6 +275,7 @@ export const FORBIDDEN_SERVER_ROUTE_GROUPS = [
       "/api/expense-entries",
       "/api/invoices",
       "/api/payments",
+      "/api/billing/payment-import-review-records",
       "/api/billing/trust-transfer-requests",
       "/api/billing/dashboard",
     ],

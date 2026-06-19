@@ -24,6 +24,7 @@ import type {
   LedgerStatementImportBatchRecord,
   LedgerStatementMatchRuleProfileRecord,
   LedgerTransactionApprovalRecord,
+  PaymentImportReviewBoundary,
   PaymentPlanPlaceholder,
 } from "../../types";
 
@@ -100,6 +101,27 @@ export interface BillingPaymentRequestSummary {
   expiresAt?: string;
 }
 
+export interface BillingPaymentImportReviewSummary {
+  id: string;
+  matterId: string;
+  providerLabel: string;
+  eventFamily: "payment" | "deposit";
+  eventStatus: string;
+  externalEventId: string;
+  externalPaymentIdPresent?: boolean;
+  externalDepositIdPresent?: boolean;
+  amountCents: number;
+  currency: "CAD";
+  observedAt?: string;
+  importedAt: string;
+  candidateInvoiceId?: string;
+  candidateHostedPaymentRequestId?: string;
+  duplicateCuePresent?: boolean;
+  conflictReason?: "duplicate" | "candidate_mismatch" | "amount_mismatch" | "status_conflict";
+  reviewState: "needs_review";
+  boundaries: PaymentImportReviewBoundary;
+}
+
 export interface MatterBillingSummary {
   matterId: string;
   captureReviewTime: BillingTimeItem[];
@@ -109,6 +131,7 @@ export interface MatterBillingSummary {
   invoices: BillingInvoiceSummary[];
   payments: BillingPaymentSummary[];
   paymentRequests: BillingPaymentRequestSummary[];
+  paymentImportReviewRecords?: BillingPaymentImportReviewSummary[];
 }
 
 export interface BillingDashboardResponse {
@@ -122,6 +145,8 @@ export interface BillingDashboardResponse {
     lockedPeriodCount: number;
     activeLockedPeriodCount: number;
     activeRateRuleCount: number;
+    paymentImportReviewCount?: number;
+    paymentImportConflictCount?: number;
   };
   periodLocks: BillingPeriodLockRecord[];
   rateRules: BillingRateRuleRecord[];

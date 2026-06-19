@@ -2,13 +2,16 @@ import { CheckCircle2, Clock3, FileText, Plus, Save } from "lucide-react";
 import type { BillingExpenseCategoryRecord } from "@open-practice/domain";
 
 import {
+  describePaymentImportReview,
   describePaymentSettlementReview,
+  type PaymentImportReviewSummary,
   type PaymentSettlementReviewSummary,
 } from "../billing-dashboard";
 import type {
   BillingDashboardResponse,
   BillingExpenseItem,
   BillingInvoiceSummary,
+  BillingPaymentImportReviewSummary,
   BillingPaymentRequestSummary,
   BillingPaymentSummary,
   BillingTimeItem,
@@ -23,6 +26,8 @@ interface BillingSectionProps {
   activeInvoices: BillingInvoiceSummary[];
   activeManualPayments: BillingPaymentSummary[];
   activeMatter: Pick<MatterSummary, "id" | "number" | "practiceArea" | "jurisdiction">;
+  activePaymentImportReviewRecords: BillingPaymentImportReviewSummary[];
+  activePaymentImportReviewSummary: PaymentImportReviewSummary;
   activePaymentRequests: BillingPaymentRequestSummary[];
   activeSettlementReviewSummary: PaymentSettlementReviewSummary;
   activeUnbilledExpenseCents: number;
@@ -106,6 +111,8 @@ export function BillingSection({
   activeInvoices,
   activeManualPayments,
   activeMatter,
+  activePaymentImportReviewRecords,
+  activePaymentImportReviewSummary,
   activePaymentRequests,
   activeSettlementReviewSummary,
   activeUnbilledExpenseCents,
@@ -767,6 +774,46 @@ export function BillingSection({
         {activePaymentRequests.length === 0 ? (
           <p className="inline-empty">
             No hosted payment request shells have been recorded for this matter.
+          </p>
+        ) : null}
+      </div>
+
+      <div className="section-title">
+        <h3>Processor import review</h3>
+        <span>{activePaymentImportReviewSummary.recordCount} records</span>
+      </div>
+      <div className="detail-grid billing-summary-grid">
+        <div>
+          <span className="field-label">Payment cues</span>
+          <strong>{activePaymentImportReviewSummary.paymentEventCount}</strong>
+        </div>
+        <div>
+          <span className="field-label">Deposit cues</span>
+          <strong>{activePaymentImportReviewSummary.depositEventCount}</strong>
+        </div>
+        <div>
+          <span className="field-label">Conflicts</span>
+          <strong>{activePaymentImportReviewSummary.conflictCount}</strong>
+        </div>
+        <div>
+          <span className="field-label">Retention</span>
+          <strong>Normalized</strong>
+        </div>
+      </div>
+      <div className="party-list">
+        {activePaymentImportReviewRecords.map((record) => (
+          <div className="party-row" key={record.id}>
+            <span>
+              <strong>{record.reviewState.replaceAll("_", " ")}</strong>
+              <small>{describePaymentImportReview(record)}</small>
+              <small>No raw payload · No invoice balance mutation · No trust posting</small>
+            </span>
+            <em>{cents(record.amountCents)}</em>
+          </div>
+        ))}
+        {activePaymentImportReviewRecords.length === 0 ? (
+          <p className="inline-empty">
+            No normalized processor import evidence has been recorded for this matter.
           </p>
         ) : null}
       </div>

@@ -27,6 +27,7 @@ export function registerBillingDashboardRoutes(
       invoices,
       payments,
       paymentRequests,
+      paymentImportReviewRecords,
       periodLocks,
       rateRules,
       expenseCategories,
@@ -36,6 +37,7 @@ export function registerBillingDashboardRoutes(
       repository.listInvoices(request.auth.firmId),
       repository.listPayments(request.auth.firmId),
       repository.listHostedPaymentRequests(request.auth.firmId),
+      repository.listPaymentImportReviewRecords(request.auth.firmId),
       repository.listBillingPeriodLocks(request.auth.firmId),
       repository.listBillingRateRules(request.auth.firmId),
       repository.listBillingExpenseCategories(request.auth.firmId),
@@ -164,10 +166,35 @@ export function registerBillingDashboardRoutes(
             updatedAt: paymentRequest.updatedAt,
             expiresAt: paymentRequest.expiresAt,
           })),
+        paymentImportReviewRecords: paymentImportReviewRecords
+          .filter((record) => record.matterId === matterId)
+          .map((record) => ({
+            id: record.id,
+            matterId: record.matterId,
+            providerLabel: record.providerLabel,
+            eventFamily: record.eventFamily,
+            eventStatus: record.eventStatus,
+            externalEventId: record.externalEventId,
+            externalPaymentIdPresent: Boolean(record.externalPaymentId),
+            externalDepositIdPresent: Boolean(record.externalDepositId),
+            amountCents: record.amountCents,
+            currency: record.currency,
+            observedAt: record.observedAt,
+            importedAt: record.importedAt,
+            candidateInvoiceId: record.candidateInvoiceId,
+            candidateHostedPaymentRequestId: record.candidateHostedPaymentRequestId,
+            duplicateCuePresent: Boolean(record.duplicateOfRecordId),
+            conflictReason: record.conflictReason,
+            reviewState: record.reviewState,
+            boundaries: record.boundaries,
+          })),
       };
     });
     const visibleInvoices = matterSummaries.flatMap((matter) => matter.invoices);
     const visiblePaymentRequests = matterSummaries.flatMap((matter) => matter.paymentRequests);
+    const visiblePaymentImportReviewRecords = matterSummaries.flatMap(
+      (matter) => matter.paymentImportReviewRecords,
+    );
     return {
       canView: true,
       summary: {
@@ -198,6 +225,10 @@ export function registerBillingDashboardRoutes(
         activeLockedPeriodCount: periodLocks.filter((lock) => billingDateFallsInsideLock(now, lock))
           .length,
         activeRateRuleCount: rateRules.filter((rule) => rule.active).length,
+        paymentImportReviewCount: visiblePaymentImportReviewRecords.length,
+        paymentImportConflictCount: visiblePaymentImportReviewRecords.filter(
+          (record) => record.duplicateCuePresent || record.conflictReason,
+        ).length,
       },
       periodLocks,
       rateRules,

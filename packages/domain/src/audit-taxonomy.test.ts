@@ -724,6 +724,55 @@ describe("audit event taxonomy", () => {
     expect(checkoutClassification.metadataHints.resource).not.toEqual(
       expect.arrayContaining(["checkoutUrl"]),
     );
+
+    const paymentImportClassification = classifyAuditEvent(
+      auditEvent({
+        action: "payment_import_review_record.created",
+        resourceType: "payment_import_review_record",
+        resourceId: "payment-import-review-001",
+        metadata: {
+          matterId: "matter-001",
+          paymentImportReviewRecordId: "payment-import-review-001",
+          providerLabel: "synthetic_processor",
+          eventFamily: "payment",
+          eventStatus: "payment_observed",
+          externalEventId: "evt_synthetic",
+          externalPaymentIdPresent: true,
+          externalPaymentId: "pay_private_synthetic",
+          amountCents: 13230,
+          rawPayload: { private: "synthetic private body" },
+          rawProviderPayloadRetained: false,
+          invoiceBalanceMutation: "none",
+          settlementAutomation: false,
+          reconciliationMutation: "none",
+          trustPosting: "none",
+        },
+      }),
+    );
+    expect(paymentImportClassification).toMatchObject({
+      category: "billing",
+      known: true,
+      matterScope: "matter",
+      resourceTypeMatches: true,
+    });
+    expect(paymentImportClassification.metadataHints.resource).toEqual(
+      expect.arrayContaining([
+        "paymentImportReviewRecordId",
+        "providerLabel",
+        "eventFamily",
+        "eventStatus",
+        "externalEventId",
+        "externalPaymentIdPresent",
+        "rawProviderPayloadRetained",
+        "invoiceBalanceMutation",
+        "settlementAutomation",
+        "reconciliationMutation",
+        "trustPosting",
+      ]),
+    );
+    expect(paymentImportClassification.metadataHints.resource).not.toEqual(
+      expect.arrayContaining(["externalPaymentId", "rawPayload"]),
+    );
   });
 
   it("classifies reconciliation exception resolution events without statement detail hints", () => {

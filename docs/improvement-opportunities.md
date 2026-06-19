@@ -364,8 +364,15 @@ surface.
     defines processor imports, deposit matching, refunds, and chargebacks as normalized
     reviewer-owned evidence only. It preserves no live settlement, no trust posting, no provider
     payload retention, and no invoice-balance mutation without reviewer evidence.
-  - **Remaining boundary:** Runtime processor import, deposit matching, refund, chargeback, and
-    trust posting behavior remain separate future work after the packet.
+  - **Shipped processor-import review slice:** OP-T160 adds the first runtime slice: staff-only,
+    provider-neutral payment import review records plus Billing dashboard cues for normalized
+    processor evidence. It stores safe event IDs, amounts, candidate invoice/payment-request cues,
+    and duplicate/conflict posture without raw provider payloads, invoice-balance mutation,
+    settlement automation, reconciliation mutation, refund or chargeback handling, provider
+    commands, client notifications, or trust posting.
+  - **Remaining boundary:** Deposit matching workflow, refund and chargeback workflows, settlement
+    automation, provider webhook/replay behavior, provider commands, trust posting, and any funds
+    movement remain separate future work after OP-T160.
   - **References:** `opencollective__opencollective-api` settlement/reconciliation concepts and
     `blnkfinance__blnk` reconciliation boundaries.
   - **Reuse and snippets:** Open Collective is MIT but architecture-only in this corpus; Blnk is

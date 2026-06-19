@@ -14,6 +14,7 @@ import type {
   BillingExpenseCategoryRecord,
   BillingRateSnapshot,
   HostedPaymentRequestRecord,
+  PaymentImportReviewRecord,
   Province,
 } from "@open-practice/domain";
 import { billingRateRules } from "./billing-controls.js";
@@ -311,6 +312,111 @@ export const hostedPaymentRequests = pgTable(
     ),
     positiveAmount: check("hosted_payment_requests_positive_amount", sql`${table.amountCents} > 0`),
     cadCurrency: check("hosted_payment_requests_cad_currency", sql`${table.currency} = 'CAD'`),
+  }),
+);
+
+export const paymentImportReviewRecords = pgTable(
+  "payment_import_review_records",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    matterId: text("matter_id")
+      .notNull()
+      .references(() => matters.id),
+    providerLabel: text("provider_label").notNull(),
+    eventFamily: text("event_family").$type<PaymentImportReviewRecord["eventFamily"]>().notNull(),
+    eventStatus: text("event_status").notNull(),
+    externalEventId: text("external_event_id").notNull(),
+    externalPaymentId: text("external_payment_id"),
+    externalDepositId: text("external_deposit_id"),
+    amountCents: integer("amount_cents").notNull(),
+    currency: text("currency").$type<PaymentImportReviewRecord["currency"]>().notNull(),
+    observedAt: timestamp("observed_at", { withTimezone: true }),
+    importedAt: timestamp("imported_at", { withTimezone: true }).notNull().defaultNow(),
+    importedByUserId: text("imported_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    candidateInvoiceId: text("candidate_invoice_id").references(() => invoices.id),
+    candidateHostedPaymentRequestId: text("candidate_hosted_payment_request_id").references(
+      () => hostedPaymentRequests.id,
+    ),
+    duplicateOfRecordId: text("duplicate_of_record_id"),
+    conflictReason: text("conflict_reason").$type<PaymentImportReviewRecord["conflictReason"]>(),
+    reviewState: text("review_state")
+      .$type<PaymentImportReviewRecord["reviewState"]>()
+      .notNull()
+      .default("needs_review"),
+    normalizedEvidenceFingerprint: text("normalized_evidence_fingerprint").notNull(),
+    boundaries: jsonb("boundaries")
+      .$type<PaymentImportReviewRecord["boundaries"]>()
+      .notNull()
+      .default({
+        rawProviderPayloadRetained: false,
+        invoiceBalanceMutation: "none",
+        settlementAutomation: false,
+        reconciliationMutation: "none",
+        refundHandling: "review_only",
+        chargebackHandling: "review_only",
+        trustPosting: "none",
+        providerCommand: "none",
+        clientNotification: "none",
+        depositMatching: "review_cue_only",
+      }),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    firmMatterImported: index("payment_import_review_records_firm_matter_imported_idx").on(
+      table.firmId,
+      table.matterId,
+      table.importedAt,
+    ),
+    firmInvoice: index("payment_import_review_records_firm_invoice_idx").on(
+      table.firmId,
+      table.candidateInvoiceId,
+    ),
+    firmPaymentRequest: index("payment_import_review_records_firm_payment_request_idx").on(
+      table.firmId,
+      table.candidateHostedPaymentRequestId,
+    ),
+    firmProviderEvent: uniqueIndex("payment_import_review_records_firm_provider_event_idx").on(
+      table.firmId,
+      table.providerLabel,
+      table.externalEventId,
+    ),
+    providerLabelFormat: check(
+      "payment_import_review_records_provider_label_format",
+      sql`${table.providerLabel} ~ '^[a-z0-9_.:-]+$'`,
+    ),
+    eventFamilyValue: check(
+      "payment_import_review_records_event_family_value",
+      sql`${table.eventFamily} in ('payment', 'deposit')`,
+    ),
+    eventStatusFormat: check(
+      "payment_import_review_records_event_status_format",
+      sql`${table.eventStatus} ~ '^[a-z0-9_.:-]+$'`,
+    ),
+    externalEventIdFormat: check(
+      "payment_import_review_records_external_event_id_format",
+      sql`${table.externalEventId} ~ '^[A-Za-z0-9_.:-]+$'`,
+    ),
+    externalPaymentIdFormat: check(
+      "payment_import_review_records_external_payment_id_format",
+      sql`${table.externalPaymentId} is null or ${table.externalPaymentId} ~ '^[A-Za-z0-9_.:-]+$'`,
+    ),
+    externalDepositIdFormat: check(
+      "payment_import_review_records_external_deposit_id_format",
+      sql`${table.externalDepositId} is null or ${table.externalDepositId} ~ '^[A-Za-z0-9_.:-]+$'`,
+    ),
+    positiveAmount: check(
+      "payment_import_review_records_positive_amount",
+      sql`${table.amountCents} > 0`,
+    ),
+    cadCurrency: check(
+      "payment_import_review_records_cad_currency",
+      sql`${table.currency} = 'CAD'`,
+    ),
   }),
 );
 

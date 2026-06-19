@@ -215,6 +215,7 @@ describe("billing routes", () => {
       "/api/expense-entries",
       "/api/invoices",
       "/api/payments",
+      "/api/billing/payment-import-review-records",
       "/api/billing/payment-requests",
       "/api/billing/trust-transfer-requests",
     ]) {
@@ -1561,6 +1562,234 @@ describe("billing routes", () => {
         ),
       }),
     ).not.toContain("Synthetic private settlement summary");
+  });
+
+  it("records payment import review evidence without retaining raw payloads or mutating balances", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository });
+    const ledgerBefore = await server.inject({ method: "GET", url: "/api/ledger" });
+    const beforeEntryCount = ledgerBefore.json<{ entries: unknown[] }>().entries.length;
+    const invoiceBefore = await server.inject({ method: "GET", url: "/api/invoices/invoice-001" });
+    expect(invoiceBefore.statusCode).toBe(200);
+
+    const created = await server.inject({
+      method: "POST",
+      url: "/api/billing/payment-import-review-records",
+      payload: {
+        id: "payment-import-review-route-test",
+        matterId: "matter-001",
+        providerLabel: "synthetic_processor",
+        eventFamily: "payment",
+        eventStatus: "payment_observed",
+        externalEventId: "evt_synthetic_import_route",
+        externalPaymentId: "pay_synthetic_import_route",
+        amountCents: 5000,
+        currency: "CAD",
+        observedAt: "2026-06-19T16:00:00.000Z",
+        candidateInvoiceId: "invoice-001",
+        candidateHostedPaymentRequestId: "payment-request-001",
+      },
+    });
+
+    expect(created.statusCode).toBe(200);
+    expect(created.json()).toMatchObject({
+      record: {
+        id: "payment-import-review-route-test",
+        providerLabel: "synthetic_processor",
+        eventFamily: "payment",
+        eventStatus: "payment_observed",
+        externalEventId: "evt_synthetic_import_route",
+        externalPaymentId: "pay_synthetic_import_route",
+        amountCents: 5000,
+        currency: "CAD",
+        candidateInvoiceId: "invoice-001",
+        candidateHostedPaymentRequestId: "payment-request-001",
+        reviewState: "needs_review",
+        boundaries: {
+          rawProviderPayloadRetained: false,
+          invoiceBalanceMutation: "none",
+          settlementAutomation: false,
+          reconciliationMutation: "none",
+          refundHandling: "review_only",
+          chargebackHandling: "review_only",
+          trustPosting: "none",
+          providerCommand: "none",
+          clientNotification: "none",
+          depositMatching: "review_cue_only",
+        },
+      },
+    });
+
+    const repeated = await server.inject({
+      method: "POST",
+      url: "/api/billing/payment-import-review-records",
+      payload: {
+        id: "payment-import-review-route-retry",
+        matterId: "matter-001",
+        providerLabel: "synthetic_processor",
+        eventFamily: "payment",
+        eventStatus: "payment_observed",
+        externalEventId: "evt_synthetic_import_route",
+        externalPaymentId: "pay_synthetic_import_route",
+        amountCents: 5000,
+        currency: "CAD",
+        observedAt: "2026-06-19T16:00:00.000Z",
+        candidateInvoiceId: "invoice-001",
+        candidateHostedPaymentRequestId: "payment-request-001",
+      },
+    });
+    expect(repeated.statusCode).toBe(200);
+    expect(repeated.json()).toMatchObject({
+      record: { id: "payment-import-review-route-test" },
+    });
+
+    const conflicting = await server.inject({
+      method: "POST",
+      url: "/api/billing/payment-import-review-records",
+      payload: {
+        matterId: "matter-001",
+        providerLabel: "synthetic_processor",
+        eventFamily: "payment",
+        eventStatus: "payment_observed",
+        externalEventId: "evt_synthetic_import_route",
+        externalPaymentId: "pay_synthetic_import_route",
+        amountCents: 5100,
+        currency: "CAD",
+        observedAt: "2026-06-19T16:00:00.000Z",
+        candidateInvoiceId: "invoice-001",
+        candidateHostedPaymentRequestId: "payment-request-001",
+      },
+    });
+    expect(conflicting.statusCode).toBe(409);
+    expect(conflicting.json()).toMatchObject({
+      code: "IDEMPOTENCY_KEY_CONFLICT",
+    });
+
+    const rawPayloadRejected = await server.inject({
+      method: "POST",
+      url: "/api/billing/payment-import-review-records",
+      payload: {
+        matterId: "matter-001",
+        providerLabel: "synthetic_processor",
+        eventFamily: "payment",
+        eventStatus: "payment_observed",
+        externalEventId: "evt_synthetic_raw_payload",
+        amountCents: 5000,
+        currency: "CAD",
+        rawPayload: { private: "Synthetic private raw provider payload" },
+      },
+    });
+    expect(rawPayloadRejected.statusCode).toBe(400);
+
+    const unsafeExternalId = await server.inject({
+      method: "POST",
+      url: "/api/billing/payment-import-review-records",
+      payload: {
+        matterId: "matter-001",
+        providerLabel: "synthetic_processor",
+        eventFamily: "payment",
+        eventStatus: "payment_observed",
+        externalEventId: "evt synthetic raw body",
+        amountCents: 5000,
+        currency: "CAD",
+      },
+    });
+    expect(unsafeExternalId.statusCode).toBe(400);
+
+    const crossMatterCandidate = await server.inject({
+      method: "POST",
+      url: "/api/billing/payment-import-review-records",
+      payload: {
+        matterId: "matter-002",
+        providerLabel: "synthetic_processor",
+        eventFamily: "deposit",
+        eventStatus: "deposit_observed",
+        externalEventId: "evt_synthetic_cross_matter",
+        externalDepositId: "dep_synthetic_cross_matter",
+        amountCents: 5000,
+        currency: "CAD",
+        candidateInvoiceId: "invoice-001",
+      },
+    });
+    expect(crossMatterCandidate.statusCode).toBe(409);
+    expect(crossMatterCandidate.json()).toMatchObject({
+      code: "PAYMENT_IMPORT_CANDIDATE_MATTER_MISMATCH",
+    });
+
+    const list = await server.inject({
+      method: "GET",
+      url: "/api/billing/payment-import-review-records?matterId=matter-001",
+    });
+    expect(list.statusCode).toBe(200);
+    expect(list.json()).toMatchObject({
+      records: expect.arrayContaining([
+        expect.objectContaining({
+          id: "payment-import-review-route-test",
+          providerLabel: "synthetic_processor",
+        }),
+      ]),
+    });
+
+    const dashboard = await server.inject({ method: "GET", url: "/api/billing/dashboard" });
+    expect(dashboard.statusCode).toBe(200);
+    expect(
+      dashboard
+        .json<{
+          summary: { paymentImportReviewCount: number; paymentImportConflictCount: number };
+          matters: Array<{
+            matterId: string;
+            paymentImportReviewRecords: Array<{
+              id: string;
+              externalPaymentIdPresent?: boolean;
+              boundaries: { rawProviderPayloadRetained: boolean; trustPosting: string };
+            }>;
+          }>;
+        }>()
+        .matters.find((matter) => matter.matterId === "matter-001")?.paymentImportReviewRecords,
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "payment-import-review-route-test",
+          externalPaymentIdPresent: true,
+          boundaries: expect.objectContaining({
+            rawProviderPayloadRetained: false,
+            trustPosting: "none",
+          }),
+        }),
+      ]),
+    );
+
+    const invoiceAfter = await server.inject({ method: "GET", url: "/api/invoices/invoice-001" });
+    expect(invoiceAfter.json()).toMatchObject({
+      status: invoiceBefore.json<{ status: string }>().status,
+      paidCents: invoiceBefore.json<{ paidCents: number }>().paidCents,
+      balanceDueCents: invoiceBefore.json<{ balanceDueCents: number }>().balanceDueCents,
+    });
+    const ledgerAfter = await server.inject({ method: "GET", url: "/api/ledger" });
+    expect(ledgerAfter.json<{ entries: unknown[] }>().entries).toHaveLength(beforeEntryCount);
+
+    const audit = (await auditEvents(repository)).find(
+      (event) => event.action === "payment_import_review_record.created",
+    );
+    expect(audit).toMatchObject({
+      resourceType: "payment_import_review_record",
+      resourceId: "payment-import-review-route-test",
+      metadata: expect.objectContaining({
+        providerLabel: "synthetic_processor",
+        eventFamily: "payment",
+        eventStatus: "payment_observed",
+        externalEventId: "evt_synthetic_import_route",
+        externalPaymentIdPresent: true,
+        rawProviderPayloadRetained: false,
+        invoiceBalanceMutation: "none",
+        settlementAutomation: false,
+        reconciliationMutation: "none",
+        trustPosting: "none",
+      }),
+    });
+    expect(JSON.stringify(await auditEvents(repository))).not.toContain(
+      "Synthetic private raw provider payload",
+    );
   });
 
   it("keeps Stripe checkout creation disabled when no processor is configured", async () => {

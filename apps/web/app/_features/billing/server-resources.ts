@@ -90,6 +90,7 @@ function buildBillingFallback(
       invoices: [],
       payments: [],
       paymentRequests: [],
+      paymentImportReviewRecords: [],
     };
   });
 
@@ -113,6 +114,8 @@ function buildBillingFallback(
       lockedPeriodCount: 0,
       activeLockedPeriodCount: 0,
       activeRateRuleCount: 0,
+      paymentImportReviewCount: 0,
+      paymentImportConflictCount: 0,
     },
     periodLocks: [],
     rateRules: [],
@@ -135,6 +138,8 @@ function emptyBillingAccessDeniedResponse(): BillingDashboardResponse {
       lockedPeriodCount: 0,
       activeLockedPeriodCount: 0,
       activeRateRuleCount: 0,
+      paymentImportReviewCount: 0,
+      paymentImportConflictCount: 0,
     },
     periodLocks: [],
     rateRules: [],

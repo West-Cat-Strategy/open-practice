@@ -158,6 +158,10 @@ import {
   updateDrizzleHostedPaymentRequest,
 } from "./hosted-payment-requests/drizzle.js";
 import {
+  createDrizzlePaymentImportReviewRecord,
+  listDrizzlePaymentImportReviewRecords,
+} from "./payment-import-review-records/drizzle.js";
+import {
   createDrizzleBillingPeriodLock,
   createDrizzleBillingRateRule,
   listDrizzleBillingPeriodLocks,
@@ -1833,6 +1837,19 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     updates: Parameters<OpenPracticeRepository["updateHostedPaymentRequest"]>[2],
   ): ReturnType<OpenPracticeRepository["updateHostedPaymentRequest"]> {
     return updateDrizzleHostedPaymentRequest(this.db, firmId, requestId, updates);
+  }
+
+  async createPaymentImportReviewRecord(
+    record: Parameters<OpenPracticeRepository["createPaymentImportReviewRecord"]>[0],
+  ): ReturnType<OpenPracticeRepository["createPaymentImportReviewRecord"]> {
+    return createDrizzlePaymentImportReviewRecord(this.db, record);
+  }
+
+  async listPaymentImportReviewRecords(
+    firmId: string,
+    options: Parameters<OpenPracticeRepository["listPaymentImportReviewRecords"]>[1] = {},
+  ): ReturnType<OpenPracticeRepository["listPaymentImportReviewRecords"]> {
+    return listDrizzlePaymentImportReviewRecords(this.db, firmId, options);
   }
 
   async createTrustTransferRequest(

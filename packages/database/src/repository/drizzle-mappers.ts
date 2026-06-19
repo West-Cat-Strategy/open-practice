@@ -86,6 +86,7 @@ import {
   type MatterLifecycleTransitionRecord,
   type MatterParty,
   type PaymentAllocationRecord,
+  type PaymentImportReviewRecord,
   type PortalGrant,
   type PortalDocumentAccess,
   type ProviderSettingRecord,
@@ -3019,6 +3020,46 @@ export function hostedPaymentRequestInsert(
     createdAt: new Date(request.createdAt),
     updatedAt: new Date(request.updatedAt),
     expiresAt: request.expiresAt ? new Date(request.expiresAt) : null,
+  };
+}
+
+export function mapPaymentImportReviewRecordRow(
+  row: typeof schema.paymentImportReviewRecords.$inferSelect,
+): PaymentImportReviewRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    matterId: row.matterId,
+    providerLabel: row.providerLabel,
+    eventFamily: row.eventFamily,
+    eventStatus: row.eventStatus,
+    externalEventId: row.externalEventId,
+    externalPaymentId: row.externalPaymentId ?? undefined,
+    externalDepositId: row.externalDepositId ?? undefined,
+    amountCents: row.amountCents,
+    currency: row.currency,
+    observedAt: dateToIso(row.observedAt),
+    importedAt: row.importedAt.toISOString(),
+    importedByUserId: row.importedByUserId,
+    candidateInvoiceId: row.candidateInvoiceId ?? undefined,
+    candidateHostedPaymentRequestId: row.candidateHostedPaymentRequestId ?? undefined,
+    duplicateOfRecordId: row.duplicateOfRecordId ?? undefined,
+    conflictReason: row.conflictReason ?? undefined,
+    reviewState: row.reviewState,
+    normalizedEvidenceFingerprint: row.normalizedEvidenceFingerprint,
+    boundaries: row.boundaries,
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+export function paymentImportReviewRecordInsert(
+  record: PaymentImportReviewRecord,
+): typeof schema.paymentImportReviewRecords.$inferInsert {
+  return {
+    ...record,
+    observedAt: record.observedAt ? new Date(record.observedAt) : null,
+    importedAt: new Date(record.importedAt),
+    updatedAt: new Date(record.updatedAt),
   };
 }
 

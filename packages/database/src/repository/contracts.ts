@@ -28,6 +28,7 @@ import type { LegalResearchArtifactRepository } from "./legal-research-artifacts
 import type { MatterLifecycleRepository } from "./matter-lifecycle-contracts.js";
 import type { MatterWorkspaceRepository } from "./matter-workspace-contracts.js";
 import type { OperationalViewsRepository } from "./operational-views-contracts.js";
+import type { PaymentImportReviewRecordRepository } from "./payment-import-review-records-contracts.js";
 import type { PortalAccessRepository } from "./portal-access-contracts.js";
 import type { ProviderSettingsRepository } from "./provider-settings-contracts.js";
 import type { PublicConsultationIntakeRepository } from "./public-consultation-intakes-contracts.js";
@@ -66,6 +67,7 @@ export * from "./legal-research-artifacts-contracts.js";
 export * from "./matter-lifecycle-contracts.js";
 export * from "./matter-workspace-contracts.js";
 export * from "./operational-views-contracts.js";
+export * from "./payment-import-review-records-contracts.js";
 export * from "./portal-access-contracts.js";
 export * from "./provider-settings-contracts.js";
 export * from "./public-consultation-intakes-contracts.js";
@@ -228,6 +230,7 @@ export interface OpenPracticeRepository
     BillingInvoicePaymentRepository,
     BillingControlsRepository,
     HostedPaymentRequestRepository,
+    PaymentImportReviewRecordRepository,
     PracticeSetupRepository,
     ProviderSettingsRepository,
     AuditRepository,
