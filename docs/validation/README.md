@@ -18,6 +18,15 @@ skipped-check context. The live workboard remains
 
 ## Current Handoff Notes
 
+The 2026-06-19 self-hosting optimization proof is recorded in
+[OP_SELF_HOSTING_OPTIMIZATION_PROOF_2026-06-19.md](OP_SELF_HOSTING_OPTIMIZATION_PROOF_2026-06-19.md).
+It covers same-origin browser API mode, the focused `docker-compose.selfhost.yml` profile,
+`pnpm selfhost:check`, worker production-readiness ratchets, and the self-hosting runbook while
+preserving the local development Compose profile, public API route shapes, production setup gate,
+payment/trust boundaries, and synthetic-only proof posture. The proof records selected package,
+dependency, docs, policy, Docker app-smoke, Docker E2E, `pnpm ci:local`, and `git diff --check`
+validation as passing.
+
 The 2026-06-18 database access hot-path efficiency proof is recorded in
 [OP_DATABASE_ACCESS_HOT_PATH_EFFICIENCY_PROOF_2026-06-18.md](OP_DATABASE_ACCESS_HOT_PATH_EFFICIENCY_PROOF_2026-06-18.md).
 It covers the focused internal refactor for hot-path schema indexes, batched Drizzle repository

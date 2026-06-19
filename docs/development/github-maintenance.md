@@ -55,6 +55,9 @@ evidence directory is needed.
   images with Docker Scout when available, prefer deterministic service tags over `latest`, run
   `pnpm docker:app-smoke` when app image behavior changes, and document residual upstream CVEs that
   have no safer same-scope image recommendation.
+- For self-host profile changes, run
+  `pnpm selfhost:check -- --env-file docker/selfhost.example.env --allow-synthetic-example` for the
+  synthetic render proof, then repeat with the operator's ignored env file before real startup.
 
 ### Docker Dependency Snapshot
 

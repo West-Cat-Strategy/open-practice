@@ -243,6 +243,36 @@ describe("worker queue foundation", () => {
           NODE_ENV: "production",
           DATABASE_URL: "postgresql://open_practice:open_practice@localhost:5432/open_practice",
           OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY: providerConfigEncryptionKey,
+          OPEN_PRACTICE_DEV_SEED: true,
+        }),
+      ),
+    ).toThrow("OPEN_PRACTICE_DEV_SEED cannot be true in production");
+    expect(() =>
+      validateWorkerReadiness(
+        workerEnv({
+          NODE_ENV: "production",
+          DATABASE_URL: "postgresql://open_practice:open_practice@localhost:5432/open_practice",
+          OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY: providerConfigEncryptionKey,
+          OPEN_PRACTICE_ALLOW_DOCKER_BRIDGE_SETUP: true,
+        }),
+      ),
+    ).toThrow("OPEN_PRACTICE_ALLOW_DOCKER_BRIDGE_SETUP cannot be true in production");
+    expect(() =>
+      validateWorkerReadiness(
+        workerEnv({
+          NODE_ENV: "production",
+          DATABASE_URL: "postgresql://open_practice:open_practice@localhost:5432/open_practice",
+          OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY: providerConfigEncryptionKey,
+          E2E_MODE: "docker",
+        }),
+      ),
+    ).toThrow("E2E_MODE cannot be configured in production");
+    expect(() =>
+      validateWorkerReadiness(
+        workerEnv({
+          NODE_ENV: "production",
+          DATABASE_URL: "postgresql://open_practice:open_practice@localhost:5432/open_practice",
+          OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY: providerConfigEncryptionKey,
           S3_ENDPOINT: "http://localhost:9000",
           S3_ACCESS_KEY: "open_practice",
           S3_SECRET_KEY: "open_practice_secret",

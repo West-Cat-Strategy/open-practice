@@ -7,6 +7,8 @@ const isProduction = env.NODE_ENV === "production";
 const dockerLocalDev = env.OPEN_PRACTICE_DOCKER_LOCAL_DEV === "true";
 const relaxedCsp = env.OPEN_PRACTICE_RELAXED_CSP === "true";
 const imageProfile = env.OPEN_PRACTICE_IMAGE_PROFILE ?? "production";
+const browserApiMode = env.OPEN_PRACTICE_BROWSER_API_MODE?.trim() || "external";
+const sameOriginBrowserApi = browserApiMode === "same-origin" || dockerLocalDev;
 
 export function validateRelaxedCspFlag({
   relaxed = relaxedCsp,
@@ -80,7 +82,21 @@ function originFromUrl(value) {
   }
 }
 
-const apiOrigin = originFromUrl(env.NEXT_PUBLIC_API_BASE_URL ?? env.API_BASE_URL);
+function optionalEnv(value) {
+  return value?.trim() ? value : undefined;
+}
+
+export function defaultApiRewriteBaseUrl({
+  localDockerDev = dockerLocalDev,
+  sameOriginApi = sameOriginBrowserApi,
+} = {}) {
+  return localDockerDev || sameOriginApi ? "http://api:4000" : "http://localhost:4000";
+}
+
+const apiRewriteBaseUrl = optionalEnv(env.API_BASE_URL) ?? defaultApiRewriteBaseUrl();
+const apiOrigin = sameOriginBrowserApi
+  ? undefined
+  : originFromUrl(optionalEnv(env.NEXT_PUBLIC_API_BASE_URL) ?? optionalEnv(env.API_BASE_URL));
 const cspConnectSources = ["'self'", "http://localhost:*", "http://127.0.0.1:*", apiOrigin].filter(
   Boolean,
 );
@@ -122,6 +138,10 @@ if (isProduction) {
   });
 }
 
+export function buildApiRewriteDestination(apiBaseUrl = apiRewriteBaseUrl) {
+  return `${apiBaseUrl.replace(/\/+$/, "")}/api/:path*`;
+}
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   devIndicators: false,
@@ -137,6 +157,14 @@ const nextConfig = {
       {
         source: "/:path*",
         headers: securityHeaders,
+      },
+    ];
+  },
+  async rewrites() {
+    return [
+      {
+        source: "/api/:path*",
+        destination: buildApiRewriteDestination(),
       },
     ];
   },

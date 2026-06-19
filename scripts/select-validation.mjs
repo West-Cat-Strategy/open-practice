@@ -31,6 +31,8 @@ export const COMMANDS = {
   providersBuild: "pnpm --filter @open-practice/providers build",
   providersTest: "pnpm --filter @open-practice/providers test",
   providersTypecheck: "pnpm --filter @open-practice/providers typecheck",
+  selfhostCheck:
+    "pnpm selfhost:check -- --env-file docker/selfhost.example.env --allow-synthetic-example",
   test: "pnpm test",
   webTest: "pnpm --filter @open-practice/web test",
   webTypecheck: "pnpm --filter @open-practice/web typecheck",
@@ -45,6 +47,7 @@ export const COMMAND_ORDER = [
   COMMANDS.depsLicenses,
   COMMANDS.dockerResidualWatch,
   COMMANDS.dockerAppSmoke,
+  COMMANDS.selfhostCheck,
   COMMANDS.e2eHost,
   COMMANDS.e2eDocker,
   COMMANDS.e2eFirstRun,
@@ -337,6 +340,7 @@ export function classifyPath(path) {
   if (isRuntimeConfig(path)) {
     commands.add(COMMANDS.dockerResidualWatch);
     commands.add(COMMANDS.dockerAppSmoke);
+    commands.add(COMMANDS.selfhostCheck);
     commands.add(COMMANDS.e2eDocker);
     commands.add(COMMANDS.formatCheck);
     commands.add(COMMANDS.docsCheck);

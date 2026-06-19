@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import nextConfig, { buildContentSecurityPolicy, validateRelaxedCspFlag } from "../next.config.mjs";
+import nextConfig, {
+  buildApiRewriteDestination,
+  buildContentSecurityPolicy,
+  defaultApiRewriteBaseUrl,
+  validateRelaxedCspFlag,
+} from "../next.config.mjs";
 
 describe("web security headers", () => {
   it("sets baseline hardening headers without exposing the Next powered-by header", async () => {
@@ -91,5 +96,27 @@ describe("web security headers", () => {
         profile: "local-dev",
       }),
     ).not.toThrow();
+  });
+
+  it("rewrites same-origin API requests to the configured server API base", async () => {
+    const rewrites = await nextConfig.rewrites?.();
+
+    expect(rewrites).toEqual([
+      {
+        source: "/api/:path*",
+        destination: buildApiRewriteDestination(),
+      },
+    ]);
+    expect(buildApiRewriteDestination("http://api:4000/")).toBe("http://api:4000/api/:path*");
+  });
+
+  it("uses the Compose API service as the same-origin rewrite fallback", () => {
+    expect(defaultApiRewriteBaseUrl({ localDockerDev: true })).toBe("http://api:4000");
+    expect(defaultApiRewriteBaseUrl({ localDockerDev: false, sameOriginApi: true })).toBe(
+      "http://api:4000",
+    );
+    expect(defaultApiRewriteBaseUrl({ localDockerDev: false, sameOriginApi: false })).toBe(
+      "http://localhost:4000",
+    );
   });
 });

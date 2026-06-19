@@ -30,6 +30,7 @@
     "release:local": "node scripts/create-release-proof.mjs",
     "refs:clone": "node scripts/clone-oss-references.mjs",
     "security:scan": "node scripts/scan-tracked-secrets.mjs",
+    "selfhost:check": "node scripts/selfhost-check.mjs",
     "test": "turbo test && node --test scripts/*.test.mjs",
     "typecheck": "turbo typecheck",
     "verify:select": "node scripts/select-validation.mjs",

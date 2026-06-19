@@ -23,6 +23,7 @@ API contracts, database schema changes, auth changes, or release handoff.
 | Matterless browser E2E | `pnpm e2e:matterless`                            | Runs the dedicated Chromium matterless-auth coverage against the host memory runtime.                                                                                                                                 |
 | Client portal E2E      | `pnpm e2e:client-portal`                         | Runs the dedicated Chromium client-portal auth coverage against the host memory runtime.                                                                                                                              |
 | Docker app image smoke | `pnpm docker:app-smoke`                          | Pulls Redis, builds wrapped local service images plus API/Web/Worker images, starts the local Compose stack, migrates the default Compose database, checks API/web readiness, and supports app-image footprint proof. |
+| Self-host Compose gate | `pnpm selfhost:check -- --env-file <path>`       | Validates self-host env values and rendered `docker-compose.selfhost.yml` posture without starting the stack.                                                                                                         |
 | Database schema check  | `pnpm --filter @open-practice/database db:check` | Required for schema or migration changes.                                                                                                                                                                             |
 | Migration parity       | `pnpm migrations:check`                          | Verifies SQL migration files and Drizzle journal entries stay in lockstep.                                                                                                                                            |
 | Migration replay       | `pnpm migrations:replay`                         | Applies migrations to a disposable local PostgreSQL database and cleans it up.                                                                                                                                        |
@@ -71,7 +72,7 @@ Selection rules:
 | `e2e/**` or `playwright.config.*`                | `pnpm e2e:host`, `pnpm e2e:docker`, `node scripts/run-e2e.mjs first-run`, `pnpm e2e:matterless`, `pnpm e2e:client-portal`                                                                                                                                          |
 | `docs/**`                                        | `pnpm format:check`, `pnpm docs:check`, `pnpm policy:check`                                                                                                                                                                                                        |
 | `scripts/**`                                     | `pnpm policy:check`, `pnpm test`                                                                                                                                                                                                                                   |
-| Runtime config, Dockerfiles, or Compose          | `pnpm docker:residual-watch`, `pnpm e2e:docker`, `pnpm format:check`, `pnpm docs:check`, `pnpm policy:check`, `pnpm build`; add `pnpm docker:app-smoke` when app images, commands, or Compose runtime behavior change                                              |
+| Runtime config, Dockerfiles, or Compose          | `pnpm docker:residual-watch`, `pnpm docker:app-smoke`, `pnpm selfhost:check -- --env-file docker/selfhost.example.env --allow-synthetic-example`, `pnpm e2e:docker`, `pnpm format:check`, `pnpm docs:check`, `pnpm policy:check`, `pnpm build`                     |
 | Root config, local gate, Turbo, TS config        | `pnpm ci:local`                                                                                                                                                                                                                                                    |
 | Package manifests or lockfile                    | `pnpm ci:local`, `pnpm deps:audit`, `pnpm deps:licenses`                                                                                                                                                                                                           |
 
@@ -193,6 +194,11 @@ running on web `33000` and API `34000`. For footprint work, pair the smoke resul
 `docker image inspect open-practice-dev-api open-practice-dev-web open-practice-dev-worker --format '{{.RepoTags}} {{.Size}}'`
 so the proof records before/after API, Web, and Worker image sizes.
 
+`pnpm selfhost:check -- --env-file <path>` validates the focused self-host profile before startup.
+Use `-- --env-file docker/selfhost.example.env --allow-synthetic-example` only for the checked-in
+synthetic render proof; real deployments must use an ignored env file with unique secrets and HTTPS
+origins.
+
 ## Change-Type Guidance
 
 - API route, auth, permission, or lifecycle changes: run API tests, typecheck, policy checks, and `pnpm ci:local` before handoff.
@@ -201,9 +207,9 @@ so the proof records before/after API, Web, and Worker image sizes.
 - Web dashboard, route catalog, or UI state changes: run web tests and typecheck; use `pnpm build` for Next app integration proof, and `pnpm e2e:host` when rendered browser behavior changes.
 - External upload, public-token, object-storage, or release browser proof: run `pnpm e2e:docker` when Docker is available.
 - Dockerfile, Compose, or app-image runtime changes: run selector first, record the exact final path
-  set, then include `pnpm docker:residual-watch`, `pnpm docker:app-smoke`, `pnpm e2e:docker`,
-  app-image size evidence, and the selected static checks. If implementation files are still pending,
-  keep proof rows marked as pending rather than claiming final validation.
+  set, then include `pnpm docker:residual-watch`, `pnpm docker:app-smoke`, `pnpm selfhost:check`,
+  `pnpm e2e:docker`, app-image size evidence, and the selected static checks. If implementation
+  files are still pending, keep proof rows marked as pending rather than claiming final validation.
 - Documentation-only changes: run `pnpm format:check`, `pnpm docs:check`, and `pnpm policy:check`.
 
 ## Current Gaps

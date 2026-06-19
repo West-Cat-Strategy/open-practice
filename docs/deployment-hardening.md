@@ -89,6 +89,10 @@ Environment variables must be treated as deployment inputs, not application defa
   or recovery-code payloads.
 - `API_BASE_URL`, `WEB_PORT`, and `API_PORT` should be explicit per environment, with TLS termination
   and allowed origins configured at the edge.
+- Self-hosted web images may set `OPEN_PRACTICE_BROWSER_API_MODE=same-origin` so browser requests
+  stay on the public web origin while the Next.js server rewrites `/api/*` to the private internal
+  `API_BASE_URL`. This is the preferred single-host posture after first-run bootstrap; do not expose
+  the API publicly through the reverse proxy.
 - Public-consultation website origins configured in the API should be treated as route-specific:
   they are allowed only for public intake `POST`/preflight CORS and must not become credentialed CORS
   origins for authenticated dashboard routes.
@@ -97,6 +101,11 @@ Environment variables must be treated as deployment inputs, not application defa
   override inputs. Do not reuse the local Docker stack as a LAN or production API profile; the local
   profile also carries development secrets, local object-storage endpoints, Mailpit capture, and the
   local-dev web CSP posture.
+- `docker-compose.selfhost.yml` is the focused single-host profile for operator-managed TLS reverse
+  proxies. It must render with production API/Web/Worker containers, no Mailpit, no development seed
+  data, no memory repository, no Docker bridge setup, no relaxed CSP, loopback-only published
+  web/API setup/object-storage ports, and private PostgreSQL/Redis/Worker ports. Validate it with
+  `pnpm selfhost:check -- --env-file <ignored env file>` before startup.
 - `OPEN_PRACTICE_ALLOW_DOCKER_BRIDGE_SETUP` is a local Docker Compose-only bootstrap switch for
   first-run setup requests that arrive from the Docker bridge gateway. It must stay disabled in
   production and should not be paired with LAN-exposed setup ports.
