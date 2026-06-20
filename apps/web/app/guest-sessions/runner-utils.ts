@@ -8,8 +8,7 @@ import type { PublicGuestSessionResponse } from "../types";
 
 export type PublicGuestSessionErrorBody = PublicTokenErrorBody;
 
-export function buildGuestSessionPath(token: string, ...segments: string[]): string {
-  void token;
+export function buildGuestSessionPath(...segments: string[]): string {
   return buildPublicTokenHeaderPath("/api/portal/guest-sessions", ...segments);
 }
 

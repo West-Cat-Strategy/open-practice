@@ -30,5 +30,3 @@ export class EmbeddedSignatureProvider implements SignatureProvider {
     };
   }
 }
-
-export class ManualSignatureProvider extends EmbeddedSignatureProvider {}

@@ -52,13 +52,9 @@ function document(
 
 describe("public external upload runner helpers", () => {
   it("builds header-token paths without exposing token material", () => {
-    expect(buildPublicExternalUploadPath("token with / slash")).toBe(
-      "/api/portal/external-uploads",
-    );
-    expect(buildPublicExternalUploadIntentPath("token")).toBe(
-      "/api/portal/external-uploads/intents",
-    );
-    expect(buildPublicExternalUploadCompletePath("token", "document 001")).toBe(
+    expect(buildPublicExternalUploadPath()).toBe("/api/portal/external-uploads");
+    expect(buildPublicExternalUploadIntentPath()).toBe("/api/portal/external-uploads/intents");
+    expect(buildPublicExternalUploadCompletePath("document 001")).toBe(
       "/api/portal/external-uploads/documents/document%20001/complete",
     );
   });

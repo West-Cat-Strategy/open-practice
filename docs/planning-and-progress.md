@@ -10,8 +10,8 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 | Snapshot              | Value                                                                |
 | --------------------- | -------------------------------------------------------------------- |
-| Current focus         | 2026-06-19 active-lane closeout complete; `main` pushed and pruned.  |
-| Next recommended pick | Pick the next scoped row after a fresh status and selector check.    |
+| Current focus         | Dead-code/bloat prune is in proof on `prune/dead-code-bloat`.        |
+| Next recommended pick | Finish selector-selected validation and review/merge handoff.        |
 | Ready rows            | 0                                                                    |
 | Candidate rows        | 0                                                                    |
 | In progress rows      | 0                                                                    |
@@ -21,6 +21,19 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 | Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`     |
 
 ## Current Handoff Notes
+
+The 2026-06-19 `prune/dead-code-bloat` branch implements the first scoped dead-code and bloat prune
+slices from the approved plan. It removes stale/test-only API/web/worker exports, deletes tracked
+generated Playwright screenshots/JSON after converting durable proof references to local-evidence
+summaries, removes stale release-age excludes, narrows provider/domain/database package surfaces
+with explicit subpaths, moves fake providers and authorization fixtures out of production root
+barrels, and removes the unused Postgres repository alias. It preserves public HTTP routes and
+response shapes, authorization, redaction, payment/trust behavior, provider runtime behavior,
+ProseMirror dependencies, migration snapshots, public-token compatibility routes, existing
+reserved/deferred worker status wording, and synthetic-only proof data. Final exact-path
+selector, package/API/web/worker, dead-code, policy, build, and `pnpm ci:local` validation passed.
+Proof is recorded in
+[dead-code and bloat prune proof](validation/OP_DEAD_CODE_BLOAT_PRUNE_PROOF_2026-06-19.md).
 
 The 2026-06-19 active-lane mainline closeout is complete. The integration preserves all committed
 lane proof notes, resolves migrations through `0069_inbound_attachment_message_index`, keeps the

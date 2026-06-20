@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
-import {
-  EmbeddedAutomationProvider,
-  EmbeddedSignatureProvider,
-  FakeDraftAssistProvider,
-} from "../src/index.js";
+import { EmbeddedAutomationProvider, EmbeddedSignatureProvider } from "../src/index.js";
+import { FakeDraftAssistProvider } from "../src/testing.js";
 
 describe("embedded providers", () => {
   it("returns a deterministic embedded signature submission", async () => {

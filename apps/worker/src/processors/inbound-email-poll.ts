@@ -10,7 +10,7 @@ import {
 } from "@open-practice/domain";
 import type { JobLifecycleRecord } from "@open-practice/domain";
 import type { OpenPracticeRepository } from "@open-practice/database";
-import { ImapMailboxPoller } from "@open-practice/providers";
+import { ImapMailboxPoller } from "@open-practice/providers/email/imap";
 import type {
   WorkerJobEnvelope,
   WorkerJobQueue,

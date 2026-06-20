@@ -34,7 +34,7 @@ export default function GuestSessionRunner({ apiBaseUrl, token }: GuestSessionRu
     let cancelled = false;
     async function loadGuestSession(): Promise<void> {
       try {
-        const response = await fetch(`${apiBaseUrl}${buildGuestSessionPath(token)}`, {
+        const response = await fetch(`${apiBaseUrl}${buildGuestSessionPath()}`, {
           headers: publicTokenHeaders(token),
         });
         if (cancelled) return;
@@ -62,7 +62,7 @@ export default function GuestSessionRunner({ apiBaseUrl, token }: GuestSessionRu
     setCheckingIn(true);
     setStatus("Checking in...");
     try {
-      const response = await fetch(`${apiBaseUrl}${buildGuestSessionPath(token, "check-in")}`, {
+      const response = await fetch(`${apiBaseUrl}${buildGuestSessionPath("check-in")}`, {
         method: "POST",
         headers: publicTokenHeaders(token, { "Content-Type": "application/json" }),
         body: JSON.stringify({ attendanceConfirmation: { source: "guest_status_page" } }),

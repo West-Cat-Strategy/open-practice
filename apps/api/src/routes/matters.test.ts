@@ -5,7 +5,8 @@ import {
   type MatterSummary,
   type OpenPracticeRepository,
 } from "@open-practice/database";
-import { authorizationFixtureCases, type ProfessionalRole, type User } from "@open-practice/domain";
+import type { ProfessionalRole, User } from "@open-practice/domain";
+import { authorizationFixtureCases } from "@open-practice/domain/authorization-fixtures";
 import { registerMatterRoutes } from "./matters.js";
 
 const firmId = "firm-west-legal";

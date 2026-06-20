@@ -7,7 +7,7 @@ import type {
   CalendarEventsResponse,
 } from "./models";
 
-export function emptyCalendarDashboard(): CalendarDashboardResponse {
+function emptyCalendarDashboard(): CalendarDashboardResponse {
   return {
     eventsByMatterId: {},
     standaloneEvents: [],

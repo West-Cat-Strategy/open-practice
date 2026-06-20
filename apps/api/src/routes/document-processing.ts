@@ -4,13 +4,7 @@ import { registerDocumentProcessingStatusRoutes } from "./document-processing/st
 import { registerDocumentProcessingWorkbenchRoutes } from "./document-processing/workbench.js";
 import type { ApiRouteDependencies } from "./types.js";
 
-export { queueDocumentOcr } from "./document-processing/queue.js";
 export { buildDocumentProcessingStatus } from "./document-processing/status.js";
-export { assertOcrProviderConfigured } from "./document-processing/shared.js";
-export type {
-  QueueDocumentOcrInput,
-  QueueDocumentOcrResult,
-} from "./document-processing/shared.js";
 
 export function registerDocumentProcessingRoutes(
   server: FastifyInstance,

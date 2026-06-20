@@ -240,7 +240,6 @@
 
 .form-field span,
 .check-row span,
-.review-row span,
 .setup-actions span {
   color: var(--muted);
   font-size: 13px;
@@ -368,40 +367,6 @@
   background: var(--surface-muted);
   color: var(--muted);
   border-color: var(--line);
-}
-
-.review-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  border-bottom: 1px solid var(--line);
-  padding: 10px 0;
-  min-width: 0;
-}
-
-.setup-errors {
-  border: 1px solid rgba(255, 107, 74, 0.28);
-  border-radius: 8px;
-  background: rgba(255, 107, 74, 0.08);
-  color: var(--warning);
-  padding: 12px;
-}
-
-.setup-errors p {
-  margin: 0 0 6px;
-}
-
-.setup-errors p:last-child {
-  margin-bottom: 0;
-}
-
-.setup-ready {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--accent-strong);
-  font-weight: 800;
 }
 
 @keyframes contentReveal {

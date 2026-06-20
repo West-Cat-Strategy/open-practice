@@ -5,8 +5,10 @@ import type {
   EmailEventRecord,
   EmailOutboxRecord,
   JobLifecycleRecord,
+  ProfessionalRole,
+  User,
 } from "@open-practice/domain";
-import { authorizationFixtureCases, type ProfessionalRole, type User } from "@open-practice/domain";
+import { authorizationFixtureCases } from "@open-practice/domain/authorization-fixtures";
 import { hashToken } from "../http/auth-helpers.js";
 import { registerClientPortalRoutes } from "./client-portal.js";
 

@@ -1,6 +1,5 @@
 import { cookies } from "next/headers";
 import { serverApiBaseUrl } from "../api-base-urls";
-import type { ConnectorOperationsResponse } from "../_features/connectors/models";
 
 export const devHeaders = {
   "x-open-practice-user-id": process.env.DEV_AUTH_USER_ID ?? "user-admin",
@@ -63,7 +62,7 @@ export async function apiGetOptionalWithStatus<T>(
   path: string,
   fallback: T,
   headers: Record<string, string>,
-): Promise<{ data: T; status: ConnectorOperationsResponse["status"] }> {
+): Promise<{ data: T; status: "available" | "access_denied" | "unavailable" }> {
   try {
     return { data: await apiGet<T>(path, headers), status: "available" };
   } catch (error) {

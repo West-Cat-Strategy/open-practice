@@ -5,7 +5,7 @@ import {
   SMTP_PROVIDER_KEY,
 } from "@open-practice/domain";
 import type { OpenPracticeRepository } from "@open-practice/database";
-import { SmtpMailSender, type SmtpConfig } from "@open-practice/providers";
+import { SmtpMailSender, type SmtpConfig } from "@open-practice/providers/email/smtp";
 
 export type SmtpSenderFactory = (config: SmtpConfig) => MailSender;
 

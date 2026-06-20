@@ -4,7 +4,7 @@ import {
   InMemoryOpenPracticeRepository,
   type OpenPracticeRepository,
 } from "@open-practice/database";
-import { authorizationFixtureCases } from "@open-practice/domain";
+import { authorizationFixtureCases } from "@open-practice/domain/authorization-fixtures";
 import type { Contact, ProfessionalRole, User } from "@open-practice/domain";
 import { registerContactRoutes } from "./contacts.js";
 import type { ApiJobQueue } from "./types.js";

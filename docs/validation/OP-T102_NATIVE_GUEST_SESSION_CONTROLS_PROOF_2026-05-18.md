@@ -56,6 +56,7 @@ configuration, and guest-token signing enabled:
   visible.
 - Public `/guest-sessions/[token]` page rendered at desktop and mobile widths for issued, waiting,
   admitted, denied, revoked, locked, ended, expired, and guest-access-not-configured states.
-- Screenshots saved under `output/playwright/op-t102/`.
+- Screenshots were captured as local browser evidence and are no longer retained as tracked
+  generated artifacts.
 
 No remaining handoff checks are currently blocked.

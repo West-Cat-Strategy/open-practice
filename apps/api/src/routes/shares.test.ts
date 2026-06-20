@@ -2,7 +2,8 @@ import rateLimit from "@fastify/rate-limit";
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
 import { InMemoryOpenPracticeRepository } from "@open-practice/database";
-import { authorizationFixtureCases, type ProfessionalRole, type User } from "@open-practice/domain";
+import type { ProfessionalRole, User } from "@open-practice/domain";
+import { authorizationFixtureCases } from "@open-practice/domain/authorization-fixtures";
 import { PUBLIC_TOKEN_HEADER, hashToken } from "../http/auth-helpers.js";
 import {
   PUBLIC_TOKEN_MUTATION_RATE_LIMIT,

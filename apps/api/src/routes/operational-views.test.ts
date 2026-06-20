@@ -5,7 +5,11 @@ import {
   type OpenPracticeRepository,
 } from "@open-practice/database";
 import type { ProfessionalRole, User } from "@open-practice/domain";
-import { normalizeApiError } from "../http/response.js";
+import {
+  ApiHttpError,
+  UNEXPECTED_API_ERROR_CODE,
+  UNEXPECTED_API_ERROR_MESSAGE,
+} from "../http/response.js";
 import { registerOperationalViewRoutes } from "./operational-views.js";
 
 const servers: FastifyInstance[] = [];
@@ -41,6 +45,36 @@ interface SavedOperationalViewDefinitionsResponse {
   }>;
 }
 
+function errorEnvelope(code: string, message: string, details?: unknown) {
+  return {
+    success: false,
+    error: details === undefined ? { code, message } : { code, message, details },
+  };
+}
+
+function normalizeTestApiError(error: unknown): {
+  statusCode: number;
+  body: ReturnType<typeof errorEnvelope>;
+} {
+  if (error instanceof ApiHttpError) {
+    return {
+      statusCode: error.statusCode,
+      body: errorEnvelope(error.code, error.message, error.details),
+    };
+  }
+
+  if (error instanceof Error) {
+    const statusCode =
+      "statusCode" in error && typeof error.statusCode === "number" ? error.statusCode : 500;
+    return {
+      statusCode,
+      body: errorEnvelope(UNEXPECTED_API_ERROR_CODE, UNEXPECTED_API_ERROR_MESSAGE),
+    };
+  }
+
+  return { statusCode: 500, body: errorEnvelope("UNKNOWN_ERROR", "Unknown API error") };
+}
+
 function user(
   role: ProfessionalRole,
   assignedMatterIds: string[] = ["matter-001", "matter-002"],
@@ -66,7 +100,7 @@ function testServer(
   const authUser = input.authUser ?? user("owner_admin");
   const server = Fastify({ logger: false });
   server.setErrorHandler((error, _request, reply) => {
-    const normalized = normalizeApiError(error);
+    const normalized = normalizeTestApiError(error);
     reply.status(normalized.statusCode).send(normalized.body);
   });
   server.addHook("preHandler", async (request) => {

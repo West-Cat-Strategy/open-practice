@@ -2421,5 +2421,3 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     return promoteDrizzleInboundEmailAttachmentToDocument(this.db, input);
   }
 }
-
-export { DrizzleOpenPracticeRepository as PostgresOpenPracticeRepository };

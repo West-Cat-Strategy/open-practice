@@ -42,9 +42,7 @@ function guestSessionPayload(
 
 describe("guest session runner utilities", () => {
   it("builds header-token paths without exposing unsafe query construction", () => {
-    expect(buildGuestSessionPath("token/with spaces", "check-in")).toBe(
-      "/api/portal/guest-sessions/check-in",
-    );
+    expect(buildGuestSessionPath("check-in")).toBe("/api/portal/guest-sessions/check-in");
   });
 
   it("describes status-only guest lobby states", () => {

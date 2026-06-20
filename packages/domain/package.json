@@ -19,6 +19,10 @@
       "types": "./dist/operational-actions.d.ts",
       "default": "./dist/operational-actions.js"
     },
+    "./authorization-fixtures": {
+      "types": "./dist/authorization-fixtures.d.ts",
+      "default": "./dist/authorization-fixtures.js"
+    },
     "./calendar-models": {
       "types": "./dist/calendar-models.d.ts",
       "default": "./dist/calendar-models.js"

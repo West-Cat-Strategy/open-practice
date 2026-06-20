@@ -9,19 +9,19 @@ import type {
   OpenPracticeQueueName,
 } from "@open-practice/domain";
 import {
-  createDatabaseRuntime,
   createProviderConfigCipherFromKey,
+  isProviderConfigEncryptionKey,
+} from "@open-practice/database/config-encryption";
+import {
   DrizzleOpenPracticeRepository,
   InMemoryOpenPracticeRepository,
-  isProviderConfigEncryptionKey,
   type OpenPracticeRepository,
-} from "@open-practice/database";
-import {
-  EmbeddedAutomationProvider,
-  TesseractOcrProvider,
-  ImapMailboxPoller,
-  MailParserProvider,
-} from "@open-practice/providers";
+} from "@open-practice/database/repository";
+import { createDatabaseRuntime } from "@open-practice/database/runtime";
+import { EmbeddedAutomationProvider } from "@open-practice/providers/automation";
+import { ImapMailboxPoller } from "@open-practice/providers/email/imap";
+import { MailParserProvider } from "@open-practice/providers/email/parser";
+import { TesseractOcrProvider } from "@open-practice/providers/ocr/tesseract";
 import { createOpenPracticeQueue, openPracticeQueues, redisConnectionFromUrl } from "./queues.js";
 import { ProviderConfiguredSmtpMailSender } from "./provider-mail-sender.js";
 import {

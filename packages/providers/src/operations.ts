@@ -7,7 +7,6 @@ import type {
   MediaProcessor,
   MediaTranscriptRecord,
   OcrProvider,
-  PaymentProcessorProvider,
   TranscriptionProvider,
 } from "@open-practice/domain";
 import { ProviderConfigurationError } from "./errors.js";
@@ -65,13 +64,5 @@ export class DisabledMediaProcessor implements MediaProcessor {
     content: Uint8Array;
   }): Promise<MediaDerivativeRecord[]> {
     throw disabled("Media processor");
-  }
-}
-
-export class DisabledPaymentProcessorProvider implements PaymentProcessorProvider {
-  async createCheckoutSession(): Promise<
-    Awaited<ReturnType<PaymentProcessorProvider["createCheckoutSession"]>>
-  > {
-    throw disabled("Payment processor");
   }
 }

@@ -18,6 +18,16 @@ skipped-check context. The live workboard remains
 
 ## Current Handoff Notes
 
+The 2026-06-19 dead-code and bloat prune proof is recorded in
+[OP_DEAD_CODE_BLOAT_PRUNE_PROOF_2026-06-19.md](OP_DEAD_CODE_BLOAT_PRUNE_PROOF_2026-06-19.md).
+It covers the branch-first `prune/dead-code-bloat` cleanup for low-risk API/web/worker export
+contraction, generated Playwright artifact removal, stale release-age excludes, provider/domain/
+database package-surface narrowing, selector-driven validation, and preserved public route,
+authorization, redaction, payment/trust, provider, migration, ProseMirror, public-token, and
+synthetic-data boundaries. It also records the exact-path selector rerun, explicit
+`pnpm deadcode:check`, package/API/web/worker gates, repo policy/build checks, and `pnpm ci:local`
+closeout. Larger contacts/dashboard/E2E structural splits remain later prune slices.
+
 The 2026-06-19 mainline merge/push/prune proof is recorded in
 [OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-19.md](OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-19.md).
 It covers the active dirty-lane consolidation through

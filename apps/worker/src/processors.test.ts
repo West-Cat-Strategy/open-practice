@@ -3,7 +3,8 @@ import { describe, expect, it } from "vitest";
 import type { S3Client } from "@aws-sdk/client-s3";
 import { InMemoryOpenPracticeRepository } from "@open-practice/database";
 import type { MailSender, OcrProvider } from "@open-practice/domain";
-import { EmbeddedAutomationProvider, FakeDraftAssistProvider } from "@open-practice/providers";
+import { EmbeddedAutomationProvider } from "@open-practice/providers/automation";
+import { FakeDraftAssistProvider } from "@open-practice/providers/testing";
 import { processOpenPracticeJob, type ConnectorDeliveryRequest } from "./processors.js";
 
 describe("worker processors", () => {
@@ -831,7 +832,22 @@ describe("worker processors", () => {
   });
 
   it("skips reserved document-processing queues with redacted deferred metadata", async () => {
-    for (const queueName of ["ai_triage", "transcription", "media"] as const) {
+    const queues = [
+      {
+        queueName: "ai_triage",
+        reason: "AI triage is reserved/deferred and has no worker processor",
+      },
+      {
+        queueName: "transcription",
+        reason: "Transcription is reserved/deferred and has no worker processor",
+      },
+      {
+        queueName: "media",
+        reason: "Media processing is reserved/deferred and has no worker processor",
+      },
+    ] as const;
+
+    for (const { queueName, reason } of queues) {
       const result = await processOpenPracticeJob({
         queueName,
         jobName: "reserved_worker_task",
@@ -850,7 +866,7 @@ describe("worker processors", () => {
 
       expect(result).toMatchObject({
         status: "skipped",
-        reason: expect.stringContaining("reserved/deferred"),
+        reason,
         metadata: {
           firmId: "firm-west-legal",
           resourceType: "document",

@@ -37,7 +37,7 @@ export default function ShareLinkRunner({ apiBaseUrl, token }: ShareLinkRunnerPr
     let cancelled = false;
     async function loadShare(): Promise<void> {
       try {
-        const response = await fetch(`${apiBaseUrl}${buildPublicSharePath(token)}`, {
+        const response = await fetch(`${apiBaseUrl}${buildPublicSharePath()}`, {
           headers: publicTokenHeaders(token),
         });
         if (cancelled) return;
@@ -79,7 +79,7 @@ export default function ShareLinkRunner({ apiBaseUrl, token }: ShareLinkRunnerPr
     setVerifying(true);
     setStatus("Completing email verification...");
     try {
-      const response = await fetch(`${apiBaseUrl}${buildShareEmailVerificationPath(token)}`, {
+      const response = await fetch(`${apiBaseUrl}${buildShareEmailVerificationPath()}`, {
         method: "POST",
         headers: publicTokenHeaders(token, { "Content-Type": "application/json" }),
         body: JSON.stringify({ verificationCode: code }),

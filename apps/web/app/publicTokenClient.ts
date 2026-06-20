@@ -17,18 +17,6 @@ export interface PublicTokenErrorBody {
 
 export const PUBLIC_TOKEN_HEADER = "x-open-practice-public-token";
 
-export function buildPublicTokenPath(
-  basePath: string,
-  token: string,
-  ...segments: string[]
-): string {
-  const normalizedBase = basePath.startsWith("/") ? basePath : `/${basePath}`;
-  const pathSegments = [normalizedBase.replace(/\/+$/, ""), token, ...segments];
-  return pathSegments
-    .map((segment, index) => (index === 0 ? segment : encodeURIComponent(segment)))
-    .join("/");
-}
-
 export function buildPublicTokenHeaderPath(basePath: string, ...segments: string[]): string {
   const normalizedBase = basePath.startsWith("/") ? basePath : `/${basePath}`;
   const pathSegments = [normalizedBase.replace(/\/+$/, ""), ...segments];

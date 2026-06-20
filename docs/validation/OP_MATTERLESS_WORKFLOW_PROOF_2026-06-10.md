@@ -45,11 +45,6 @@ only for matter-scoped events. Audit metadata records safe IDs, counts, status, 
 - `docs/validation/OP_MATTERLESS_WORKFLOW_PROOF_2026-06-10.md`
 - `e2e/helpers/e2e-fixtures.ts`
 - `e2e/ui-ux.spec.ts`
-- `output/playwright/matterless-open-practice/calendar-desktop.png`
-- `output/playwright/matterless-open-practice/calendar-mobile.png`
-- `output/playwright/matterless-open-practice/contacts-desktop.png`
-- `output/playwright/matterless-open-practice/contacts-mobile.png`
-- `output/playwright/matterless-open-practice/screenshot-results.json`
 - `packages/database/migrations/0052_matterless_contacts_calendar.sql`
 - `packages/database/migrations/meta/_journal.json`
 - `packages/database/src/repository/calendar-events-contracts.ts`
@@ -183,17 +178,10 @@ returned an empty list, created a standalone contact, created firm and client ca
 created a dashboard reminder for the client event, and captured contacts/calendar desktop and mobile
 views.
 
-Screenshots:
-
-- `output/playwright/matterless-open-practice/contacts-desktop.png`
-- `output/playwright/matterless-open-practice/calendar-desktop.png`
-- `output/playwright/matterless-open-practice/contacts-mobile.png`
-- `output/playwright/matterless-open-practice/calendar-mobile.png`
-- `output/playwright/matterless-open-practice/screenshot-results.json`
-
-The screenshot result JSON records zero console errors for Contacts and Calendar. Local
-cookie/session setup artifacts were removed from the proof folder and are not part of the tracked
-proof.
+Screenshots were captured for Contacts and Calendar at desktop and mobile sizes, and the local
+screenshot-result JSON recorded zero console errors. Those generated PNG/JSON files are now treated
+as ignored local evidence rather than tracked repository artifacts. Local cookie/session setup
+artifacts were removed from the proof folder and are not part of the tracked proof.
 
 ## Skipped Or Unavailable
 

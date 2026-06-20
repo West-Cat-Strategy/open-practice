@@ -6,6 +6,7 @@ import type {
 } from "@open-practice/domain";
 import { isAllowedOcrLanguage } from "@open-practice/domain";
 import type { OpenPracticeRepository } from "@open-practice/database";
+import { metadataString } from "./metadata.js";
 import type { WorkerJobEnvelope, WorkerJobResult, WorkerS3Storage } from "./types.js";
 
 export const documentConversionReviewJobName = "document_conversion_review" as const;
@@ -13,14 +14,6 @@ const documentConversionReviewSummaryPosture = "op_authored_metadata_only";
 
 function documentScanSafeForOcr(scanStatus: string): boolean {
   return scanStatus === "passed" || scanStatus === "not_required";
-}
-
-function metadataString(
-  metadata: Record<string, unknown> | undefined,
-  key: string,
-): string | undefined {
-  const value = metadata?.[key];
-  return typeof value === "string" && value.trim() ? value : undefined;
 }
 
 function metadataNumber(
@@ -111,7 +104,8 @@ export async function processDocumentConversionReviewJob(input: {
   repository: OpenPracticeRepository;
 }): Promise<WorkerJobResult> {
   const { data, repository } = input;
-  const documentId = data.resourceId ?? metadataString(data.metadata, "documentId");
+  const metadata = data.metadata ?? {};
+  const documentId = data.resourceId ?? metadataString(metadata, "documentId");
   const firmId = data.firmId;
 
   if (!documentId) throw new Error("Missing documentId in conversion review job data");
@@ -150,7 +144,7 @@ export async function processDocumentConversionReviewJob(input: {
 
   const extraction = latestCompletedExtraction({
     records: await repository.getDocumentTextExtractions(firmId, documentId),
-    extractionId: metadataString(data.metadata, "extractionId"),
+    extractionId: metadataString(metadata, "extractionId"),
   });
   if (!extraction) {
     return {
@@ -174,8 +168,8 @@ export async function processDocumentConversionReviewJob(input: {
     kind: "document_analysis_status",
   });
   const existing = findDocumentAnalysisArtifact(artifacts, documentId);
-  const jobId = metadataString(data.metadata, "jobId");
-  const requestedByUserId = metadataString(data.metadata, "requestedByUserId");
+  const jobId = metadataString(metadata, "jobId");
+  const requestedByUserId = metadataString(metadata, "requestedByUserId");
   const createdByUserId = existing?.createdByUserId ?? requestedByUserId;
   if (!createdByUserId) {
     return {

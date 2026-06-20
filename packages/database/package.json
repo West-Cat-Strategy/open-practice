@@ -10,6 +10,26 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./config-encryption": {
+      "types": "./dist/config-encryption.d.ts",
+      "default": "./dist/config-encryption.js"
+    },
+    "./repository": {
+      "types": "./dist/repository.d.ts",
+      "default": "./dist/repository.js"
+    },
+    "./runtime": {
+      "types": "./dist/runtime.d.ts",
+      "default": "./dist/runtime.js"
+    },
+    "./schema": {
+      "types": "./dist/schema.d.ts",
+      "default": "./dist/schema.js"
+    },
+    "./seed": {
+      "types": "./dist/seed.d.ts",
+      "default": "./dist/seed.js"
     }
   },
   "scripts": {

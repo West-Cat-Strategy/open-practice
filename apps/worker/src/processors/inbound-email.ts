@@ -6,6 +6,7 @@ import {
 } from "@aws-sdk/client-s3";
 import type { InboundEmailParser } from "@open-practice/domain";
 import type { OpenPracticeRepository } from "@open-practice/database";
+import { metadataString } from "./metadata.js";
 import type { WorkerJobEnvelope, WorkerJobResult } from "./types.js";
 
 type InboundEmailS3Storage = {
@@ -13,14 +14,6 @@ type InboundEmailS3Storage = {
   bucket: string;
   serverSideEncryption?: "AES256";
 };
-
-function metadataString(
-  metadata: Record<string, unknown> | undefined,
-  key: string,
-): string | undefined {
-  const value = metadata?.[key];
-  return typeof value === "string" && value.trim() ? value.trim() : undefined;
-}
 
 function safePathPart(value: string): string {
   const normalized = value
@@ -61,7 +54,7 @@ export async function processInboundEmailJob(input: {
   inboundEmailParser: InboundEmailParser;
 }): Promise<WorkerJobResult> {
   const { data, repository, s3, inboundEmailParser } = input;
-  const rawStorageKey = metadataString(data.metadata, "rawStorageKey");
+  const rawStorageKey = metadataString(data.metadata ?? {}, "rawStorageKey");
   if (!rawStorageKey) {
     throw new Error("Missing rawStorageKey in inbound_email job data");
   }

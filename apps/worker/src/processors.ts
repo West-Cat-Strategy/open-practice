@@ -9,7 +9,7 @@ import type {
 } from "@open-practice/domain";
 import { IMAP_POLL_JOB_NAME } from "@open-practice/domain";
 import type { OpenPracticeRepository } from "@open-practice/database";
-import type { ImapMailboxPoller } from "@open-practice/providers";
+import type { ImapMailboxPoller } from "@open-practice/providers/email/imap";
 import { processAiTriageJob } from "./processors/ai-triage.js";
 import { processConnectorJob } from "./processors/connectors.js";
 import { processDocumentAssemblyJob } from "./processors/document-assembly.js";
