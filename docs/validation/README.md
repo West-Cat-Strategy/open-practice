@@ -18,6 +18,17 @@ skipped-check context. The live workboard remains
 
 ## Current Handoff Notes
 
+The 2026-06-20 mainline merge/push/prune proof is recorded in
+[OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-20.md](OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-20.md).
+It covers the 11-lane active dirty-worktree consolidation through
+`merge/open-practice-mainline-20260620`, including deposit-match review records, retention/hold
+review cues, inbound-email replay recovery, lifecycle close behavior, lifecycle action
+descriptors, AI proposal authorization fixtures, provider document conversion metadata, dead-code
+export/artifact pruning, API docs route inventory reconciliation, incomplete-implementation audit
+evidence, and self-hosting readiness evidence. It records selector-driven local validation, green
+`pnpm ci:local`, migration replay, dependency/license/supply-chain checks, Docker app smoke,
+Docker Chromium E2E, pending main push/prune evidence, and preserved stash count `42`.
+
 The 2026-06-20 OP-T160 deposit-match review records proof is recorded in
 [OP-T160_DEPOSIT_MATCH_REVIEW_RECORDS_PROOF_2026-06-20.md](OP-T160_DEPOSIT_MATCH_REVIEW_RECORDS_PROOF_2026-06-20.md).
 It covers the branch-first follow-up that adds existing manual-payment candidate cues to normalized
