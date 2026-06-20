@@ -2222,6 +2222,14 @@ describe("worker processors", () => {
       metadata: {
         providerPayload: { private: true },
         rawMarkdown: "## must not persist",
+        annotationSpans: [{ start: 0, end: 12, body: "Synthetic span must not persist" }],
+        prompt: "Synthetic prompt must not persist",
+        chunks: ["Synthetic chunk must not persist"],
+        embeddings: [[0.1, 0.2]],
+        storageKey: "matters/matter-001/private-conversion.md",
+        objectBody: "Synthetic object body must not persist",
+        privateExcerpt: "Synthetic private excerpt must not persist",
+        generatedSummary: "Synthetic generated summary must not persist",
       },
       createdAt: "2026-06-16T12:00:00.000Z",
       completedAt: "2026-06-16T12:01:00.000Z",
@@ -2244,6 +2252,14 @@ describe("worker processors", () => {
         requestedByUserId: "user-admin",
         rawMarkdown: "## must not persist",
         extractedText: privateOcrText,
+        annotationSpans: [{ start: 0, end: 12, body: "Synthetic span must not persist" }],
+        prompt: "Synthetic prompt must not persist",
+        chunks: ["Synthetic chunk must not persist"],
+        embeddings: [[0.1, 0.2]],
+        storageKey: "matters/matter-001/private-conversion.md",
+        objectBody: "Synthetic object body must not persist",
+        privateExcerpt: "Synthetic private excerpt must not persist",
+        generatedSummary: "Synthetic generated summary must not persist",
       },
     });
 
@@ -2262,6 +2278,14 @@ describe("worker processors", () => {
           requestedByUserId: "user-admin",
           rawMarkdown: "## must not persist",
           extractedText: privateOcrText,
+          annotationSpans: [{ start: 0, end: 12, body: "Synthetic span must not persist" }],
+          prompt: "Synthetic prompt must not persist",
+          chunks: ["Synthetic chunk must not persist"],
+          embeddings: [[0.1, 0.2]],
+          storageKey: "matters/matter-001/private-conversion.md",
+          objectBody: "Synthetic object body must not persist",
+          privateExcerpt: "Synthetic private excerpt must not persist",
+          generatedSummary: "Synthetic generated summary must not persist",
         },
       },
       jobLifecycleId: "job-conversion-review-worker",
@@ -2285,6 +2309,8 @@ describe("worker processors", () => {
         documentId: "doc-001",
         extractionId: "extraction-conversion-worker",
         artifactKind: "document_analysis_status",
+        provider: "local-document-conversion-metadata",
+        providerStatus: "metadata_only",
         sourceTextLength: privateOcrText.length,
         lineCount: 2,
         pageBreakCount: 1,
@@ -2314,6 +2340,8 @@ describe("worker processors", () => {
         source: "document_conversion_review",
         jobId: "job-conversion-review-worker",
         extractionId: "extraction-conversion-worker",
+        provider: "local-document-conversion-metadata",
+        providerStatus: "metadata_only",
         metadataOnly: true,
         reviewOnly: true,
         conversionReviewPosture: "ready_for_review",
@@ -2333,6 +2361,8 @@ describe("worker processors", () => {
         documentId: "doc-001",
         extractionId: "extraction-conversion-worker",
         artifactId: artifact?.id,
+        provider: "local-document-conversion-metadata",
+        providerStatus: "metadata_only",
         sourceTextLength: privateOcrText.length,
         lineCount: 2,
         pageBreakCount: 1,
@@ -2345,8 +2375,22 @@ describe("worker processors", () => {
     expect(JSON.stringify(artifact)).not.toContain(privateOcrText);
     expect(JSON.stringify(artifact)).not.toContain("## must not persist");
     expect(JSON.stringify(artifact)).not.toContain('"private":true');
+    expect(JSON.stringify(artifact)).not.toContain("Synthetic span must not persist");
+    expect(JSON.stringify(artifact)).not.toContain("Synthetic prompt must not persist");
+    expect(JSON.stringify(artifact)).not.toContain("Synthetic chunk must not persist");
+    expect(JSON.stringify(artifact)).not.toContain("Synthetic object body must not persist");
+    expect(JSON.stringify(artifact)).not.toContain("Synthetic private excerpt must not persist");
+    expect(JSON.stringify(artifact)).not.toContain("Synthetic generated summary must not persist");
     expect(JSON.stringify(job)).not.toContain(privateOcrText);
     expect(JSON.stringify(job)).not.toContain("rawMarkdown");
+    expect(JSON.stringify(job)).not.toContain("annotationSpans");
+    expect(JSON.stringify(job)).not.toContain("prompt");
+    expect(JSON.stringify(job)).not.toContain("chunks");
+    expect(JSON.stringify(job)).not.toContain("embeddings");
+    expect(JSON.stringify(job)).not.toContain("storageKey");
+    expect(JSON.stringify(job)).not.toContain("objectBody");
+    expect(JSON.stringify(job)).not.toContain("privateExcerpt");
+    expect(JSON.stringify(job)).not.toContain("generatedSummary");
   });
 
   it("skips OCR jobs before reading storage when document scanning has not passed", async () => {

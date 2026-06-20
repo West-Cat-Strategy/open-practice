@@ -273,6 +273,16 @@ posture, license/reuse review, and metadata-only job/audit/API/artifact/proof bo
 recorded in
 [provider-backed document conversion boundary proof](validation/OP_PROVIDER_DOCUMENT_CONVERSION_BOUNDARY_PROOF_2026-06-17.md).
 
+The 2026-06-20 provider-backed document conversion metadata follow-up adds the smallest local
+provider-backed posture beside the existing `document_conversion_review` runtime. The worker now
+calls a dependency-free local document-conversion metadata provider and records only provider/status
+posture, IDs, counts, lengths, OP-authored summary posture, policy flags, and review metadata in
+jobs and `document_analysis_status` artifacts. It adds no external provider SDK, schema, migration,
+object-storage write, new queue, new route, dashboard behavior, retained Markdown, annotations,
+chunks, embeddings, prompts, storage keys, provider payloads, private excerpts, or generated
+summaries. Proof is recorded in
+[provider document conversion metadata follow-up proof](validation/OP_PROVIDER_DOCUMENT_CONVERSION_METADATA_FOLLOWUP_PROOF_2026-06-20.md).
+
 The 2026-06-16 private document conversion and annotation boundary proof remains the historical
 docs-first policy record. The current local-only follow-up now adds metadata-only
 `document_conversion_review` jobs after verified upload, safe scan posture, and completed OCR

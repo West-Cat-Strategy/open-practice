@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { localDocumentConversionReviewProvider } from "@open-practice/providers";
 import { appendWorkflowAuditEvent } from "../audit-events.js";
 import {
   buildIdempotencyKey,
@@ -232,6 +233,8 @@ export function registerDocumentProcessingQueueRoutes(
         extractionId: latestExtraction.id,
         extractionStatus: latestExtraction.status,
         extractionEngine: latestExtraction.engine,
+        provider: localDocumentConversionReviewProvider,
+        providerStatus: "metadata_only",
         sourceTextLength,
         summaryPosture: "op_authored_metadata_only",
         checksumStatus: document.checksumStatus,
@@ -286,6 +289,8 @@ export function registerDocumentProcessingQueueRoutes(
                   extractionId: latestExtraction.id,
                   jobId,
                   requestedByUserId: request.auth.user.id,
+                  provider: localDocumentConversionReviewProvider,
+                  providerStatus: "metadata_only",
                   summaryPosture: "op_authored_metadata_only",
                   idempotencyKeyPresent: true,
                 },
@@ -312,6 +317,8 @@ export function registerDocumentProcessingQueueRoutes(
             matterId: document.matterId,
             documentId: document.id,
             extractionId: latestExtraction.id,
+            provider: localDocumentConversionReviewProvider,
+            providerStatus: "metadata_only",
             sourceTextLength,
             summaryPosture: "op_authored_metadata_only",
             idempotencyKeyPresent: true,

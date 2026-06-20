@@ -507,6 +507,8 @@ describe("document processing routes", () => {
       conversionReview: {
         posture: "queued",
         summaryPosture: "op_authored_metadata_only",
+        provider: "local-document-conversion-metadata",
+        providerStatus: "metadata_only",
         jobId: expect.any(String),
         counts: { sourceTextLength: 54 },
         policy: expect.objectContaining({
@@ -535,6 +537,8 @@ describe("document processing routes", () => {
             extractionId: "extraction-conversion-review-doc",
             jobId: payload.job.id,
             requestedByUserId: "user-owner_admin",
+            provider: "local-document-conversion-metadata",
+            providerStatus: "metadata_only",
             summaryPosture: "op_authored_metadata_only",
             idempotencyKeyPresent: true,
           }),
@@ -553,6 +557,8 @@ describe("document processing routes", () => {
             documentId: "doc-conversion-review",
             task: "document_conversion_review",
             extractionId: "extraction-conversion-review-doc",
+            provider: "local-document-conversion-metadata",
+            providerStatus: "metadata_only",
             sourceTextLength: 54,
             summaryPosture: "op_authored_metadata_only",
             requestedByUserId: "user-owner_admin",
@@ -562,7 +568,10 @@ describe("document processing routes", () => {
     );
     expect(JSON.stringify(jobs[0]?.data)).not.toContain("Synthetic OCR text");
     expect(JSON.stringify(jobs[0]?.data)).not.toContain("rawMarkdown");
+    expect(JSON.stringify(jobs[0]?.data)).not.toContain("providerPayload");
     expect(JSON.stringify(payload)).not.toContain("Synthetic OCR text");
+    expect(JSON.stringify(payload)).not.toContain("# must not survive");
+    expect(JSON.stringify(payload)).not.toContain('"private":true');
     expect(workbench.json().documents).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -570,6 +579,8 @@ describe("document processing routes", () => {
           conversionReview: expect.objectContaining({
             posture: "queued",
             summaryPosture: "op_authored_metadata_only",
+            provider: "local-document-conversion-metadata",
+            providerStatus: "metadata_only",
             jobId: payload.job.id,
             counts: { sourceTextLength: 54 },
           }),
@@ -587,6 +598,8 @@ describe("document processing routes", () => {
         matterId: "matter-001",
         documentId: "doc-conversion-review",
         extractionId: "extraction-conversion-review-doc",
+        provider: "local-document-conversion-metadata",
+        providerStatus: "metadata_only",
         sourceTextLength: 54,
         summaryPosture: "op_authored_metadata_only",
         workflowStatus: "queued",
@@ -631,7 +644,19 @@ describe("document processing routes", () => {
       reviewOnly: true,
       metadata: {
         jobId: "job-conversion-review-completed",
+        provider: "local-document-conversion-metadata",
+        providerStatus: "metadata_only",
         counts: { sourceTextLength: 42, wordCount: 5, lineCount: 1 },
+        rawMarkdown: "# must not survive",
+        providerPayload: { private: true },
+        annotationSpans: [{ start: 0, end: 12, body: "Synthetic span" }],
+        prompt: "Synthetic prompt",
+        chunks: ["Synthetic chunk"],
+        embeddings: [[0.1, 0.2]],
+        storageKey: "matters/matter-001/private-conversion.md",
+        objectBody: "Synthetic object body",
+        privateExcerpt: "Synthetic private excerpt",
+        generatedSummary: "Synthetic generated summary",
       },
     });
 
@@ -648,12 +673,22 @@ describe("document processing routes", () => {
       conversionReview: {
         posture: "ready_for_review",
         summaryPosture: "op_authored_metadata_only",
+        provider: "local-document-conversion-metadata",
+        providerStatus: "metadata_only",
         jobId: "job-conversion-review-completed",
         artifactId: "artifact-conversion-review-doc-001",
         counts: { sourceTextLength: 42, wordCount: 5, lineCount: 1 },
       },
     });
     expect(JSON.stringify(response.json())).not.toContain("Synthetic completed OCR text");
+    expect(JSON.stringify(response.json())).not.toContain("# must not survive");
+    expect(JSON.stringify(response.json())).not.toContain('"private":true');
+    expect(JSON.stringify(response.json())).not.toContain("annotationSpans");
+    expect(JSON.stringify(response.json())).not.toContain("Synthetic prompt");
+    expect(JSON.stringify(response.json())).not.toContain("Synthetic chunk");
+    expect(JSON.stringify(response.json())).not.toContain("Synthetic object body");
+    expect(JSON.stringify(response.json())).not.toContain("Synthetic private excerpt");
+    expect(JSON.stringify(response.json())).not.toContain("Synthetic generated summary");
   });
 
   it("returns a matter-scoped sanitized document processing workbench", async () => {
