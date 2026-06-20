@@ -162,6 +162,8 @@ export interface DocumentConversionReviewSummary {
   summaryPosture: typeof documentConversionReviewSummaryPosture;
   jobId?: string;
   artifactId?: string;
+  provider?: string;
+  providerStatus?: string;
   counts?: DocumentConversionReviewCounts;
   policy: typeof documentConversionReviewPolicy;
 }
@@ -329,6 +331,14 @@ function conversionReviewCountsFromJob(
   return conversionReviewCountsFromMetadata(job?.metadata);
 }
 
+function metadataString(
+  metadata: Record<string, unknown> | undefined,
+  key: string,
+): string | undefined {
+  const value = metadata?.[key];
+  return typeof value === "string" && value.trim() ? value : undefined;
+}
+
 export function conversionReviewArtifactForDocument(
   document: DocumentRecord,
   artifacts: LegalResearchArtifactRecord[],
@@ -360,6 +370,8 @@ export function buildDocumentConversionReviewSummary(input: {
           ? input.artifact.metadata.jobId
           : input.latestJob?.id,
       artifactId: input.artifact.id,
+      provider: metadataString(input.artifact.metadata, "provider"),
+      providerStatus: metadataString(input.artifact.metadata, "providerStatus"),
       counts: artifactCounts,
       policy: documentConversionReviewPolicy,
     };
@@ -370,6 +382,8 @@ export function buildDocumentConversionReviewSummary(input: {
       posture: "queued",
       summaryPosture: documentConversionReviewSummaryPosture,
       jobId: input.latestJob.id,
+      provider: metadataString(input.latestJob.metadata, "provider"),
+      providerStatus: metadataString(input.latestJob.metadata, "providerStatus"),
       counts: conversionReviewCountsFromJob(input.latestJob),
       policy: documentConversionReviewPolicy,
     };
@@ -379,6 +393,8 @@ export function buildDocumentConversionReviewSummary(input: {
       posture: "failed",
       summaryPosture: documentConversionReviewSummaryPosture,
       jobId: input.latestJob.id,
+      provider: metadataString(input.latestJob.metadata, "provider"),
+      providerStatus: metadataString(input.latestJob.metadata, "providerStatus"),
       counts: conversionReviewCountsFromJob(input.latestJob),
       policy: documentConversionReviewPolicy,
     };
@@ -388,6 +404,8 @@ export function buildDocumentConversionReviewSummary(input: {
       posture: "ready_for_review",
       summaryPosture: documentConversionReviewSummaryPosture,
       jobId: input.latestJob.id,
+      provider: metadataString(input.latestJob.metadata, "provider"),
+      providerStatus: metadataString(input.latestJob.metadata, "providerStatus"),
       counts: conversionReviewCountsFromJob(input.latestJob),
       policy: documentConversionReviewPolicy,
     };

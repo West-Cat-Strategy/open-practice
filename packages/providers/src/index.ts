@@ -1,4 +1,5 @@
 export * from "./automation.js";
+export * from "./document-conversion.js";
 export * from "./draft-assist.js";
 export * from "./errors.js";
 export * from "./operations.js";

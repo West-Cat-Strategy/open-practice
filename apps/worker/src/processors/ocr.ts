@@ -6,6 +6,7 @@ import type {
 } from "@open-practice/domain";
 import { isAllowedOcrLanguage } from "@open-practice/domain";
 import type { OpenPracticeRepository } from "@open-practice/database";
+import { LocalDocumentConversionReviewProvider } from "@open-practice/providers";
 import type { WorkerJobEnvelope, WorkerJobResult, WorkerS3Storage } from "./types.js";
 
 export const documentConversionReviewJobName = "document_conversion_review" as const;
@@ -45,55 +46,6 @@ function latestCompletedExtraction(input: {
       (right.completedAt ?? right.createdAt).localeCompare(left.completedAt ?? left.createdAt),
     )
     .at(0);
-}
-
-function conversionReviewCounts(extraction: DocumentTextExtractionRecord): {
-  sourceTextLength: number;
-  wordCount: number;
-  lineCount: number;
-  nonEmptyLineCount: number;
-  paragraphCount: number;
-  pageBreakCount: number;
-  estimatedPageCount: number;
-} {
-  const value = extraction.extractedText ?? "";
-  const sourceTextLength =
-    value.length ||
-    metadataNumber(extraction.metadata, "textLength") ||
-    metadataNumber(extraction.metadata, "sourceTextLength") ||
-    0;
-  const lines = value.length === 0 ? [] : value.split(/\r\n|\r|\n/);
-  const wordCount = value.trim().length === 0 ? 0 : (value.match(/\S+/g) ?? []).length;
-  const pageBreakCount = (value.match(/\f/g) ?? []).length;
-  return {
-    sourceTextLength,
-    wordCount,
-    lineCount: lines.length,
-    nonEmptyLineCount: lines.filter((line) => line.trim().length > 0).length,
-    paragraphCount:
-      value.length === 0
-        ? 0
-        : value
-            .split(/\n\s*\n/)
-            .map((paragraph) => paragraph.trim())
-            .filter(Boolean).length,
-    pageBreakCount,
-    estimatedPageCount:
-      sourceTextLength > 0 ? Math.max(1, pageBreakCount + 1, Math.ceil(wordCount / 500)) : 0,
-  };
-}
-
-function conversionReviewPolicy() {
-  return {
-    metadataOnly: true,
-    reviewOnly: true,
-    rawOcrTextStored: false,
-    rawMarkdownStored: false,
-    annotationBodiesStored: false,
-    chunksStored: false,
-    embeddingsStored: false,
-    providerPayloadsStored: false,
-  };
 }
 
 function findDocumentAnalysisArtifact(
@@ -167,7 +119,14 @@ export async function processDocumentConversionReviewJob(input: {
     };
   }
 
-  const counts = conversionReviewCounts(extraction);
+  const conversionProvider = new LocalDocumentConversionReviewProvider();
+  const providerMetadata = conversionProvider.createMetadata({
+    sourceText: extraction.extractedText,
+    sourceTextLength:
+      metadataNumber(extraction.metadata, "textLength") ??
+      metadataNumber(extraction.metadata, "sourceTextLength"),
+  });
+  const counts = providerMetadata.counts;
   const now = new Date().toISOString();
   const artifacts = await repository.listLegalResearchArtifacts(firmId, {
     matterId: document.matterId,
@@ -229,13 +188,15 @@ export async function processDocumentConversionReviewJob(input: {
       extractionId: extraction.id,
       extractionEngine: extraction.engine,
       extractionStatus: extraction.status,
+      provider: providerMetadata.provider,
+      providerStatus: providerMetadata.providerStatus,
       counts,
-      policy: conversionReviewPolicy(),
-      metadataOnly: true,
-      reviewOnly: true,
+      policy: providerMetadata.policy,
+      metadataOnly: providerMetadata.metadataOnly,
+      reviewOnly: providerMetadata.reviewOnly,
       reviewState: existing?.reviewDecision ?? "ready_for_review",
-      conversionReviewPosture: "ready_for_review",
-      summaryPosture: documentConversionReviewSummaryPosture,
+      conversionReviewPosture: providerMetadata.conversionReviewPosture,
+      summaryPosture: providerMetadata.summaryPosture,
     },
   };
   const artifact = existing
@@ -253,6 +214,8 @@ export async function processDocumentConversionReviewJob(input: {
       extractionEngine: extraction.engine,
       artifactId: artifact.id,
       artifactKind: artifact.kind,
+      provider: providerMetadata.provider,
+      providerStatus: providerMetadata.providerStatus,
       sourceTextLength: counts.sourceTextLength,
       wordCount: counts.wordCount,
       lineCount: counts.lineCount,
@@ -261,10 +224,10 @@ export async function processDocumentConversionReviewJob(input: {
       pageBreakCount: counts.pageBreakCount,
       estimatedPageCount: counts.estimatedPageCount,
       reviewState: artifact.reviewDecision ?? artifact.status,
-      conversionReviewPosture: "ready_for_review",
-      summaryPosture: documentConversionReviewSummaryPosture,
-      metadataOnly: true,
-      reviewOnly: true,
+      conversionReviewPosture: providerMetadata.conversionReviewPosture,
+      summaryPosture: providerMetadata.summaryPosture,
+      metadataOnly: providerMetadata.metadataOnly,
+      reviewOnly: providerMetadata.reviewOnly,
     },
   };
 }

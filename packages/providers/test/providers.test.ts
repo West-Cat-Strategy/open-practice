@@ -3,6 +3,7 @@ import {
   EmbeddedAutomationProvider,
   EmbeddedSignatureProvider,
   FakeDraftAssistProvider,
+  LocalDocumentConversionReviewProvider,
 } from "../src/index.js";
 
 describe("embedded providers", () => {
@@ -60,6 +61,65 @@ describe("embedded providers", () => {
         packageDocumentId: "repair_notice_letter",
       },
     });
+  });
+});
+
+describe("document conversion review providers", () => {
+  it("returns deterministic metadata-only conversion review posture", () => {
+    const provider = new LocalDocumentConversionReviewProvider();
+    const privateText = "Synthetic provider-backed text.\nSecond line.\fThird page marker.";
+
+    const result = provider.createMetadata({
+      sourceText: privateText,
+      sourceTextLength: 999,
+    });
+
+    expect(result).toEqual({
+      provider: "local-document-conversion-metadata",
+      providerStatus: "metadata_only",
+      conversionReviewPosture: "ready_for_review",
+      summaryPosture: "op_authored_metadata_only",
+      metadataOnly: true,
+      reviewOnly: true,
+      sourceTextLength: privateText.length,
+      wordCount: 8,
+      lineCount: 2,
+      nonEmptyLineCount: 2,
+      paragraphCount: 1,
+      pageBreakCount: 1,
+      estimatedPageCount: 2,
+      counts: {
+        sourceTextLength: privateText.length,
+        wordCount: 8,
+        lineCount: 2,
+        nonEmptyLineCount: 2,
+        paragraphCount: 1,
+        pageBreakCount: 1,
+        estimatedPageCount: 2,
+      },
+      policy: {
+        metadataOnly: true,
+        reviewOnly: true,
+        rawOcrTextStored: false,
+        rawMarkdownStored: false,
+        annotationBodiesStored: false,
+        chunksStored: false,
+        embeddingsStored: false,
+        providerPayloadsStored: false,
+      },
+    });
+    expect(JSON.stringify(result)).not.toContain(privateText);
+    expect(result).not.toHaveProperty("rawOcrText");
+    expect(result).not.toHaveProperty("rawMarkdown");
+    expect(result).not.toHaveProperty("annotationBodies");
+    expect(result).not.toHaveProperty("annotationSpans");
+    expect(result).not.toHaveProperty("chunks");
+    expect(result).not.toHaveProperty("embeddings");
+    expect(result).not.toHaveProperty("storageKey");
+    expect(result).not.toHaveProperty("objectBody");
+    expect(result).not.toHaveProperty("prompt");
+    expect(result).not.toHaveProperty("providerPayload");
+    expect(result).not.toHaveProperty("summary");
   });
 });
 

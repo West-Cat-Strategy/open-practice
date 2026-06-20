@@ -293,6 +293,7 @@ const safeJobMetadataKeys = new Set([
   "providerCount",
   "providerEvidenceStored",
   "providerFailureStage",
+  "providerPosture",
   "providerMessageId",
   "providerModel",
   "providerPayloadStored",
