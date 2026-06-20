@@ -114,11 +114,11 @@ pnpm build
 | `pnpm architecture:check`                      | Passed  | Architecture import policy passed with 442 workspace import edges reviewed.                                                                |
 | `pnpm docker:app-smoke`                        | Passed  | Containerized API health was PostgreSQL-backed, web served, setup-status returned API JSON, and the disposable stack was torn down.        |
 | `pnpm e2e:docker`                              | Passed  | Docker Chromium suite passed 3/3, including dashboard sweep and external-upload receipt layout; disposable stack and volumes were removed. |
-| `pnpm verify:select -- --base-plus-dirty main` | Pending | To rerun after the final post-prune evidence update.                                                                                       |
-| `pnpm format:check`                            | Pending | To rerun after proof/index/workboard edits.                                                                                                |
-| `pnpm docs:check`                              | Pending | To rerun after proof/index/workboard edits.                                                                                                |
-| `pnpm policy:check`                            | Pending | To rerun after proof/index/workboard edits.                                                                                                |
-| `pnpm proof:reconcile -- --proof <this proof>` | Pending | To rerun after proof/index/workboard edits.                                                                                                |
+| `pnpm verify:select -- --files <proof docs>`   | Passed  | Selected `pnpm format:check`, `pnpm docs:check`, and `pnpm policy:check` for the proof/index/workboard closeout paths.                     |
+| `pnpm format:check`                            | Passed  | Prettier check passed after formatting this proof note.                                                                                    |
+| `pnpm docs:check`                              | Passed  | Documentation link validation passed.                                                                                                      |
+| `pnpm policy:check`                            | Passed  | Security, manifest, supply-chain, toolchain, env, architecture, dead-code, migration, OSS, docs, evidence, and boundary policies passed.   |
+| `pnpm proof:reconcile -- --proof <this proof>` | Passed  | Initial integrated proof reconciliation passed against 176 paths and the full selector command set before `main` was fast-forwarded.       |
 
 Validation forced one integration follow-up commit:
 
@@ -128,11 +128,41 @@ Validation forced one integration follow-up commit:
 
 ## Publish And Prune
 
-Pending final validated proof commit, `main` fast-forward, `origin/main` push, parity verification,
-clean merged worktree and branch pruning, and final stash-count confirmation. This section will be
-updated after those operations complete.
+After validation, local `main` was fast-forwarded from `2873e38f` to the validated integration
+commit `d872a062b094d2013f99eb003bba345691cd947d` and pushed to `origin/main`. Post-push parity
+confirmed:
 
-## Final Changed Paths
+| Check                                   | Result                                     |
+| --------------------------------------- | ------------------------------------------ |
+| `git rev-parse HEAD`                    | `d872a062b094d2013f99eb003bba345691cd947d` |
+| `git rev-parse main`                    | `d872a062b094d2013f99eb003bba345691cd947d` |
+| `git rev-parse origin/main`             | `d872a062b094d2013f99eb003bba345691cd947d` |
+| `git ls-remote origin refs/heads/main`  | `d872a062b094d2013f99eb003bba345691cd947d` |
+| `git rev-list --left-right --count ...` | `0 0`                                      |
+| `git status --short --branch`           | `## main...origin/main`                    |
+
+Only after parity, the 10 clean sibling worktrees whose branch heads were ancestors of `main` were
+removed:
+
+- `/Users/bryan/projects/open-practice-ai-proposal-authz-matrix-20260620`
+- `/Users/bryan/projects/open-practice-api-docs-route-inventory-reconciliation-20260620`
+- `/Users/bryan/projects/open-practice-dead-code-bloat`
+- `/Users/bryan/projects/open-practice-deposit-match-review-records-20260620`
+- `/Users/bryan/projects/open-practice-document-retention-hold-review-surface-20260620`
+- `/Users/bryan/projects/open-practice-inbound-email-operator-replay-20260620`
+- `/Users/bryan/projects/open-practice-lifecycle-review-action-descriptor-20260620`
+- `/Users/bryan/projects/open-practice-matter-lifecycle-close-command-20260620`
+- `/Users/bryan/projects/open-practice-provider-doc-conversion-metadata-2026-06-20`
+- `/Users/bryan/projects/open-practice-self-hosting-release-readiness-20260620`
+
+Merged local branches were deleted with `git branch -d`, including the temporary integration branch
+and the root audit branch. `git worktree prune` and `git remote prune origin` completed cleanly.
+Final inventory confirmed one worktree (`/Users/bryan/projects/open-practice` on `main`), one local
+branch (`main`), no unmerged local branches, and remote `origin` with only `refs/heads/main`.
+
+Stashes were left untouched. The initial and final stash count was `42`.
+
+## Integrated Path Inventory
 
 ```text
 apps/api/src/http/fresh-auth.ts
@@ -311,4 +341,12 @@ packages/providers/test/providers.test.ts
 pnpm-workspace.yaml
 scripts/dev-seed.mjs
 scripts/route-authorization-manifest.mjs
+```
+
+## Final Changed Paths
+
+```text
+docs/planning-and-progress.md
+docs/validation/OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-20.md
+docs/validation/README.md
 ```

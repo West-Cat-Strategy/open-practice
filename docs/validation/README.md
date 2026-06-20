@@ -27,7 +27,7 @@ descriptors, AI proposal authorization fixtures, provider document conversion me
 export/artifact pruning, API docs route inventory reconciliation, incomplete-implementation audit
 evidence, and self-hosting readiness evidence. It records selector-driven local validation, green
 `pnpm ci:local`, migration replay, dependency/license/supply-chain checks, Docker app smoke,
-Docker Chromium E2E, pending main push/prune evidence, and preserved stash count `42`.
+Docker Chromium E2E, completed main push/prune evidence, and preserved stash count `42`.
 
 The 2026-06-20 OP-T160 deposit-match review records proof is recorded in
 [OP-T160_DEPOSIT_MATCH_REVIEW_RECORDS_PROOF_2026-06-20.md](OP-T160_DEPOSIT_MATCH_REVIEW_RECORDS_PROOF_2026-06-20.md).

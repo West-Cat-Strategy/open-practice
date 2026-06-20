@@ -10,8 +10,8 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 | Snapshot              | Value                                                                |
 | --------------------- | -------------------------------------------------------------------- |
-| Current focus         | 2026-06-20 mainline merge/push/prune closeout is in final proof.     |
-| Next recommended pick | Finish push/prune evidence before picking another row.               |
+| Current focus         | 2026-06-20 mainline merge/push/prune closeout is complete.           |
+| Next recommended pick | Pick the next scoped row after refreshing current priorities.        |
 | Ready rows            | 0                                                                    |
 | Candidate rows        | 0                                                                    |
 | In progress rows      | 0                                                                    |
@@ -22,12 +22,13 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 ## Current Handoff Notes
 
-The 2026-06-20 active-lane mainline closeout has integrated all 11 dirty Open Practice lanes on
-`merge/open-practice-mainline-20260620` and is in final proof/publish/prune. The combined result
-preserves each lane proof note, reconciles `0070_deposit_match_review_records.sql` with the Drizzle
-journal, keeps the dead-code export prune compatible with all runtime lanes, and adds integrated
-validation evidence: `pnpm ci:local`, migration replay, dependency/license/supply-chain checks,
-Docker app smoke, and Docker Chromium E2E all passed. Final push/prune evidence is being recorded in
+The 2026-06-20 active-lane mainline closeout integrated all 11 dirty Open Practice lanes through
+`merge/open-practice-mainline-20260620`, fast-forwarded and pushed `main`, then pruned the clean
+merged sibling worktrees and local branches. The combined result preserves each lane proof note,
+reconciles `0070_deposit_match_review_records.sql` with the Drizzle journal, keeps the dead-code
+export prune compatible with all runtime lanes, and records integrated validation evidence:
+`pnpm ci:local`, migration replay, dependency/license/supply-chain checks, Docker app smoke, and
+Docker Chromium E2E all passed. Stash count stayed `42`. Evidence is recorded in
 [2026-06-20 mainline merge/push/prune proof](validation/OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-20.md).
 
 The 2026-06-20 `feat/document-retention-hold-review-surface-20260620` branch in
