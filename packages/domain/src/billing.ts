@@ -176,6 +176,14 @@ export const paymentImportReviewConflictReasons = [
 
 export type PaymentImportReviewConflictReason = (typeof paymentImportReviewConflictReasons)[number];
 
+export interface PaymentImportReviewDepositMatchCue {
+  reviewAction: "staff_deposit_match_review_required";
+  candidateManualPaymentId?: string;
+  invoiceBalanceMutation: "none";
+  reconciliationMutation: "none";
+  trustPosting: "none";
+}
+
 export type TrustTransferRequestStatus =
   | "pending_approval"
   | "approved"
@@ -444,6 +452,7 @@ export interface PaymentImportReviewRecord {
   importedByUserId: string;
   candidateInvoiceId?: string;
   candidateHostedPaymentRequestId?: string;
+  candidateManualPaymentId?: string;
   duplicateOfRecordId?: string;
   conflictReason?: PaymentImportReviewConflictReason;
   reviewState: PaymentImportReviewState;
@@ -629,6 +638,18 @@ export function paymentImportReviewHasConflict(
   record: Pick<PaymentImportReviewRecord, "conflictReason" | "duplicateOfRecordId">,
 ): boolean {
   return Boolean(record.conflictReason || record.duplicateOfRecordId);
+}
+
+export function paymentImportReviewDepositMatchCue(
+  record: Pick<PaymentImportReviewRecord, "candidateManualPaymentId">,
+): PaymentImportReviewDepositMatchCue {
+  return {
+    reviewAction: "staff_deposit_match_review_required",
+    candidateManualPaymentId: record.candidateManualPaymentId,
+    invoiceBalanceMutation: "none",
+    reconciliationMutation: "none",
+    trustPosting: "none",
+  };
 }
 
 export function hostedPaymentRequestPath(requestId: string): string {

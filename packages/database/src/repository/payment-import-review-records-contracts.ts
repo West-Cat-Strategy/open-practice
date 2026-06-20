@@ -4,6 +4,7 @@ export interface PaymentImportReviewRecordListOptions {
   matterId?: string;
   candidateInvoiceId?: string;
   candidateHostedPaymentRequestId?: string;
+  candidateManualPaymentId?: string;
   eventFamily?: PaymentImportReviewRecord["eventFamily"];
 }
 

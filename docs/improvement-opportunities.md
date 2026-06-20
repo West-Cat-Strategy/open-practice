@@ -364,13 +364,14 @@ surface.
     payload retention, and no invoice-balance mutation without reviewer evidence.
   - **Shipped processor-import review slice:** OP-T160 adds the first runtime slice: staff-only,
     provider-neutral payment import review records plus Billing dashboard cues for normalized
-    processor evidence. It stores safe event IDs, amounts, candidate invoice/payment-request cues,
-    and duplicate/conflict posture without raw provider payloads, invoice-balance mutation,
-    settlement automation, reconciliation mutation, refund or chargeback handling, provider
-    commands, client notifications, or trust posting.
-  - **Remaining boundary:** Deposit matching workflow, refund and chargeback workflows, settlement
-    automation, provider webhook/replay behavior, provider commands, trust posting, and any funds
-    movement remain separate future work after OP-T160.
+    processor evidence. The 2026-06-20 follow-up adds existing manual-payment candidate cues for
+    deposit-match review records. The runtime stores safe event IDs, amounts, candidate
+    invoice/payment-request/manual-payment cues, and duplicate/conflict posture without raw provider
+    payloads, invoice-balance mutation, settlement automation, reconciliation mutation, refund or
+    chargeback handling, provider commands, client notifications, or trust posting.
+  - **Remaining boundary:** Deposit matching commands or automation, refund and chargeback
+    workflows, settlement automation, provider webhook/replay behavior, provider commands, trust
+    posting, and any funds movement remain separate future work after OP-T160.
   - **References:** `opencollective__opencollective-api` settlement/reconciliation concepts and
     `blnkfinance__blnk` reconciliation boundaries.
   - **Reuse and snippets:** Open Collective is MIT but architecture-only in this corpus; Blnk is

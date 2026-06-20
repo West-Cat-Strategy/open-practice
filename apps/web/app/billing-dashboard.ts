@@ -85,6 +85,7 @@ export interface PaymentImportReviewSummary {
   paymentEventCount: number;
   depositEventCount: number;
   conflictCount: number;
+  depositMatchReviewCount: number;
   rawProviderPayloadRetained: false;
   invoiceBalanceMutation: "none";
   settlementAutomation: false;
@@ -101,6 +102,12 @@ export function summarizePaymentImportReviews(
     depositEventCount: records.filter((record) => record.eventFamily === "deposit").length,
     conflictCount: records.filter((record) => record.duplicateCuePresent || record.conflictReason)
       .length,
+    depositMatchReviewCount: records.filter(
+      (record) =>
+        record.eventFamily === "deposit" ||
+        record.externalDepositIdPresent ||
+        Boolean(record.candidateManualPaymentId),
+    ).length,
     rawProviderPayloadRetained: false,
     invoiceBalanceMutation: "none",
     settlementAutomation: false,
@@ -111,17 +118,25 @@ export function summarizePaymentImportReviews(
 
 export function describePaymentImportReview(record: BillingPaymentImportReviewSummary): string {
   const eventLabel = record.eventStatus.replaceAll("_", " ");
-  const candidateLabel = record.candidateHostedPaymentRequestId
-    ? "payment request candidate"
-    : record.candidateInvoiceId
-      ? "invoice candidate"
-      : "no linked candidate";
+  const candidateLabels = [
+    record.candidateInvoiceId ? "invoice candidate" : undefined,
+    record.candidateHostedPaymentRequestId ? "payment request candidate" : undefined,
+    record.candidateManualPaymentId ? "manual payment candidate" : undefined,
+  ].filter(Boolean);
+  const candidateLabel =
+    candidateLabels.length > 0 ? candidateLabels.join(" · ") : "no linked candidate";
+  const depositMatchLabel =
+    record.eventFamily === "deposit" ||
+    record.externalDepositIdPresent ||
+    record.candidateManualPaymentId
+      ? " · deposit match review"
+      : "";
   const conflictLabel = record.conflictReason
     ? ` · ${record.conflictReason.replaceAll("_", " ")}`
     : record.duplicateCuePresent
       ? " · duplicate cue"
       : "";
-  return `${record.providerLabel} · ${eventLabel} · ${candidateLabel}${conflictLabel}`;
+  return `${record.providerLabel} · ${eventLabel} · ${candidateLabel}${depositMatchLabel}${conflictLabel}`;
 }
 
 export function summarizePaymentSettlementReview(

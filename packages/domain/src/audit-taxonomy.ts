@@ -1157,6 +1157,7 @@ export const auditEventTaxonomyDefinitions = [
       "currency",
       "candidateInvoiceId",
       "candidateHostedPaymentRequestId",
+      "candidateManualPaymentId",
       "duplicateCuePresent",
       "conflictReason",
       "reviewState",

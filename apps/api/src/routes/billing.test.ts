@@ -1757,6 +1757,50 @@ describe("billing routes", () => {
     const beforeEntryCount = ledgerBefore.json<{ entries: unknown[] }>().entries.length;
     const invoiceBefore = await server.inject({ method: "GET", url: "/api/invoices/invoice-001" });
     expect(invoiceBefore.statusCode).toBe(200);
+    await repository.createPayment({
+      payment: {
+        id: "payment-import-review-manual-candidate",
+        firmId: "firm-west-legal",
+        matterId: "matter-001",
+        invoiceId: "invoice-001",
+        receivedAt: "2026-06-19T16:01:00.000Z",
+        amountCents: 5000,
+        method: "eft",
+        status: "pending_reconciliation",
+        receivedByUserId: "user-licensee",
+        evidence: { source: "synthetic-payment-import-review" },
+      },
+      allocations: [],
+    });
+    await repository.createPayment({
+      payment: {
+        id: "payment-import-review-cross-matter",
+        firmId: "firm-west-legal",
+        matterId: "matter-002",
+        receivedAt: "2026-06-19T16:02:00.000Z",
+        amountCents: 5000,
+        method: "eft",
+        status: "pending_reconciliation",
+        receivedByUserId: "user-licensee",
+        evidence: { source: "synthetic-cross-matter-payment-import-review" },
+      },
+      allocations: [],
+    });
+    await repository.createPayment({
+      payment: {
+        id: "payment-import-review-invoice-mismatch",
+        firmId: "firm-west-legal",
+        matterId: "matter-001",
+        invoiceId: "invoice-synthetic-other",
+        receivedAt: "2026-06-19T16:03:00.000Z",
+        amountCents: 5000,
+        method: "eft",
+        status: "pending_reconciliation",
+        receivedByUserId: "user-licensee",
+        evidence: { source: "synthetic-invoice-mismatch-payment-import-review" },
+      },
+      allocations: [],
+    });
 
     const created = await server.inject({
       method: "POST",
@@ -1765,15 +1809,17 @@ describe("billing routes", () => {
         id: "payment-import-review-route-test",
         matterId: "matter-001",
         providerLabel: "synthetic_processor",
-        eventFamily: "payment",
-        eventStatus: "payment_observed",
+        eventFamily: "deposit",
+        eventStatus: "deposit_observed",
         externalEventId: "evt_synthetic_import_route",
         externalPaymentId: "pay_synthetic_import_route",
+        externalDepositId: "dep_synthetic_import_route",
         amountCents: 5000,
         currency: "CAD",
         observedAt: "2026-06-19T16:00:00.000Z",
         candidateInvoiceId: "invoice-001",
         candidateHostedPaymentRequestId: "payment-request-001",
+        candidateManualPaymentId: "payment-import-review-manual-candidate",
       },
     });
 
@@ -1782,14 +1828,16 @@ describe("billing routes", () => {
       record: {
         id: "payment-import-review-route-test",
         providerLabel: "synthetic_processor",
-        eventFamily: "payment",
-        eventStatus: "payment_observed",
+        eventFamily: "deposit",
+        eventStatus: "deposit_observed",
         externalEventId: "evt_synthetic_import_route",
         externalPaymentId: "pay_synthetic_import_route",
+        externalDepositId: "dep_synthetic_import_route",
         amountCents: 5000,
         currency: "CAD",
         candidateInvoiceId: "invoice-001",
         candidateHostedPaymentRequestId: "payment-request-001",
+        candidateManualPaymentId: "payment-import-review-manual-candidate",
         reviewState: "needs_review",
         boundaries: {
           rawProviderPayloadRetained: false,
@@ -1813,15 +1861,17 @@ describe("billing routes", () => {
         id: "payment-import-review-route-retry",
         matterId: "matter-001",
         providerLabel: "synthetic_processor",
-        eventFamily: "payment",
-        eventStatus: "payment_observed",
+        eventFamily: "deposit",
+        eventStatus: "deposit_observed",
         externalEventId: "evt_synthetic_import_route",
         externalPaymentId: "pay_synthetic_import_route",
+        externalDepositId: "dep_synthetic_import_route",
         amountCents: 5000,
         currency: "CAD",
         observedAt: "2026-06-19T16:00:00.000Z",
         candidateInvoiceId: "invoice-001",
         candidateHostedPaymentRequestId: "payment-request-001",
+        candidateManualPaymentId: "payment-import-review-manual-candidate",
       },
     });
     expect(repeated.statusCode).toBe(200);
@@ -1835,15 +1885,17 @@ describe("billing routes", () => {
       payload: {
         matterId: "matter-001",
         providerLabel: "synthetic_processor",
-        eventFamily: "payment",
-        eventStatus: "payment_observed",
+        eventFamily: "deposit",
+        eventStatus: "deposit_observed",
         externalEventId: "evt_synthetic_import_route",
         externalPaymentId: "pay_synthetic_import_route",
+        externalDepositId: "dep_synthetic_import_route",
         amountCents: 5100,
         currency: "CAD",
         observedAt: "2026-06-19T16:00:00.000Z",
         candidateInvoiceId: "invoice-001",
         candidateHostedPaymentRequestId: "payment-request-001",
+        candidateManualPaymentId: "payment-import-review-manual-candidate",
       },
     });
     expect(conflicting.statusCode).toBe(409);
@@ -1902,6 +1954,47 @@ describe("billing routes", () => {
       code: "PAYMENT_IMPORT_CANDIDATE_MATTER_MISMATCH",
     });
 
+    const crossMatterManualPayment = await server.inject({
+      method: "POST",
+      url: "/api/billing/payment-import-review-records",
+      payload: {
+        matterId: "matter-001",
+        providerLabel: "synthetic_processor",
+        eventFamily: "deposit",
+        eventStatus: "deposit_observed",
+        externalEventId: "evt_synthetic_cross_matter_payment",
+        externalDepositId: "dep_synthetic_cross_matter_payment",
+        amountCents: 5000,
+        currency: "CAD",
+        candidateManualPaymentId: "payment-import-review-cross-matter",
+      },
+    });
+    expect(crossMatterManualPayment.statusCode).toBe(409);
+    expect(crossMatterManualPayment.json()).toMatchObject({
+      code: "PAYMENT_IMPORT_CANDIDATE_MATTER_MISMATCH",
+    });
+
+    const invoiceMismatchManualPayment = await server.inject({
+      method: "POST",
+      url: "/api/billing/payment-import-review-records",
+      payload: {
+        matterId: "matter-001",
+        providerLabel: "synthetic_processor",
+        eventFamily: "deposit",
+        eventStatus: "deposit_observed",
+        externalEventId: "evt_synthetic_invoice_mismatch_payment",
+        externalDepositId: "dep_synthetic_invoice_mismatch_payment",
+        amountCents: 5000,
+        currency: "CAD",
+        candidateInvoiceId: "invoice-001",
+        candidateManualPaymentId: "payment-import-review-invoice-mismatch",
+      },
+    });
+    expect(invoiceMismatchManualPayment.statusCode).toBe(409);
+    expect(invoiceMismatchManualPayment.json()).toMatchObject({
+      code: "PAYMENT_IMPORT_CANDIDATE_INVOICE_MISMATCH",
+    });
+
     const list = await server.inject({
       method: "GET",
       url: "/api/billing/payment-import-review-records?matterId=matter-001",
@@ -1919,14 +2012,37 @@ describe("billing routes", () => {
     const dashboard = await server.inject({ method: "GET", url: "/api/billing/dashboard" });
     expect(dashboard.statusCode).toBe(200);
     expect(
+      dashboard.json<{
+        summary: {
+          paymentImportReviewCount: number;
+          paymentImportConflictCount: number;
+          depositMatchReviewCount: number;
+        };
+        matters: Array<{
+          matterId: string;
+          paymentImportReviewRecords: Array<{
+            id: string;
+            externalPaymentIdPresent?: boolean;
+            externalDepositIdPresent?: boolean;
+            candidateManualPaymentId?: string;
+            boundaries: { rawProviderPayloadRetained: boolean; trustPosting: string };
+          }>;
+        }>;
+      }>().summary,
+    ).toMatchObject({
+      paymentImportReviewCount: 2,
+      depositMatchReviewCount: 1,
+    });
+    expect(
       dashboard
         .json<{
-          summary: { paymentImportReviewCount: number; paymentImportConflictCount: number };
           matters: Array<{
             matterId: string;
             paymentImportReviewRecords: Array<{
               id: string;
               externalPaymentIdPresent?: boolean;
+              externalDepositIdPresent?: boolean;
+              candidateManualPaymentId?: string;
               boundaries: { rawProviderPayloadRetained: boolean; trustPosting: string };
             }>;
           }>;
@@ -1937,6 +2053,8 @@ describe("billing routes", () => {
         expect.objectContaining({
           id: "payment-import-review-route-test",
           externalPaymentIdPresent: true,
+          externalDepositIdPresent: true,
+          candidateManualPaymentId: "payment-import-review-manual-candidate",
           boundaries: expect.objectContaining({
             rawProviderPayloadRetained: false,
             trustPosting: "none",
@@ -1962,10 +2080,12 @@ describe("billing routes", () => {
       resourceId: "payment-import-review-route-test",
       metadata: expect.objectContaining({
         providerLabel: "synthetic_processor",
-        eventFamily: "payment",
-        eventStatus: "payment_observed",
+        eventFamily: "deposit",
+        eventStatus: "deposit_observed",
         externalEventId: "evt_synthetic_import_route",
         externalPaymentIdPresent: true,
+        externalDepositIdPresent: true,
+        candidateManualPaymentId: "payment-import-review-manual-candidate",
         rawProviderPayloadRetained: false,
         invoiceBalanceMutation: "none",
         settlementAutomation: false,

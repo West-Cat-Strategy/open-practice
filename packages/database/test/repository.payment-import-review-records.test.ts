@@ -31,6 +31,7 @@ function paymentImportReviewRecord(
     importedByUserId: "user-licensee",
     candidateInvoiceId: "invoice-001",
     candidateHostedPaymentRequestId: "payment-request-001",
+    candidateManualPaymentId: "payment-001",
     reviewState: "needs_review",
     normalizedEvidenceFingerprint: "synthetic-fingerprint",
     boundaries: defaultPaymentImportReviewBoundary(),
@@ -57,6 +58,7 @@ function rowFromRecord(record: PaymentImportReviewRecord) {
     importedByUserId: record.importedByUserId,
     candidateInvoiceId: record.candidateInvoiceId ?? null,
     candidateHostedPaymentRequestId: record.candidateHostedPaymentRequestId ?? null,
+    candidateManualPaymentId: record.candidateManualPaymentId ?? null,
     duplicateOfRecordId: record.duplicateOfRecordId ?? null,
     conflictReason: record.conflictReason ?? null,
     reviewState: record.reviewState,
@@ -110,6 +112,11 @@ describe("payment import review record repositories", () => {
     await expect(
       repository.listPaymentImportReviewRecords("firm-west-legal", { matterId: "matter-001" }),
     ).resolves.toEqual(expect.arrayContaining([record]));
+    await expect(
+      repository.listPaymentImportReviewRecords("firm-west-legal", {
+        candidateManualPaymentId: "payment-001",
+      }),
+    ).resolves.toEqual([record]);
     await expect(repository.getInvoice("firm-west-legal", "invoice-001")).resolves.toMatchObject({
       paidCents: invoiceBefore?.paidCents,
       balanceDueCents: invoiceBefore?.balanceDueCents,
@@ -132,16 +139,27 @@ describe("payment import review record repositories", () => {
 
   it("lists Drizzle rows through normalized repository options", async () => {
     const records = [
-      paymentImportReviewRecord({ id: "payment-import-review-later" }),
+      paymentImportReviewRecord({
+        id: "payment-import-review-later",
+        eventFamily: "deposit",
+        eventStatus: "deposit_observed",
+        externalDepositId: "dep_synthetic_import_review_test",
+      }),
       paymentImportReviewRecord({
         id: "payment-import-review-earlier",
+        eventFamily: "deposit",
+        eventStatus: "deposit_observed",
+        externalDepositId: "dep_synthetic_import_review_earlier",
         importedAt: "2026-06-18T16:05:00.000Z",
       }),
     ];
     const db = drizzleRowsDb(records.map(rowFromRecord));
 
     await expect(
-      listDrizzlePaymentImportReviewRecords(db, "firm-west-legal", { eventFamily: "payment" }),
+      listDrizzlePaymentImportReviewRecords(db, "firm-west-legal", {
+        eventFamily: "deposit",
+        candidateManualPaymentId: "payment-001",
+      }),
     ).resolves.toEqual(records);
   });
 });

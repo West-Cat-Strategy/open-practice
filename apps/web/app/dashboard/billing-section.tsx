@@ -792,6 +792,10 @@ export function BillingSection({
           <strong>{activePaymentImportReviewSummary.depositEventCount}</strong>
         </div>
         <div>
+          <span className="field-label">Deposit match reviews</span>
+          <strong>{activePaymentImportReviewSummary.depositMatchReviewCount}</strong>
+        </div>
+        <div>
           <span className="field-label">Conflicts</span>
           <strong>{activePaymentImportReviewSummary.conflictCount}</strong>
         </div>
@@ -806,7 +810,10 @@ export function BillingSection({
             <span>
               <strong>{record.reviewState.replaceAll("_", " ")}</strong>
               <small>{describePaymentImportReview(record)}</small>
-              <small>No raw payload · No invoice balance mutation · No trust posting</small>
+              <small>
+                No raw payload · No invoice balance mutation · No reconciliation mutation · No trust
+                posting
+              </small>
             </span>
             <em>{cents(record.amountCents)}</em>
           </div>

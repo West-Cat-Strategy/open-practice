@@ -183,6 +183,7 @@ export function registerBillingDashboardRoutes(
             importedAt: record.importedAt,
             candidateInvoiceId: record.candidateInvoiceId,
             candidateHostedPaymentRequestId: record.candidateHostedPaymentRequestId,
+            candidateManualPaymentId: record.candidateManualPaymentId,
             duplicateCuePresent: Boolean(record.duplicateOfRecordId),
             conflictReason: record.conflictReason,
             reviewState: record.reviewState,
@@ -228,6 +229,12 @@ export function registerBillingDashboardRoutes(
         paymentImportReviewCount: visiblePaymentImportReviewRecords.length,
         paymentImportConflictCount: visiblePaymentImportReviewRecords.filter(
           (record) => record.duplicateCuePresent || record.conflictReason,
+        ).length,
+        depositMatchReviewCount: visiblePaymentImportReviewRecords.filter(
+          (record) =>
+            record.eventFamily === "deposit" ||
+            record.externalDepositIdPresent ||
+            Boolean(record.candidateManualPaymentId),
         ).length,
       },
       periodLocks,

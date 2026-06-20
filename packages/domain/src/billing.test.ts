@@ -24,6 +24,7 @@ import {
   hostedPaymentRequestPath,
   isBillableUnbilled,
   normalizeExpenseCategoryCode,
+  paymentImportReviewDepositMatchCue,
   paymentImportReviewHasConflict,
   resolveBillingRateRule,
   summarizeTrustTransferLedgerLink,
@@ -398,6 +399,10 @@ describe("billing period locks and rate rules", () => {
   });
 
   it("keeps processor import review records as normalized cues without side effects", () => {
+    const depositMatchCue = paymentImportReviewDepositMatchCue({
+      candidateManualPaymentId: "payment-pending-reconciliation",
+    });
+
     expect(defaultPaymentImportReviewBoundary()).toEqual({
       rawProviderPayloadRetained: false,
       invoiceBalanceMutation: "none",
@@ -413,6 +418,13 @@ describe("billing period locks and rate rules", () => {
     expect(paymentImportReviewHasConflict({})).toBe(false);
     expect(paymentImportReviewHasConflict({ conflictReason: "candidate_mismatch" })).toBe(true);
     expect(paymentImportReviewHasConflict({ duplicateOfRecordId: "review-duplicate" })).toBe(true);
+    expect(depositMatchCue).toEqual({
+      reviewAction: "staff_deposit_match_review_required",
+      candidateManualPaymentId: "payment-pending-reconciliation",
+      invoiceBalanceMutation: "none",
+      reconciliationMutation: "none",
+      trustPosting: "none",
+    });
   });
 });
 

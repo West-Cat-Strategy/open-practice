@@ -18,6 +18,14 @@ skipped-check context. The live workboard remains
 
 ## Current Handoff Notes
 
+The 2026-06-20 OP-T160 deposit-match review records proof is recorded in
+[OP-T160_DEPOSIT_MATCH_REVIEW_RECORDS_PROOF_2026-06-20.md](OP-T160_DEPOSIT_MATCH_REVIEW_RECORDS_PROOF_2026-06-20.md).
+It covers the branch-first follow-up that adds existing manual-payment candidate cues to normalized
+payment import review records, staff-only matter/candidate validation, Billing dashboard
+deposit-match counts and candidate copy, duplicate/conflict posture, selector-driven validation,
+and preserved no-live-settlement/no-provider-command/no-raw-payload/no-invoice-balance-mutation/
+no-reconciliation-mutation/no-refund-or-chargeback/no-trust-posting boundaries.
+
 The 2026-06-19 mainline merge/push/prune proof is recorded in
 [OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-19.md](OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-19.md).
 It covers the active dirty-lane consolidation through
