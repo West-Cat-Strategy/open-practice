@@ -19,11 +19,13 @@ describe("matter lifecycle transitions", () => {
     expect(matterLifecycleTargetStatus("reopen")).toBe("open");
   });
 
-  it("maps first-slice commands to required and target statuses", () => {
+  it("maps runtime commands to required and target statuses", () => {
     expect(matterLifecycleCommandRequiredStatus("pause")).toBe("open");
     expect(matterLifecycleTargetStatus("pause")).toBe("paused");
     expect(matterLifecycleCommandRequiredStatus("reopen")).toBe("paused");
     expect(matterLifecycleTargetStatus("reopen")).toBe("open");
+    expect(matterLifecycleCommandRequiredStatus("close")).toBe("open");
+    expect(matterLifecycleTargetStatus("close")).toBe("closed");
   });
 
   it("builds status-only command summaries with safe audit metadata", () => {
@@ -75,6 +77,85 @@ describe("matter lifecycle transitions", () => {
     });
     expect(JSON.stringify(metadata)).not.toContain("Synthetic operator confirmed");
     expect(JSON.stringify(metadata)).not.toContain("synthetic-pause-command-key");
+  });
+
+  it("builds status-only close command summaries", () => {
+    const execution = buildMatterLifecycleCommandExecution({
+      command: "close",
+      matterId: "matter-001",
+      transitionRecordId: "matter-lifecycle-close",
+      beforeStatus: "open",
+      expectedStatus: "open",
+      reason: "Synthetic operator confirmed the close packet.",
+      idempotencyKey: "synthetic-close-command-key",
+      executedAt: reviewedAt,
+      executedByUserId: "user-licensee",
+    });
+
+    expect(execution).toMatchObject({
+      command: "close",
+      beforeStatus: "open",
+      afterStatus: "closed",
+      reviewFirst: true,
+      consequences: {
+        matterStatusChanged: true,
+        closedOnChanged: false,
+        portalAccessChanged: false,
+        taskChanged: false,
+        assignmentChanged: false,
+        billingChanged: false,
+        trustChanged: false,
+        cleanupRun: false,
+      },
+    });
+    const metadata = buildMatterLifecycleCommandAuditMetadata(execution, {
+      reason: "Synthetic operator confirmed the close packet.",
+      idempotencyKey: "synthetic-close-command-key",
+    });
+    expect(metadata).toMatchObject({
+      lifecycleCommand: "close",
+      beforeStatus: "open",
+      expectedStatus: "open",
+      afterStatus: "closed",
+      closedOnChanged: false,
+      portalAccessChanged: false,
+      taskChanged: false,
+      assignmentChanged: false,
+      billingChanged: false,
+      trustChanged: false,
+      cleanupRun: false,
+    });
+    expect(JSON.stringify(metadata)).not.toContain("Synthetic operator confirmed");
+    expect(JSON.stringify(metadata)).not.toContain("synthetic-close-command-key");
+  });
+
+  it("rejects close command executions unless the matter is open", () => {
+    expect(() =>
+      buildMatterLifecycleCommandExecution({
+        command: "close",
+        matterId: "matter-001",
+        transitionRecordId: "matter-lifecycle-close",
+        beforeStatus: "paused",
+        expectedStatus: "open",
+        reason: "Synthetic close packet is ready.",
+        idempotencyKey: "synthetic-close-command-key",
+        executedAt: reviewedAt,
+        executedByUserId: "user-licensee",
+      }),
+    ).toThrow("requires matter status open");
+    expect(() =>
+      buildMatterLifecycleCommandExecution({
+        command: "close",
+        matterId: "matter-001",
+        transitionRecordId: "matter-lifecycle-close",
+        beforeStatus: "open",
+        expectedStatus: "paused",
+        reason: "Synthetic close packet is ready.",
+        idempotencyKey: "synthetic-close-command-key",
+        executedAt: reviewedAt,
+        executedByUserId: "user-licensee",
+      }),
+    ).toThrow("expected status must be open");
   });
 
   it("rejects closed or archived reopen command executions", () => {

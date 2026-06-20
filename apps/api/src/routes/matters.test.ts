@@ -474,7 +474,7 @@ describe("matter routes", () => {
     expect(firmWide.statusCode).toBe(200);
   });
 
-  it("executes pause and reopen lifecycle commands after latest ready review evidence", async () => {
+  it("executes pause, reopen, and close lifecycle commands after latest ready review evidence", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const [before] = await repository.listMattersForUser(user("licensee", ["matter-001"]));
     const pauseRecord = await repository.createMatterLifecycleTransition({
@@ -573,6 +573,63 @@ describe("matter routes", () => {
       },
     });
     expect(reopen.json<{ matter: MatterSummary }>().matter.closedOn).toBe(before?.closedOn);
+
+    const closeRecord = await repository.createMatterLifecycleTransition({
+      id: "matter-lifecycle-api-ready-close",
+      firmId,
+      matterId: "matter-001",
+      transition: "close",
+      readiness: "ready",
+      reason: "Synthetic close review is ready.",
+      reviewedByUserId: "user-licensee",
+      reviewedAt: "2026-06-19T12:20:00.000Z",
+      createdAt: "2026-06-19T12:20:00.000Z",
+      auditEventId: "audit-matter-lifecycle-api-ready-close",
+    });
+    const close = await testServer(user("licensee", ["matter-001"]), repository).inject({
+      method: "POST",
+      url: "/api/matters/matter-001/lifecycle-commands",
+      payload: {
+        command: "close",
+        expectedStatus: "open",
+        transitionRecordId: closeRecord.id,
+        reason: "Synthetic operator confirmed close execution.",
+        idempotencyKey: "synthetic-api-close-command-key",
+      },
+    });
+
+    expect(close.statusCode).toBe(200);
+    expect(close.json()).toMatchObject({
+      matter: {
+        id: "matter-001",
+        status: "closed",
+        trustBalanceCents: before?.trustBalanceCents,
+      },
+      lifecycleCommand: {
+        command: "close",
+        matterId: "matter-001",
+        transitionRecordId: closeRecord.id,
+        beforeStatus: "open",
+        expectedStatus: "open",
+        afterStatus: "closed",
+        executedByUserId: "user-licensee",
+        reviewFirst: true,
+        consequences: {
+          matterStatusChanged: true,
+          closedOnChanged: false,
+          portalAccessChanged: false,
+          taskChanged: false,
+          assignmentChanged: false,
+          billingChanged: false,
+          trustChanged: false,
+          cleanupRun: false,
+        },
+      },
+    });
+    expect(close.json<{ matter: MatterSummary }>().matter.closedOn).toBe(before?.closedOn);
+    expect(close.json().matter.timeEntries).toHaveLength(before?.timeEntries.length ?? 0);
+    expect(close.json().matter.expenses).toHaveLength(before?.expenses.length ?? 0);
+
     const audit = await repository.listAuditEvents(firmId);
     expect(audit.events).toEqual(
       expect.arrayContaining([
@@ -589,11 +646,26 @@ describe("matter routes", () => {
             cleanupRun: false,
           }),
         }),
+        expect.objectContaining({
+          action: "matter.lifecycle_command_executed",
+          resourceId: "matter-001",
+          metadata: expect.objectContaining({
+            transitionRecordId: closeRecord.id,
+            lifecycleCommand: "close",
+            beforeStatus: "open",
+            afterStatus: "closed",
+            closedOnChanged: false,
+            billingChanged: false,
+            trustChanged: false,
+            cleanupRun: false,
+          }),
+        }),
       ]),
     );
     expect(JSON.stringify(audit.events)).not.toContain("Synthetic operator confirmed");
     expect(JSON.stringify(audit.events)).not.toContain("synthetic-api-pause-command-key");
     expect(JSON.stringify(audit.events)).not.toContain("synthetic-api-reopen-command-key");
+    expect(JSON.stringify(audit.events)).not.toContain("synthetic-api-close-command-key");
   });
 
   it("keeps lifecycle command routes staff-only and matter-scoped", async () => {
@@ -686,11 +758,11 @@ describe("matter routes", () => {
       method: "POST",
       url: "/api/matters/matter-001/lifecycle-commands",
       payload: {
-        command: "close",
+        command: "archive",
         expectedStatus: "open",
-        transitionRecordId: "matter-lifecycle-close",
-        reason: "Synthetic close command is not in this slice.",
-        idempotencyKey: "synthetic-close-command-key",
+        transitionRecordId: "matter-lifecycle-archive",
+        reason: "Synthetic archive command is not in this slice.",
+        idempotencyKey: "synthetic-archive-command-key",
       },
     });
     const missingIdempotencyKey = await testServer(user("licensee", ["matter-001"])).inject({
