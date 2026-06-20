@@ -857,7 +857,7 @@
 }
 
 .intake-item-editor-header strong {
-  color: var(--accent);
+  color: var(--accent-strong);
   text-transform: capitalize;
 }
 

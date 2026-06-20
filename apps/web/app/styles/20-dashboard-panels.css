@@ -227,7 +227,7 @@
 .segmented-control button.active,
 .segmented-control button[aria-pressed="true"] {
   background: rgba(63, 185, 173, 0.17);
-  color: var(--accent);
+  color: var(--accent-strong);
 }
 
 .first-matter-controls {
@@ -357,7 +357,7 @@
 .party-row em {
   border-radius: 999px;
   background: rgba(63, 185, 173, 0.11);
-  color: var(--accent);
+  color: var(--accent-strong);
   font-size: 12px;
   font-style: normal;
   padding: 4px 8px;

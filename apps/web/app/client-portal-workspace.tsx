@@ -133,6 +133,7 @@ export default function ClientPortalWorkspace({
         </div>
         <div className="client-portal-status" aria-label="Client portal status">
           <span>{clientPortalAccessLabel(workspace.access)}</span>
+          <span>Private details redacted</span>
           <strong>{attentionCount} need attention</strong>
         </div>
       </section>

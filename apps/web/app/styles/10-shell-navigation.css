@@ -6,12 +6,12 @@
   --surface-raised: #ffffff;
   --ink: #16221d;
   --text: var(--ink);
-  --muted: #66736b;
+  --muted: #58645d;
   --line: rgba(28, 45, 37, 0.14);
   --accent: #167d73;
   --accent-strong: #075f58;
   --accent-soft: rgba(22, 125, 115, 0.11);
-  --warning: #a95f16;
+  --warning: #894b0f;
   --danger: #a84936;
   --gold: #9c7114;
   --blue: #3d6799;
@@ -214,7 +214,7 @@ small,
 .action-strip-button:hover:not(:disabled) {
   border-color: rgba(63, 185, 173, 0.34);
   background: rgba(63, 185, 173, 0.12);
-  color: var(--accent);
+  color: var(--accent-strong);
 }
 
 .action-strip-button:focus-visible {
@@ -384,7 +384,7 @@ h3 {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface-muted);
-  color: var(--accent);
+  color: var(--accent-strong);
   padding: 9px 12px;
   font-weight: 700;
 }
@@ -393,6 +393,14 @@ h3 {
 .text-button:focus-visible {
   border-color: rgba(194, 229, 177, 0.45);
   background: rgba(194, 229, 177, 0.1);
+}
+
+.app-shell .primary-button {
+  color: #fffdfa;
+}
+
+.app-shell .primary-button:disabled {
+  color: var(--muted);
 }
 
 button.operational-focus-item {
