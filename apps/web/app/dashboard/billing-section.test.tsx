@@ -245,17 +245,20 @@ function buildSyntheticBillingDashboard(): BillingDashboardResponse {
             id: "payment_import_review_synthetic",
             matterId: "matter_synthetic",
             providerLabel: "synthetic_processor",
-            eventFamily: "payment",
-            eventStatus: "payment_observed",
+            eventFamily: "deposit",
+            eventStatus: "deposit_observed",
             externalEventId: "evt_synthetic_import_review",
             externalPaymentIdPresent: true,
+            externalDepositIdPresent: true,
             amountCents: 50000,
             currency: "CAD",
             observedAt: "2026-06-07T00:00:00.000Z",
             importedAt: "2026-06-07T00:05:00.000Z",
             candidateInvoiceId: "invoice_synthetic",
             candidateHostedPaymentRequestId: "payment_request_synthetic",
-            duplicateCuePresent: false,
+            candidateManualPaymentId: "payment_synthetic",
+            duplicateCuePresent: true,
+            conflictReason: "duplicate",
             reviewState: "needs_review",
             boundaries: {
               rawProviderPayloadRetained: false,
@@ -386,9 +389,13 @@ describe("BillingSection", () => {
     expect(html).toContain("Payment request shells");
     expect(html).toContain("Processor import review");
     expect(html).toContain("synthetic_processor");
-    expect(html).toContain("payment observed");
+    expect(html).toContain("deposit observed");
+    expect(html).toContain("Deposit match reviews");
+    expect(html).toContain("deposit match review");
+    expect(html).toContain("duplicate");
     expect(html).toContain("No raw payload");
     expect(html).toContain("No invoice balance mutation");
+    expect(html).toContain("No reconciliation mutation");
     expect(html).toContain("No automatic reconciliation");
     expect(html).toContain("Synthetic EFT");
     expect(html).toContain("Pending reconciliation");

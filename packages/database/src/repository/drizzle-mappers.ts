@@ -3043,6 +3043,7 @@ export function mapPaymentImportReviewRecordRow(
     importedByUserId: row.importedByUserId,
     candidateInvoiceId: row.candidateInvoiceId ?? undefined,
     candidateHostedPaymentRequestId: row.candidateHostedPaymentRequestId ?? undefined,
+    candidateManualPaymentId: row.candidateManualPaymentId ?? undefined,
     duplicateOfRecordId: row.duplicateOfRecordId ?? undefined,
     conflictReason: row.conflictReason ?? undefined,
     reviewState: row.reviewState,

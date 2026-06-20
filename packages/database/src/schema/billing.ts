@@ -342,6 +342,9 @@ export const paymentImportReviewRecords = pgTable(
     candidateHostedPaymentRequestId: text("candidate_hosted_payment_request_id").references(
       () => hostedPaymentRequests.id,
     ),
+    candidateManualPaymentId: text("candidate_manual_payment_id").references(
+      () => manualPayments.id,
+    ),
     duplicateOfRecordId: text("duplicate_of_record_id"),
     conflictReason: text("conflict_reason").$type<PaymentImportReviewRecord["conflictReason"]>(),
     reviewState: text("review_state")
@@ -379,6 +382,10 @@ export const paymentImportReviewRecords = pgTable(
     firmPaymentRequest: index("payment_import_review_records_firm_payment_request_idx").on(
       table.firmId,
       table.candidateHostedPaymentRequestId,
+    ),
+    firmManualPayment: index("payment_import_review_records_firm_manual_payment_idx").on(
+      table.firmId,
+      table.candidateManualPaymentId,
     ),
     firmProviderEvent: uniqueIndex("payment_import_review_records_firm_provider_event_idx").on(
       table.firmId,

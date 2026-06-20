@@ -15,6 +15,8 @@ function matchesOptions(
     (!options.candidateInvoiceId || record.candidateInvoiceId === options.candidateInvoiceId) &&
     (!options.candidateHostedPaymentRequestId ||
       record.candidateHostedPaymentRequestId === options.candidateHostedPaymentRequestId) &&
+    (!options.candidateManualPaymentId ||
+      record.candidateManualPaymentId === options.candidateManualPaymentId) &&
     (!options.eventFamily || record.eventFamily === options.eventFamily)
   );
 }

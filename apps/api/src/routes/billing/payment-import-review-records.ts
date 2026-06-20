@@ -35,6 +35,7 @@ const paymentImportReviewQuerySchema = z
     matterId: z.string().min(1).optional(),
     candidateInvoiceId: z.string().min(1).optional(),
     candidateHostedPaymentRequestId: z.string().min(1).optional(),
+    candidateManualPaymentId: z.string().min(1).optional(),
     eventFamily: z.enum(paymentImportEventFamilies).optional(),
   })
   .strict();
@@ -54,6 +55,7 @@ const paymentImportReviewBodySchema = z
     observedAt: z.string().datetime().optional(),
     candidateInvoiceId: z.string().min(1).optional(),
     candidateHostedPaymentRequestId: z.string().min(1).optional(),
+    candidateManualPaymentId: z.string().min(1).optional(),
     duplicateOfRecordId: z.string().min(1).optional(),
     conflictReason: z.enum(paymentImportReviewConflictReasons).optional(),
   })
@@ -69,8 +71,10 @@ async function assertCandidateLinks(input: {
   matterId: string;
   candidateInvoiceId?: string;
   candidateHostedPaymentRequestId?: string;
+  candidateManualPaymentId?: string;
 }): Promise<void> {
   let candidateInvoiceMatterId: string | undefined;
+  let candidateInvoiceId = input.candidateInvoiceId;
   if (input.candidateInvoiceId) {
     const invoice = await input.repository.getInvoice(input.firmId, input.candidateInvoiceId);
     if (!invoice) {
@@ -113,6 +117,38 @@ async function assertCandidateLinks(input: {
       );
     }
     candidateInvoiceMatterId = candidateInvoiceMatterId ?? paymentRequest.matterId;
+    candidateInvoiceId = candidateInvoiceId ?? paymentRequest.invoiceId;
+  }
+
+  if (input.candidateManualPaymentId) {
+    const manualPayment = (await input.repository.listPayments(input.firmId)).find(
+      (candidate) => candidate.id === input.candidateManualPaymentId,
+    );
+    if (!manualPayment) {
+      throw new ApiHttpError(
+        404,
+        "CANDIDATE_MANUAL_PAYMENT_NOT_FOUND",
+        "Candidate manual payment was not found",
+      );
+    }
+    if (manualPayment.matterId !== input.matterId) {
+      throw new ApiHttpError(
+        409,
+        "PAYMENT_IMPORT_CANDIDATE_MATTER_MISMATCH",
+        "Candidate manual payment must belong to the import review matter",
+      );
+    }
+    if (
+      candidateInvoiceId &&
+      manualPayment.invoiceId &&
+      manualPayment.invoiceId !== candidateInvoiceId
+    ) {
+      throw new ApiHttpError(
+        409,
+        "PAYMENT_IMPORT_CANDIDATE_INVOICE_MISMATCH",
+        "Candidate manual payment must reference the candidate invoice",
+      );
+    }
   }
 
   if (candidateInvoiceMatterId && candidateInvoiceMatterId !== input.matterId) {
@@ -177,6 +213,7 @@ export function registerBillingPaymentImportReviewRoutes(
       matterId: body.matterId,
       candidateInvoiceId: body.candidateInvoiceId,
       candidateHostedPaymentRequestId: body.candidateHostedPaymentRequestId,
+      candidateManualPaymentId: body.candidateManualPaymentId,
     });
 
     const now = new Date().toISOString();
@@ -193,6 +230,7 @@ export function registerBillingPaymentImportReviewRoutes(
       observedAt: body.observedAt,
       candidateInvoiceId: body.candidateInvoiceId,
       candidateHostedPaymentRequestId: body.candidateHostedPaymentRequestId,
+      candidateManualPaymentId: body.candidateManualPaymentId,
       duplicateOfRecordId: body.duplicateOfRecordId,
       conflictReason: body.conflictReason,
       boundaries,
@@ -214,6 +252,7 @@ export function registerBillingPaymentImportReviewRoutes(
       importedByUserId: request.auth.user.id,
       candidateInvoiceId: body.candidateInvoiceId,
       candidateHostedPaymentRequestId: body.candidateHostedPaymentRequestId,
+      candidateManualPaymentId: body.candidateManualPaymentId,
       duplicateOfRecordId: body.duplicateOfRecordId,
       conflictReason: body.conflictReason,
       reviewState: "needs_review",
@@ -246,6 +285,7 @@ export function registerBillingPaymentImportReviewRoutes(
         currency: created.currency,
         candidateInvoiceId: created.candidateInvoiceId,
         candidateHostedPaymentRequestId: created.candidateHostedPaymentRequestId,
+        candidateManualPaymentId: created.candidateManualPaymentId,
         duplicateCuePresent: Boolean(created.duplicateOfRecordId),
         conflictReason: created.conflictReason,
         reviewState: created.reviewState,

@@ -35,8 +35,9 @@ OP-T160 implements the first runtime slice under this packet:
   `GET /api/billing/payment-import-review-records` create and list staff-only normalized review
   records for authenticated billing staff.
 - Stored fields are provider-neutral: safe provider label, event family/status, safe external IDs,
-  amount/currency, observed/imported timestamps, candidate invoice or hosted payment-request IDs,
-  duplicate/conflict cues, review state, and explicit no-side-effect boundary flags.
+  amount/currency, observed/imported timestamps, candidate invoice, hosted payment-request, or
+  manual-payment IDs, duplicate/conflict cues, review state, and explicit no-side-effect boundary
+  flags.
 - Idempotency is keyed by `(firm, provider label, external event ID)`: identical normalized
   evidence returns the existing review record, while changed evidence for the same event is rejected
   for staff review.
@@ -44,7 +45,9 @@ OP-T160 implements the first runtime slice under this packet:
   conflict indicators, and explicit copy that the records are normalized evidence only.
 - Deposit matching remains candidate metadata only. The runtime slice creates no matching,
   reconciliation, ledger, payment, refund, chargeback, notification, provider command, trust
-  transfer, or trust posting action.
+  transfer, or trust posting action. The 2026-06-20 follow-up lets staff attach an existing
+  manual-payment candidate ID to normalized deposit evidence for review, but it still does not
+  reconcile, allocate, clear, or post that payment.
 
 ## Safe Import Boundary
 
@@ -68,12 +71,14 @@ Synthetic example shape:
 
 ```text
 providerLabel=synthetic_processor
-eventFamily=payment
-eventStatus=payment_observed
+eventFamily=deposit
+eventStatus=deposit_observed
 externalEventId=evt_synthetic_review_001
+externalDepositId=dep_synthetic_review_001
 amountCents=125000
 currency=CAD
 candidateInvoiceId=inv_synthetic_review_001
+candidateManualPaymentId=pay_synthetic_review_001
 reviewState=needs_review
 rawPayloadRetained=false
 invoiceBalanceMutation=none
@@ -82,14 +87,15 @@ trustPosting=none
 ```
 
 The example is intentionally synthetic and illustrative. It is not an API contract, provider schema,
-fixture requirement, or authorization to persist raw provider data.
+fixture requirement, authorization to persist raw provider data, or authorization to allocate the
+candidate manual payment.
 
 ## Deposit Matching Boundary
 
 Deposit matching should remain reviewer-owned until a later implementation proves stronger controls.
 The safe first slice may propose candidate matches between normalized processor evidence, hosted
 payment requests, manual payment evidence, bank-feed review summaries, and existing reconciliation
-records. It must not:
+records. Candidate manual payments are references to existing evidence only. It must not:
 
 - create or complete ledger reconciliation records automatically;
 - match or clear deposits without reviewer evidence;

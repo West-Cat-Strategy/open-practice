@@ -1607,6 +1607,7 @@ describe("database schema hardening", () => {
         "amount_cents",
         "candidate_invoice_id",
         "candidate_hosted_payment_request_id",
+        "candidate_manual_payment_id",
         "duplicate_of_record_id",
         "conflict_reason",
         "normalized_evidence_fingerprint",
@@ -1618,6 +1619,7 @@ describe("database schema hardening", () => {
         "payment_import_review_records_firm_matter_imported_idx",
         "payment_import_review_records_firm_invoice_idx",
         "payment_import_review_records_firm_payment_request_idx",
+        "payment_import_review_records_firm_manual_payment_idx",
         "payment_import_review_records_firm_provider_event_idx",
       ]),
     );

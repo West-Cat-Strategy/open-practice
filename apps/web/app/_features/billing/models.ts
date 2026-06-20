@@ -116,6 +116,7 @@ export interface BillingPaymentImportReviewSummary {
   importedAt: string;
   candidateInvoiceId?: string;
   candidateHostedPaymentRequestId?: string;
+  candidateManualPaymentId?: string;
   duplicateCuePresent?: boolean;
   conflictReason?: "duplicate" | "candidate_mismatch" | "amount_mismatch" | "status_conflict";
   reviewState: "needs_review";
@@ -147,6 +148,7 @@ export interface BillingDashboardResponse {
     activeRateRuleCount: number;
     paymentImportReviewCount?: number;
     paymentImportConflictCount?: number;
+    depositMatchReviewCount?: number;
   };
   periodLocks: BillingPeriodLockRecord[];
   rateRules: BillingRateRuleRecord[];

@@ -372,6 +372,14 @@ chargeback handling, no provider commands, no client notifications, and no trust
 recorded in
 [OP-T160 payment import review records proof](validation/OP-T160_PAYMENT_IMPORT_REVIEW_RECORDS_PROOF_2026-06-19.md).
 
+The 2026-06-20 deposit-match review-record follow-up extends OP-T160 with an optional existing
+manual-payment candidate cue on normalized deposit evidence. It keeps candidate invoice, hosted
+payment-request, and manual-payment links matter-scoped, records duplicate/conflict posture, and
+shows deposit-match review counts in Billing without allocating payments, mutating invoice balances,
+creating reconciliation records, issuing provider commands, handling refunds/chargebacks, or posting
+trust entries. Proof is recorded in
+[OP-T160 deposit-match review records proof](validation/OP-T160_DEPOSIT_MATCH_REVIEW_RECORDS_PROOF_2026-06-20.md).
+
 The 2026-06-16 Signature Request Envelope Metadata branch adds OP-authored signer-order and
 field-placement metadata directly to existing signature requests. Domain validation stays
 provider-neutral, invalid metadata is rejected before provider submission or email/audit side

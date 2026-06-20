@@ -98,6 +98,14 @@ export async function listDrizzlePaymentImportReviewRecords(
       ),
     );
   }
+  if (options.candidateManualPaymentId) {
+    filters.push(
+      eq(
+        schema.paymentImportReviewRecords.candidateManualPaymentId,
+        options.candidateManualPaymentId,
+      ),
+    );
+  }
   if (options.eventFamily) {
     filters.push(eq(schema.paymentImportReviewRecords.eventFamily, options.eventFamily));
   }
