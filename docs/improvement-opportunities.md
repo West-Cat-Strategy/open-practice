@@ -27,6 +27,24 @@ branch. Future workflow candidates should compare against the read-only `GET /ap
 projection over redacted job lifecycle records and workflow audit events before proposing a new
 workflow/activity history surface.
 
+### API Documentation Inventory Follow-Up - 2026-06-20
+
+The 2026-06-20 incomplete-implementation inventory found no docs-only API route claims and no
+runtime route manifest blocker: `pnpm api:contract`, `pnpm policy:check`, the route-boundary
+contract tests, and the web route catalog tests are green. A strict exact-route comparison did find
+that `docs/api-and-state-machines.md` relies on compact notation or narrative coverage for some
+manifest entries instead of listing every route row individually.
+
+- **API/state-machine route inventory reconciliation**
+  - **First slice:** Reconcile `docs/api-and-state-machines.md` against the generated local API
+    inventory from `pnpm api:contract`, either by adding exact rows for the currently compact
+    CalDAV method variants, e2e-support-only helpers, step-up auth routes, public receipt paths,
+    and public-token legacy variants or by documenting the compact notation rules next to the API
+    table.
+  - **Shipped boundary:** This is documentation-only. It must not change route registration, route
+    authorization, public-token semantics, e2e helper availability, CalDAV behavior, auth step-up
+    behavior, payment/trust behavior, or generated API contract shape.
+
 ### Database Access Efficiency Follow-Ups - 2026-06-18
 
 The 2026-06-18 hot-path efficiency branch shipped the first database-access slice: indexes, batched
