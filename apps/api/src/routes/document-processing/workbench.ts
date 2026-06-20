@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import {
+  buildDocumentRetentionHoldReview,
   buildDocumentMetadataSearchPosture,
   buildDocumentMetadataTags,
   buildDocumentReviewSuggestions,
@@ -113,6 +114,10 @@ export function registerDocumentProcessingWorkbenchRoutes(
           latestExtraction,
           matter,
         });
+        const retentionHoldReview = buildDocumentRetentionHoldReview({
+          document,
+          reviewSuggestions,
+        });
         const sanitizedDocument = sanitizeDocument(document);
         const metadataTags = buildDocumentMetadataTags({
           document: sanitizedDocument,
@@ -128,6 +133,7 @@ export function registerDocumentProcessingWorkbenchRoutes(
             latestJob: latestJob ? serializeJobRun(latestJob) : undefined,
             latestExtraction: sanitizeTextExtraction(latestExtraction),
             reviewSuggestions,
+            retentionHoldReview,
             metadataTags,
             conversionReview,
           },

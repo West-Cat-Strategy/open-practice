@@ -214,6 +214,8 @@ export function sanitizeDocument(document: DocumentRecord) {
     reviewReason: document.reviewReason,
     reviewedAt: document.reviewedAt,
     duplicateOfDocumentId: document.duplicateOfDocumentId,
+    supersedesDocumentId: document.supersedesDocumentId,
+    supersededAt: document.supersededAt,
     uploadedAt: document.uploadedAt,
     verifiedAt: document.verifiedAt,
   };

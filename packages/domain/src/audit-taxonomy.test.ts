@@ -38,6 +38,49 @@ describe("audit event taxonomy", () => {
     expect(classification.metadataHints.matter).toEqual(["matterId"]);
   });
 
+  it("classifies document retention and hold review audit metadata as review-only", () => {
+    const classification = classifyAuditEvent(
+      auditEvent({
+        action: "document.retention_hold_review.recorded",
+        resourceType: "document",
+        resourceId: "doc-001",
+        metadata: {
+          matterId: "matter-001",
+          documentId: "doc-001",
+          decision: "reviewed_keep",
+          reason: "legal_hold",
+          reviewAfterPresent: true,
+          minimumRetainThroughPresent: true,
+          retentionHoldCueCount: 1,
+          retentionPosture: "blocked_by_hold",
+          destructiveAction: false,
+          retentionDeadlineEnforced: false,
+          legalHoldOverride: false,
+          retainedExportBody: false,
+        },
+      }),
+    );
+
+    expect(classification).toMatchObject({
+      category: "documents",
+      known: true,
+      matterScope: "matter",
+      resourceTypeMatches: true,
+    });
+    expect(classification.metadataHints.resource).toEqual(
+      expect.arrayContaining([
+        "documentId",
+        "decision",
+        "reason",
+        "retentionHoldCueCount",
+        "destructiveAction",
+        "retentionDeadlineEnforced",
+        "legalHoldOverride",
+        "retainedExportBody",
+      ]),
+    );
+  });
+
   it("classifies calendar scheduling request audit metadata as redacted review hints", () => {
     const classification = classifyAuditEvent(
       auditEvent({

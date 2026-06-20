@@ -61,6 +61,10 @@ export function buildDocumentProcessingQueuePath(documentId: string): string {
   return `/api/document-processing/documents/${encodeURIComponent(documentId)}/queue`;
 }
 
+export function buildDocumentRetentionHoldDecisionPath(documentId: string): string {
+  return `/api/documents/${encodeURIComponent(documentId)}/retention-hold-decisions`;
+}
+
 export function buildDocumentProcessingOcrProviderPath(): string {
   return "/api/document-processing/ocr-provider";
 }
@@ -127,6 +131,8 @@ export function documentProcessingDocumentSummary(
     | "reviewReason"
     | "reviewedAt"
     | "duplicateOfDocumentId"
+    | "supersedesDocumentId"
+    | "supersededAt"
     | "uploadedAt"
     | "verifiedAt"
   >,
@@ -146,6 +152,8 @@ export function documentProcessingDocumentSummary(
     reviewReason: document.reviewReason,
     reviewedAt: document.reviewedAt,
     duplicateOfDocumentId: document.duplicateOfDocumentId,
+    supersedesDocumentId: document.supersedesDocumentId,
+    supersededAt: document.supersededAt,
     uploadedAt: document.uploadedAt,
     verifiedAt: document.verifiedAt,
   };

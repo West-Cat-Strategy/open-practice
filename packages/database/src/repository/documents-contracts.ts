@@ -1,4 +1,9 @@
-import type { DocumentRecord, DocumentTextExtractionRecord } from "@open-practice/domain";
+import type {
+  DocumentRecord,
+  DocumentRetentionHoldReviewDecision,
+  DocumentRetentionHoldReviewReason,
+  DocumentTextExtractionRecord,
+} from "@open-practice/domain";
 
 export interface DocumentUploadIntent {
   id: string;
@@ -39,6 +44,17 @@ export interface DocumentRepository {
     metadata: Record<string, unknown>;
     reviewedByUserId: string;
     reviewedAt: string;
+  }): Promise<DocumentRecord>;
+  recordDocumentRetentionHoldReviewDecision(input: {
+    firmId: string;
+    documentId: string;
+    decision: DocumentRetentionHoldReviewDecision;
+    reason: DocumentRetentionHoldReviewReason;
+    reviewAfter?: string;
+    minimumRetainThrough?: string;
+    recordedByUserId: string;
+    recordedAt: string;
+    sourceCueCounts: Record<string, number>;
   }): Promise<DocumentRecord>;
   createDocumentTextExtraction(
     extraction: DocumentTextExtractionRecord,

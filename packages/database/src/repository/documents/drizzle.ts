@@ -2,7 +2,7 @@ import type { DocumentRecord, DocumentTextExtractionRecord } from "@open-practic
 import { and, eq, ne, sql } from "drizzle-orm";
 import type { OpenPracticeDatabase } from "../../runtime.js";
 import * as schema from "../../schema.js";
-import type { DocumentUploadIntent } from "../documents-contracts.js";
+import type { DocumentRepository, DocumentUploadIntent } from "../documents-contracts.js";
 import { mapDocumentRow, mapDocumentTextExtractionRow } from "../drizzle-mappers.js";
 
 function documentChecksumLockKey(input: {
@@ -203,6 +203,38 @@ export async function updateDrizzleDocumentScanStatus(
   const [row] = await db
     .update(schema.documents)
     .set({ scanStatus: input.scanStatus })
+    .where(
+      and(eq(schema.documents.firmId, input.firmId), eq(schema.documents.id, input.documentId)),
+    )
+    .returning();
+  if (!row) throw new Error(`Unknown document ${input.documentId}`);
+  return mapDocumentRow(row);
+}
+
+export async function recordDrizzleDocumentRetentionHoldReviewDecision(
+  db: OpenPracticeDatabase,
+  input: Parameters<DocumentRepository["recordDocumentRetentionHoldReviewDecision"]>[0],
+): Promise<DocumentRecord> {
+  const document = await getDrizzleDocument(db, input.firmId, input.documentId);
+  if (!document) throw new Error(`Unknown document ${input.documentId}`);
+  const [row] = await db
+    .update(schema.documents)
+    .set({
+      reviewMetadata: {
+        ...document.reviewMetadata,
+        retentionHoldReview: {
+          decision: input.decision,
+          reason: input.reason,
+          ...(input.reviewAfter ? { reviewAfter: input.reviewAfter } : {}),
+          ...(input.minimumRetainThrough
+            ? { minimumRetainThrough: input.minimumRetainThrough }
+            : {}),
+          recordedByUserId: input.recordedByUserId,
+          recordedAt: input.recordedAt,
+          sourceCueCounts: input.sourceCueCounts,
+        },
+      },
+    })
     .where(
       and(eq(schema.documents.firmId, input.firmId), eq(schema.documents.id, input.documentId)),
     )

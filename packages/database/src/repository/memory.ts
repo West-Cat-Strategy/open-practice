@@ -331,6 +331,7 @@ import {
   getMemoryDocument,
   getMemoryDocumentTextExtractions,
   listMemoryMatterDocuments,
+  recordMemoryDocumentRetentionHoldReviewDecision,
   reviewMemoryUploadedDocument,
   updateMemoryDocumentScanStatus,
   type MemoryDocumentStore,
@@ -2569,6 +2570,12 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     reviewedAt: string;
   }): Promise<DocumentRecord> {
     return reviewMemoryUploadedDocument(this.documentStore, input);
+  }
+
+  async recordDocumentRetentionHoldReviewDecision(
+    input: Parameters<OpenPracticeRepository["recordDocumentRetentionHoldReviewDecision"]>[0],
+  ): ReturnType<OpenPracticeRepository["recordDocumentRetentionHoldReviewDecision"]> {
+    return recordMemoryDocumentRetentionHoldReviewDecision(this.documentStore, input);
   }
 
   async listSignatureRequests(

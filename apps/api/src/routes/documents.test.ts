@@ -2,6 +2,7 @@ import { S3Client } from "@aws-sdk/client-s3";
 import { Buffer } from "node:buffer";
 import { afterEach, describe, expect, it } from "vitest";
 import { InMemoryOpenPracticeRepository } from "@open-practice/database";
+import type { User } from "@open-practice/domain";
 import { createApiServer } from "../server.js";
 
 const servers: Array<{ close: () => Promise<void> }> = [];
@@ -237,6 +238,147 @@ describe("document routes", () => {
         }),
       ]),
       valid: true,
+    });
+  });
+
+  it("records bounded staff retention and hold review decisions without overwriting upload review metadata", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository });
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/documents/doc-001/retention-hold-decisions",
+      payload: {
+        decision: "reviewed_keep",
+        reason: "legal_hold",
+        reviewAfter: "2026-07-01T00:00:00.000Z",
+        minimumRetainThrough: "2026-08-01T00:00:00.000Z",
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      document: {
+        id: "doc-001",
+        matterId: "matter-001",
+        legalHold: true,
+      },
+      retentionHoldReview: {
+        reviewerOnly: true,
+        mutating: false,
+        destructiveAction: false,
+        retentionDeadlineEnforced: false,
+        legalHoldOverride: false,
+        retainedExportBody: false,
+        status: "blocked_by_hold",
+        blockers: ["legal_hold"],
+        latestDecision: {
+          decision: "reviewed_keep",
+          reason: "legal_hold",
+          reviewAfter: "2026-07-01T00:00:00.000Z",
+          minimumRetainThrough: "2026-08-01T00:00:00.000Z",
+          recordedByUserId: "user-admin",
+        },
+      },
+    });
+    expect(response.json().document).not.toHaveProperty("reviewMetadata");
+    const document = await repository.getDocument("firm-west-legal", "doc-001");
+    expect(document?.reviewMetadata).toMatchObject({
+      source: "seed",
+      retentionHoldReview: {
+        decision: "reviewed_keep",
+        reason: "legal_hold",
+        recordedByUserId: "user-admin",
+      },
+    });
+    const audit = await repository.listAuditEvents("firm-west-legal");
+    expect(audit.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          action: "document.retention_hold_review.recorded",
+          resourceType: "document",
+          resourceId: "doc-001",
+          metadata: expect.objectContaining({
+            matterId: "matter-001",
+            documentId: "doc-001",
+            decision: "reviewed_keep",
+            reason: "legal_hold",
+            retentionPosture: "blocked_by_hold",
+            destructiveAction: false,
+            retentionDeadlineEnforced: false,
+            legalHoldOverride: false,
+            retainedExportBody: false,
+          }),
+        }),
+      ]),
+    );
+    expect(JSON.stringify(audit.events)).not.toContain("Retainer agreement.pdf");
+    expect(JSON.stringify(audit.events)).not.toContain("storageKey");
+  });
+
+  it("blocks ready retention packets while hold or integrity cues are active", async () => {
+    const response = await testServer().inject({
+      method: "POST",
+      url: "/api/documents/doc-001/retention-hold-decisions",
+      payload: {
+        decision: "ready_for_reviewer_packet",
+        reason: "legal_hold",
+      },
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({
+      code: "DOCUMENT_RETENTION_REVIEW_BLOCKED",
+    });
+  });
+
+  it("requires staff and matter-scoped document update access for retention decisions", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createDocumentUploadIntent({
+      id: "doc-matter-002",
+      firmId: "firm-west-legal",
+      matterId: "matter-002",
+      title: "Synthetic matter two document.pdf",
+      storageKey: "matters/matter-002/synthetic.pdf",
+      checksumSha256: "f".repeat(64),
+      classification: "general",
+      legalHold: false,
+    });
+    const users = (repository as unknown as { users: User[] }).users;
+    users.push({
+      id: "user-client-external",
+      firmId: "firm-west-legal",
+      displayName: "Synthetic Client External",
+      email: "client-external@example.test",
+      role: "client_external",
+      assignedMatterIds: ["matter-001"],
+      mfaEnabled: true,
+    });
+    const server = testServer({ repository });
+
+    const unassigned = await server.inject({
+      method: "POST",
+      url: "/api/documents/doc-matter-002/retention-hold-decisions",
+      headers: { "x-open-practice-user-id": "user-staff" },
+      payload: {
+        decision: "needs_review",
+        reason: "practice_review",
+      },
+    });
+    const external = await server.inject({
+      method: "POST",
+      url: "/api/documents/doc-001/retention-hold-decisions",
+      headers: { "x-open-practice-user-id": "user-client-external" },
+      payload: {
+        decision: "needs_review",
+        reason: "practice_review",
+      },
+    });
+
+    expect(unassigned.statusCode).toBe(403);
+    expect(external.statusCode).toBe(403);
+    await expect(repository.getDocument("firm-west-legal", "doc-001")).resolves.toMatchObject({
+      reviewMetadata: { source: "seed" },
     });
   });
 

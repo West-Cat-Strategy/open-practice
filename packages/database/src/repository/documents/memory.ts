@@ -1,6 +1,6 @@
 import type { DocumentRecord, DocumentTextExtractionRecord } from "@open-practice/domain";
 import { clone } from "../contracts.js";
-import type { DocumentUploadIntent } from "../documents-contracts.js";
+import type { DocumentRepository, DocumentUploadIntent } from "../documents-contracts.js";
 
 export interface MemoryDocumentStore {
   documents: DocumentRecord[];
@@ -161,6 +161,29 @@ export function reviewMemoryUploadedDocument(
   document.reviewMetadata = clone(input.metadata);
   document.reviewedByUserId = input.reviewedByUserId;
   document.reviewedAt = input.reviewedAt;
+  return clone(document);
+}
+
+export function recordMemoryDocumentRetentionHoldReviewDecision(
+  store: MemoryDocumentStore,
+  input: Parameters<DocumentRepository["recordDocumentRetentionHoldReviewDecision"]>[0],
+): DocumentRecord {
+  const document = store.documents.find(
+    (candidate) => candidate.firmId === input.firmId && candidate.id === input.documentId,
+  );
+  if (!document) throw new Error(`Unknown document ${input.documentId}`);
+  document.reviewMetadata = {
+    ...document.reviewMetadata,
+    retentionHoldReview: {
+      decision: input.decision,
+      reason: input.reason,
+      ...(input.reviewAfter ? { reviewAfter: input.reviewAfter } : {}),
+      ...(input.minimumRetainThrough ? { minimumRetainThrough: input.minimumRetainThrough } : {}),
+      recordedByUserId: input.recordedByUserId,
+      recordedAt: input.recordedAt,
+      sourceCueCounts: clone(input.sourceCueCounts),
+    },
+  };
   return clone(document);
 }
 

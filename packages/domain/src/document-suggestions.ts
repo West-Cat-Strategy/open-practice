@@ -40,6 +40,56 @@ export interface DocumentReviewSuggestions {
   groups: Record<DocumentReviewSuggestionGroup, DocumentReviewSuggestionCue[]>;
 }
 
+export const documentRetentionHoldReviewDecisions = [
+  "needs_review",
+  "blocked_by_hold",
+  "ready_for_reviewer_packet",
+  "reviewed_keep",
+  "reviewed_superseded",
+] as const;
+
+export type DocumentRetentionHoldReviewDecision =
+  (typeof documentRetentionHoldReviewDecisions)[number];
+
+export const documentRetentionHoldReviewReasons = [
+  "legal_hold",
+  "supersession",
+  "upload_integrity",
+  "metadata_review",
+  "practice_review",
+  "other",
+] as const;
+
+export type DocumentRetentionHoldReviewReason = (typeof documentRetentionHoldReviewReasons)[number];
+
+export interface DocumentRetentionHoldReviewRecord {
+  decision: DocumentRetentionHoldReviewDecision;
+  reason: DocumentRetentionHoldReviewReason;
+  reviewAfter?: string;
+  minimumRetainThrough?: string;
+  recordedByUserId: string;
+  recordedAt: string;
+  sourceCueCounts: Record<DocumentReviewSuggestionGroup | "total", number>;
+}
+
+export interface DocumentRetentionHoldReview {
+  reviewerOnly: true;
+  mutating: false;
+  destructiveAction: false;
+  retentionDeadlineEnforced: false;
+  legalHoldOverride: false;
+  retainedExportBody: false;
+  status:
+    | "needs_review"
+    | "blocked_by_hold"
+    | "ready_for_reviewer_packet"
+    | "reviewed_keep"
+    | "reviewed_superseded";
+  blockers: string[];
+  sourceCueCounts: Record<DocumentReviewSuggestionGroup | "total", number>;
+  latestDecision?: DocumentRetentionHoldReviewRecord;
+}
+
 export type DocumentMetadataTagGroup =
   | "classification"
   | "review_status"
@@ -272,6 +322,114 @@ function emptyCueCounts(): Record<DocumentReviewSuggestionGroup | "total", numbe
     missing_metadata: 0,
     retention_review: 0,
     total: 0,
+  };
+}
+
+function isDocumentRetentionHoldReviewDecision(
+  value: unknown,
+): value is DocumentRetentionHoldReviewDecision {
+  return (
+    typeof value === "string" &&
+    documentRetentionHoldReviewDecisions.includes(value as DocumentRetentionHoldReviewDecision)
+  );
+}
+
+function isDocumentRetentionHoldReviewReason(
+  value: unknown,
+): value is DocumentRetentionHoldReviewReason {
+  return (
+    typeof value === "string" &&
+    documentRetentionHoldReviewReasons.includes(value as DocumentRetentionHoldReviewReason)
+  );
+}
+
+function metadataString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+function metadataCueCounts(
+  value: unknown,
+): Record<DocumentReviewSuggestionGroup | "total", number> {
+  const counts = emptyCueCounts();
+  if (!value || typeof value !== "object" || Array.isArray(value)) return counts;
+  const record = value as Record<string, unknown>;
+  for (const key of [...suggestionGroups, "total"] as Array<
+    DocumentReviewSuggestionGroup | "total"
+  >) {
+    const raw = record[key];
+    counts[key] = typeof raw === "number" && Number.isFinite(raw) ? raw : 0;
+  }
+  return counts;
+}
+
+export function retentionHoldReviewMetadata(
+  metadata: Record<string, unknown>,
+): DocumentRetentionHoldReviewRecord | undefined {
+  const raw = metadata.retentionHoldReview;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const record = raw as Record<string, unknown>;
+  if (
+    !isDocumentRetentionHoldReviewDecision(record.decision) ||
+    !isDocumentRetentionHoldReviewReason(record.reason)
+  ) {
+    return undefined;
+  }
+  const recordedByUserId = metadataString(record.recordedByUserId);
+  const recordedAt = metadataString(record.recordedAt);
+  if (!recordedByUserId || !recordedAt) return undefined;
+  return {
+    decision: record.decision,
+    reason: record.reason,
+    reviewAfter: metadataString(record.reviewAfter),
+    minimumRetainThrough: metadataString(record.minimumRetainThrough),
+    recordedByUserId,
+    recordedAt,
+    sourceCueCounts: metadataCueCounts(record.sourceCueCounts),
+  };
+}
+
+export function buildDocumentRetentionHoldReview(input: {
+  document: DocumentRecord;
+  reviewSuggestions?: DocumentReviewSuggestions;
+}): DocumentRetentionHoldReview {
+  const sourceCueCounts = input.reviewSuggestions?.summaryCounts ?? emptyCueCounts();
+  const blockers: string[] = [];
+  if (input.document.legalHold) blockers.push("legal_hold");
+  if (input.document.uploadStatus !== "verified") blockers.push("upload_not_verified");
+  if (
+    input.document.checksumStatus !== "verified" &&
+    input.document.checksumStatus !== "duplicate"
+  ) {
+    blockers.push("checksum_not_verified");
+  }
+  if (input.document.scanStatus !== "passed" && input.document.scanStatus !== "not_required") {
+    blockers.push("scan_not_cleared");
+  }
+  if (
+    input.document.reviewStatus !== "accepted" &&
+    input.document.reviewStatus !== "not_required"
+  ) {
+    blockers.push("review_state_not_cleared");
+  }
+
+  const latestDecision = retentionHoldReviewMetadata(input.document.reviewMetadata);
+  const status =
+    blockers.length > 0
+      ? "blocked_by_hold"
+      : (latestDecision?.decision ??
+        (sourceCueCounts.retention_review > 0 ? "needs_review" : "reviewed_keep"));
+
+  return {
+    reviewerOnly: true,
+    mutating: false,
+    destructiveAction: false,
+    retentionDeadlineEnforced: false,
+    legalHoldOverride: false,
+    retainedExportBody: false,
+    status,
+    blockers,
+    sourceCueCounts,
+    latestDecision,
   };
 }
 

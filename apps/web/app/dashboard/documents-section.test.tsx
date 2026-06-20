@@ -177,6 +177,24 @@ function buildSyntheticDocumentProcessingWorkbench(): DocumentProcessingWorkbenc
             retention_review: [],
           },
         },
+        retentionHoldReview: {
+          reviewerOnly: true,
+          mutating: false,
+          destructiveAction: false,
+          retentionDeadlineEnforced: false,
+          legalHoldOverride: false,
+          retainedExportBody: false,
+          status: "needs_review",
+          blockers: [],
+          sourceCueCounts: {
+            classification: 1,
+            duplicate_or_supersession: 0,
+            matter_contact: 1,
+            missing_metadata: 0,
+            retention_review: 0,
+            total: 2,
+          },
+        },
         metadataTags: [
           {
             key: "classification:general",
@@ -243,6 +261,7 @@ function buildDocumentsSectionProps(
     portalDocumentAccessBusyId: "",
     portalDocumentAccessStatus: "No files are visible to this portal contact.",
     queueingDocumentId: "",
+    retentionHoldReviewBusyId: "",
     selectedClientPortalContactId: "contact_synthetic",
     selectedClientPortalContactLabel: "Ada Morgan",
     onClearDocumentMetadataSearch: noop,
@@ -254,6 +273,7 @@ function buildDocumentsSectionProps(
     onDocumentMetadataScanStatusFilterChange: noop,
     onGrantPortalDocumentAccess: noop,
     onQueueDocumentOcr: noop,
+    onRecordRetentionHoldDecision: noop,
     onRefreshDocumentMetadataSearch: noop,
     onRevokePortalDocumentAccess: noop,
     onSelectDocumentMetadataTag: noop,
@@ -311,7 +331,10 @@ describe("DocumentsSection", () => {
     );
     expect(html).toContain("Reviewer suggestions");
     expect(html).toContain("Extraction suggests financial");
+    expect(html).toContain("Retention/hold needs review");
+    expect(html).toContain("no deletion");
     expect(html).toContain("Queue OCR");
+    expect(html).toContain("needs review");
     expect(html).toContain("No document assembly packages are linked to this matter.");
   });
 

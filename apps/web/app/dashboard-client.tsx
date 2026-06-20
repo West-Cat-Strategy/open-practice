@@ -155,6 +155,7 @@ import {
   upsertStandaloneCalendarEventReminder,
 } from "./calendar-dashboard";
 import {
+  buildDocumentRetentionHoldDecisionPath,
   buildDocumentProcessingOcrProviderPath,
   buildDocumentProcessingQueuePath,
   buildDocumentProcessingWorkbenchPath,
@@ -166,6 +167,10 @@ import {
   summarizeDocumentReviewSuggestions,
   summarizeDocumentProcessingWorkbench,
 } from "./document-processing-dashboard";
+import type {
+  DocumentRetentionHoldReviewDecision,
+  DocumentRetentionHoldReviewReason,
+} from "./_features/document-processing/models";
 import { emptyDocumentAssemblyWorkbench } from "./document-assembly-dashboard";
 import {
   buildContactDataQualityResolutionPayload,
@@ -1300,6 +1305,7 @@ export default function DashboardClient({
   const [documentMetadataCueGroupFilter, setDocumentMetadataCueGroupFilter] = useState("");
   const [documentMetadataTagFilter, setDocumentMetadataTagFilter] = useState("");
   const [queueingDocumentId, setQueueingDocumentId] = useState("");
+  const [retentionHoldReviewBusyId, setRetentionHoldReviewBusyId] = useState("");
   const [trustControlsByMatterId, setTrustControlsByMatterId] = useState<
     Record<string, TrustControlsDashboardResponse>
   >(() => (matters[0] ? { [matters[0].id]: trustControls } : {}));
@@ -4149,6 +4155,46 @@ export default function DashboardClient({
     setQueueingDocumentId("");
   }
 
+  async function recordDocumentRetentionHoldDecision(
+    documentId: string,
+    decision: DocumentRetentionHoldReviewDecision,
+    reason: DocumentRetentionHoldReviewReason,
+  ): Promise<void> {
+    if (!activeMatter) return;
+    setRetentionHoldReviewBusyId(documentId);
+    setDocumentProcessingStatus("Recording retention/hold review...");
+    try {
+      const response = await fetch(
+        `${apiBaseUrl}${buildDocumentRetentionHoldDecisionPath(documentId)}`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: {
+            ...devHeaders,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ decision, reason }),
+        },
+      );
+
+      if (!response.ok) {
+        setDocumentProcessingStatus(`Retention/hold review failed: ${response.status}`);
+        return;
+      }
+
+      const refreshed = await refreshDocumentProcessingWorkbench(activeMatter.id);
+      setDocumentProcessingStatus(
+        refreshed
+          ? "Retention/hold review recorded; workbench refreshed."
+          : "Retention/hold review recorded; workbench unavailable.",
+      );
+    } catch (error) {
+      setDocumentProcessingStatus(`Retention/hold review failed: ${dashboardApiStatus(error)}`);
+    } finally {
+      setRetentionHoldReviewBusyId("");
+    }
+  }
+
   async function createCalendarCredential(): Promise<void> {
     setCreatingCalendarCredential(true);
     setCalendarOneTimeSecret(null);
@@ -6969,6 +7015,7 @@ export default function DashboardClient({
                   portalDocumentAccessBusyId={portalDocumentAccessBusyId}
                   portalDocumentAccessStatus={portalDocumentAccessStatus}
                   queueingDocumentId={queueingDocumentId}
+                  retentionHoldReviewBusyId={retentionHoldReviewBusyId}
                   selectedClientPortalContactId={selectedClientPortalContactId}
                   selectedClientPortalContactLabel={selectedClientPortalContactLabel}
                   onClearDocumentMetadataSearch={() => void clearDocumentMetadataSearch()}
@@ -6985,6 +7032,9 @@ export default function DashboardClient({
                   }
                   onQueueDocumentOcr={(documentId) => void queueDocumentOcr(documentId)}
                   onRefreshDocumentMetadataSearch={() => void refreshDocumentMetadataSearch()}
+                  onRecordRetentionHoldDecision={(documentId, decision, reason) =>
+                    void recordDocumentRetentionHoldDecision(documentId, decision, reason)
+                  }
                   onRevokePortalDocumentAccess={(accessId) =>
                     void revokePortalDocumentAccess(accessId)
                   }
