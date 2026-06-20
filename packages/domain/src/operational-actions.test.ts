@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  compactMatterLifecycleReviewActionReason,
   compactTrustPostingRequestReviewActionReason,
+  describeMatterLifecycleReviewAction,
   describeOperationalActionState,
   describeTrustPostingRequestReviewAction,
   disabledOperationalAction,
@@ -65,6 +67,61 @@ describe("operational action states", () => {
       disabledReason: "permission_required",
       tone: "risk",
     });
+  });
+
+  it("describes lifecycle review action labels and disabled states without matter data", () => {
+    expect(
+      describeMatterLifecycleReviewAction({
+        action: "record_review",
+        canRecord: true,
+        recording: false,
+      }),
+    ).toEqual({
+      actionKey: "matter_lifecycle_review.record",
+      available: true,
+      availability: "available",
+      label: "Record review",
+      tone: "ready",
+    });
+
+    expect(
+      describeMatterLifecycleReviewAction({
+        action: "record_review",
+        canRecord: false,
+        recording: false,
+      }),
+    ).toMatchObject({
+      actionKey: "matter_lifecycle_review.record",
+      available: false,
+      availability: "disabled",
+      label: "Record review",
+      disabledReason: "permission_required",
+    });
+
+    const busyAction = describeMatterLifecycleReviewAction({
+      action: "record_review",
+      canRecord: true,
+      recording: true,
+    });
+    expect(busyAction).toMatchObject({
+      actionKey: "matter_lifecycle_review.record",
+      available: false,
+      availability: "disabled",
+      label: "Recording",
+      disabledReason: "record_review_in_progress",
+    });
+
+    expect(compactMatterLifecycleReviewActionReason("permission_required")).toBe(
+      "permission required",
+    );
+    expect(compactMatterLifecycleReviewActionReason("record_review_in_progress")).toBe(
+      "record review in progress",
+    );
+
+    const serialized = JSON.stringify(busyAction);
+    expect(serialized).not.toContain("matter_lifecycle_synthetic");
+    expect(serialized).not.toContain("Synthetic pause review");
+    expect(serialized).not.toContain("Synthetic blocker evidence");
   });
 
   it("describes available trust posting request review actions", () => {

@@ -10,8 +10,8 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 | Snapshot              | Value                                                                |
 | --------------------- | -------------------------------------------------------------------- |
-| Current focus         | Staff document retention/hold review surface on branch proof pass.   |
-| Next recommended pick | Finish selector validation, then merge or hand off the branch.       |
+| Current focus         | 2026-06-20 mainline merge/push/prune closeout in progress.           |
+| Next recommended pick | Finish validation, push, and prune before picking another row.       |
 | Ready rows            | 0                                                                    |
 | Candidate rows        | 0                                                                    |
 | In progress rows      | 0                                                                    |
@@ -42,6 +42,15 @@ with metadata-only replay-request posture and safe audit metadata. It does not e
 copy objects, expose or retain raw MIME/object keys/provider payloads/mailbox credentials, promote
 documents, create matters, or widen permissions. Proof is recorded as a 2026-06-20 addendum in
 [Inbound email replay recovery proof](validation/OP_INBOUND_EMAIL_REPLAY_RECOVERY_PROOF_2026-06-03.md).
+
+The 2026-06-20 `feat/lifecycle-review-action-descriptor-20260620` branch extends the existing
+domain-owned operational action descriptor pattern to the single Lifecycle readiness review surface.
+The Matter overview form and `Record review` button now derive labels, busy/disabled state, stable
+`data-action-key`, and accessible labels from `packages/domain/src/operational-actions.ts`, while
+the lifecycle-transition route, payload builder, authorization, command semantics, provider
+behavior, settlement/trust boundaries, and review-only evidence model remain unchanged. Proof is
+recorded in
+[lifecycle review action descriptor proof](validation/OP_LIFECYCLE_REVIEW_ACTION_DESCRIPTOR_PROOF_2026-06-20.md).
 
 The 2026-06-19 active-lane mainline closeout is complete. The integration preserves all committed
 lane proof notes, resolves migrations through `0069_inbound_attachment_message_index`, keeps the

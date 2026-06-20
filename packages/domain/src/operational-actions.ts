@@ -4,6 +4,7 @@ export type OperationalActionAvailability = "available" | "disabled";
 export type OperationalActionTone = "neutral" | "ready" | "risk";
 export type TrustPostingRequestReviewAction = "approved" | "rejected";
 export type TrustPostingRequestReviewBusyAction = TrustPostingRequestReviewAction | "other";
+export type MatterLifecycleReviewAction = "record_review";
 
 export interface OperationalActionDisabledCondition {
   reason: string;
@@ -64,6 +65,53 @@ export function describeOperationalActionState(
     label: input.availableLabel ?? input.label,
     tone: input.availableTone ?? "ready",
   };
+}
+
+const matterLifecycleReviewActionDescriptors: Record<
+  MatterLifecycleReviewAction,
+  {
+    actionKey: string;
+    label: string;
+    busyLabel: string;
+    availableTone: OperationalActionTone;
+  }
+> = {
+  record_review: {
+    actionKey: "matter_lifecycle_review.record",
+    label: "Record review",
+    busyLabel: "Recording",
+    availableTone: "ready",
+  },
+};
+
+export function compactMatterLifecycleReviewActionReason(value?: string): string {
+  if (!value) return "available";
+  const labels: Record<string, string> = {
+    permission_required: "permission required",
+    record_review_in_progress: "record review in progress",
+  };
+  return labels[value] ?? value.replaceAll("_", " ");
+}
+
+export function describeMatterLifecycleReviewAction(input: {
+  action: MatterLifecycleReviewAction;
+  canRecord: boolean;
+  recording: boolean;
+}): OperationalActionState {
+  const descriptor = matterLifecycleReviewActionDescriptors[input.action];
+
+  return describeOperationalActionState({
+    actionKey: descriptor.actionKey,
+    label: descriptor.label,
+    availableTone: descriptor.availableTone,
+    disabledWhen: [
+      input.recording &&
+        disabledOperationalAction("record_review_in_progress", {
+          label: descriptor.busyLabel,
+        }),
+      !input.canRecord && disabledOperationalAction("permission_required"),
+    ],
+  });
 }
 
 const trustPostingRequestReviewActions = [

@@ -13,6 +13,10 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { ReactNode } from "react";
+import {
+  compactMatterLifecycleReviewActionReason,
+  describeMatterLifecycleReviewAction,
+} from "@open-practice/domain/operational-actions";
 import type { OpenPracticeSidebarNavigationSection } from "../../routes/routeCatalog";
 import {
   buildMatterFileCommandCenter,
@@ -185,6 +189,17 @@ export function MatterOverviewSection({
   const financialSnapshotCues = setupProfile.financialSnapshot.cues;
   const setupSummaryLabel = setupStage.label;
   const latestLifecycleRecords = activeMatter.lifecycleTransitions.slice(0, 4);
+  const lifecycleReviewAction = describeMatterLifecycleReviewAction({
+    action: "record_review",
+    canRecord: canRecordLifecycleTransition,
+    recording: recordingLifecycleTransition,
+  });
+  const lifecycleReviewDisabled = !lifecycleReviewAction.available;
+  const lifecycleReviewAriaLabel = lifecycleReviewAction.disabledReason
+    ? `${lifecycleReviewAction.label}: ${compactMatterLifecycleReviewActionReason(
+        lifecycleReviewAction.disabledReason,
+      )}`
+    : lifecycleReviewAction.label;
   const customFieldAttentionCount = customFieldDefinitions.filter(
     (cue) => cueTone(cue) === "risk",
   ).length;
@@ -305,7 +320,9 @@ export function MatterOverviewSection({
         <div className="activity-card lifecycle-readiness-review-card">
           <ClipboardCheck size={18} />
           <strong>{latestLifecycleRecords.length} recent reviews</strong>
-          <span>{lifecycleTransitionStatus}</span>
+          <span aria-live="polite" role="status">
+            {lifecycleTransitionStatus}
+          </span>
           <div className="party-list">
             {latestLifecycleRecords.map((record) => (
               <div className="party-row" key={record.id}>
@@ -339,7 +356,7 @@ export function MatterOverviewSection({
           <label className="search-field compact">
             <span>Transition</span>
             <select
-              disabled={!canRecordLifecycleTransition || recordingLifecycleTransition}
+              disabled={lifecycleReviewDisabled}
               onChange={(event) =>
                 onLifecycleTransitionFormChange({
                   ...lifecycleTransitionForm,
@@ -359,7 +376,7 @@ export function MatterOverviewSection({
           <label className="search-field compact">
             <span>Readiness</span>
             <select
-              disabled={!canRecordLifecycleTransition || recordingLifecycleTransition}
+              disabled={lifecycleReviewDisabled}
               onChange={(event) =>
                 onLifecycleTransitionFormChange({
                   ...lifecycleTransitionForm,
@@ -378,7 +395,7 @@ export function MatterOverviewSection({
           <label className="search-field compact">
             <span>Reason</span>
             <input
-              disabled={!canRecordLifecycleTransition || recordingLifecycleTransition}
+              disabled={lifecycleReviewDisabled}
               maxLength={240}
               onChange={(event) =>
                 onLifecycleTransitionFormChange({
@@ -392,7 +409,7 @@ export function MatterOverviewSection({
           <label className="search-field compact">
             <span>Blockers</span>
             <textarea
-              disabled={!canRecordLifecycleTransition || recordingLifecycleTransition}
+              disabled={lifecycleReviewDisabled}
               maxLength={640}
               onChange={(event) =>
                 onLifecycleTransitionFormChange({
@@ -405,13 +422,15 @@ export function MatterOverviewSection({
             />
           </label>
           <button
+            aria-label={lifecycleReviewAriaLabel}
             className="secondary-button compact-button"
-            disabled={!canRecordLifecycleTransition || recordingLifecycleTransition}
+            data-action-key={lifecycleReviewAction.actionKey}
+            disabled={lifecycleReviewDisabled}
             onClick={onRecordLifecycleTransition}
             type="button"
           >
             <ClipboardCheck size={15} />
-            {recordingLifecycleTransition ? "Recording..." : "Record review"}
+            {lifecycleReviewAction.label}
           </button>
         </div>
       </div>
