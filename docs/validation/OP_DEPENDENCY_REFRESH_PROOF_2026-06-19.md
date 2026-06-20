@@ -14,8 +14,9 @@ image pins, runtime container contracts, and synthetic-data posture.
   Playwright, Knip, TypeScript ESLint, Vitest, IMAP, mailparser, and Nodemailer candidates.
 - Added a `pnpm-workspace.yaml` override for `nodemailer@9.0.1` so transitive IMAP and mailparser
   paths cannot retain vulnerable `9.0.0` or 8.x copies.
-- Kept `@cyclonedx/cyclonedx-npm@4.2.1` held because the available `5.0.0` update is a separate
-  major release-tooling compatibility review.
+- Initially kept `@cyclonedx/cyclonedx-npm@4.2.1` held because the available `5.0.0` update was a
+  separate major release-tooling compatibility review; the 2026-06-19 mainline closeout later
+  upgraded it to `5.0.0` after dependency audit flagged `GHSA-v75r-vx73-82pj`.
 - Left Stripe, Dockerfiles, Compose files, provider source, runtime behavior, and public docs
   unchanged.
 
@@ -92,10 +93,11 @@ Results:
 
 - `pnpm why nodemailer --recursive` reports a single `nodemailer@9.0.1` version shared by the direct
   provider dependency, `imapflow@1.4.1`, and `mailparser@3.9.10`.
-- `pnpm outdated -r --format json` reports only the intentionally held
+- `pnpm outdated -r --format json` initially reported only the intentionally held
   `@cyclonedx/cyclonedx-npm 4.2.1 -> 5.0.0` major candidate.
-- `pnpm deps:audit` passed for production and development dependencies with no known
-  vulnerabilities.
+- `pnpm deps:audit` initially passed for production and development dependencies with no known
+  vulnerabilities; the mainline closeout reran the audit, found the later CycloneDX advisory, and
+  landed the patched `5.0.0` release-tooling update.
 - `pnpm deps:licenses` passed with 562 packages / 589 versions and the existing review-required
   license groups.
 

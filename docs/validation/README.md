@@ -422,7 +422,8 @@ The 2026-06-19 security plus patch/minor dependency refresh proof is recorded in
 It covers the Nodemailer advisory remediation through a direct `nodemailer@9.0.1` pin plus a
 workspace override for transitive IMAP/mailparser paths, current patch/minor updates for AWS S3,
 BullMQ, TipTap, ProseMirror model, Lucide, Playwright, Knip, TypeScript ESLint, and Vitest, and the
-held `@cyclonedx/cyclonedx-npm@5.0.0` major release-tooling candidate.
+mainline-closeout upgrade to `@cyclonedx/cyclonedx-npm@5.0.0` after dependency audit flagged the
+older release-tooling version.
 
 The 2026-06-16 Fastify rate-limit compatibility proof is recorded in
 [OP_DEPENDENCY_FASTIFY_RATE_LIMIT_COMPAT_PROOF_2026-06-16.md](OP_DEPENDENCY_FASTIFY_RATE_LIMIT_COMPAT_PROOF_2026-06-16.md).

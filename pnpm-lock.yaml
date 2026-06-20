@@ -20,8 +20,8 @@ importers:
         specifier: 4.11.3
         version: 4.11.3(playwright-core@1.61.0)
       "@cyclonedx/cyclonedx-npm":
-        specifier: 4.2.1
-        version: 4.2.1
+        specifier: 5.0.0
+        version: 5.0.0
       "@playwright/test":
         specifier: 1.61.0
         version: 1.61.0
@@ -565,10 +565,10 @@ packages:
       xmlbuilder2:
         optional: true
 
-  "@cyclonedx/cyclonedx-npm@4.2.1":
+  "@cyclonedx/cyclonedx-npm@5.0.0":
     resolution:
       {
-        integrity: sha512-SOA/96sf0wsgUYCRtFkLFm6WoFhG+q1BxdC84hPSn9J3xWlH1e7OnTPJT+WNUzTqzX1nSm5JhjRX4krozu2X+g==,
+        integrity: sha512-pEz/pqYJHQ0ZvY5xFJa+GQ5AjNL7JOEJCXCHymvKo2N1VnzKE1ROpkumduJt8a0DukQjQfBGRXouGQ9xqJtJaQ==,
       }
     engines: { node: ">=20.18.0", npm: ">=9" }
     hasBin: true
@@ -6045,7 +6045,7 @@ snapshots:
       spdx-expression-parse: 4.0.0
       xmlbuilder2: 4.0.3
 
-  "@cyclonedx/cyclonedx-npm@4.2.1":
+  "@cyclonedx/cyclonedx-npm@5.0.0":
     dependencies:
       "@cyclonedx/cyclonedx-library": 10.0.0(ajv-formats-draft2019@1.6.1(ajv@8.20.0))(ajv-formats@3.0.1(ajv@8.20.0))(ajv@8.20.0)(libxmljs2@0.37.0)(packageurl-js@2.0.1)(spdx-expression-parse@4.0.0)(xmlbuilder2@4.0.3)
       commander: 14.0.3
