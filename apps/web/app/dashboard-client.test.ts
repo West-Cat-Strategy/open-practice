@@ -5012,61 +5012,76 @@ describe("dashboard client behavior", () => {
       }),
     } satisfies MatterSummary;
 
-    const html = renderToStaticMarkup(
-      createElement(MatterOverviewSection, {
-        activeActivitySummary: summarizeMatterActivity([]),
-        activeCommunicationsInbox: undefined,
-        activeEmailDeliveries: [],
-        activeLegalClinicProfile: undefined,
-        activeLegalClinicProgram: undefined,
-        activeMatter,
-        activeMatterCommandCenter: undefined,
-        activityKindFilter: "all",
-        activityStatusFilter: "all",
-        canRecordLifecycleTransition: true,
-        filteredMatterActivity: [],
-        lifecycleTransitionForm: {
-          transition: "pause",
-          readiness: "ready",
-          reason: "Synthetic pause review.",
-          blockers: "",
-        },
-        lifecycleTransitionStatus: "No lifecycle readiness review recorded in this session.",
-        navigationSections: buildSidebarNavigationSections({
-          billingCanView: true,
-          capabilitySections: [capability("matters"), capability("documents"), capability("funds")],
-        }),
-        overview: {
-          firm: {
-            id: "firm-west-legal",
-            name: "West Legal",
-            defaultProvince: "BC",
+    const renderMatterOverview = ({
+      canRecordLifecycleTransition = true,
+      lifecycleTransitionStatus = "No lifecycle readiness review recorded in this session.",
+      recordingLifecycleTransition = false,
+    }: {
+      canRecordLifecycleTransition?: boolean;
+      lifecycleTransitionStatus?: string;
+      recordingLifecycleTransition?: boolean;
+    } = {}) =>
+      renderToStaticMarkup(
+        createElement(MatterOverviewSection, {
+          activeActivitySummary: summarizeMatterActivity([]),
+          activeCommunicationsInbox: undefined,
+          activeEmailDeliveries: [],
+          activeLegalClinicProfile: undefined,
+          activeLegalClinicProgram: undefined,
+          activeMatter,
+          activeMatterCommandCenter: undefined,
+          activityKindFilter: "all",
+          activityStatusFilter: "all",
+          canRecordLifecycleTransition,
+          filteredMatterActivity: [],
+          lifecycleTransitionForm: {
+            transition: "pause",
+            readiness: "ready",
+            reason: "Synthetic pause review.",
+            blockers: "",
           },
-          metrics: {
-            openMatters: 1,
-            intakeMatters: 0,
-            portalGrants: 0,
-            trustBalanceCents: 25000,
-            unbilledMinutes: 90,
-          },
-          users: [
-            {
-              ...setupUser,
+          lifecycleTransitionStatus,
+          navigationSections: buildSidebarNavigationSections({
+            billingCanView: true,
+            capabilitySections: [
+              capability("matters"),
+              capability("documents"),
+              capability("funds"),
+            ],
+          }),
+          overview: {
+            firm: {
+              id: "firm-west-legal",
+              name: "West Legal",
+              defaultProvince: "BC",
             },
-          ],
-        },
-        compactDate: (value?: string) => value ?? "No date",
-        compactStatus: (value?: string) => value ?? "unknown",
-        formatCurrency: (value: number) => `$${(value / 100).toFixed(2)}`,
-        formatMinutes: (value: number) => `${value}m`,
-        onActivityKindFilterChange: () => undefined,
-        onActivityStatusFilterChange: () => undefined,
-        onLifecycleTransitionFormChange: () => undefined,
-        onRecordLifecycleTransition: () => undefined,
-        onSelectSection: () => undefined,
-        recordingLifecycleTransition: false,
-      }),
-    );
+            metrics: {
+              openMatters: 1,
+              intakeMatters: 0,
+              portalGrants: 0,
+              trustBalanceCents: 25000,
+              unbilledMinutes: 90,
+            },
+            users: [
+              {
+                ...setupUser,
+              },
+            ],
+          },
+          compactDate: (value?: string) => value ?? "No date",
+          compactStatus: (value?: string) => value ?? "unknown",
+          formatCurrency: (value: number) => `$${(value / 100).toFixed(2)}`,
+          formatMinutes: (value: number) => `${value}m`,
+          onActivityKindFilterChange: () => undefined,
+          onActivityStatusFilterChange: () => undefined,
+          onLifecycleTransitionFormChange: () => undefined,
+          onRecordLifecycleTransition: () => undefined,
+          onSelectSection: () => undefined,
+          recordingLifecycleTransition,
+        }),
+      );
+
+    const html = renderMatterOverview();
 
     expect(html).toContain("Matter setup");
     expect(html).toContain("Open");
@@ -5085,6 +5100,31 @@ describe("dashboard client behavior", () => {
     expect(html).toContain("Synthetic close packet needs review.");
     expect(html).toContain("1 blocker evidence rows recorded.");
     expect(html).toContain("Record review evidence");
+    expect(html).toContain('role="status"');
+    expect(html).toContain('aria-live="polite"');
+    expect(html).toContain('data-action-key="matter_lifecycle_review.record"');
+    expect(html).toContain('aria-label="Record review"');
+    expect(html).toContain(">Record review</button>");
+
+    const busyHtml = renderMatterOverview({
+      lifecycleTransitionStatus: "Recording lifecycle readiness review...",
+      recordingLifecycleTransition: true,
+    });
+    expect(busyHtml).toContain('aria-label="Recording: record review in progress"');
+    expect(busyHtml).toContain('data-action-key="matter_lifecycle_review.record"');
+    expect(busyHtml).toContain(">Recording</button>");
+    expect(busyHtml).toContain('disabled=""');
+
+    const disabledHtml = renderMatterOverview({ canRecordLifecycleTransition: false });
+    expect(disabledHtml).toContain('aria-label="Record review: permission required"');
+    expect(disabledHtml).toContain('data-action-key="matter_lifecycle_review.record"');
+    expect(disabledHtml).toContain('disabled=""');
+
+    const errorHtml = renderMatterOverview({
+      lifecycleTransitionStatus: "Lifecycle readiness review failed: forbidden",
+    });
+    expect(errorHtml).toContain("Lifecycle readiness review failed: forbidden");
+    expect(errorHtml).toContain('role="status"');
   });
 
   it("describes worker run filters and redacted run context", () => {
