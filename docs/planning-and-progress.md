@@ -91,6 +91,15 @@ a documentation-inventory gap, now closed by the API docs route inventory reconc
 Evidence is recorded in
 [incomplete implementation audit proof](validation/OP_INCOMPLETE_IMPLEMENTATION_AUDIT_PROOF_2026-06-20.md).
 
+The 2026-06-20 `chore/self-hosting-release-readiness-20260620` branch revalidates the focused
+self-hosting lane from current `main` in a clean sibling worktree while preserving the occupied root
+checkout. `pnpm selfhost:check -- --env-file docker/selfhost.example.env --allow-synthetic-example`
+and `pnpm docker:app-smoke` passed without runtime changes. `pnpm docker:residual-watch` was
+interrupted after a local no-output hang, optional Docker lint/scan wrappers skipped with local
+artifacts, and `pnpm e2e:docker` failed the Docker dashboard sweep on a 240s Playwright timeout after
+2 of 3 tests passed. Evidence is recorded in
+[self-hosting release-readiness drill proof](validation/OP_SELF_HOSTING_RELEASE_READINESS_DRILL_PROOF_2026-06-20.md).
+
 The 2026-06-19 active-lane mainline closeout is complete. The integration preserves all committed
 lane proof notes, resolves migrations through `0069_inbound_attachment_message_index`, keeps the
 self-hosting same-origin browser API mode as the Docker-local routing superset, passed

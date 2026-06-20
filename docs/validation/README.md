@@ -108,6 +108,12 @@ preserving the local development Compose profile, public API route shapes, produ
 payment/trust boundaries, and synthetic-only proof posture. The proof records selected package,
 dependency, docs, policy, Docker app-smoke, Docker E2E, `pnpm ci:local`, and `git diff --check`
 validation as passing.
+The 2026-06-20 release-readiness drill is recorded in
+[OP_SELF_HOSTING_RELEASE_READINESS_DRILL_PROOF_2026-06-20.md](OP_SELF_HOSTING_RELEASE_READINESS_DRILL_PROOF_2026-06-20.md).
+It revalidated current `main` from a clean sibling worktree. `pnpm selfhost:check` and
+`pnpm docker:app-smoke` passed without runtime changes; `pnpm docker:residual-watch` was interrupted
+after a local no-output hang, optional Docker lint/scan wrappers skipped with local artifacts, and
+Docker E2E failed the dashboard sweep on a 240s Playwright timeout after 2 of 3 tests passed.
 
 The 2026-06-19 security scan remediation proof is recorded in
 [OP_SECURITY_SCAN_REMEDIATION_PROOF_2026-06-19.md](OP_SECURITY_SCAN_REMEDIATION_PROOF_2026-06-19.md).
