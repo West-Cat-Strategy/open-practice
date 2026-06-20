@@ -20,10 +20,10 @@ skipped-check context. The live workboard remains
 
 The 2026-06-19 mainline merge/push/prune proof is recorded in
 [OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-19.md](OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-19.md).
-It covers the active dirty-lane consolidation into
-`merge/open-practice-active-lanes-2026-06-19`, migration numbering reconciliation, proof/index/
-workboard reconciliation, selector-driven validation, main parity, push, and branch/worktree prune
-status while preserving stash count `42`.
+It covers the active dirty-lane consolidation through
+`merge/open-practice-active-lanes-2026-06-19` into `main`, migration numbering reconciliation,
+proof/index/workboard reconciliation, selector-driven validation, completed main parity/push, and
+branch/worktree prune status while preserving stash count `42`.
 
 The 2026-06-19 local security tooling proof is recorded in
 [OP_LOCAL_SECURITY_TOOLING_PROOF_2026-06-19.md](OP_LOCAL_SECURITY_TOOLING_PROOF_2026-06-19.md).

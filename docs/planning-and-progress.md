@@ -10,8 +10,8 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 | Snapshot              | Value                                                                |
 | --------------------- | -------------------------------------------------------------------- |
-| Current focus         | 2026-06-19 active-lane integration in progress.                      |
-| Next recommended pick | Complete mainline validation, push, and prune only after parity.     |
+| Current focus         | 2026-06-19 active-lane closeout complete; `main` pushed and pruned.  |
+| Next recommended pick | Pick the next scoped row after a fresh status and selector check.    |
 | Ready rows            | 0                                                                    |
 | Candidate rows        | 0                                                                    |
 | In progress rows      | 0                                                                    |
@@ -22,13 +22,13 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 ## Current Handoff Notes
 
-The 2026-06-19 active-lane mainline closeout is in progress on
-`merge/open-practice-active-lanes-2026-06-19`. The integration preserves all committed lane proof
-notes, resolves migrations through `0069_inbound_attachment_message_index`, keeps the self-hosting
-same-origin browser API mode as the Docker-local routing superset, and records validation/push/prune
-evidence in
+The 2026-06-19 active-lane mainline closeout is complete. The integration preserves all committed
+lane proof notes, resolves migrations through `0069_inbound_attachment_message_index`, keeps the
+self-hosting same-origin browser API mode as the Docker-local routing superset, passed
+selector-driven validation, fast-forwarded and pushed `main`, verified local/origin/GitHub parity,
+and pruned the clean merged sibling worktrees and local branches while leaving the stash count at
+`42`. Evidence is recorded in
 [mainline merge/push/prune proof](validation/OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-19.md).
-Do not push or prune until the proof records selector-driven validation and main/origin parity.
 
 The 2026-06-19 `chore/self-hosting-optimization-20260619` branch adds a focused single-host
 self-hosting lane while keeping the local Compose stack local-only. It adds

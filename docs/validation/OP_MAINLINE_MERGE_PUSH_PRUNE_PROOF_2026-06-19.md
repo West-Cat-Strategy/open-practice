@@ -163,13 +163,40 @@ Other validation-driven repairs before the final green pass: Prettier/lockfile f
 unused database imports, migration replay requiring a local disposable Postgres, and Playwright
 browser installation for host E2E.
 
-## Publish And Prune Plan
+## Publish And Prune
 
-After all required validation passes, `main` will be fast-forwarded to the validated integration
-branch and pushed to `origin/main`. Post-push parity will compare local `main`, `origin/main`, and
-`git ls-remote origin refs/heads/main`.
+After validation, local `main` was fast-forwarded from `e680c230` to the validated integration
+commit `f30aacfcd6fa40670bf6d6692c9090067f3d4b1d` and pushed to `origin/main`.
+Post-push parity confirmed:
 
-Only after parity, clean worktrees whose branches are ancestors of `main` will be removed, merged
-local branches will be deleted with `git branch -d`, `git worktree prune` and
-`git remote prune origin` will run, and all stashes will remain untouched. Final stash count must
-remain `42`.
+| Check                                   | Result                                     |
+| --------------------------------------- | ------------------------------------------ |
+| `git rev-parse main`                    | `f30aacfcd6fa40670bf6d6692c9090067f3d4b1d` |
+| `git rev-parse origin/main`             | `f30aacfcd6fa40670bf6d6692c9090067f3d4b1d` |
+| `git ls-remote origin refs/heads/main`  | `f30aacfcd6fa40670bf6d6692c9090067f3d4b1d` |
+| `git rev-list --left-right --count ...` | `0 0`                                      |
+| `git status --short --branch`           | `## main...origin/main`                    |
+
+Only after parity, the 13 clean sibling worktrees whose branches were ancestors of `main` were
+removed:
+
+- `/Users/bryan/projects/open-practice-deps-20260619`
+- `/Users/bryan/projects/open-practice-filtered-audit-reads-20260619`
+- `/Users/bryan/projects/open-practice-gitignore-refactor-20260619`
+- `/Users/bryan/projects/open-practice-local-tooling-ratchets`
+- `/Users/bryan/projects/open-practice-local-tooling-upgrade-20260619`
+- `/Users/bryan/projects/open-practice-matter-lifecycle-commands-2026-06-19`
+- `/Users/bryan/projects/open-practice-ops-efficiency-remediation`
+- `/Users/bryan/projects/open-practice-payment-import-review-records-20260619`
+- `/Users/bryan/projects/open-practice-review-remediation-20260619`
+- `/Users/bryan/projects/open-practice-security-e680c230-remediation`
+- `/Users/bryan/projects/open-practice-self-hosting-optimization-20260619`
+- `/Users/bryan/projects/open-practice-staff-ui-ux-overhaul`
+- `/Users/bryan/projects/open-practice-ui-overlap-refactor`
+
+The merged local branches were deleted with `git branch -d`, including the integration branch and
+all lane branches. `git worktree prune` and `git remote prune origin` both completed cleanly. Final
+post-prune inventory confirmed one worktree (`/Users/bryan/projects/open-practice` on `main`) and
+one local branch (`main`).
+
+Stashes were left untouched. The initial and final stash count was `42`.
