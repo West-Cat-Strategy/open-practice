@@ -83,6 +83,14 @@ public-token semantics, CalDAV behavior, e2e helper availability, payment/trust 
 behavior, schemas, and runtime source. Evidence is recorded in
 [API docs route inventory reconciliation proof](validation/OP_API_DOCS_ROUTE_INVENTORY_RECONCILIATION_PROOF_2026-06-20.md).
 
+The 2026-06-20 `audit/incomplete-implementation-inventory-20260620` branch records an exhaustive
+docs-backed audit for stubs, placeholders, TODO markers, skipped worker branches, dead-code/tooling
+evidence, route/API drift, web route catalog coverage, and docs that could describe unshipped
+behavior. No P0/P1 runtime blocker or confirmed production stub was found. The only new follow-up is
+a documentation-inventory gap, now closed by the API docs route inventory reconciliation above.
+Evidence is recorded in
+[incomplete implementation audit proof](validation/OP_INCOMPLETE_IMPLEMENTATION_AUDIT_PROOF_2026-06-20.md).
+
 The 2026-06-19 active-lane mainline closeout is complete. The integration preserves all committed
 lane proof notes, resolves migrations through `0069_inbound_attachment_message_index`, keeps the
 self-hosting same-origin browser API mode as the Docker-local routing superset, passed

@@ -48,13 +48,40 @@ One low-severity documentation completeness gap was found:
 
 - `docs/api-and-state-machines.md` did not individually enumerate every route authorization
   manifest entry. The manual comparison found no docs-only route claims, but a strict exact-route
-  comparison reported manifest-only entries. Most were compact notation false positives, such as
+  comparison reported 40 manifest-only entries. Most are compact notation false positives, such as
   `POST/PATCH/DELETE /api/contacts/:contactId/contact-methods[...]`, legacy path-token variants, or
-  public-header variants. The remaining omissions were documentation-inventory detail gaps around
+  public-header variants. The remaining omissions are documentation-inventory detail gaps around
   CalDAV method variants, e2e-support-only helpers, passkey/password step-up routes, and public mail
-  receipt path naming. Runtime coverage was not missing: `pnpm policy:check`,
+  receipt path naming. Runtime coverage is not missing: `pnpm policy:check`,
   `node --test scripts/validate-open-practice-boundaries.test.mjs`, and the generated API contract
-  all passed.
+  all passed. Follow-up: add an API docs inventory reconciliation slice that either enumerates these
+  routes explicitly or documents the compact notation contract beside the generated local API
+  inventory.
+
+## Intentional Boundaries Confirmed
+
+- `packages/providers/src/draft-assist.ts` and `packages/domain/src/sample-data.ts` use
+  `fake-local-ai` and synthetic proposal text intentionally for disabled-by-default, review-only AI
+  assist/proposal behavior. Existing docs describe this as provider-neutral synthetic support, not a
+  live AI provider claim.
+- `apps/api/src/routes/communications/inbox.ts` and web communications models use
+  `phone_note_placeholder` and `text_note_placeholder` intentionally for OP-T132's redacted
+  channel-history projection. Live SMS/text delivery, public portal composition, realtime chat, and
+  automatic client-update sends remain out of scope.
+- `apps/worker/src/processors/ai-triage.ts` intentionally records reserved legal-research provider
+  jobs as citation-review metadata only because a live provider has not been explicitly implemented.
+- `apps/worker/src/processors/document-assembly.ts`, `ocr.ts`, `email.ts`, `reports.ts`, and the
+  dispatcher return guarded lifecycle metadata for unsupported job names, missing metadata, unsafe
+  source state, unconfigured providers, or authorization changes. These are guarded terminal states,
+  not empty implementations.
+- `apps/api/src/server.ts` rejects deprecated DocuSeal/docassemble/OIDC env and production
+  `STRIPE_SECRET_KEY` even though non-production Stripe Checkout Session shell support exists. The
+  API/state-machine, deployment-hardening, payment-boundary, and trust/funds docs all describe this
+  production gate.
+- `scripts/selfhost-check.mjs` rejects placeholder self-hosting secrets unless the checked-in
+  synthetic example flag is present. That is a deployment-readiness ratchet.
+- Web `placeholder` matches are form input placeholders, TipTap placeholder extension usage, or CSS
+  placeholder selectors. They do not indicate missing implementation.
 
 ## Addendum: API Docs Reconciliation Closed
 
@@ -76,6 +103,9 @@ git switch -c audit/incomplete-implementation-inventory-20260620
 rg -n -i "\b(TODO|FIXME|XXX|HACK|STUB|not implemented|unimplemented|coming soon|TBD|dummy|fake|noop|no-op|placeholder)\b" apps packages scripts --glob '!**/*.test.*' --glob '!**/*.spec.*' --glob '!**/dist/**' --glob '!**/build/**' -S
 rg -n -i "\b(TODO|FIXME|XXX|HACK|STUB|not implemented|unimplemented|coming soon|TBD|dummy|fake|noop|no-op|placeholder)\b" apps packages scripts --glob '**/*.test.*' --glob '**/*.spec.*' -S
 rg -n -i "\b(TODO|FIXME|XXX|HACK|STUB|not implemented|unimplemented|coming soon|TBD|dummy|fake|noop|no-op|placeholder)\b" docs README.md CONTRIBUTING.md AGENTS.md SECURITY.md -S
+rg -n "return (null|undefined|\[\]|\{\})\s*;\s*//.*(TODO|FIXME|stub|placeholder|not implemented|unimplemented|later|future)" apps packages scripts --glob '!**/*.test.*' --glob '!**/*.spec.*' --glob '!**/dist/**' --glob '!**/build/**' -i -S
+rg -n "TODO|FIXME|XXX|HACK|STUB|not implemented|unimplemented|coming soon|TBD" apps packages scripts docs README.md CONTRIBUTING.md AGENTS.md SECURITY.md --glob '!**/node_modules/**' --glob '!**/dist/**' --glob '!**/build/**' -S
+rg -n "throw new Error\([^\n]*(TODO|FIXME|Not implemented|not implemented|Unimplemented|unimplemented|stub|Stub|TBD|coming soon)|status:\s*\"skipped\"|reason:\s*\"Unsupported|unsupported\"" apps packages scripts --glob '!**/*.test.*' --glob '!**/*.spec.*' --glob '!**/dist/**' --glob '!**/build/**' -S
 pnpm deadcode:check
 pnpm api:contract
 pnpm architecture:check
