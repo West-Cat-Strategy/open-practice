@@ -879,10 +879,14 @@ describe("jobs routes", () => {
         automaticMatterCreation: false,
         providerFailureStage: "parser_retry_enqueue",
         provider: "mailgun",
-        source: "api.inbound_email.parser_job.retry",
+        source: "api.inbound_email.parser_job.replay_request",
         resourceType: "inbound_email_raw",
         resourceId: "synthetic-token-hash",
         retryOfJobId: "job-inbound-parser-original",
+        reviewOnly: true,
+        redactedAuthorizedProjection: true,
+        requestType: "inbound_email_parser_safe_replay",
+        reviewState: "replay_requested",
         providerPayload: { private: "Synthetic provider payload" },
         rawStorageKey:
           "inbound-email/firm-west-legal/raw/provider-webhooks/mailgun/raw-mime/private.eml",
@@ -906,7 +910,7 @@ describe("jobs routes", () => {
       queueName: "inbound_email",
       metadata: {
         provider: "mailgun",
-        source: "api.inbound_email.parser_job.retry",
+        source: "api.inbound_email.parser_job.replay_request",
         resourceType: "inbound_email_raw",
         resourceId: "synthetic-token-hash",
         recoveryPosture: "owner_reviewed_raw_object_replay",
@@ -916,6 +920,10 @@ describe("jobs routes", () => {
         automaticDocumentPromotion: false,
         automaticMatterCreation: false,
         providerFailureStage: "parser_retry_enqueue",
+        reviewOnly: true,
+        redactedAuthorizedProjection: true,
+        requestType: "inbound_email_parser_safe_replay",
+        reviewState: "replay_requested",
       },
     });
     expect(detail.json().job).toMatchObject({
@@ -923,7 +931,7 @@ describe("jobs routes", () => {
       queueName: "inbound_email",
       metadata: {
         provider: "mailgun",
-        source: "api.inbound_email.parser_job.retry",
+        source: "api.inbound_email.parser_job.replay_request",
         resourceType: "inbound_email_raw",
         resourceId: "synthetic-token-hash",
         recoveryPosture: "owner_reviewed_raw_object_replay",
@@ -933,6 +941,10 @@ describe("jobs routes", () => {
         automaticDocumentPromotion: false,
         automaticMatterCreation: false,
         providerFailureStage: "parser_retry_enqueue",
+        reviewOnly: true,
+        redactedAuthorizedProjection: true,
+        requestType: "inbound_email_parser_safe_replay",
+        reviewState: "replay_requested",
       },
     });
     expect(list.body).not.toContain("rawStorageKey");

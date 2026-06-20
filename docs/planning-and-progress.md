@@ -22,6 +22,14 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 ## Current Handoff Notes
 
+The 2026-06-20 `recovery/inbound-email-operator-replay-20260620` branch adds the smallest
+operator-reviewed inbound-email recovery action: owner-only
+`POST /api/inbound-email/parser-jobs/:jobId/replay-request` marks failed/dead-letter parser jobs
+with metadata-only replay-request posture and safe audit metadata. It does not enqueue parser work,
+copy objects, expose or retain raw MIME/object keys/provider payloads/mailbox credentials, promote
+documents, create matters, or widen permissions. Proof is recorded as a 2026-06-20 addendum in
+[Inbound email replay recovery proof](validation/OP_INBOUND_EMAIL_REPLAY_RECOVERY_PROOF_2026-06-03.md).
+
 The 2026-06-19 active-lane mainline closeout is complete. The integration preserves all committed
 lane proof notes, resolves migrations through `0069_inbound_attachment_message_index`, keeps the
 self-hosting same-origin browser API mode as the Docker-local routing superset, passed

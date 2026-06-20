@@ -1949,6 +1949,15 @@ export const ROUTE_AUTHORIZATION_MANIFEST = [
     "update",
     "none",
   ),
+  authRoute(
+    "registerInboundEmailRoutes",
+    "apps/api/src/routes/inbound-email.test.ts",
+    "POST",
+    "/api/inbound-email/parser-jobs/:jobId/replay-request",
+    "job",
+    "update",
+    "none",
+  ),
 
   authRoute(
     "registerShareRoutes",
