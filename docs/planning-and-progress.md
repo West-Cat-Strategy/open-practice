@@ -1,6 +1,6 @@
 # Planning and Progress
 
-**Last Updated:** 2026-06-19
+**Last Updated:** 2026-06-20
 
 Use this file for live tracked work, immediate next moves, and the forward-looking development plan.
 Use `docs/planning.md` for the durable roadmap, `docs/improvement-opportunities.md` for candidate
@@ -10,8 +10,8 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 | Snapshot              | Value                                                                |
 | --------------------- | -------------------------------------------------------------------- |
-| Current focus         | 2026-06-19 active-lane closeout complete; `main` pushed and pruned.  |
-| Next recommended pick | Pick the next scoped row after a fresh status and selector check.    |
+| Current focus         | 2026-06-20 self-hosting release-readiness drill recorded.            |
+| Next recommended pick | Triage the Docker E2E dashboard sweep timeout, or pick a scoped row. |
 | Ready rows            | 0                                                                    |
 | Candidate rows        | 0                                                                    |
 | In progress rows      | 0                                                                    |
@@ -21,6 +21,15 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 | Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`     |
 
 ## Current Handoff Notes
+
+The 2026-06-20 `chore/self-hosting-release-readiness-20260620` branch revalidates the focused
+self-hosting lane from current `main` in a clean sibling worktree while preserving the occupied root
+checkout. `pnpm selfhost:check -- --env-file docker/selfhost.example.env --allow-synthetic-example`
+and `pnpm docker:app-smoke` passed without runtime changes. `pnpm docker:residual-watch` was
+interrupted after a local no-output hang, optional Docker lint/scan wrappers skipped with local
+artifacts, and `pnpm e2e:docker` failed the Docker dashboard sweep on a 240s Playwright timeout after
+2 of 3 tests passed. Evidence is recorded in
+[self-hosting release-readiness drill proof](validation/OP_SELF_HOSTING_RELEASE_READINESS_DRILL_PROOF_2026-06-20.md).
 
 The 2026-06-19 active-lane mainline closeout is complete. The integration preserves all committed
 lane proof notes, resolves migrations through `0069_inbound_attachment_message_index`, keeps the
