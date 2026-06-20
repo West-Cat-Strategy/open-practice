@@ -1,6 +1,6 @@
 # Planning and Progress
 
-**Last Updated:** 2026-06-19
+**Last Updated:** 2026-06-20
 
 Use this file for live tracked work, immediate next moves, and the forward-looking development plan.
 Use `docs/planning.md` for the durable roadmap, `docs/improvement-opportunities.md` for candidate
@@ -10,8 +10,8 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 | Snapshot              | Value                                                                |
 | --------------------- | -------------------------------------------------------------------- |
-| Current focus         | 2026-06-19 active-lane closeout complete; `main` pushed and pruned.  |
-| Next recommended pick | Pick the next scoped row after a fresh status and selector check.    |
+| Current focus         | 2026-06-20 AI proposal authorization matrix branch.                  |
+| Next recommended pick | Pick the next scoped row after fresh status and selector validation. |
 | Ready rows            | 0                                                                    |
 | Candidate rows        | 0                                                                    |
 | In progress rows      | 0                                                                    |
@@ -21,6 +21,15 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 | Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`     |
 
 ## Current Handoff Notes
+
+The 2026-06-20 `hardening/ai-proposal-authz-matrix-20260620` branch adds a behavior-preserving
+authorization fixture matrix for `GET /api/ai-operational-proposals`. It extends the OP-authored
+catalogue to firm-wide, assigned-matter, unassigned-matter, and client-external staff-route
+denial/list-visible expectations for AI operational proposal list queries, backed by focused domain
+and API tests. It does not change RBAC, matter-scope checks, public-token policies, portal grants,
+route authorization manifest ownership, schema, migrations, dependencies, route behavior, or API
+response shapes. Proof is recorded in
+[AI proposal authorization matrix proof](validation/OP_AI_PROPOSAL_AUTHORIZATION_MATRIX_PROOF_2026-06-20.md).
 
 The 2026-06-19 active-lane mainline closeout is complete. The integration preserves all committed
 lane proof notes, resolves migrations through `0069_inbound_attachment_message_index`, keeps the

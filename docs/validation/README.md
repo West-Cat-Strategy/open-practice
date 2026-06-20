@@ -18,6 +18,14 @@ skipped-check context. The live workboard remains
 
 ## Current Handoff Notes
 
+The 2026-06-20 AI proposal authorization matrix proof is recorded in
+[OP_AI_PROPOSAL_AUTHORIZATION_MATRIX_PROOF_2026-06-20.md](OP_AI_PROPOSAL_AUTHORIZATION_MATRIX_PROOF_2026-06-20.md).
+It covers behavior-preserving authorization fixture coverage for
+`GET /api/ai-operational-proposals`, including firm-wide, assigned-matter, unassigned-matter, and
+client-external staff-route denial/list-visible expectations, without changing RBAC, matter-scope
+checks, public-token policies, portal grants, route authorization manifest ownership, schema,
+migrations, dependencies, route behavior, or API response shapes.
+
 The 2026-06-19 mainline merge/push/prune proof is recorded in
 [OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-19.md](OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-19.md).
 It covers the active dirty-lane consolidation through
@@ -338,7 +346,8 @@ domain/API/provider/worker/docs/policy validation without adding a ReBAC policy 
 canonical-only authorization rewrite, schema change, dependency, or route behavior change. The
 2026-06-17 addendum expands the fixture matrix to contact dossier/list visibility for firm-wide
 reviewers, assigned staff, unassigned staff, standalone contact creators, and client-external route
-denial while preserving the same no-runtime-rewrite boundary.
+denial, and the 2026-06-20 AI proposal matrix adds non-contact list-query coverage while preserving
+the same no-runtime-rewrite boundary.
 
 The 2026-06-16 workflow-step history projection branch is recorded in
 [OP_WORKFLOW_STEP_HISTORY_PROJECTION_PROOF_2026-06-16.md](OP_WORKFLOW_STEP_HISTORY_PROJECTION_PROOF_2026-06-16.md).
@@ -550,6 +559,7 @@ use [Planning and Progress](../planning-and-progress.md) for current row status.
 
 | Artifact                                                                                                                                                           | Type                 | Use                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [OP_AI_PROPOSAL_AUTHORIZATION_MATRIX_PROOF_2026-06-20.md](OP_AI_PROPOSAL_AUTHORIZATION_MATRIX_PROOF_2026-06-20.md)                                                 | Maintenance proof    | Proof for behavior-preserving AI operational proposal authorization fixture coverage, including firm-wide, assigned-matter, unassigned-matter, and client-external list-query expectations, focused domain/API tests, selector-driven validation, and preserved RBAC, matter-scope, public-token, portal grant, route manifest, schema, dependency, route behavior, and response-shape boundaries.                                                                                                        |
 | [OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-19.md](OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-19.md)                                                               | Maintenance proof    | Proof for the 2026-06-19 active-lane mainline closeout, covering lane commits, integration-branch merge order, migration numbering reconciliation, selector-driven validation, main/origin parity, push, prune, and unchanged stash count.                                                                                                                                                                                                                                                                |
 | [OP-T160_MATTER_LIFECYCLE_COMMANDS_PROOF_2026-06-19.md](OP-T160_MATTER_LIFECYCLE_COMMANDS_PROOF_2026-06-19.md)                                                     | Row-local proof note | Proof for the first review-gated matter lifecycle command runtime slice, covering `pause` `open -> paused`, `reopen` `paused -> open`, latest-ready journal gating, status-only matter mutation, safe audit metadata, selector-driven validation, and preserved no-`closedOn`/portal/task/assignment/billing/trust/retention/cleanup side effects.                                                                                                                                                        |
 | [OP_OPERATIONAL_EFFICIENCY_REMEDIATION_PROOF_2026-06-19.md](OP_OPERATIONAL_EFFICIENCY_REMEDIATION_PROOF_2026-06-19.md)                                             | Maintenance proof    | Proof for the operational efficiency remediation branch, covering Docker-local same-origin API routing validation, filtered audit read indexes without filtered chain-validity claims, client portal workspace batching and focused signature lookup, communications child-row bulk reads, dashboard/operations SSR parallelization, selector-driven validation, and preserved response-shape, authorization, redaction, provider, trust/payment, and Docker local-dev-only boundaries.                   |

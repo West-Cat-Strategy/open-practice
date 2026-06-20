@@ -107,6 +107,10 @@ describe("authorization fixture catalogue", () => {
       "job:assigned:matter-job-visible",
       "job:unassigned:matter-job-hidden",
       "job:unassigned:no-matter-hidden",
+      "ai-proposal:firm-wide:list-all",
+      "ai-proposal:assigned:list-visible",
+      "ai-proposal:unassigned:list-hidden",
+      "ai-proposal:portal-client:staff-list-denied",
       "portal-link:public-share:metadata-visible",
       "portal-link:expired-share:hidden",
       "portal-link:revoked-share:hidden",
@@ -231,6 +235,39 @@ describe("authorization fixture catalogue", () => {
         }),
       }),
     ).toBe(false);
+  });
+
+  it("keeps AI proposal list-query fixtures aligned with RBAC plus matter scope", () => {
+    const externalUser: User = {
+      id: "client-ada",
+      firmId: sampleFirm.id,
+      displayName: "Synthetic Portal Client",
+      email: "ada@example.test",
+      role: "client_external",
+      assignedMatterIds: [],
+      mfaEnabled: true,
+    };
+
+    for (const id of [
+      "ai-proposal:firm-wide:list-all",
+      "ai-proposal:assigned:list-visible",
+      "ai-proposal:unassigned:list-hidden",
+      "ai-proposal:portal-client:staff-list-denied",
+    ]) {
+      const item = fixtureCase(id);
+      const subject =
+        item.subjectId === externalUser.id ? externalUser : sampleUser(item.subjectId);
+      expect(
+        canAccess({
+          user: subject,
+          firmId: sampleFirm.id,
+          resource: item.resource,
+          action: item.action,
+          matterId: item.matterId,
+          contactId: item.contactId,
+        }),
+      ).toBe(item.expectedDecision === "allow");
+    }
   });
 });
 

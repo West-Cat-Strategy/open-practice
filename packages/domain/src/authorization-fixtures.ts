@@ -1,6 +1,12 @@
 import type { Action, ResourceKind } from "./permissions.js";
 
-export type AuthorizationFixtureFamily = "matter" | "contact" | "document" | "job" | "portal_link";
+export type AuthorizationFixtureFamily =
+  | "matter"
+  | "contact"
+  | "document"
+  | "job"
+  | "ai_proposal"
+  | "portal_link";
 
 export type AuthorizationFixtureRelation =
   | "firm_wide_reviewer"
@@ -260,6 +266,59 @@ export const authorizationFixtureCases: AuthorizationFixtureCase[] = [
     subjectId: "user-licensee",
     resourceId: "job-firm-wide-report",
     rationale: "Non-admin job readers do not see jobs that lack safe matter metadata.",
+  },
+  {
+    id: "ai-proposal:firm-wide:list-all",
+    family: "ai_proposal",
+    resource: "ai_proposal",
+    action: "read",
+    relation: "firm_wide_reviewer",
+    expectedDecision: "allow",
+    listVisible: true,
+    subjectId: "user-admin",
+    resourceId: "ai-proposal-matter-002",
+    rationale: "Firm-wide reviewers can list synthetic AI proposal records across matters.",
+  },
+  {
+    id: "ai-proposal:assigned:list-visible",
+    family: "ai_proposal",
+    resource: "ai_proposal",
+    action: "read",
+    relation: "assigned_matter_staff",
+    expectedDecision: "allow",
+    listVisible: true,
+    subjectId: "user-licensee",
+    matterId: "matter-001",
+    resourceId: "ai-proposal-deadline-001",
+    rationale: "Assigned staff can list AI proposal records linked to their assigned matter.",
+  },
+  {
+    id: "ai-proposal:unassigned:list-hidden",
+    family: "ai_proposal",
+    resource: "ai_proposal",
+    action: "read",
+    relation: "unassigned_matter_staff",
+    expectedDecision: "deny",
+    listVisible: false,
+    subjectId: "user-licensee",
+    matterId: "matter-002",
+    resourceId: "ai-proposal-matter-002",
+    rationale:
+      "Matter-scoped staff cannot query or list AI proposal records linked only to unassigned matters.",
+  },
+  {
+    id: "ai-proposal:portal-client:staff-list-denied",
+    family: "ai_proposal",
+    resource: "ai_proposal",
+    action: "read",
+    relation: "external_portal_contact",
+    expectedDecision: "deny",
+    listVisible: false,
+    subjectId: "client-ada",
+    matterId: "matter-001",
+    contactId: "contact-ada",
+    resourceId: "ai-proposal-deadline-001",
+    rationale: "Client-external portal users cannot access staff AI proposal list routes.",
   },
   {
     id: "portal-link:public-share:metadata-visible",

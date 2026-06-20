@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { InMemoryOpenPracticeRepository } from "@open-practice/database";
+import { authorizationFixtureCases, type AiOperationalProposalRecord } from "@open-practice/domain";
 import { FakeDraftAssistProvider } from "@open-practice/providers";
 import { createApiServer } from "../server.js";
 import type { ApiJobQueue } from "./types.js";
@@ -80,6 +81,43 @@ async function createDraft(
   return created.id;
 }
 
+async function createMatterTwoProposal(
+  repository: InMemoryOpenPracticeRepository,
+): Promise<AiOperationalProposalRecord> {
+  return repository.createAiOperationalProposal({
+    id: "ai-proposal-matter-002",
+    firmId: "firm-west-legal",
+    matterId: "matter-002",
+    kind: "task_creation",
+    status: "proposed",
+    source: {
+      sourceType: "draft",
+      draftId: "draft-matter-002",
+      sourceLabel: "Synthetic matter 002 draft",
+      sourceTextLength: 128,
+      confidence: "low",
+    },
+    providerKey: "fake-local-ai",
+    providerModel: "fake-operational-proposals-v1",
+    proposal: {
+      title: "Review synthetic matter 002 follow-up",
+      summary: "Synthetic cross-matter proposal for authorization matrix coverage.",
+      proposedAction: "Review before creating any task record.",
+      task: { title: "Review follow-up" },
+    },
+    createdByUserId: "user-admin",
+    createdAt: "2026-06-01T18:00:00.000Z",
+    updatedAt: "2026-06-01T18:00:00.000Z",
+    metadata: { source: "test", statusOnlyReview: true },
+  });
+}
+
+function fixtureCase(id: string) {
+  const match = authorizationFixtureCases.find((candidate) => candidate.id === id);
+  if (!match) throw new Error(`Missing authorization fixture case ${id}`);
+  return match;
+}
+
 afterEach(async () => {
   await Promise.all(servers.splice(0).map((server) => server.close()));
 });
@@ -106,6 +144,84 @@ describe("AI operational proposal routes", () => {
       },
     });
     expect(response.body).not.toContain("storage://");
+  });
+
+  it("keeps list-query visibility aligned with authorization fixtures", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await createMatterTwoProposal(repository);
+    await repository.createUser({
+      id: "client-ada",
+      firmId: "firm-west-legal",
+      displayName: "Synthetic Portal Client",
+      email: "portal-client@example.test",
+      role: "client_external",
+      assignedMatterIds: ["matter-001"],
+      mfaEnabled: true,
+    });
+
+    expect(
+      authorizationFixtureCases
+        .filter((item) => item.family === "ai_proposal")
+        .map((item) => ({
+          id: item.id,
+          listVisible: item.listVisible,
+        })),
+    ).toEqual([
+      { id: "ai-proposal:firm-wide:list-all", listVisible: true },
+      { id: "ai-proposal:assigned:list-visible", listVisible: true },
+      { id: "ai-proposal:unassigned:list-hidden", listVisible: false },
+      { id: "ai-proposal:portal-client:staff-list-denied", listVisible: false },
+    ]);
+
+    const ownerResponse = await testServer({ repository }).inject({
+      method: "GET",
+      url: "/api/ai-operational-proposals",
+    });
+    const assignedResponse = await testServer({ repository, devUserId: "user-licensee" }).inject({
+      method: "GET",
+      url: "/api/ai-operational-proposals",
+    });
+    const unassignedMatterResponse = await testServer({
+      repository,
+      devUserId: "user-licensee",
+    }).inject({
+      method: "GET",
+      url: "/api/ai-operational-proposals?matterId=matter-002",
+    });
+    const portalClientResponse = await testServer({
+      repository,
+      devUserId: "client-ada",
+    }).inject({
+      method: "GET",
+      url: "/api/ai-operational-proposals?matterId=matter-001",
+    });
+
+    expect(ownerResponse.statusCode).toBe(200);
+    expect(
+      ownerResponse.json<{ proposals: Array<{ id: string }> }>().proposals.map((item) => item.id),
+    ).toEqual(
+      expect.arrayContaining([
+        fixtureCase("ai-proposal:assigned:list-visible").resourceId,
+        fixtureCase("ai-proposal:firm-wide:list-all").resourceId,
+      ]),
+    );
+
+    expect(assignedResponse.statusCode).toBe(200);
+    const assignedProposalIds = assignedResponse
+      .json<{ proposals: Array<{ id: string }> }>()
+      .proposals.map((item) => item.id);
+    expect(assignedProposalIds).toEqual(
+      expect.arrayContaining([fixtureCase("ai-proposal:assigned:list-visible").resourceId]),
+    );
+    expect(assignedProposalIds).not.toContain(
+      fixtureCase("ai-proposal:unassigned:list-hidden").resourceId,
+    );
+    expect(assignedResponse.json()).toMatchObject({
+      summary: { total: 2, proposed: 1, approved: 1 },
+    });
+
+    expect(unassignedMatterResponse.statusCode).toBe(403);
+    expect(portalClientResponse.statusCode).toBe(403);
   });
 
   it("queues draft-sourced operational proposal jobs with redacted lifecycle metadata", async () => {
