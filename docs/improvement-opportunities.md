@@ -214,11 +214,11 @@ surface.
 
 - **Authorization fixture catalogue deepening**
   - **Shipped slices:** OP now catalogues relation vocabulary plus denial/list-visible fixtures for
-    matters, contact dossier/list queries, documents, jobs, and portal links, backed by domain and
-    API route tests without replacing RBAC, matter-scope checks, public-token policies, portal
-    grants, or the route authorization manifest.
+    matters, contact dossier/list queries, documents, jobs, AI operational proposal list queries,
+    and portal links, backed by domain and API route tests without replacing RBAC, matter-scope
+    checks, public-token policies, portal grants, or the route authorization manifest.
   - **Remaining gap:** Future work should only add a policy-engine spike, relationship query
-    planner, or a non-contact list-query matrix after comparing against the shipped fixture
+    planner, or another non-contact list-query matrix after comparing against the shipped fixture
     catalogue and proving it will deepen behavior rather than duplicate current authorization tests.
   - **References:** `openfga__openfga`.
   - **Reuse and snippets:** Apache-2.0/architecture-only; snippets require an explicit reuse decision.

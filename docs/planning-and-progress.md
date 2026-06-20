@@ -52,6 +52,15 @@ behavior, settlement/trust boundaries, and review-only evidence model remain unc
 recorded in
 [lifecycle review action descriptor proof](validation/OP_LIFECYCLE_REVIEW_ACTION_DESCRIPTOR_PROOF_2026-06-20.md).
 
+The 2026-06-20 `hardening/ai-proposal-authz-matrix-20260620` branch adds a behavior-preserving
+authorization fixture matrix for `GET /api/ai-operational-proposals`. It extends the OP-authored
+catalogue to firm-wide, assigned-matter, unassigned-matter, and client-external staff-route
+denial/list-visible expectations for AI operational proposal list queries, backed by focused domain
+and API tests. It does not change RBAC, matter-scope checks, public-token policies, portal grants,
+route authorization manifest ownership, schema, migrations, dependencies, route behavior, or API
+response shapes. Proof is recorded in
+[AI proposal authorization matrix proof](validation/OP_AI_PROPOSAL_AUTHORIZATION_MATRIX_PROOF_2026-06-20.md).
+
 The 2026-06-19 active-lane mainline closeout is complete. The integration preserves all committed
 lane proof notes, resolves migrations through `0069_inbound_attachment_message_index`, keeps the
 self-hosting same-origin browser API mode as the Docker-local routing superset, passed
