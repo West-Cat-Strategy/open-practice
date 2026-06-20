@@ -257,9 +257,17 @@ describe("IMAP inbound email polling worker", () => {
       errorMessage: "Job enqueue failed; retry after the worker queue is available.",
       metadata: {
         ...parserRecoveryMetadata,
+        provider: IMAP_INBOUND_PROVIDER_KEY,
+        source: "imap.mailbox_poll",
+        resourceType: "inbound_email_raw",
+        resourceId: "7:11",
         enqueueStatus: "failed",
         providerFailureStage: "imap_parser_enqueue",
         rawStorageKeyPresent: true,
+        rawObjectRecoverable: true,
+        providerPayloadStored: false,
+        automaticDocumentPromotion: false,
+        automaticMatterCreation: false,
       },
     });
     expect(parserJob?.metadata).not.toHaveProperty("rawStorageKey");

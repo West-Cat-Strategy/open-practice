@@ -41,6 +41,14 @@ const parserJobDeadLetterConfirmationSchema = z
     expectedStatus: z.enum(["failed", "queued", "active"]),
   })
   .strict();
+const parserJobReplayRequestConfirmationSchema = z
+  .object({
+    confirmed: z.literal(true),
+    action: z.literal("request_replay"),
+    jobId: z.string().min(1),
+    expectedStatus: z.enum(["failed", "dead_letter"]),
+  })
+  .strict();
 const parserJobRetryBodySchema = z
   .object({
     idempotencyKey: z.string().min(8).max(180).optional(),
@@ -50,6 +58,11 @@ const parserJobRetryBodySchema = z
 const parserJobDeadLetterBodySchema = z
   .object({
     confirmation: parserJobDeadLetterConfirmationSchema,
+  })
+  .strict();
+const parserJobReplayRequestBodySchema = z
+  .object({
+    confirmation: parserJobReplayRequestConfirmationSchema,
   })
   .strict();
 
@@ -168,7 +181,11 @@ function safeParserJobMetadata(metadata: Record<string, unknown>): Record<string
     "rawObjectRecoverable",
     "rawSizeBytes",
     "rawStorageKeyPresent",
+    "redactedAuthorizedProjection",
     "recoveryPosture",
+    "requestType",
+    "reviewOnly",
+    "reviewState",
     "resourceId",
     "resourceType",
     "retryOfJobId",
@@ -280,6 +297,27 @@ function parserRecoveryAuditMetadata(input: {
     source: typeof input.job.metadata.source === "string" ? input.job.metadata.source : undefined,
     idempotencyKeyPresent: Boolean(input.job.idempotencyKey),
     retryJobQueued: Boolean(input.retryJob),
+  };
+}
+
+function parserReplayRequestAuditMetadata(input: {
+  job: JobLifecycleRecord;
+  expectedStatus: JobLifecycleRecord["status"];
+}) {
+  return {
+    jobId: input.job.id,
+    queueName: input.job.queueName,
+    jobName: input.job.jobName,
+    expectedStatus: input.expectedStatus,
+    currentStatus: input.job.status,
+    provider:
+      typeof input.job.metadata.provider === "string" ? input.job.metadata.provider : undefined,
+    source: typeof input.job.metadata.source === "string" ? input.job.metadata.source : undefined,
+    idempotencyKeyPresent: Boolean(input.job.idempotencyKey),
+    reviewOnly: true,
+    requestType: "inbound_email_parser_safe_replay",
+    reviewState: "replay_requested",
+    redactedAuthorizedProjection: true,
   };
 }
 
@@ -482,5 +520,56 @@ export function registerInboundEmailParserJobRoutes(
     });
 
     return { status: "dead_lettered", job: serializeJobRun(deadLettered) };
+  });
+
+  server.post("/api/inbound-email/parser-jobs/:jobId/replay-request", async (request) => {
+    assertJobRecoveryAccess(request.auth);
+    const params = parseRequestPart(parserJobParamsSchema, request.params, "params");
+    const body = parseRequestPart(parserJobReplayRequestBodySchema, request.body, "body");
+    const job = await getInboundParserJob({
+      repository,
+      firmId: request.auth.firmId,
+      jobId: params.jobId,
+    });
+    assertParserRecoveryConfirmationMatches(body.confirmation, job);
+    if (job.status !== "failed" && job.status !== "dead_letter") {
+      throw new ApiHttpError(
+        409,
+        "INBOUND_EMAIL_PARSER_JOB_REPLAY_REQUEST_NOT_ALLOWED",
+        "Only failed or dead-letter inbound email parser jobs can be marked for replay review",
+      );
+    }
+
+    const now = new Date().toISOString();
+    const requested = await repository.updateJobLifecycleRecord(request.auth.firmId, job.id, {
+      metadata: {
+        ...safeParserJobMetadata(job.metadata),
+        ...INBOUND_EMAIL_PARSER_RECOVERY_METADATA,
+        provider:
+          typeof job.metadata.provider === "string" ? job.metadata.provider : MAILGUN_PROVIDER_KEY,
+        source:
+          typeof job.metadata.source === "string"
+            ? job.metadata.source
+            : "api.inbound_email.parser_job.replay_request",
+        resourceType: job.targetResourceType,
+        resourceId: job.targetResourceId,
+        reviewOnly: true,
+        redactedAuthorizedProjection: true,
+        requestType: "inbound_email_parser_safe_replay",
+        reviewState: "replay_requested",
+      },
+    });
+    await appendRouteAuditEvent(repository, request.auth, {
+      action: "inbound_email.parser_job.replay_requested",
+      resourceType: "inbound_email",
+      resourceId: job.id,
+      occurredAt: now,
+      metadata: parserReplayRequestAuditMetadata({
+        job,
+        expectedStatus: body.confirmation.expectedStatus,
+      }),
+    });
+
+    return { status: "replay_requested", job: serializeJobRun(requested) };
   });
 }

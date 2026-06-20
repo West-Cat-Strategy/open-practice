@@ -1098,6 +1098,31 @@ describe("audit event taxonomy", () => {
         },
       }),
     );
+    const replayRequest = classifyAuditEvent(
+      auditEvent({
+        action: "inbound_email.parser_job.replay_requested",
+        resourceType: "inbound_email",
+        resourceId: "job-inbound-parser-failed",
+        metadata: {
+          jobId: "job-inbound-parser-failed",
+          queueName: "inbound_email",
+          jobName: "parse_inbound_email",
+          expectedStatus: "failed",
+          currentStatus: "failed",
+          provider: "mailgun",
+          source: "mailgun.raw_mime_webhook",
+          idempotencyKeyPresent: true,
+          reviewOnly: true,
+          requestType: "inbound_email_parser_safe_replay",
+          reviewState: "replay_requested",
+          redactedAuthorizedProjection: true,
+          rawStorageKey:
+            "inbound-email/firm-west-legal/raw/provider-webhooks/mailgun/raw-mime/message.eml",
+          providerPayload: { private: "Synthetic payload" },
+          mailboxPassword: "synthetic-mailbox-password",
+        },
+      }),
+    );
 
     expect(retry).toMatchObject({
       category: "communications",
@@ -1106,6 +1131,12 @@ describe("audit event taxonomy", () => {
       resourceTypeMatches: true,
     });
     expect(deadLetter).toMatchObject({
+      category: "communications",
+      known: true,
+      matterScope: "firm",
+      resourceTypeMatches: true,
+    });
+    expect(replayRequest).toMatchObject({
       category: "communications",
       known: true,
       matterScope: "firm",
@@ -1128,6 +1159,25 @@ describe("audit event taxonomy", () => {
     );
     expect(retry.metadataHints.resource).not.toContain("rawStorageKey");
     expect(retry.metadataHints.resource).not.toContain("signingSecret");
+    expect(replayRequest.metadataHints.resource).toEqual(
+      expect.arrayContaining([
+        "jobId",
+        "queueName",
+        "jobName",
+        "expectedStatus",
+        "currentStatus",
+        "provider",
+        "source",
+        "idempotencyKeyPresent",
+        "reviewOnly",
+        "requestType",
+        "reviewState",
+        "redactedAuthorizedProjection",
+      ]),
+    );
+    expect(replayRequest.metadataHints.resource).not.toContain("rawStorageKey");
+    expect(replayRequest.metadataHints.resource).not.toContain("providerPayload");
+    expect(replayRequest.metadataHints.resource).not.toContain("mailboxPassword");
   });
 
   it("classifies communications triage note and follow-up metadata as safe resource hints", () => {

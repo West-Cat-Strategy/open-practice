@@ -620,6 +620,10 @@ describe("job metadata redaction", () => {
         automaticMatterCreation: false,
         providerFailureStage: "parser_enqueue",
         rawStorageKeyPresent: true,
+        reviewOnly: true,
+        requestType: "inbound_email_parser_safe_replay",
+        reviewState: "replay_requested",
+        redactedAuthorizedProjection: true,
         rawSizeBytes: 128,
         rawStorageKey: "inbound-email/firm-west-legal/raw/private.eml",
         rawContentSha256: "b".repeat(64),
@@ -641,6 +645,10 @@ describe("job metadata redaction", () => {
       automaticMatterCreation: false,
       providerFailureStage: "parser_enqueue",
       rawStorageKeyPresent: true,
+      reviewOnly: true,
+      requestType: "inbound_email_parser_safe_replay",
+      reviewState: "replay_requested",
+      redactedAuthorizedProjection: true,
       rawSizeBytes: 128,
     });
   });
