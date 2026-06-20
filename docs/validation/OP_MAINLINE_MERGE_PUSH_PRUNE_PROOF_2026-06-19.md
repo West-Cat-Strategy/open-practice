@@ -50,38 +50,118 @@ Initial stash count was `42`.
 
 ## Selector Output
 
-The integrated diff currently has 269 paths against `origin/main` before this proof note is added.
-The final selector command is:
+The integrated diff currently has 271 paths against `origin/main`, including the integration proof
+note and validator-driven follow-up fixes. The final selector command was:
 
 ```bash
 pnpm verify:select -- --base origin/main
 ```
 
-Selector output and selected validation results will be recorded below before `main` is updated.
+It emitted:
+
+```text
+pnpm ci:local
+pnpm deps:audit
+pnpm deps:licenses
+pnpm deps:supply-chain
+pnpm deps:osv
+pnpm license:scan
+pnpm security:review
+pnpm security:secrets-history
+pnpm security:privacy-rules
+pnpm architecture:check
+pnpm api:contract
+pnpm docker:lint
+pnpm docker:residual-watch
+pnpm docker:app-smoke
+pnpm docker:scan
+pnpm selfhost:check -- --env-file docker/selfhost.example.env --allow-synthetic-example
+pnpm e2e:host
+pnpm e2e:docker
+node scripts/run-e2e.mjs first-run
+pnpm e2e:matterless
+pnpm e2e:client-portal
+pnpm e2e:a11y
+pnpm format:check
+pnpm docs:check
+pnpm policy:check
+pnpm test
+pnpm --filter @open-practice/domain test
+pnpm --filter @open-practice/domain typecheck
+pnpm --filter @open-practice/domain build
+pnpm --filter @open-practice/database test
+pnpm --filter @open-practice/database db:check
+pnpm migrations:check
+pnpm migrations:lint
+pnpm --filter @open-practice/database typecheck
+pnpm --filter @open-practice/database build
+pnpm --filter @open-practice/api test
+pnpm --filter @open-practice/api typecheck
+pnpm --filter @open-practice/providers test
+pnpm --filter @open-practice/providers typecheck
+pnpm --filter @open-practice/providers build
+pnpm --filter @open-practice/worker test
+pnpm --filter @open-practice/worker typecheck
+pnpm --filter @open-practice/worker build
+pnpm --filter @open-practice/web test
+pnpm --filter @open-practice/web typecheck
+pnpm build
+```
 
 ## Validation
 
-| Command                                                                                             | Result  | Notes                                                                                      |
-| --------------------------------------------------------------------------------------------------- | ------- | ------------------------------------------------------------------------------------------ |
-| `node --test scripts/select-validation.test.mjs scripts/validate-open-practice-boundaries.test.mjs` | Passed  | Focused review-remediation merge check: 36 tests passed.                                   |
-| `pnpm --filter @open-practice/domain build`                                                         | Passed  | Rebuilt domain package so web typecheck could resolve newly exported billing types.        |
-| `pnpm --filter @open-practice/web test`                                                             | Passed  | Staff/overlap focused reruns passed: 41 files, 217 tests.                                  |
-| `pnpm --filter @open-practice/web typecheck`                                                        | Passed  | Passed after removing ignored stale `apps/web/.next` output from prior public-token pages. |
-| `pnpm verify:select -- --base origin/main`                                                          | Pending | Must run after this proof/index/workboard reconciliation.                                  |
-| `pnpm ci:local`                                                                                     | Pending | Hard gate.                                                                                 |
-| `pnpm deps:audit`                                                                                   | Pending | Hard gate.                                                                                 |
-| `pnpm deps:licenses`                                                                                | Pending | Hard gate.                                                                                 |
-| `pnpm docker:residual-watch`                                                                        | Pending | Hard gate.                                                                                 |
-| `pnpm docker:app-smoke`                                                                             | Pending | Hard gate; stop before push/prune if Docker blocks.                                        |
-| `pnpm e2e:host`                                                                                     | Pending | Hard gate.                                                                                 |
-| `pnpm e2e:docker`                                                                                   | Pending | Hard gate; stop before push/prune if Docker blocks.                                        |
-| `node scripts/run-e2e.mjs first-run`                                                                | Pending | Hard gate.                                                                                 |
-| `pnpm e2e:matterless`                                                                               | Pending | Hard gate.                                                                                 |
-| `pnpm e2e:client-portal`                                                                            | Pending | Hard gate.                                                                                 |
-| `pnpm migrations:replay`                                                                            | Pending | Required migration replay.                                                                 |
-| `pnpm migrations:lint`                                                                              | Pending | Required migration lint.                                                                   |
-| `pnpm selfhost:check -- --env-file docker/selfhost.example.env --allow-synthetic-example`           | Pending | Required self-host profile render check.                                                   |
-| `git diff --check`                                                                                  | Pending | Required before merge/push.                                                                |
+| Command                                                                                   | Result               | Notes                                                                                                        |
+| ----------------------------------------------------------------------------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `pnpm verify:select -- --base origin/main`                                                | Passed               | Emitted the full selector list above.                                                                        |
+| `pnpm ci:local`                                                                           | Passed               | Final rerun after UI/privacy fixes passed format, lint, typecheck, tests, DB check, policy, build, and diff. |
+| `pnpm deps:audit`                                                                         | Passed               | Passed after upgrading `@cyclonedx/cyclonedx-npm` to `5.0.0` for `GHSA-v75r-vx73-82pj`.                      |
+| `pnpm deps:licenses`                                                                      | Passed               | 564 packages / 591 package versions reviewed; review-required groups unchanged.                              |
+| `pnpm deps:supply-chain`                                                                  | Passed               | Lockfile supply-chain policy passed with 5 native-build approval entries reviewed.                           |
+| `pnpm deps:osv`                                                                           | Skipped              | OSV CLI unavailable; artifact `.tmp/security/osv/2026-06-20T00-10-14Z`.                                      |
+| `pnpm license:scan`                                                                       | Skipped              | ScanCode unavailable; artifact `.tmp/license/scancode/2026-06-20T00-12-57Z`.                                 |
+| `pnpm security:review`                                                                    | Passed               | Packet artifact `.tmp/open-practice-security-review/2026-06-20T00-13-09Z`.                                   |
+| `pnpm security:secrets-history`                                                           | Review-required pass | Gitleaks packet `.tmp/security/gitleaks/2026-06-20T00-12-57Z`; no matched secret values copied into proof.   |
+| `pnpm security:privacy-rules`                                                             | Skipped              | Semgrep unavailable; artifact `.tmp/security/semgrep-privacy/2026-06-20T00-12-57Z`.                          |
+| `pnpm architecture:check`                                                                 | Passed               | 436 workspace import edges reviewed.                                                                         |
+| `pnpm api:contract`                                                                       | Passed               | Wrote `.tmp/api-contract/openapi.json` with 308 paths.                                                       |
+| `pnpm docker:lint`                                                                        | Skipped              | Hadolint unavailable; artifact `.tmp/docker/lint/2026-06-20T00-15-31Z`.                                      |
+| `pnpm docker:residual-watch`                                                              | Passed               | Artifact `/tmp/codex-security-scans/open-practice/docker-residual-watch/2026-06-20T00-16-11Z`.               |
+| `pnpm docker:app-smoke`                                                                   | Passed               | PostgreSQL-backed API health and same-origin web `/api/setup/status` checked; stack torn down.               |
+| `pnpm docker:scan`                                                                        | Skipped              | Trivy unavailable; artifact `.tmp/docker/trivy/2026-06-20T00-19-18Z`.                                        |
+| `pnpm selfhost:check -- --env-file docker/selfhost.example.env --allow-synthetic-example` | Passed               | Self-host Compose check passed.                                                                              |
+| `pnpm e2e:host`                                                                           | Passed               | First run failed for missing Playwright browsers; after `pnpm exec playwright install`, rerun passed 36/36.  |
+| `pnpm e2e:docker`                                                                         | Passed               | Docker Chromium suite passed 3/3 and disposable stack was torn down.                                         |
+| `node scripts/run-e2e.mjs first-run`                                                      | Passed               | First-run Chromium test passed 1/1.                                                                          |
+| `pnpm e2e:matterless`                                                                     | Passed               | Matterless Chromium tests passed 2/2.                                                                        |
+| `pnpm e2e:client-portal`                                                                  | Passed               | First run exposed missing visible redaction cue; rerun passed 2/2 after privacy cue fix.                     |
+| `pnpm e2e:a11y`                                                                           | Passed               | First runs exposed contrast regressions; rerun passed 2/2 after shared CSS contrast fixes.                   |
+| `pnpm format:check`                                                                       | Passed               | Also covered by final `pnpm ci:local`.                                                                       |
+| `pnpm docs:check`                                                                         | Passed               | Also covered by final `pnpm ci:local`/policy lane.                                                           |
+| `pnpm policy:check`                                                                       | Passed               | Security, manifests, supply chain, toolchain, env, architecture, deadcode, migrations, OSS, docs, boundary.  |
+| `pnpm test`                                                                               | Passed               | Package tests plus 133 script tests passed.                                                                  |
+| Package test/typecheck/build commands                                                     | Passed               | All emitted package-level commands passed by exact command.                                                  |
+| `pnpm migrations:check`                                                                   | Passed               | 70 SQL files match 70 journal entries.                                                                       |
+| `pnpm migrations:lint`                                                                    | Passed               | 0 changed SQL migration files reviewed.                                                                      |
+| `pnpm migrations:replay`                                                                  | Passed               | Initial run found no local Postgres; after starting Compose Postgres, 70 migrations replayed and cleaned up. |
+| `pnpm build`                                                                              | Passed               | Turbo build passed; web Next build generated 20 static pages.                                                |
+| `git diff --check`                                                                        | Passed               | Also covered by final `pnpm ci:local`.                                                                       |
+
+Validation forced these follow-up commits on the integration branch:
+
+- `fix: preserve client portal token boundaries`: removed authenticated client workspace
+  `secure_share` and `external_upload` action families after API tests caught public-token link
+  leakage in the logged-in client workspace projection.
+- `docs: document browser api routing env`: added `OPEN_PRACTICE_BROWSER_API_MODE` to the example
+  environment surface after `pnpm ci:local` caught the missing documented variable.
+- `chore: update cyclonedx release tooling`: upgraded the CycloneDX npm tool after dependency audit
+  found a high-severity advisory in the held major candidate.
+- `fix: preserve portal privacy cues and contrast`: restored a visible redaction cue in the client
+  portal and tightened light-shell dashboard contrast after the client-portal and a11y E2E gates
+  caught regressions.
+
+Other validation-driven repairs before the final green pass: Prettier/lockfile formatting drift,
+unused database imports, migration replay requiring a local disposable Postgres, and Playwright
+browser installation for host E2E.
 
 ## Publish And Prune Plan
 
