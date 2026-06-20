@@ -74,6 +74,15 @@ selector, package/API/web/worker, dead-code, policy, build, and `pnpm ci:local` 
 Proof is recorded in
 [dead-code and bloat prune proof](validation/OP_DEAD_CODE_BLOAT_PRUNE_PROOF_2026-06-19.md).
 
+The 2026-06-20 `docs/api-docs-route-inventory-reconciliation-20260620` branch closes the docs-only
+API route inventory gap found during the incomplete-implementation audit. It reconciles
+`docs/api-and-state-machines.md` with the route authorization/API inventory by documenting compact
+notation coverage and adding explicit WebAuthn step-up, CalDAV, public mail receipt, and
+local/e2e-support-only route rows. The branch preserves route registration, route authorization,
+public-token semantics, CalDAV behavior, e2e helper availability, payment/trust behavior, provider
+behavior, schemas, and runtime source. Evidence is recorded in
+[API docs route inventory reconciliation proof](validation/OP_API_DOCS_ROUTE_INVENTORY_RECONCILIATION_PROOF_2026-06-20.md).
+
 The 2026-06-19 active-lane mainline closeout is complete. The integration preserves all committed
 lane proof notes, resolves migrations through `0069_inbound_attachment_message_index`, keeps the
 self-hosting same-origin browser API mode as the Docker-local routing superset, passed
