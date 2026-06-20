@@ -27,6 +27,12 @@ branch. Future workflow candidates should compare against the read-only `GET /ap
 projection over redacted job lifecycle records and workflow audit events before proposing a new
 workflow/activity history surface.
 
+The 2026-06-20 API route inventory documentation gap is shipped by
+[OP_API_DOCS_ROUTE_INVENTORY_RECONCILIATION_PROOF_2026-06-20.md](validation/OP_API_DOCS_ROUTE_INVENTORY_RECONCILIATION_PROOF_2026-06-20.md).
+Future API documentation candidates should compare against the generated local API contract, the
+route authorization manifest, and the compact-notation coverage rules in
+`docs/api-and-state-machines.md` before proposing another exact-route reconciliation slice.
+
 ### Database Access Efficiency Follow-Ups - 2026-06-18
 
 The 2026-06-18 hot-path efficiency branch shipped the first database-access slice: indexes, batched
