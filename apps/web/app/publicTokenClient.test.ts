@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   PUBLIC_TOKEN_HEADER,
   buildPublicTokenHeaderPath,
-  buildPublicTokenPath,
   publicTokenHeaders,
   publicTokenErrorMessage,
   publicTokenNetworkErrorMessage,
@@ -10,15 +9,6 @@ import {
 } from "./publicTokenClient";
 
 describe("public token helpers", () => {
-  it("encodes token and path segments without changing the API base path", () => {
-    expect(buildPublicTokenPath("/api/portal/intake-forms", "token with / slash")).toBe(
-      "/api/portal/intake-forms/token%20with%20%2F%20slash",
-    );
-    expect(
-      buildPublicTokenPath("api/portal/intake-forms", "token", "items", "supporting docs"),
-    ).toBe("/api/portal/intake-forms/token/items/supporting%20docs");
-  });
-
   it("builds header-token paths and headers without token path material", () => {
     expect(buildPublicTokenHeaderPath("api/portal/intake-forms", "items", "supporting docs")).toBe(
       "/api/portal/intake-forms/items/supporting%20docs",

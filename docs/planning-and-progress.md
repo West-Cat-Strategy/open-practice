@@ -61,6 +61,19 @@ route authorization manifest ownership, schema, migrations, dependencies, route 
 response shapes. Proof is recorded in
 [AI proposal authorization matrix proof](validation/OP_AI_PROPOSAL_AUTHORIZATION_MATRIX_PROOF_2026-06-20.md).
 
+The 2026-06-19 `prune/dead-code-bloat` branch implements the first scoped dead-code and bloat prune
+slices from the approved plan. It removes stale/test-only API/web/worker exports, deletes tracked
+generated Playwright screenshots/JSON after converting durable proof references to local-evidence
+summaries, removes stale release-age excludes, narrows provider/domain/database package surfaces
+with explicit subpaths, moves fake providers and authorization fixtures out of production root
+barrels, and removes the unused Postgres repository alias. It preserves public HTTP routes and
+response shapes, authorization, redaction, payment/trust behavior, provider runtime behavior,
+ProseMirror dependencies, migration snapshots, public-token compatibility routes, existing
+reserved/deferred worker status wording, and synthetic-only proof data. Final exact-path
+selector, package/API/web/worker, dead-code, policy, build, and `pnpm ci:local` validation passed.
+Proof is recorded in
+[dead-code and bloat prune proof](validation/OP_DEAD_CODE_BLOAT_PRUNE_PROOF_2026-06-19.md).
+
 The 2026-06-19 active-lane mainline closeout is complete. The integration preserves all committed
 lane proof notes, resolves migrations through `0069_inbound_attachment_message_index`, keeps the
 self-hosting same-origin browser API mode as the Docker-local routing superset, passed

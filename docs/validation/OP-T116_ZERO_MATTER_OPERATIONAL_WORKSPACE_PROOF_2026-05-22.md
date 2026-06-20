@@ -63,15 +63,15 @@ Ran Playwright against a synthetic zero-matter `licensee` on a local in-memory A
 - Desktop zero-matter workspace rendered the dashboard shell, metrics, operations focus, first-matter
   panel, non-matter contacts/audit/queue surfaces, and disabled matter-required navigation without the
   old `No accessible matters were returned` blank state.
-  - Screenshot: `output/playwright/op-t114/desktop-zero.png`
+  - Screenshot: captured as local Playwright evidence; generated PNG no longer tracked.
   - Horizontal overflow: `0`
 - Mobile zero-matter workspace rendered the same operational shell in a single-column layout without
   text overlap or horizontal overflow.
-  - Screenshot: `output/playwright/op-t114/mobile-zero.png`
+  - Screenshot: captured as local Playwright evidence; generated PNG no longer tracked.
   - Horizontal overflow: `0`
 - First-matter creation submitted synthetic data, returned `201`, prepended the created matter,
   selected it, and opened the matter command centre with matter-scoped navigation re-enabled.
-  - Screenshot: `output/playwright/op-t114/desktop-created.png`
+  - Screenshot: captured as local Playwright evidence; generated PNG no longer tracked.
   - Horizontal overflow: `0`
 
 ## Notes

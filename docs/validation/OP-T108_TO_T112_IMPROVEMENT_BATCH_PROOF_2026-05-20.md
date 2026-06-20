@@ -98,7 +98,8 @@ fake local job queue, and seeded receipt token for the public receipt confirmati
 - Playwright screenshot refresh reported `overflow: 0` for contacts, billing, saved matter views,
   and receipt confirmation at both 1280x900 desktop and 390x844 mobile viewports.
 
-Screenshots were saved under `output/playwright/op-t108-t112/`.
+Screenshots were captured as local Playwright evidence and are no longer retained as tracked
+generated artifacts.
 
 ## Skipped Or Blocked Checks
 

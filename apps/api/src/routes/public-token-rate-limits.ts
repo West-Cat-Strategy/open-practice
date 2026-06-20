@@ -27,7 +27,7 @@ function publicTokenRateLimitKey(scope: string, request: FastifyRequest): string
   return `${request.ip}:${request.method}:${scope}:${path}`;
 }
 
-export function publicTokenRateLimitOptions(
+function publicTokenRateLimitOptions(
   scope: string,
   policy: PublicTokenRateLimitPolicy,
 ): RouteShorthandOptions {

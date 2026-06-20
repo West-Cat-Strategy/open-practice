@@ -10,6 +10,54 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./automation": {
+      "types": "./dist/automation.d.ts",
+      "default": "./dist/automation.js"
+    },
+    "./draft-assist": {
+      "types": "./dist/draft-assist.d.ts",
+      "default": "./dist/draft-assist.js"
+    },
+    "./draft-exports": {
+      "types": "./dist/draft-exports.d.ts",
+      "default": "./dist/draft-exports.js"
+    },
+    "./email/imap": {
+      "types": "./dist/email/imap.d.ts",
+      "default": "./dist/email/imap.js"
+    },
+    "./email/parser": {
+      "types": "./dist/email/parser.d.ts",
+      "default": "./dist/email/parser.js"
+    },
+    "./email/smtp": {
+      "types": "./dist/email/smtp.d.ts",
+      "default": "./dist/email/smtp.js"
+    },
+    "./errors": {
+      "types": "./dist/errors.d.ts",
+      "default": "./dist/errors.js"
+    },
+    "./ocr/tesseract": {
+      "types": "./dist/ocr/tesseract.d.ts",
+      "default": "./dist/ocr/tesseract.js"
+    },
+    "./operations": {
+      "types": "./dist/operations.d.ts",
+      "default": "./dist/operations.js"
+    },
+    "./payments/stripe": {
+      "types": "./dist/payments/stripe.d.ts",
+      "default": "./dist/payments/stripe.js"
+    },
+    "./signatures": {
+      "types": "./dist/signatures.d.ts",
+      "default": "./dist/signatures.js"
+    },
+    "./testing": {
+      "types": "./dist/testing.d.ts",
+      "default": "./dist/testing.js"
     }
   },
   "scripts": {

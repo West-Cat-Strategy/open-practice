@@ -6,16 +6,18 @@ import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import { jwtVerify } from "jose";
 import { z } from "zod";
 import {
-  createDatabaseRuntime,
   createProviderConfigCipherFromKey,
-  DrizzleOpenPracticeRepository,
-  InMemoryOpenPracticeRepository,
   isProviderConfigEncryptionKey,
   type ProviderConfigCipher,
-  seedSampleData,
+} from "@open-practice/database/config-encryption";
+import {
+  DrizzleOpenPracticeRepository,
+  InMemoryOpenPracticeRepository,
   type AuthSessionRecord,
   type OpenPracticeRepository,
-} from "@open-practice/database";
+} from "@open-practice/database/repository";
+import { createDatabaseRuntime } from "@open-practice/database/runtime";
+import { seedSampleData } from "@open-practice/database/seed";
 import type {
   AiOperationalProposalProvider,
   DocumentAutomationProvider,
@@ -25,12 +27,10 @@ import type {
   SignatureProvider,
   User,
 } from "@open-practice/domain";
-import {
-  EmbeddedAutomationProvider,
-  EmbeddedSignatureProvider,
-  StripePaymentProcessorProvider,
-  renderDraftExport,
-} from "@open-practice/providers";
+import { EmbeddedAutomationProvider } from "@open-practice/providers/automation";
+import { renderDraftExport } from "@open-practice/providers/draft-exports";
+import { StripePaymentProcessorProvider } from "@open-practice/providers/payments/stripe";
+import { EmbeddedSignatureProvider } from "@open-practice/providers/signatures";
 import { registerAuditRoutes } from "./routes/audit.js";
 import { registerAuthRoutes } from "./routes/auth.js";
 import { registerAuthExtensionRoutes } from "./routes/auth-extensions.js";

@@ -6,11 +6,11 @@ import type {
   EmailDeliveryHistoryResponse,
 } from "./models";
 
-export function buildEmailDeliveryHistoryPath(matterId: string, limit = 5): string {
+function buildEmailDeliveryHistoryPath(matterId: string, limit = 5): string {
   return `/api/mail/outbox?matterId=${encodeURIComponent(matterId)}&limit=${limit}`;
 }
 
-export async function loadEmailDeliveryDashboardData(input: {
+async function loadEmailDeliveryDashboardData(input: {
   matters: MatterSummary[];
   listDeliveryHistoryForMatter: (matterId: string) => Promise<EmailDeliveryHistoryResponse>;
 }): Promise<EmailDeliveryDashboardResponse> {

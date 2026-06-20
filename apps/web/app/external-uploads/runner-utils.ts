@@ -50,18 +50,15 @@ export interface PublicExternalUploadIntentResponse {
   maxFileSizeBytes?: number;
 }
 
-export function buildPublicExternalUploadPath(token: string): string {
-  void token;
+export function buildPublicExternalUploadPath(): string {
   return buildPublicTokenHeaderPath("/api/portal/external-uploads");
 }
 
-export function buildPublicExternalUploadIntentPath(token: string): string {
-  void token;
+export function buildPublicExternalUploadIntentPath(): string {
   return buildPublicTokenHeaderPath("/api/portal/external-uploads", "intents");
 }
 
-export function buildPublicExternalUploadCompletePath(token: string, documentId: string): string {
-  void token;
+export function buildPublicExternalUploadCompletePath(documentId: string): string {
   return buildPublicTokenHeaderPath(
     "/api/portal/external-uploads",
     "documents",

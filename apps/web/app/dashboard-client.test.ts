@@ -5802,10 +5802,8 @@ describe("dashboard client behavior", () => {
   });
 
   it("builds public share-link verification paths and status copy", () => {
-    expect(buildPublicSharePath("share token/with slash")).toBe("/api/portal/shares");
-    expect(buildShareEmailVerificationPath("share-token")).toBe(
-      "/api/portal/shares/email-verification",
-    );
+    expect(buildPublicSharePath()).toBe("/api/portal/shares");
+    expect(buildShareEmailVerificationPath()).toBe("/api/portal/shares/email-verification");
     expect(
       isShareEmailVerificationRequired({
         code: "EMAIL_VERIFICATION_REQUIRED",

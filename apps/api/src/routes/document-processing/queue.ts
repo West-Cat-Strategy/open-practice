@@ -28,9 +28,7 @@ import {
   type QueueDocumentOcrResult,
 } from "./shared.js";
 
-export async function queueDocumentOcr(
-  input: QueueDocumentOcrInput,
-): Promise<QueueDocumentOcrResult> {
+async function queueDocumentOcr(input: QueueDocumentOcrInput): Promise<QueueDocumentOcrResult> {
   const { repository, ocrJobQueue, auth, document } = input;
   if (!ocrJobQueue) {
     throw Object.assign(new Error("OCR queue is not configured"), { statusCode: 503 });

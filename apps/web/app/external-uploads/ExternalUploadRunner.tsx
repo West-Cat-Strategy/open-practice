@@ -56,7 +56,7 @@ export default function ExternalUploadRunner({ apiBaseUrl, token }: ExternalUplo
     let cancelled = false;
     async function loadUploadLink(): Promise<void> {
       try {
-        const response = await fetch(`${apiBaseUrl}${buildPublicExternalUploadPath(token)}`, {
+        const response = await fetch(`${apiBaseUrl}${buildPublicExternalUploadPath()}`, {
           headers: publicTokenHeaders(token),
         });
         if (cancelled) return;
@@ -92,7 +92,7 @@ export default function ExternalUploadRunner({ apiBaseUrl, token }: ExternalUplo
     setStatus(`Preparing ${file.name}...`);
     try {
       const checksumSha256 = await sha256Hex(file);
-      const intent = await fetch(`${apiBaseUrl}${buildPublicExternalUploadIntentPath(token)}`, {
+      const intent = await fetch(`${apiBaseUrl}${buildPublicExternalUploadIntentPath()}`, {
         method: "POST",
         headers: publicTokenHeaders(token, { "Content-Type": "application/json" }),
         body: JSON.stringify(
@@ -124,7 +124,7 @@ export default function ExternalUploadRunner({ apiBaseUrl, token }: ExternalUplo
         return;
       }
       const completed = await fetch(
-        `${apiBaseUrl}${buildPublicExternalUploadCompletePath(token, intentPayload.document.id)}`,
+        `${apiBaseUrl}${buildPublicExternalUploadCompletePath(intentPayload.document.id)}`,
         {
           method: "POST",
           headers: publicTokenHeaders(token, { "Content-Type": "application/json" }),

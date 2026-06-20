@@ -128,7 +128,7 @@ export interface QueueDocumentOcrResult {
 
 export const documentConversionReviewJobName = "document_conversion_review" as const;
 
-export const documentConversionReviewPolicy = {
+const documentConversionReviewPolicy = {
   metadataOnly: true,
   reviewOnly: true,
   rawOcrTextStored: false,
@@ -139,7 +139,7 @@ export const documentConversionReviewPolicy = {
   providerPayloadsStored: false,
 } as const;
 
-export const documentConversionReviewSummaryPosture = "op_authored_metadata_only" as const;
+const documentConversionReviewSummaryPosture = "op_authored_metadata_only" as const;
 
 export type DocumentConversionReviewPosture =
   | "blocked"

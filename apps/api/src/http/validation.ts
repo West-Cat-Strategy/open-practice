@@ -10,7 +10,7 @@ export type SafeValidationResult<T> =
       error: ApiHttpError;
     };
 
-export function formatZodIssuePath(path: PropertyKey[]): string {
+function formatZodIssuePath(path: PropertyKey[]): string {
   return path.length > 0 ? path.map((part) => String(part)).join(".") : "root";
 }
 

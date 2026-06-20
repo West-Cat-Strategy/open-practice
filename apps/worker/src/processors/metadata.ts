@@ -4,5 +4,5 @@ export function compactMetadata(metadata: Record<string, unknown>): Record<strin
 
 export function metadataString(metadata: Record<string, unknown>, key: string): string | undefined {
   const value = metadata[key];
-  return typeof value === "string" && value.trim() ? value : undefined;
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }

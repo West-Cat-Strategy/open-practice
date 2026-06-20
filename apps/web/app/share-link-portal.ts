@@ -71,13 +71,11 @@ export function shareLinkAttentionItems(input: {
   return [];
 }
 
-export function buildPublicSharePath(token?: string): string {
-  void token;
+export function buildPublicSharePath(): string {
   return buildPublicTokenHeaderPath("/api/portal/shares");
 }
 
-export function buildShareEmailVerificationPath(token?: string): string {
-  void token;
+export function buildShareEmailVerificationPath(): string {
   return buildPublicTokenHeaderPath("/api/portal/shares", "email-verification");
 }
 

@@ -1,6 +1,5 @@
 export * from "./audit.js";
 export * from "./audit-taxonomy.js";
-export * from "./authorization-fixtures.js";
 export * from "./ai-operational-proposals.js";
 export * from "./billing.js";
 export * from "./calendar.js";

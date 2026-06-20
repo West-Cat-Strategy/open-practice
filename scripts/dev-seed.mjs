@@ -4,7 +4,8 @@ import { spawnSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 
 const SEED_EVAL = [
-  "import { createDatabaseRuntime, seedSampleData } from '@open-practice/database';",
+  "import { createDatabaseRuntime } from '@open-practice/database/runtime';",
+  "import { seedSampleData } from '@open-practice/database/seed';",
   "const databaseUrl = process.env.DATABASE_URL;",
   "if (!databaseUrl) throw new Error('DATABASE_URL is required for dev:seed.');",
   "const runtime = createDatabaseRuntime(databaseUrl);",

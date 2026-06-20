@@ -7,11 +7,54 @@ import {
   ApiHttpError,
   UNEXPECTED_API_ERROR_CODE,
   UNEXPECTED_API_ERROR_MESSAGE,
-  errorEnvelope,
-  normalizeApiError,
-  successEnvelope,
 } from "./response.js";
 import { parseRequestPart, validateRequestPart } from "./validation.js";
+
+interface TestApiErrorEnvelope {
+  success: false;
+  error: {
+    code: string;
+    message: string;
+    details?: unknown;
+  };
+}
+
+function successEnvelope<T>(data: T): { success: true; data: T } {
+  return { success: true, data };
+}
+
+function errorEnvelope(code: string, message: string, details?: unknown): TestApiErrorEnvelope {
+  return {
+    success: false,
+    error: details === undefined ? { code, message } : { code, message, details },
+  };
+}
+
+function normalizeApiError(error: unknown): {
+  statusCode: number;
+  body: TestApiErrorEnvelope;
+} {
+  if (error instanceof ApiHttpError) {
+    return {
+      statusCode: error.statusCode,
+      body: errorEnvelope(error.code, error.message, error.details),
+    };
+  }
+
+  if (error instanceof Error) {
+    const statusCode =
+      "statusCode" in error && typeof error.statusCode === "number" ? error.statusCode : 500;
+    return {
+      statusCode,
+      body: errorEnvelope(UNEXPECTED_API_ERROR_CODE, UNEXPECTED_API_ERROR_MESSAGE),
+    };
+  }
+
+  return {
+    statusCode: 500,
+    body: errorEnvelope("UNKNOWN_ERROR", "Unknown API error"),
+  };
+}
 
 const context: ApiAuthContext = {
   firmId: "firm-west-legal",
