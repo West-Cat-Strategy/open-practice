@@ -22,6 +22,14 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 ## Current Handoff Notes
 
+The 2026-06-19 active-lane mainline closeout is in progress on
+`merge/open-practice-active-lanes-2026-06-19`. The integration preserves all committed lane proof
+notes, resolves migrations through `0069_inbound_attachment_message_index`, keeps the self-hosting
+same-origin browser API mode as the Docker-local routing superset, and records validation/push/prune
+evidence in
+[mainline merge/push/prune proof](validation/OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-19.md).
+Do not push or prune until the proof records selector-driven validation and main/origin parity.
+
 The 2026-06-19 `chore/self-hosting-optimization-20260619` branch adds a focused single-host
 self-hosting lane while keeping the local Compose stack local-only. It adds
 `OPEN_PRACTICE_BROWSER_API_MODE=same-origin` browser routing with a Next `/api/:path*` rewrite,
