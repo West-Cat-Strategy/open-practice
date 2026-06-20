@@ -2,7 +2,14 @@ import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import type { AccessRequest } from "@open-practice/domain";
+import {
+  buildDocumentRetentionHoldReview,
+  buildDocumentReviewSuggestions,
+  documentRetentionHoldReviewDecisions,
+  documentRetentionHoldReviewReasons,
+  type AccessRequest,
+  type DocumentRecord,
+} from "@open-practice/domain";
 import { requireAccess } from "../http/auth-guards.js";
 import { ApiHttpError } from "../http/response.js";
 import { parseRequestPart } from "../http/validation.js";
@@ -39,6 +46,13 @@ const documentScanStatusBodySchema = z.object({
   scanStatus: z.enum(["pending", "queued", "passed", "failed", "not_required"]),
 });
 
+const retentionHoldDecisionBodySchema = z.object({
+  decision: z.enum(documentRetentionHoldReviewDecisions),
+  reason: z.enum(documentRetentionHoldReviewReasons),
+  reviewAfter: z.string().datetime().optional(),
+  minimumRetainThrough: z.string().datetime().optional(),
+});
+
 const idParamsSchema = z.object({ id: z.string().min(1) });
 
 function assertMatterAccess(
@@ -57,6 +71,37 @@ function assertManualScanOverrideAccess(context: ApiAuthContext): void {
       "Only owner administrators can manually override document scan status.",
     );
   }
+}
+
+function assertStaffDocumentReviewAccess(context: ApiAuthContext): void {
+  if (context.user.role === "client_external") {
+    throw new ApiHttpError(
+      403,
+      "DOCUMENT_RETENTION_REVIEW_STAFF_REQUIRED",
+      "Only staff can record document retention and hold review decisions.",
+    );
+  }
+}
+
+function sanitizeDocumentForReview(document: DocumentRecord) {
+  return {
+    id: document.id,
+    matterId: document.matterId,
+    title: document.title,
+    version: document.version,
+    classification: document.classification,
+    legalHold: document.legalHold,
+    uploadStatus: document.uploadStatus,
+    checksumStatus: document.checksumStatus,
+    scanStatus: document.scanStatus,
+    reviewStatus: document.reviewStatus,
+    reviewDecision: document.reviewDecision,
+    reviewReason: document.reviewReason,
+    reviewedAt: document.reviewedAt,
+    duplicateOfDocumentId: document.duplicateOfDocumentId,
+    uploadedAt: document.uploadedAt,
+    verifiedAt: document.verifiedAt,
+  };
 }
 
 export function registerDocumentRoutes(
@@ -232,5 +277,84 @@ export function registerDocumentRoutes(
     });
 
     return updated;
+  });
+
+  server.post("/api/documents/:id/retention-hold-decisions", async (request) => {
+    const params = parseRequestPart(idParamsSchema, request.params, "params");
+    const body = parseRequestPart(retentionHoldDecisionBodySchema, request.body ?? {}, "body");
+    const document = await repository.getDocument(request.auth.firmId, params.id);
+    if (!document) {
+      throw Object.assign(new Error("Document was not found"), { statusCode: 404 });
+    }
+    assertMatterAccess(request.auth, {
+      resource: "document",
+      action: "update",
+      matterId: document.matterId,
+    });
+    assertStaffDocumentReviewAccess(request.auth);
+
+    const sameMatterDocuments = await repository.listMatterDocuments(
+      request.auth.firmId,
+      document.matterId,
+    );
+    const reviewSuggestions = buildDocumentReviewSuggestions({
+      document,
+      sameMatterDocuments,
+    });
+    const currentRetentionHoldReview = buildDocumentRetentionHoldReview({
+      document,
+      reviewSuggestions,
+    });
+    if (
+      body.decision === "ready_for_reviewer_packet" &&
+      currentRetentionHoldReview.blockers.length > 0
+    ) {
+      throw new ApiHttpError(
+        409,
+        "DOCUMENT_RETENTION_REVIEW_BLOCKED",
+        "Document retention review is blocked by hold or integrity cues.",
+      );
+    }
+
+    const recordedAt = new Date().toISOString();
+    const updated = await repository.recordDocumentRetentionHoldReviewDecision({
+      firmId: request.auth.firmId,
+      documentId: document.id,
+      decision: body.decision,
+      reason: body.reason,
+      reviewAfter: body.reviewAfter,
+      minimumRetainThrough: body.minimumRetainThrough,
+      recordedByUserId: request.auth.user.id,
+      recordedAt,
+      sourceCueCounts: currentRetentionHoldReview.sourceCueCounts,
+    });
+    const retentionHoldReview = buildDocumentRetentionHoldReview({
+      document: updated,
+      reviewSuggestions,
+    });
+    await appendRouteAuditEvent(repository, request.auth, {
+      action: "document.retention_hold_review.recorded",
+      resourceType: "document",
+      resourceId: updated.id,
+      metadata: {
+        matterId: updated.matterId,
+        documentId: updated.id,
+        decision: body.decision,
+        reason: body.reason,
+        reviewAfterPresent: Boolean(body.reviewAfter),
+        minimumRetainThroughPresent: Boolean(body.minimumRetainThrough),
+        retentionHoldCueCount: retentionHoldReview.sourceCueCounts.retention_review,
+        retentionPosture: retentionHoldReview.status,
+        destructiveAction: false,
+        retentionDeadlineEnforced: false,
+        legalHoldOverride: false,
+        retainedExportBody: false,
+      },
+    });
+
+    return {
+      document: sanitizeDocumentForReview(updated),
+      retentionHoldReview,
+    };
   });
 }

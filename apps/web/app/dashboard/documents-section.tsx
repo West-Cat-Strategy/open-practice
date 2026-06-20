@@ -1,4 +1,4 @@
-import { Eye, EyeOff, Search, X } from "lucide-react";
+import { Eye, EyeOff, Search, ShieldCheck, X } from "lucide-react";
 
 import type { DocumentAssemblyWorkbenchResponse } from "../_features/document-assembly/models";
 import {
@@ -9,6 +9,8 @@ import {
   documentMetadataScanStatusOptions,
 } from "../_features/dashboard/formatters";
 import type {
+  DocumentRetentionHoldReviewDecision,
+  DocumentRetentionHoldReviewReason,
   DocumentMetadataTag,
   DocumentProcessingWorkbenchItem,
   DocumentProcessingWorkbenchResponse,
@@ -51,6 +53,7 @@ interface DocumentsSectionProps {
   portalDocumentAccessBusyId: string;
   portalDocumentAccessStatus: string;
   queueingDocumentId: string;
+  retentionHoldReviewBusyId: string;
   selectedClientPortalContactId: string;
   selectedClientPortalContactLabel: string;
   onClearDocumentMetadataSearch: () => Promise<void> | void;
@@ -63,12 +66,51 @@ interface DocumentsSectionProps {
   onQueueDocumentOcr: (documentId: string) => Promise<void> | void;
   onGrantPortalDocumentAccess: (documentId: string) => Promise<void> | void;
   onRefreshDocumentMetadataSearch: () => Promise<void> | void;
+  onRecordRetentionHoldDecision: (
+    documentId: string,
+    decision: DocumentRetentionHoldReviewDecision,
+    reason: DocumentRetentionHoldReviewReason,
+  ) => Promise<void> | void;
   onRevokePortalDocumentAccess: (accessId: string) => Promise<void> | void;
   onSelectDocumentMetadataTag: (tag: string) => Promise<void> | void;
 }
 
 function portalDocumentAccessActive(access: PortalDocumentAccessSummary, nowMs: number): boolean {
   return !access.revokedAt && (!access.expiresAt || Date.parse(access.expiresAt) > nowMs);
+}
+
+function compactRetentionHoldStatus(value?: string): string {
+  return value ? value.replaceAll("_", " ") : "needs review";
+}
+
+function suggestedRetentionHoldDecision(
+  item: DocumentProcessingWorkbenchItem,
+): DocumentRetentionHoldReviewDecision {
+  if (item.retentionHoldReview?.blockers.length) return "blocked_by_hold";
+  return item.retentionHoldReview?.latestDecision?.decision ?? "needs_review";
+}
+
+function suggestedRetentionHoldReason(
+  item: DocumentProcessingWorkbenchItem,
+): DocumentRetentionHoldReviewReason {
+  if (item.document.legalHold) return "legal_hold";
+  if (
+    item.document.supersedesDocumentId ||
+    item.retentionHoldReview?.status === "reviewed_superseded"
+  ) {
+    return "supersession";
+  }
+  if (
+    item.document.uploadStatus !== "verified" ||
+    (item.document.checksumStatus !== "verified" && item.document.checksumStatus !== "duplicate") ||
+    (item.document.scanStatus !== "passed" && item.document.scanStatus !== "not_required")
+  ) {
+    return "upload_integrity";
+  }
+  if (item.document.reviewStatus !== "accepted" && item.document.reviewStatus !== "not_required") {
+    return "metadata_review";
+  }
+  return "practice_review";
 }
 
 export function DocumentsSection({
@@ -92,6 +134,7 @@ export function DocumentsSection({
   portalDocumentAccessBusyId,
   portalDocumentAccessStatus,
   queueingDocumentId,
+  retentionHoldReviewBusyId,
   selectedClientPortalContactId,
   selectedClientPortalContactLabel,
   onClearDocumentMetadataSearch,
@@ -104,6 +147,7 @@ export function DocumentsSection({
   onQueueDocumentOcr,
   onGrantPortalDocumentAccess,
   onRefreshDocumentMetadataSearch,
+  onRecordRetentionHoldDecision,
   onRevokePortalDocumentAccess,
   onSelectDocumentMetadataTag,
 }: DocumentsSectionProps) {
@@ -366,6 +410,9 @@ export function DocumentsSection({
                 const job = describeLatestDocumentJob(item.latestJob);
                 const reviewSuggestions =
                   item.reviewSuggestions ?? emptyDocumentReviewSuggestions();
+                const retentionHoldReview = item.retentionHoldReview;
+                const retentionDecision = suggestedRetentionHoldDecision(item);
+                const retentionReason = suggestedRetentionHoldReason(item);
                 const activeAccess = activePortalDocumentAccess.find(
                   (access) => access.documentId === item.document.id,
                 );
@@ -429,6 +476,14 @@ export function DocumentsSection({
                           })}
                         </div>
                       ) : null}
+                      {retentionHoldReview ? (
+                        <small>
+                          Retention/hold {compactRetentionHoldStatus(retentionHoldReview.status)} ·{" "}
+                          {retentionHoldReview.blockers.length} blockers ·{" "}
+                          {retentionHoldReview.sourceCueCounts.retention_review} retention cues · no
+                          deletion
+                        </small>
+                      ) : null}
                     </span>
                     <div className="row-actions upload-review-actions">
                       <em className={action.tone === "risk" ? "risk" : undefined}>
@@ -441,6 +496,23 @@ export function DocumentsSection({
                         type="button"
                       >
                         {queueingDocumentId === item.document.id ? "Queueing..." : action.label}
+                      </button>
+                      <button
+                        className="secondary-button compact-button row-button"
+                        disabled={retentionHoldReviewBusyId.length > 0}
+                        onClick={() =>
+                          void onRecordRetentionHoldDecision(
+                            item.document.id,
+                            retentionDecision,
+                            retentionReason,
+                          )
+                        }
+                        type="button"
+                      >
+                        <ShieldCheck aria-hidden="true" size={16} />
+                        {retentionHoldReviewBusyId === item.document.id
+                          ? "Recording..."
+                          : compactRetentionHoldStatus(retentionDecision)}
                       </button>
                       {selectedClientPortalContactId ? (
                         activeAccess ? (

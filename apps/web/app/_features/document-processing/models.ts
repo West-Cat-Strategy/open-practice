@@ -64,6 +64,8 @@ export interface DocumentProcessingDocumentSummary {
   reviewReason?: DocumentProcessingReviewReason;
   reviewedAt?: string;
   duplicateOfDocumentId?: string;
+  supersedesDocumentId?: string;
+  supersededAt?: string;
   uploadedAt?: string;
   verifiedAt?: string;
 }
@@ -204,6 +206,44 @@ export interface DocumentReviewSuggestions {
   groups: Record<DocumentReviewSuggestionGroup, DocumentReviewSuggestionCue[]>;
 }
 
+export type DocumentRetentionHoldReviewDecision =
+  | "needs_review"
+  | "blocked_by_hold"
+  | "ready_for_reviewer_packet"
+  | "reviewed_keep"
+  | "reviewed_superseded";
+
+export type DocumentRetentionHoldReviewReason =
+  | "legal_hold"
+  | "supersession"
+  | "upload_integrity"
+  | "metadata_review"
+  | "practice_review"
+  | "other";
+
+export interface DocumentRetentionHoldReviewRecord {
+  decision: DocumentRetentionHoldReviewDecision;
+  reason: DocumentRetentionHoldReviewReason;
+  reviewAfter?: string;
+  minimumRetainThrough?: string;
+  recordedByUserId: string;
+  recordedAt: string;
+  sourceCueCounts: Record<DocumentReviewSuggestionGroup | "total", number>;
+}
+
+export interface DocumentRetentionHoldReview {
+  reviewerOnly: true;
+  mutating: false;
+  destructiveAction: false;
+  retentionDeadlineEnforced: false;
+  legalHoldOverride: false;
+  retainedExportBody: false;
+  status: DocumentRetentionHoldReviewDecision;
+  blockers: string[];
+  sourceCueCounts: Record<DocumentReviewSuggestionGroup | "total", number>;
+  latestDecision?: DocumentRetentionHoldReviewRecord;
+}
+
 export type DocumentMetadataTagGroup =
   | "classification"
   | "review_status"
@@ -274,6 +314,7 @@ export interface DocumentProcessingWorkbenchItem {
   latestExtraction?: DocumentProcessingLatestExtraction;
   conversionReview?: DocumentConversionReviewSummary;
   reviewSuggestions?: DocumentReviewSuggestions;
+  retentionHoldReview?: DocumentRetentionHoldReview;
   metadataTags?: DocumentMetadataTag[];
 }
 

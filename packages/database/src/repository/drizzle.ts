@@ -262,6 +262,7 @@ import {
   getDrizzleDocument,
   getDrizzleDocumentTextExtractions,
   listDrizzleMatterDocuments,
+  recordDrizzleDocumentRetentionHoldReviewDecision,
   reviewDrizzleUploadedDocument,
   updateDrizzleDocumentScanStatus,
 } from "./documents/drizzle.js";
@@ -1606,6 +1607,12 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     reviewedAt: string;
   }): Promise<DocumentRecord> {
     return reviewDrizzleUploadedDocument(this.db, input);
+  }
+
+  async recordDocumentRetentionHoldReviewDecision(
+    input: Parameters<OpenPracticeRepository["recordDocumentRetentionHoldReviewDecision"]>[0],
+  ): ReturnType<OpenPracticeRepository["recordDocumentRetentionHoldReviewDecision"]> {
+    return recordDrizzleDocumentRetentionHoldReviewDecision(this.db, input);
   }
 
   async updateDocumentScanStatus(input: {

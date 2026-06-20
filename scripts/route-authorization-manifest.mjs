@@ -1375,6 +1375,15 @@ export const ROUTE_AUTHORIZATION_MANIFEST = [
     "derived",
   ),
   authRoute(
+    "registerDocumentRoutes",
+    "apps/api/src/routes/documents.test.ts",
+    "POST",
+    "/api/documents/:id/retention-hold-decisions",
+    "document",
+    "update",
+    "derived",
+  ),
+  authRoute(
     "registerDocumentProcessingRoutes",
     "apps/api/src/routes/document-processing.test.ts",
     "GET",

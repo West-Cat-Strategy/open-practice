@@ -1,6 +1,6 @@
 # Planning and Progress
 
-**Last Updated:** 2026-06-19
+**Last Updated:** 2026-06-20
 
 Use this file for live tracked work, immediate next moves, and the forward-looking development plan.
 Use `docs/planning.md` for the durable roadmap, `docs/improvement-opportunities.md` for candidate
@@ -10,8 +10,8 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 | Snapshot              | Value                                                                |
 | --------------------- | -------------------------------------------------------------------- |
-| Current focus         | 2026-06-19 active-lane closeout complete; `main` pushed and pruned.  |
-| Next recommended pick | Pick the next scoped row after a fresh status and selector check.    |
+| Current focus         | Staff document retention/hold review surface on branch proof pass.   |
+| Next recommended pick | Finish selector validation, then merge or hand off the branch.       |
 | Ready rows            | 0                                                                    |
 | Candidate rows        | 0                                                                    |
 | In progress rows      | 0                                                                    |
@@ -21,6 +21,19 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 | Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`     |
 
 ## Current Handoff Notes
+
+The 2026-06-20 `feat/document-retention-hold-review-surface-20260620` branch in
+`/Users/bryan/projects/open-practice-document-retention-hold-review-surface-20260620` adds the
+smallest runtime slice from the document retention/hold workflow design: a staff-only,
+matter-scoped decision-record surface over existing document metadata, legal-hold cues, and
+upload/checksum/scan posture. It records only the latest bounded
+`documents.reviewMetadata.retentionHoldReview` posture, extends the workbench/Documents UI with
+fixed non-destructive review flags, blocks reviewer-packet readiness while hold or integrity
+blockers remain active, and writes safe `document.retention_hold_review.recorded` audit metadata.
+It does not delete objects, enforce retention deadlines, clear or override legal holds, retain
+export bodies, persist raw OCR/provider payloads or free-form notes, or claim jurisdiction-certified
+compliance. Proof is being recorded in
+[staff document retention/hold review surface proof](validation/OP_DOCUMENT_RETENTION_HOLD_REVIEW_SURFACE_PROOF_2026-06-20.md).
 
 The 2026-06-19 active-lane mainline closeout is complete. The integration preserves all committed
 lane proof notes, resolves migrations through `0069_inbound_attachment_message_index`, keeps the

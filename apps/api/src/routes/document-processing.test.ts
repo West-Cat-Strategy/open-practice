@@ -860,6 +860,17 @@ describe("document processing routes", () => {
               ],
             }),
           },
+          retentionHoldReview: {
+            reviewerOnly: true,
+            mutating: false,
+            destructiveAction: false,
+            retentionDeadlineEnforced: false,
+            legalHoldOverride: false,
+            retainedExportBody: false,
+            status: "blocked_by_hold",
+            blockers: ["legal_hold"],
+            sourceCueCounts: expect.objectContaining({ retention_review: 1 }),
+          },
         }),
       ],
     });

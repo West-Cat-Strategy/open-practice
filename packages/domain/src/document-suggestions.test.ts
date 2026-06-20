@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildDocumentRetentionHoldReview,
   buildDocumentMetadataSearchPosture,
   buildDocumentMetadataTags,
   buildDocumentReviewSuggestions,
@@ -248,6 +249,60 @@ describe("document review suggestions", () => {
     );
     expect(JSON.stringify(suggestions)).not.toContain("external-upload-link-001");
     expect(JSON.stringify(suggestions)).not.toContain("Private extracted text");
+  });
+
+  it("derives bounded retention and hold posture from cues and recorded metadata", () => {
+    const document: DocumentRecord = {
+      ...baseDocument,
+      legalHold: true,
+      reviewMetadata: {
+        source: "external_upload_review",
+        note: "Synthetic private note should not be serialized.",
+        storageKey: "matters/matter-001/private.pdf",
+        retentionHoldReview: {
+          decision: "ready_for_reviewer_packet",
+          reason: "legal_hold",
+          reviewAfter: "2026-07-01T00:00:00.000Z",
+          minimumRetainThrough: "2026-08-01T00:00:00.000Z",
+          recordedByUserId: "user-licensee",
+          recordedAt: "2026-06-20T10:00:00.000Z",
+          sourceCueCounts: {
+            classification: 0,
+            duplicate_or_supersession: 0,
+            matter_contact: 0,
+            missing_metadata: 0,
+            retention_review: 1,
+            total: 1,
+          },
+        },
+      },
+    };
+    const suggestions = buildDocumentReviewSuggestions({
+      document,
+      sameMatterDocuments: [document],
+      latestExtraction: extraction({ metadata: {} }),
+    });
+    const posture = buildDocumentRetentionHoldReview({ document, reviewSuggestions: suggestions });
+
+    expect(posture).toMatchObject({
+      reviewerOnly: true,
+      mutating: false,
+      destructiveAction: false,
+      retentionDeadlineEnforced: false,
+      legalHoldOverride: false,
+      retainedExportBody: false,
+      status: "blocked_by_hold",
+      blockers: ["legal_hold"],
+      latestDecision: {
+        decision: "ready_for_reviewer_packet",
+        reason: "legal_hold",
+        recordedByUserId: "user-licensee",
+        sourceCueCounts: { retention_review: 1, total: 1 },
+      },
+    });
+    expect(JSON.stringify(posture)).not.toContain("Synthetic private");
+    expect(JSON.stringify(posture)).not.toContain("storageKey");
+    expect(JSON.stringify(posture)).not.toContain("private.pdf");
   });
 
   it("builds metadata-only tags and search summaries without OCR body text", () => {

@@ -279,13 +279,19 @@ surface.
     supersession, upload/checksum/scan state, and review state in the document-processing workbench;
     no deletion automation, retention deadline, retention-policy eligibility, or compliance claim was
     added.
+  - **Shipped decision-record slice:** The 2026-06-20 staff review surface records the latest
+    bounded retention/hold decision on existing document review metadata, exposes fixed
+    non-destructive posture flags in the workbench and Documents UI, blocks reviewer-packet readiness
+    while a legal hold or integrity blocker is active, and audits only IDs, enum labels, cue counts,
+    and posture flags.
   - **Docs-first design:** The
     [document retention and hold workflow design](document-retention-hold-workflow-design.md) now
     records practice-configured review schedules, hold-blocking rules, deletion-review gates, and
     records-disposition language for future reviewed implementation planning.
-  - **Remaining boundary:** Runtime deletion workflows, retention-deadline enforcement,
-    legal-hold override commands, and jurisdiction-certified records-disposition claims remain
-    deferred until separately reviewed.
+  - **Remaining boundary:** Runtime deletion workflows, object deletion, retention-deadline
+    enforcement, legal-hold override commands, retained export bodies, raw OCR/provider payload
+    retention, free-form retention notes, and jurisdiction-certified records-disposition claims
+    remain deferred until separately reviewed.
   - **References:** `arkcase__arkcase`, `nextcloud__server`, and `paperless-ngx__paperless-ngx`.
   - **Reuse and snippets:** LGPL/AGPL/GPL/reference-only; no direct snippets.
 
