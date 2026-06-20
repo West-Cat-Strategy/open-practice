@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { InMemoryOpenPracticeRepository } from "@open-practice/database";
-import { authorizationFixtureCases, type AiOperationalProposalRecord } from "@open-practice/domain";
+import type { AiOperationalProposalRecord } from "@open-practice/domain";
+import { authorizationFixtureCases } from "@open-practice/domain/authorization-fixtures";
 import { FakeDraftAssistProvider } from "@open-practice/providers/testing";
 import { createApiServer } from "../server.js";
 import type { ApiJobQueue } from "./types.js";

@@ -1,5 +1,8 @@
 export { EmbeddedAutomationProvider } from "./automation.js";
-export { LocalDocumentConversionReviewProvider } from "./document-conversion.js";
+export {
+  LocalDocumentConversionReviewProvider,
+  localDocumentConversionReviewProvider,
+} from "./document-conversion.js";
 export { DisabledDraftAssistProvider } from "./draft-assist.js";
 export { renderDraftExport } from "./draft-exports.js";
 export { ProviderConfigurationError } from "./errors.js";
