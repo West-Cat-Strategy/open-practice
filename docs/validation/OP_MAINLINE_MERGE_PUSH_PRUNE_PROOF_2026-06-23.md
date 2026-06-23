@@ -119,15 +119,38 @@ pnpm build
 
 ## Publish And Prune
 
-Publication and pruning are recorded after this proof note is committed and `main` is fast-forwarded
-to the validated integration branch. Required final checks:
+After validation, local `main` was fast-forwarded from
+`4a73d46ad07fd349085d7a48ae706db0a7e690bd` to
+`955b966d2d1120b0b202ff9ddc3adf636991bab5` and pushed to `origin/main`. Post-push parity
+confirmed:
 
-- `git rev-list --left-right --count main...origin/main`
-- `git ls-remote origin refs/heads/main`
-- `git worktree list --porcelain`
-- `git branch --merged main`
-- `git branch --no-merged main`
-- `git stash list | wc -l`
+| Check                                                  | Result                                     |
+| ------------------------------------------------------ | ------------------------------------------ |
+| `git rev-parse HEAD`                                   | `955b966d2d1120b0b202ff9ddc3adf636991bab5` |
+| `git rev-parse main`                                   | `955b966d2d1120b0b202ff9ddc3adf636991bab5` |
+| `git rev-parse origin/main`                            | `955b966d2d1120b0b202ff9ddc3adf636991bab5` |
+| `git rev-list --left-right --count main...origin/main` | `0 0`                                      |
+| `git ls-remote origin refs/heads/main`                 | `955b966d2d1120b0b202ff9ddc3adf636991bab5` |
+
+Only after parity, the six clean sibling worktrees whose branch heads were ancestors of `main` were
+removed:
+
+- `/Users/bryan/projects/open-practice-ai-proposal-authz-matrix-20260620`
+- `/Users/bryan/projects/open-practice-api-docs-route-inventory-reconciliation-20260620`
+- `/Users/bryan/projects/open-practice-communications-inbox-bulk-recheck-20260621`
+- `/Users/bryan/projects/open-practice-dependency-refresh-20260621`
+- `/Users/bryan/projects/open-practice-document-retention-hold-action-descriptor-20260621`
+- `/Users/bryan/projects/open-practice-matter-lifecycle-close-command-20260620`
+
+Merged local branches were deleted with `git branch -d`, including
+`merge/open-practice-mainline-20260623` and the root
+`feat/matter-lifecycle-archive-command-20260621` branch. `git worktree prune` and
+`git remote prune origin` completed cleanly. Final inventory confirmed one worktree
+(`/Users/bryan/projects/open-practice` on `main`), one local branch (`main`), no unmerged local
+branches, remote `origin` with only `refs/heads/main`, and no running Compose services from this
+closeout.
+
+Stashes were left untouched. Initial and final stash count was `42`.
 
 ## Final Changed Paths
 
