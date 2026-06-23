@@ -1,6 +1,6 @@
 # Planning and Progress
 
-**Last Updated:** 2026-06-20
+**Last Updated:** 2026-06-21
 
 Use this file for live tracked work, immediate next moves, and the forward-looking development plan.
 Use `docs/planning.md` for the durable roadmap, `docs/improvement-opportunities.md` for candidate
@@ -21,6 +21,15 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 | Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`     |
 
 ## Current Handoff Notes
+
+The 2026-06-21 `feat/document-retention-hold-action-descriptor-20260621` branch applies the shared
+domain-owned operational action descriptor pattern to the Documents retention/hold review control.
+The button now derives its label, busy/disabled state, stable `data-action-key`, and accessible
+disabled reason from `packages/domain/src/operational-actions.ts` while preserving the existing
+suggested decision/reason logic, route behavior, server authorization, review-only metadata,
+legal-hold blocking, portal access rules, audit posture, database persistence, retention
+boundaries, migrations, dependencies, and route catalog behavior. Proof is being recorded in
+[document retention/hold action descriptor proof](validation/OP_DOCUMENT_RETENTION_HOLD_ACTION_DESCRIPTOR_PROOF_2026-06-21.md).
 
 The 2026-06-20 active-lane mainline closeout integrated all 11 dirty Open Practice lanes through
 `merge/open-practice-mainline-20260620`, fast-forwarded and pushed `main`, then pruned the clean

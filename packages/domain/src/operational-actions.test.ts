@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  compactDocumentRetentionHoldReviewActionReason,
   compactMatterLifecycleReviewActionReason,
   compactTrustPostingRequestReviewActionReason,
+  describeDocumentRetentionHoldReviewAction,
   describeMatterLifecycleReviewAction,
   describeOperationalActionState,
   describeTrustPostingRequestReviewAction,
@@ -122,6 +124,61 @@ describe("operational action states", () => {
     expect(serialized).not.toContain("matter_lifecycle_synthetic");
     expect(serialized).not.toContain("Synthetic pause review");
     expect(serialized).not.toContain("Synthetic blocker evidence");
+  });
+
+  it("describes document retention and hold review actions without document data", () => {
+    expect(
+      describeDocumentRetentionHoldReviewAction({
+        action: "record_review",
+        label: "needs review",
+      }),
+    ).toEqual({
+      actionKey: "document_retention_hold_review.record",
+      available: true,
+      availability: "available",
+      label: "needs review",
+      tone: "ready",
+    });
+
+    const busyAction = describeDocumentRetentionHoldReviewAction({
+      action: "record_review",
+      label: "blocked by hold",
+      busyAction: "record_review",
+    });
+    expect(busyAction).toMatchObject({
+      actionKey: "document_retention_hold_review.record",
+      available: false,
+      availability: "disabled",
+      label: "Recording",
+      disabledReason: "retention_hold_review_in_progress",
+    });
+
+    expect(
+      describeDocumentRetentionHoldReviewAction({
+        action: "record_review",
+        label: "ready for reviewer packet",
+        busyAction: "other",
+      }),
+    ).toMatchObject({
+      actionKey: "document_retention_hold_review.record",
+      available: false,
+      availability: "disabled",
+      label: "ready for reviewer packet",
+      disabledReason: "review_action_in_progress",
+    });
+
+    expect(
+      compactDocumentRetentionHoldReviewActionReason("retention_hold_review_in_progress"),
+    ).toBe("retention/hold review in progress");
+    expect(compactDocumentRetentionHoldReviewActionReason("review_action_in_progress")).toBe(
+      "review action in progress",
+    );
+
+    const serialized = JSON.stringify(busyAction);
+    expect(serialized).not.toContain("doc_retention_synthetic");
+    expect(serialized).not.toContain("Synthetic retention packet");
+    expect(serialized).not.toContain("legal_hold");
+    expect(serialized).not.toContain("minimumRetainThrough");
   });
 
   it("describes available trust posting request review actions", () => {
