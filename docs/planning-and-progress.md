@@ -87,9 +87,12 @@ The 2026-06-20 `docs/api-docs-route-inventory-reconciliation-20260620` branch cl
 API route inventory gap found during the incomplete-implementation audit. It reconciles
 `docs/api-and-state-machines.md` with the route authorization/API inventory by documenting compact
 notation coverage and adding explicit WebAuthn step-up, CalDAV, public mail receipt, and
-local/e2e-support-only route rows. The branch preserves route registration, route authorization,
-public-token semantics, CalDAV behavior, e2e helper availability, payment/trust behavior, provider
-behavior, schemas, and runtime source. Evidence is recorded in
+local/e2e-support-only route rows. The 2026-06-20 follow-up in
+`docs/api-docs-route-inventory-reconciliation-followup-20260620` revalidated the generated local
+inventory and made the compact CalDAV, e2e-support, step-up auth, receipt, and public-token/path
+token coverage anchors explicit without runtime changes. The branch preserves route registration,
+route authorization, public-token semantics, CalDAV behavior, e2e helper availability, payment/trust
+behavior, provider behavior, schemas, and runtime source. Evidence is recorded in
 [API docs route inventory reconciliation proof](validation/OP_API_DOCS_ROUTE_INVENTORY_RECONCILIATION_PROOF_2026-06-20.md).
 
 The 2026-06-20 `audit/incomplete-implementation-inventory-20260620` branch records an exhaustive

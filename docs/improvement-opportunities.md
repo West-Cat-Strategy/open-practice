@@ -31,7 +31,9 @@ The 2026-06-20 API route inventory documentation gap is shipped by
 [OP_API_DOCS_ROUTE_INVENTORY_RECONCILIATION_PROOF_2026-06-20.md](validation/OP_API_DOCS_ROUTE_INVENTORY_RECONCILIATION_PROOF_2026-06-20.md).
 Future API documentation candidates should compare against the generated local API contract, the
 route authorization manifest, and the compact-notation coverage rules in
-`docs/api-and-state-machines.md` before proposing another exact-route reconciliation slice.
+`docs/api-and-state-machines.md`; the 2026-06-20 follow-up also revalidated the explicit CalDAV,
+e2e-support, WebAuthn step-up, receipt, and public-token/path-token compact families before another
+exact-route reconciliation slice is proposed.
 
 ### Database Access Efficiency Follow-Ups - 2026-06-18
 
