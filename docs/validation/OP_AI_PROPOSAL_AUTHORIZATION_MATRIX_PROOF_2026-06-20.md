@@ -24,6 +24,11 @@ grant change, or matter-scope replacement.
 
 ## Validation
 
+Revalidated on 2026-06-20 from the recreated sibling worktree
+`/Users/bryan/projects/open-practice-ai-proposal-authz-matrix-20260620` on
+`hardening/ai-proposal-authz-matrix-20260620`. Current `main` already contained the matrix, so the
+only new tracked change in this closeout is this proof refresh.
+
 Selector:
 
 ```bash
@@ -50,20 +55,19 @@ pnpm --filter @open-practice/worker test
 Passed:
 
 - `pnpm verify:select -- --files docs/validation/OP_AI_PROPOSAL_AUTHORIZATION_MATRIX_PROOF_2026-06-20.md apps/api/src/routes/ai-operational-proposals.test.ts docs/api-and-state-machines.md docs/improvement-opportunities.md docs/planning-and-progress.md docs/validation/README.md packages/domain/src/authorization-fixtures.ts packages/domain/src/permissions.test.ts`.
-- `pnpm architecture:check` - 437 workspace import edges reviewed.
-- `pnpm api:contract` - generated `.tmp/api-contract/openapi.json` with 308 paths.
+- `pnpm architecture:check` - 442 workspace import edges reviewed.
+- `pnpm api:contract` - generated `.tmp/api-contract/openapi.json` with 310 paths.
 - `pnpm docs:check`.
 - `pnpm policy:check`.
-- `pnpm --filter @open-practice/domain test` - 31 files, 230 tests.
+- `pnpm --filter @open-practice/domain test` - 31 files, 235 tests.
 - `pnpm --filter @open-practice/domain typecheck`.
 - `pnpm --filter @open-practice/domain build`.
 - `pnpm --filter @open-practice/database build`.
 - `pnpm --filter @open-practice/providers build`.
-- `pnpm --filter @open-practice/api exec vitest run src/routes/ai-operational-proposals.test.ts`
-  - 1 file, 7 tests, after building upstream package outputs.
-- `pnpm --filter @open-practice/api test` - 42 files, 572 tests.
+- `pnpm --filter @open-practice/api test` - 42 files, 578 tests, after building upstream
+  package outputs.
 - `pnpm --filter @open-practice/api typecheck`.
-- `pnpm --filter @open-practice/providers test` - 11 files, 22 tests.
+- `pnpm --filter @open-practice/providers test` - 11 files, 23 tests.
 - `pnpm --filter @open-practice/worker test` - 5 files, 46 tests.
 
 Final checks after proof reconciliation:
