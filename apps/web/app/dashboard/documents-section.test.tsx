@@ -335,6 +335,8 @@ describe("DocumentsSection", () => {
     expect(html).toContain("no deletion");
     expect(html).toContain("Queue OCR");
     expect(html).toContain("needs review");
+    expect(html).toContain('data-action-key="document_retention_hold_review.record"');
+    expect(html).toContain('aria-label="needs review"');
     expect(html).toContain("No document assembly packages are linked to this matter.");
   });
 
@@ -347,5 +349,42 @@ describe("DocumentsSection", () => {
     expect(html).toContain("No files are visible to this portal contact.");
     expect(html).toContain("Grant portal");
     expect(html).not.toContain("Revoke portal");
+  });
+
+  it("renders descriptor-backed retention and hold review busy states", () => {
+    const workbench = buildSyntheticDocumentProcessingWorkbench();
+    const firstDocument = workbench.documents[0];
+    expect(firstDocument).toBeDefined();
+    const secondDocument = {
+      ...firstDocument!,
+      document: {
+        ...firstDocument!.document,
+        id: "doc_synthetic_other",
+        title: "Synthetic second tenancy evidence",
+      },
+    };
+    const rows = [firstDocument!, secondDocument];
+    const html = renderToStaticMarkup(
+      createElement(
+        DocumentsSection,
+        buildDocumentsSectionProps({
+          activeDocumentProcessing: { ...workbench, documents: rows },
+          activeDocumentProcessingRows: rows,
+          retentionHoldReviewBusyId: "doc_synthetic",
+        }),
+      ),
+    );
+
+    expect(html).toContain('data-action-key="document_retention_hold_review.record"');
+    expect(html).toContain('aria-label="Recording: retention/hold review in progress"');
+    expect(html).toContain('aria-label="needs review: review action in progress"');
+    expect(html).toContain(">Recording</button>");
+    expect(html.match(/data-action-key="document_retention_hold_review\.record"/g)).toHaveLength(2);
+    expect(
+      html.match(/data-action-key="document_retention_hold_review\.record" disabled=""/g),
+    ).toHaveLength(2);
+    expect(html).toContain("Retention/hold needs review");
+    expect(html).toContain("no deletion");
+    expect(html).toContain("Grant portal");
   });
 });

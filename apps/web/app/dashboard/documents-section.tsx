@@ -1,4 +1,9 @@
 import { Eye, EyeOff, Search, ShieldCheck, X } from "lucide-react";
+import {
+  compactDocumentRetentionHoldReviewActionReason,
+  describeDocumentRetentionHoldReviewAction,
+  type DocumentRetentionHoldReviewBusyAction,
+} from "@open-practice/domain/operational-actions";
 
 import type { DocumentAssemblyWorkbenchResponse } from "../_features/document-assembly/models";
 import {
@@ -111,6 +116,14 @@ function suggestedRetentionHoldReason(
     return "metadata_review";
   }
   return "practice_review";
+}
+
+function documentRetentionHoldBusyAction(
+  busyDocumentId: string,
+  documentId: string,
+): DocumentRetentionHoldReviewBusyAction | undefined {
+  if (!busyDocumentId) return undefined;
+  return busyDocumentId === documentId ? "record_review" : "other";
 }
 
 export function DocumentsSection({
@@ -413,6 +426,19 @@ export function DocumentsSection({
                 const retentionHoldReview = item.retentionHoldReview;
                 const retentionDecision = suggestedRetentionHoldDecision(item);
                 const retentionReason = suggestedRetentionHoldReason(item);
+                const retentionAction = describeDocumentRetentionHoldReviewAction({
+                  action: "record_review",
+                  label: compactRetentionHoldStatus(retentionDecision),
+                  busyAction: documentRetentionHoldBusyAction(
+                    retentionHoldReviewBusyId,
+                    item.document.id,
+                  ),
+                });
+                const retentionActionAriaLabel = retentionAction.disabledReason
+                  ? `${retentionAction.label}: ${compactDocumentRetentionHoldReviewActionReason(
+                      retentionAction.disabledReason,
+                    )}`
+                  : retentionAction.label;
                 const activeAccess = activePortalDocumentAccess.find(
                   (access) => access.documentId === item.document.id,
                 );
@@ -498,8 +524,10 @@ export function DocumentsSection({
                         {queueingDocumentId === item.document.id ? "Queueing..." : action.label}
                       </button>
                       <button
+                        aria-label={retentionActionAriaLabel}
                         className="secondary-button compact-button row-button"
-                        disabled={retentionHoldReviewBusyId.length > 0}
+                        data-action-key={retentionAction.actionKey}
+                        disabled={!retentionAction.available}
                         onClick={() =>
                           void onRecordRetentionHoldDecision(
                             item.document.id,
@@ -510,9 +538,7 @@ export function DocumentsSection({
                         type="button"
                       >
                         <ShieldCheck aria-hidden="true" size={16} />
-                        {retentionHoldReviewBusyId === item.document.id
-                          ? "Recording..."
-                          : compactRetentionHoldStatus(retentionDecision)}
+                        {retentionAction.label}
                       </button>
                       {selectedClientPortalContactId ? (
                         activeAccess ? (

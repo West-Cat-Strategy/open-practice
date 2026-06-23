@@ -2,6 +2,8 @@ import type { LedgerPostingRequestStatus } from "./ledger.js";
 
 export type OperationalActionAvailability = "available" | "disabled";
 export type OperationalActionTone = "neutral" | "ready" | "risk";
+export type DocumentRetentionHoldReviewAction = "record_review";
+export type DocumentRetentionHoldReviewBusyAction = DocumentRetentionHoldReviewAction | "other";
 export type TrustPostingRequestReviewAction = "approved" | "rejected";
 export type TrustPostingRequestReviewBusyAction = TrustPostingRequestReviewAction | "other";
 export type MatterLifecycleReviewAction = "record_review";
@@ -110,6 +112,53 @@ export function describeMatterLifecycleReviewAction(input: {
           label: descriptor.busyLabel,
         }),
       !input.canRecord && disabledOperationalAction("permission_required"),
+    ],
+  });
+}
+
+const documentRetentionHoldReviewActionDescriptors: Record<
+  DocumentRetentionHoldReviewAction,
+  {
+    actionKey: string;
+    busyLabel: string;
+    availableTone: OperationalActionTone;
+  }
+> = {
+  record_review: {
+    actionKey: "document_retention_hold_review.record",
+    busyLabel: "Recording",
+    availableTone: "ready",
+  },
+};
+
+export function compactDocumentRetentionHoldReviewActionReason(value?: string): string {
+  if (!value) return "available";
+  const labels: Record<string, string> = {
+    retention_hold_review_in_progress: "retention/hold review in progress",
+    review_action_in_progress: "review action in progress",
+  };
+  return labels[value] ?? value.replaceAll("_", " ");
+}
+
+export function describeDocumentRetentionHoldReviewAction(input: {
+  action: DocumentRetentionHoldReviewAction;
+  label: string;
+  busyAction?: DocumentRetentionHoldReviewBusyAction;
+}): OperationalActionState {
+  const descriptor = documentRetentionHoldReviewActionDescriptors[input.action];
+  const sameActionBusy = input.busyAction === input.action;
+  const anyActionBusy = input.busyAction !== undefined;
+
+  return describeOperationalActionState({
+    actionKey: descriptor.actionKey,
+    label: input.label,
+    availableTone: descriptor.availableTone,
+    disabledWhen: [
+      sameActionBusy &&
+        disabledOperationalAction("retention_hold_review_in_progress", {
+          label: descriptor.busyLabel,
+        }),
+      anyActionBusy && disabledOperationalAction("review_action_in_progress"),
     ],
   });
 }
