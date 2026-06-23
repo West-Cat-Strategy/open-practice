@@ -58,7 +58,7 @@ Route inventory anchors reviewed:
 
 ## Validation
 
-### Final Changed Paths
+### Original Branch Path Set
 
 ```bash
 docs/api-and-state-machines.md
@@ -103,6 +103,91 @@ Validation results:
 - `git diff --check` - passed.
 - `pnpm proof:reconcile -- --proof docs/validation/OP_API_DOCS_ROUTE_INVENTORY_RECONCILIATION_PROOF_2026-06-20.md --base-plus-dirty origin/main` -
   passed.
+
+## Follow-Up Addendum: Explicit Compact-Family Anchors
+
+The 2026-06-20 follow-up branch
+`docs/api-docs-route-inventory-reconciliation-followup-20260620` revalidated the docs-only
+reconciliation from current `origin/main` in
+`/Users/bryan/projects/open-practice-api-docs-route-inventory-reconciliation-20260620`.
+
+This follow-up keeps the same runtime boundary: no product API, route registration, route
+authorization, TypeScript type, database schema, migration, provider, worker, payment, trust, CalDAV,
+e2e helper registration, public-token semantic, or generated contract shape changed. It only makes
+the route-inventory documentation anchors more explicit for the compact families called out by the
+incomplete-implementation audit follow-up.
+
+### Follow-Up Remediation
+
+- Expanded the compact-notation note in
+  [API and State Machines](../api-and-state-machines.md) to name the generated local API contract as
+  the reconciliation source of truth for exact route inventory checks.
+- Made the strict inventory coverage anchors explicit for compact CalDAV variants, including
+  `OPTIONS /caldav`, `OPTIONS /caldav/*`, `GET/PROPFIND /.well-known/caldav`,
+  `PROPFIND /caldav`, `PROPFIND /caldav/`, principal and calendar-home lookup, matter collection
+  `PROPFIND/REPORT`, and event-object `GET/PUT/DELETE`.
+- Reconfirmed local/e2e-support-only helper rows for `/api/e2e/shareable-document`,
+  `/api/e2e/share-verification-code`, and `/api/e2e/client-portal-account` as non-production helper
+  coverage only.
+- Reconfirmed WebAuthn step-up route rows for `POST /api/auth/step-up/password`,
+  `POST /api/auth/step-up/passkey/options`, and `POST /api/auth/step-up/passkey/verify`.
+- Reconfirmed both legacy `/api/portal/email-receipts[/:token]` and current
+  `/api/portal/mail/receipts[/:token]` public receipt paths.
+- Reconfirmed public-token header preference and legacy path-token compatibility coverage for
+  shares, external uploads, intake forms, guest sessions, and receipts without changing token
+  transport or log-redaction behavior.
+
+### Follow-Up Evidence
+
+```bash
+pnpm api:contract
+```
+
+Result: passed and wrote ignored local evidence with 310 OpenAPI path objects.
+
+```bash
+node --input-type=module <<'NODE'
+import { readFileSync } from "node:fs";
+import { ROUTE_AUTHORIZATION_MANIFEST } from "./scripts/route-authorization-manifest.mjs";
+const doc = readFileSync("docs/api-and-state-machines.md", "utf8");
+const exactMissing = [];
+for (const route of ROUTE_AUTHORIZATION_MANIFEST) {
+  const key = `${route.method} ${route.path}`;
+  if (!doc.includes(key)) exactMissing.push(key);
+}
+console.log(`manifest entries: ${ROUTE_AUTHORIZATION_MANIFEST.length}`);
+console.log(`exact missing: ${exactMissing.length}`);
+for (const key of exactMissing) console.log(key);
+NODE
+```
+
+Result: passed with 371 manifest entries and 0 missing exact route strings in
+`docs/api-and-state-machines.md`.
+
+### Final Changed Paths
+
+```bash
+docs/api-and-state-machines.md
+docs/improvement-opportunities.md
+docs/planning-and-progress.md
+docs/validation/OP_API_DOCS_ROUTE_INVENTORY_RECONCILIATION_PROOF_2026-06-20.md
+docs/validation/README.md
+```
+
+### Follow-Up Validation
+
+```bash
+pnpm verify:select -- --files docs/api-and-state-machines.md docs/improvement-opportunities.md docs/planning-and-progress.md docs/validation/OP_API_DOCS_ROUTE_INVENTORY_RECONCILIATION_PROOF_2026-06-20.md docs/validation/README.md
+```
+
+Result: passed; selected `pnpm format:check`, `pnpm docs:check`, and `pnpm policy:check`.
+
+- `pnpm format:check` - passed.
+- `pnpm docs:check` - passed.
+- `pnpm policy:check` - passed.
+- `git diff --check` - passed.
+- `pnpm proof:reconcile -- --proof docs/validation/OP_API_DOCS_ROUTE_INVENTORY_RECONCILIATION_PROOF_2026-06-20.md --base-plus-dirty origin/main` -
+  passed with 5 paths and the same selected validation commands.
 
 ## Checks Not Run
 

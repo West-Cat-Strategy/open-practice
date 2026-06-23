@@ -45,13 +45,19 @@ portal document access, and job lifecycle helpers described below.
 
 API route inventory rows intentionally use compact notation where several manifest entries share the
 same contract. Method unions such as `GET/POST`, query placeholders such as `?matterId=`, child-route
-suffixes such as `[...]`, CalDAV wildcard rows such as `OPTIONS /caldav/*`, and `or legacy path-token
+suffixes such as `[...]`, compact CalDAV rows such as `OPTIONS /caldav/*`, and `or legacy path-token
 variant` cover the exact route-authorization manifest entries in that named family without changing
 route registration. Public portal routes prefer `x-open-practice-public-token`; legacy path-token
 variants remain compatibility shims only, and header-token/path-token aliases are documented as the
 same public-token policy unless a row says otherwise. Local/e2e-support routes are listed so the
 manifest is accounted for, but they are registered only for the local browser proof harness and are
 not production product APIs.
+
+The generated local API contract is the reconciliation source of truth for exact route inventory
+checks. The compact rows below explicitly cover the current CalDAV variants, local/e2e-support
+helpers, WebAuthn step-up routes, public receipt paths, and public-token header/path-token aliases;
+they do not imply any new route registration, authorization behavior, production helper exposure, or
+token transport change.
 
 Strict route-inventory comparisons should also treat the following compact rows as exact manifest
 coverage anchors:
@@ -65,17 +71,54 @@ coverage anchors:
 `GET /api/contacts/:contactId/portal-access`,
 `POST /api/contacts/:contactId/portal-access`,
 `PATCH /api/contacts/:contactId/portal-access/:grantId`,
+`OPTIONS /caldav/*`,
+`OPTIONS /caldav`,
+`PROPFIND /caldav`,
+`PROPFIND /caldav/`,
 `GET /.well-known/caldav`,
+`PROPFIND /.well-known/caldav`,
+`PROPFIND /caldav/principals/:username/`,
+`PROPFIND /caldav/calendars/:username/`,
 `PROPFIND /caldav/calendars/:username/:matterId/`,
+`REPORT /caldav/calendars/:username/:matterId/`,
 `GET /caldav/calendars/:username/:matterId/:eventId.ics`,
 `PUT /caldav/calendars/:username/:matterId/:eventId.ics`,
+`DELETE /caldav/calendars/:username/:matterId/:eventId.ics`,
+`POST /api/auth/step-up/password`,
+`POST /api/auth/step-up/passkey/options`,
+`POST /api/auth/step-up/passkey/verify`,
+`POST /api/e2e/shareable-document`,
+`GET /api/e2e/share-verification-code`,
+`POST /api/e2e/client-portal-account`,
+`GET /api/portal/guest-sessions`,
+`GET /api/portal/guest-sessions/:token`,
+`POST /api/portal/guest-sessions/check-in`,
 `POST /api/portal/guest-sessions/:token/check-in`,
+`GET /api/portal/external-uploads`,
+`GET /api/portal/external-uploads/:token`,
+`POST /api/portal/external-uploads/intents`,
 `POST /api/portal/external-uploads/:token/intents`,
+`POST /api/portal/external-uploads/documents/:documentId/complete`,
 `POST /api/portal/external-uploads/:token/documents/:documentId/complete`,
+`GET /api/portal/intake-forms`,
+`GET /api/portal/intake-forms/:token`,
 `POST /api/portal/intake-forms/draft`, `POST /api/portal/intake-forms/:token/draft`,
+`POST /api/portal/intake-forms/submit`,
+`POST /api/portal/intake-forms/:token/submit`,
+`POST /api/portal/intake-forms/items/:itemId/uploads`,
 `POST /api/portal/intake-forms/:token/items/:itemId/uploads`,
-`POST /api/portal/intake-forms/:token/items/:itemId/documents/:documentId/complete`, and
-`POST /api/portal/intake-forms/:token/items/:itemId/signature`.
+`POST /api/portal/intake-forms/items/:itemId/documents/:documentId/complete`,
+`POST /api/portal/intake-forms/:token/items/:itemId/documents/:documentId/complete`,
+`POST /api/portal/intake-forms/items/:itemId/signature`,
+`POST /api/portal/intake-forms/:token/items/:itemId/signature`,
+`GET /api/portal/email-receipts`,
+`GET /api/portal/email-receipts/:token`,
+`POST /api/portal/email-receipts`,
+`POST /api/portal/email-receipts/:token`,
+`GET /api/portal/mail/receipts`,
+`GET /api/portal/mail/receipts/:token`,
+`POST /api/portal/mail/receipts`, and
+`POST /api/portal/mail/receipts/:token`.
 
 | Route                                                                                                                            | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | -------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
