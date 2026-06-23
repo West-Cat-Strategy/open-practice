@@ -3,7 +3,7 @@ import type { MatterStatus } from "./models.js";
 export const matterLifecycleTransitions = ["pause", "close", "archive", "reopen"] as const;
 export type MatterLifecycleTransition = (typeof matterLifecycleTransitions)[number];
 
-export const matterLifecycleCommands = ["pause", "reopen", "close"] as const;
+export const matterLifecycleCommands = ["pause", "reopen", "close", "archive"] as const;
 export type MatterLifecycleCommand = (typeof matterLifecycleCommands)[number];
 
 export const matterLifecycleReadinessValues = ["ready", "blocked"] as const;
@@ -20,6 +20,7 @@ export const matterLifecycleCommandRequiredStatusByCommand = {
   pause: "open",
   reopen: "paused",
   close: "open",
+  archive: "closed",
 } as const satisfies Record<MatterLifecycleCommand, MatterStatus>;
 
 export interface MatterLifecycleCommandConsequences {

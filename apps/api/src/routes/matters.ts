@@ -84,7 +84,7 @@ const lifecycleTransitionBodySchema = z.object({
 
 const lifecycleCommandBodySchema = z.object({
   command: z.enum(matterLifecycleCommands),
-  expectedStatus: z.enum(["open", "paused"]),
+  expectedStatus: z.enum(["open", "paused", "closed"]),
   transitionRecordId: z.string().trim().min(1),
   reason: z.string().trim().min(1).max(240),
   idempotencyKey: z.string().trim().min(1).max(160),

@@ -101,7 +101,7 @@ describe("repository matter lifecycle transitions", () => {
     ).resolves.toEqual([]);
   });
 
-  it("executes pause, reopen, and close commands from the latest ready transition evidence", async () => {
+  it("executes pause, reopen, close, and archive commands from the latest ready transition evidence", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const before = (await repository.listMattersForUser(licensee))[0]!;
     const pauseRecord = await repository.createMatterLifecycleTransition({
@@ -237,6 +237,56 @@ describe("repository matter lifecycle transitions", () => {
       },
     });
 
+    const archiveRecord = await repository.createMatterLifecycleTransition({
+      id: "matter-lifecycle-ready-archive",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      transition: "archive",
+      readiness: "ready",
+      reason: "Synthetic archive packet is ready.",
+      reviewedByUserId: "user-licensee",
+      reviewedAt: "2026-06-19T12:30:00.000Z",
+      createdAt: "2026-06-19T12:30:00.000Z",
+      auditEventId: "audit-matter-lifecycle-ready-archive",
+    });
+    const archived = await repository.executeMatterLifecycleCommand({
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      command: "archive",
+      expectedStatus: "closed",
+      transitionRecordId: archiveRecord.id,
+      reason: "Synthetic operator confirmed archive execution.",
+      idempotencyKey: "synthetic-archive-command-key",
+      executedByUserId: "user-licensee",
+      executedAt: "2026-06-19T12:35:00.000Z",
+      auditEventId: "audit-matter-lifecycle-archive-command",
+    });
+    expect(archived.matter).toMatchObject({
+      id: "matter-001",
+      status: "archived",
+      trustBalanceCents: before.trustBalanceCents,
+    });
+    expect(archived.matter.closedOn).toBe(before.closedOn);
+    expect(archived.matter.timeEntries).toHaveLength(before.timeEntries.length);
+    expect(archived.matter.expenses).toHaveLength(before.expenses.length);
+    expect(archived.lifecycleCommand).toMatchObject({
+      command: "archive",
+      beforeStatus: "closed",
+      expectedStatus: "closed",
+      afterStatus: "archived",
+      reviewFirst: true,
+      consequences: {
+        matterStatusChanged: true,
+        closedOnChanged: false,
+        portalAccessChanged: false,
+        taskChanged: false,
+        assignmentChanged: false,
+        billingChanged: false,
+        trustChanged: false,
+        cleanupRun: false,
+      },
+    });
+
     const audit = await repository.listAuditEvents("firm-west-legal");
     expect(audit.events).toEqual(
       expect.arrayContaining([
@@ -279,12 +329,31 @@ describe("repository matter lifecycle transitions", () => {
             cleanupRun: false,
           }),
         }),
+        expect.objectContaining({
+          action: "matter.lifecycle_command_executed",
+          resourceId: "matter-001",
+          metadata: expect.objectContaining({
+            transitionRecordId: "matter-lifecycle-ready-archive",
+            lifecycleCommand: "archive",
+            beforeStatus: "closed",
+            expectedStatus: "closed",
+            afterStatus: "archived",
+            closedOnChanged: false,
+            portalAccessChanged: false,
+            taskChanged: false,
+            assignmentChanged: false,
+            billingChanged: false,
+            trustChanged: false,
+            cleanupRun: false,
+          }),
+        }),
       ]),
     );
     expect(JSON.stringify(audit.events)).not.toContain("Synthetic operator confirmed");
     expect(JSON.stringify(audit.events)).not.toContain("synthetic-pause-command-key");
     expect(JSON.stringify(audit.events)).not.toContain("synthetic-reopen-command-key");
     expect(JSON.stringify(audit.events)).not.toContain("synthetic-close-command-key");
+    expect(JSON.stringify(audit.events)).not.toContain("synthetic-archive-command-key");
   });
 
   it("rejects stale, blocked, or expected-status mismatched lifecycle commands", async () => {

@@ -1,6 +1,6 @@
 # Planning and Progress
 
-**Last Updated:** 2026-06-20
+**Last Updated:** 2026-06-21
 
 Use this file for live tracked work, immediate next moves, and the forward-looking development plan.
 Use `docs/planning.md` for the durable roadmap, `docs/improvement-opportunities.md` for candidate
@@ -142,11 +142,14 @@ coverage are green.
 
 OP-T160 matter lifecycle commands are done in
 [OP-T160 matter lifecycle commands proof](validation/OP-T160_MATTER_LIFECYCLE_COMMANDS_PROOF_2026-06-19.md).
-The slice ships the first review-gated `POST /api/matters/:matterId/lifecycle-commands` runtime
-path for `pause` and `reopen` only: `open -> paused` and `paused -> open`, gated by the latest
-matching ready lifecycle-transition journal record. It preserves the existing no-destructive-cleanup
-posture and does not mutate `closedOn`, portal grants, tasks, assignments, billing records, trust
-records, retention state, or cleanup state.
+Follow-up proofs cover the status-only
+[close](validation/OP-T160_MATTER_LIFECYCLE_CLOSE_COMMAND_PROOF_2026-06-20.md) and
+[archive](validation/OP-T160_MATTER_LIFECYCLE_ARCHIVE_COMMAND_PROOF_2026-06-21.md) slices. The
+runtime path now covers `pause`, `reopen`, `close`, and `archive`: `open -> paused`,
+`paused -> open`, `open -> closed`, and `closed -> archived`, gated by the latest matching ready
+lifecycle-transition journal record. It preserves the existing no-destructive-cleanup posture and
+does not mutate `closedOn`, portal grants, tasks, assignments, billing records, trust records,
+retention state, or cleanup state.
 
 The 2026-06-19 `remediate/ops-efficiency-20260619` branch implements the operational-efficiency
 review remediation in the clean sibling worktree

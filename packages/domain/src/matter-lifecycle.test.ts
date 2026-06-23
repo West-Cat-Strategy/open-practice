@@ -26,6 +26,8 @@ describe("matter lifecycle transitions", () => {
     expect(matterLifecycleTargetStatus("reopen")).toBe("open");
     expect(matterLifecycleCommandRequiredStatus("close")).toBe("open");
     expect(matterLifecycleTargetStatus("close")).toBe("closed");
+    expect(matterLifecycleCommandRequiredStatus("archive")).toBe("closed");
+    expect(matterLifecycleTargetStatus("archive")).toBe("archived");
   });
 
   it("builds status-only command summaries with safe audit metadata", () => {
@@ -129,6 +131,56 @@ describe("matter lifecycle transitions", () => {
     expect(JSON.stringify(metadata)).not.toContain("synthetic-close-command-key");
   });
 
+  it("builds status-only archive command summaries", () => {
+    const execution = buildMatterLifecycleCommandExecution({
+      command: "archive",
+      matterId: "matter-001",
+      transitionRecordId: "matter-lifecycle-archive",
+      beforeStatus: "closed",
+      expectedStatus: "closed",
+      reason: "Synthetic operator confirmed the archive packet.",
+      idempotencyKey: "synthetic-archive-command-key",
+      executedAt: reviewedAt,
+      executedByUserId: "user-licensee",
+    });
+
+    expect(execution).toMatchObject({
+      command: "archive",
+      beforeStatus: "closed",
+      afterStatus: "archived",
+      reviewFirst: true,
+      consequences: {
+        matterStatusChanged: true,
+        closedOnChanged: false,
+        portalAccessChanged: false,
+        taskChanged: false,
+        assignmentChanged: false,
+        billingChanged: false,
+        trustChanged: false,
+        cleanupRun: false,
+      },
+    });
+    const metadata = buildMatterLifecycleCommandAuditMetadata(execution, {
+      reason: "Synthetic operator confirmed the archive packet.",
+      idempotencyKey: "synthetic-archive-command-key",
+    });
+    expect(metadata).toMatchObject({
+      lifecycleCommand: "archive",
+      beforeStatus: "closed",
+      expectedStatus: "closed",
+      afterStatus: "archived",
+      closedOnChanged: false,
+      portalAccessChanged: false,
+      taskChanged: false,
+      assignmentChanged: false,
+      billingChanged: false,
+      trustChanged: false,
+      cleanupRun: false,
+    });
+    expect(JSON.stringify(metadata)).not.toContain("Synthetic operator confirmed");
+    expect(JSON.stringify(metadata)).not.toContain("synthetic-archive-command-key");
+  });
+
   it("rejects close command executions unless the matter is open", () => {
     expect(() =>
       buildMatterLifecycleCommandExecution({
@@ -156,6 +208,35 @@ describe("matter lifecycle transitions", () => {
         executedByUserId: "user-licensee",
       }),
     ).toThrow("expected status must be open");
+  });
+
+  it("rejects archive command executions unless the matter is closed", () => {
+    expect(() =>
+      buildMatterLifecycleCommandExecution({
+        command: "archive",
+        matterId: "matter-001",
+        transitionRecordId: "matter-lifecycle-archive",
+        beforeStatus: "open",
+        expectedStatus: "closed",
+        reason: "Synthetic archive packet is ready.",
+        idempotencyKey: "synthetic-archive-command-key",
+        executedAt: reviewedAt,
+        executedByUserId: "user-licensee",
+      }),
+    ).toThrow("requires matter status closed");
+    expect(() =>
+      buildMatterLifecycleCommandExecution({
+        command: "archive",
+        matterId: "matter-001",
+        transitionRecordId: "matter-lifecycle-archive",
+        beforeStatus: "closed",
+        expectedStatus: "open",
+        reason: "Synthetic archive packet is ready.",
+        idempotencyKey: "synthetic-archive-command-key",
+        executedAt: reviewedAt,
+        executedByUserId: "user-licensee",
+      }),
+    ).toThrow("expected status must be closed");
   });
 
   it("rejects closed or archived reopen command executions", () => {

@@ -239,11 +239,12 @@ surface.
     boundaries.
   - **Shipped runtime slices:** OP-T160 implements review-gated
     `POST /api/matters/:matterId/lifecycle-commands` runtime paths for `pause`, `reopen`, and
-    status-only `close`: `open -> paused`, `paused -> open`, and `open -> closed`, gated by the
-    latest matching ready journal evidence, with safe audit metadata and no `closedOn`, portal,
-    task, assignment, billing, trust, retention, or cleanup side effects.
-  - **Remaining gap:** Future work should only add `archive` or closed-or-archived reopen after a
-    separate implementation scope is approved and the side-effect proof is explicit.
+    status-only `close` plus `archive`: `open -> paused`, `paused -> open`, `open -> closed`, and
+    `closed -> archived`, gated by the latest matching ready journal evidence, with safe audit
+    metadata and no `closedOn`, portal, task, assignment, billing, trust, retention, or cleanup
+    side effects.
+  - **Remaining gap:** Future work should only add closed-or-archived reopen after a separate
+    implementation scope is approved and the side-effect proof is explicit.
   - **References:** `primeroims__primero`, `arkcase__arkcase`, and `jlawyerorg__j-lawyer-org`.
   - **Reuse and snippets:** AGPL/LGPL/reference-only; no direct snippets.
 
