@@ -18,6 +18,14 @@ skipped-check context. The live workboard remains
 
 ## Current Handoff Notes
 
+The 2026-06-23 dependency refresh proof is recorded in
+[OP_DEPENDENCY_REFRESH_PROOF_2026-06-21.md](OP_DEPENDENCY_REFRESH_PROOF_2026-06-21.md). It covers
+the conservative patch/minor JavaScript refresh on `chore/dependency-refresh-20260621`, including
+Tiptap, AWS SDK S3, BullMQ, Lucide React, imapflow, mailparser, Stripe, Knip, and
+`typescript-eslint` patch/minor updates while holding `@types/node 26.0.0` as a separate major
+compatibility review. The proof records clean audit/license/supply-chain evidence, optional
+OSV/ScanCode local skips, package-focused validation, green `pnpm build`, and green `pnpm ci:local`.
+
 The 2026-06-20 mainline merge/push/prune proof is recorded in
 [OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-20.md](OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-20.md).
 It covers the 11-lane active dirty-worktree consolidation through
