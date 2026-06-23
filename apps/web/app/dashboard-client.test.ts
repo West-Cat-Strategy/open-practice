@@ -4986,6 +4986,20 @@ describe("dashboard client behavior", () => {
       timeEntries: [syntheticTimeEntry],
       lifecycleTransitions: [
         {
+          id: "matter-lifecycle-archive",
+          firmId: "firm-west-legal",
+          matterId: activeMatterBase.id,
+          transition: "archive",
+          currentStatus: "closed",
+          targetStatus: "archived",
+          readiness: "ready",
+          reason: "Synthetic archive packet is ready.",
+          blockers: [],
+          reviewedByUserId: "user-licensee",
+          reviewedAt: "2026-06-16T12:10:00.000Z",
+          createdAt: "2026-06-16T12:10:00.000Z",
+        },
+        {
           id: "matter-lifecycle-close",
           firmId: "firm-west-legal",
           matterId: activeMatterBase.id,
@@ -5096,6 +5110,8 @@ describe("dashboard client behavior", () => {
     expect(html).toContain("Trust balance view");
     expect(html).toContain("Lifecycle readiness");
     expect(html).toContain("review-only records");
+    expect(html).toContain("Archive readiness");
+    expect(html).toContain("Synthetic archive packet is ready.");
     expect(html).toContain("Close readiness");
     expect(html).toContain("Synthetic close packet needs review.");
     expect(html).toContain("1 blocker evidence rows recorded.");
