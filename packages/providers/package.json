@@ -69,11 +69,11 @@
   "dependencies": {
     "@open-practice/domain": "workspace:*",
     "docx": "9.7.1",
-    "imapflow": "^1.4.1",
-    "mailparser": "^3.9.10",
+    "imapflow": "^1.4.2",
+    "mailparser": "^3.9.11",
     "nodemailer": "9.0.1",
     "pdfkit": "0.19.1",
-    "stripe": "22.2.1",
+    "stripe": "22.2.2",
     "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
@@ -82,6 +82,6 @@
     "@types/nodemailer": "^8.0.1",
     "@types/pdfkit": "0.17.6",
     "typescript": "6.0.3",
-    "typescript-eslint": "8.61.1"
+    "typescript-eslint": "8.62.0"
   }
 }

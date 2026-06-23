@@ -1,6 +1,6 @@
 # Planning and Progress
 
-**Last Updated:** 2026-06-21
+**Last Updated:** 2026-06-23
 
 Use this file for live tracked work, immediate next moves, and the forward-looking development plan.
 Use `docs/planning.md` for the durable roadmap, `docs/improvement-opportunities.md` for candidate
@@ -10,7 +10,7 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 | Snapshot              | Value                                                                |
 | --------------------- | -------------------------------------------------------------------- |
-| Current focus         | 2026-06-20 mainline merge/push/prune closeout is complete.           |
+| Current focus         | 2026-06-23 dependency refresh is in branch-local validation.         |
 | Next recommended pick | Pick the next scoped row after refreshing current priorities.        |
 | Ready rows            | 0                                                                    |
 | Candidate rows        | 0                                                                    |
@@ -21,6 +21,15 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 | Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`     |
 
 ## Current Handoff Notes
+
+The 2026-06-23 `chore/dependency-refresh-20260621` branch in
+`/Users/bryan/projects/open-practice-dependency-refresh-20260621` refreshes the current low-risk
+JavaScript dependency drift only: Tiptap `3.27.1`, AWS SDK S3 `3.1074.0`, BullMQ `5.79.1`,
+Lucide React `1.21.0`, imapflow `1.4.2`, mailparser `3.9.11`, Stripe `22.2.2`, Knip `6.18.0`,
+and `typescript-eslint` `8.62.0`. It leaves `@types/node 26.0.0` as a held major, preserves
+`pnpm-workspace.yaml`, and makes no Docker, runtime, API, schema, or copied-source changes.
+Evidence is recorded in
+[dependency refresh proof](validation/OP_DEPENDENCY_REFRESH_PROOF_2026-06-21.md).
 
 The 2026-06-21 `feat/document-retention-hold-action-descriptor-20260621` branch applies the shared
 domain-owned operational action descriptor pattern to the Documents retention/hold review control.
