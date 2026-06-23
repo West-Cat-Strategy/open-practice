@@ -22,7 +22,7 @@
 
 ## Validation
 
-Final path set from `git diff --name-only` plus this proof file:
+Original implementation path set from `git diff --name-only` plus this proof file:
 
 ```text
 apps/api/src/routes/matters.test.ts
@@ -109,3 +109,44 @@ Final selected checks:
 - `pnpm --filter @open-practice/providers test` - Pass; 11 files and 22 tests passed.
 - `pnpm --filter @open-practice/worker test` - Pass; 5 files and 46 tests passed.
 - `git diff --check` - Pass.
+
+Reopened branch verification on `codex/matter-lifecycle-close-command-20260620` confirmed the
+close-command slice was already present on `main`; the only new repo-tracked change in this follow-up
+is this proof refresh.
+
+Focused reopened checks:
+
+- `pnpm --filter @open-practice/domain test -- matter-lifecycle` - Pass; 31 files and 235 tests
+  passed.
+- Initial `pnpm --filter @open-practice/database test -- repository.matter-lifecycle` - Blocked by
+  missing fresh-worktree `@open-practice/domain` build output.
+- Initial `pnpm --filter @open-practice/api test -- matters` - Blocked by missing fresh-worktree
+  `@open-practice/domain`/`@open-practice/database` build output.
+- `pnpm --filter @open-practice/domain build && pnpm --filter @open-practice/database build && pnpm --filter @open-practice/providers build` -
+  Pass.
+- Rerun `pnpm --filter @open-practice/database test -- repository.matter-lifecycle` - Pass; 25
+  files and 148 tests passed.
+- Rerun `pnpm --filter @open-practice/api test -- matters` - Pass; 42 files and 578 tests passed.
+
+Reopened selector command:
+
+```sh
+pnpm verify:select -- --files docs/validation/OP-T160_MATTER_LIFECYCLE_CLOSE_COMMAND_PROOF_2026-06-20.md
+```
+
+Reopened selector output:
+
+```text
+Recommended validation commands:
+pnpm format:check
+pnpm docs:check
+pnpm policy:check
+```
+
+Reopened selected checks:
+
+- `pnpm format:check` - Pass; all matched files use Prettier style.
+- `pnpm docs:check` - Pass; documentation link validation passed.
+- `pnpm policy:check` - Pass; secrets, manifests, lockfile supply chain, toolchain, env surface,
+  architecture, dead code, migrations, OSS reuse, docs links, proof index, local-evidence Docker
+  ignore, and boundary policy checks passed.
