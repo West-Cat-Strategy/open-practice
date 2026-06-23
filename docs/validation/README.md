@@ -18,6 +18,16 @@ skipped-check context. The live workboard remains
 
 ## Current Handoff Notes
 
+The 2026-06-23 mainline merge/push/prune proof is recorded in
+[OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-23.md](OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-23.md).
+It covers the six-lane active dirty-worktree consolidation through
+`merge/open-practice-mainline-20260623`, including AI proposal authorization proof refinement, API
+route inventory reconciliation, lifecycle close proof updates, document retention/hold action
+descriptors, lifecycle archive behavior, and the conservative dependency refresh. It records
+selector-driven local validation, green `pnpm ci:local`, dependency/license/supply-chain checks,
+migration replay, Docker app smoke, Docker Chromium E2E, and the publication/prune evidence while
+preserving stash count `42`.
+
 The 2026-06-23 dependency refresh proof is recorded in
 [OP_DEPENDENCY_REFRESH_PROOF_2026-06-21.md](OP_DEPENDENCY_REFRESH_PROOF_2026-06-21.md). It covers
 the conservative patch/minor JavaScript refresh on `chore/dependency-refresh-20260621`, including

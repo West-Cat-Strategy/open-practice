@@ -10,7 +10,7 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 | Snapshot              | Value                                                                |
 | --------------------- | -------------------------------------------------------------------- |
-| Current focus         | 2026-06-23 dependency refresh is in branch-local validation.         |
+| Current focus         | 2026-06-23 mainline merge/push/prune closeout is complete.           |
 | Next recommended pick | Pick the next scoped row after refreshing current priorities.        |
 | Ready rows            | 0                                                                    |
 | Candidate rows        | 0                                                                    |
@@ -21,6 +21,16 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 | Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`     |
 
 ## Current Handoff Notes
+
+The 2026-06-23 active-lane mainline closeout integrated six dirty Open Practice lanes through
+`merge/open-practice-mainline-20260623`, fast-forwarded and pushed `main`, then pruned only clean
+merged sibling worktrees and local branches. The combined result preserves the AI proposal
+authorization proof refinement, API route inventory reconciliation, lifecycle close proof update,
+document retention/hold action descriptor, matter lifecycle archive command, and conservative
+dependency refresh. Integrated validation passed `pnpm ci:local`, dependency/license/supply-chain
+checks, migration replay, Docker app smoke, and Docker Chromium E2E. Stash count stayed `42`.
+Evidence is recorded in
+[2026-06-23 mainline merge/push/prune proof](validation/OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-23.md).
 
 The 2026-06-23 `chore/dependency-refresh-20260621` branch in
 `/Users/bryan/projects/open-practice-dependency-refresh-20260621` refreshes the current low-risk
