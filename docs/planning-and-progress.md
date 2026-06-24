@@ -8,28 +8,28 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 ## At a Glance
 
-| Snapshot              | Value                                                                   |
-| --------------------- | ----------------------------------------------------------------------- |
-| Current focus         | 2026-06-24 three-lane mainline closeout validation is in progress.      |
-| Next recommended pick | Complete the mainline merge/push/prune proof and publish only if green. |
-| Ready rows            | 0                                                                       |
-| Candidate rows        | 0                                                                       |
-| In progress rows      | 0                                                                       |
-| Review rows           | 3                                                                       |
-| Blocked rows          | 0                                                                       |
-| Archive               | Historical snapshots and proof live in [Archive](archive/README.md).    |
-| Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`        |
+| Snapshot              | Value                                                                |
+| --------------------- | -------------------------------------------------------------------- |
+| Current focus         | 2026-06-24 three-lane mainline closeout is complete.                 |
+| Next recommended pick | Resolve the MinIO private-pilot readiness blocker before handoff.    |
+| Ready rows            | 0                                                                    |
+| Candidate rows        | 0                                                                    |
+| In progress rows      | 0                                                                    |
+| Review rows           | 0                                                                    |
+| Blocked rows          | 1                                                                    |
+| Archive               | Historical snapshots and proof live in [Archive](archive/README.md). |
+| Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`     |
 
 ## Current Handoff Notes
 
-The 2026-06-24 mainline closeout is being validated on
-`merge/open-practice-mainline-20260624` before the explicitly requested direct `main` publication.
-It integrates the private-pilot readiness remediation branch, the private-pilot MinIO readiness
-blocker branch, and the video meetings control-plane branch. The additive merge keeps the Admin
-Readiness provider posture and MinIO blocker copy, private-pilot release-proof restore-drill plus
-residual-watch gating, residual-watch `readinessBlockers` metadata, private-pilot summaries, and
-calendar/video-meeting scheduling-review controls. Private-pilot readiness remains held while the
-MinIO residual-watch blocker is present. Evidence is being recorded in
+The 2026-06-24 mainline closeout is validated, pushed to `main`, and pruned after integrating the
+private-pilot readiness remediation branch, the private-pilot MinIO readiness blocker branch, and
+the video meetings control-plane branch. The additive merge keeps the Admin Readiness provider
+posture and MinIO blocker copy, private-pilot release-proof restore-drill plus residual-watch
+gating, residual-watch `readinessBlockers` metadata, private-pilot summaries, and calendar/video
+meeting scheduling-review controls. Private-pilot readiness remains held because the MinIO
+residual-watch blocker is present. Only the root Open Practice worktree remains, and stash count is
+still `42`. Evidence is recorded in
 [2026-06-24 mainline merge/push/prune proof](validation/OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-24.md).
 
 The 2026-06-23 `private-pilot/readiness-remediation-20260623` branch implements the approved
@@ -64,10 +64,9 @@ owner-visible read-only blocker copy pointing to external HTTPS object storage o
 hardening proof before private-pilot handoff. Evidence is recorded in
 [private-pilot MinIO readiness blocker proof](validation/OP_PRIVATE_PILOT_MINIO_READINESS_BLOCKER_PROOF_2026-06-24.md).
 
-The 2026-06-23 `feat/video-meetings-control-plane-20260623` branch in
-`/Users/bryan/projects/open-practice-video-meetings-control-plane-20260623` extends the existing
-video meeting control plane without native media delivery. It adds Calendar workspace
-scheduling-review controls over the existing review route, per-event readiness labels, public
+The merged 2026-06-23 `feat/video-meetings-control-plane-20260623` branch extends the existing video
+meeting control plane without native media delivery. It adds Calendar workspace scheduling-review
+controls over the existing review route, per-event readiness labels, public
 guest-session manual refresh and waiting-only polling without page reload, header/path token
 mismatch handling, terminal guest-session `409` transitions, CalDAV/iCalendar meeting-link
 preservation/non-disclosure, and safe meeting/session/invitation audit metadata while preserving no

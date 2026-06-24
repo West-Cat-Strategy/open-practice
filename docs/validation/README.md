@@ -22,9 +22,10 @@ The 2026-06-24 mainline merge/push/prune proof is recorded in
 [OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-24.md](OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-24.md).
 It covers the three-lane closeout through `merge/open-practice-mainline-20260624`, including the
 private-pilot readiness remediation branch, the private-pilot MinIO readiness blocker branch, and
-the video meetings control-plane branch. Validation, publication, and prune evidence are being
-recorded there before any direct `main` push. Private-pilot readiness remains held unless Docker
-residual-watch evidence confirms the MinIO blocker has been cleared.
+the video meetings control-plane branch. It records validation, the direct `main` publication,
+conservative worktree/branch prune evidence, unchanged stash count `42`, and the final docs-only
+proof closeout. Private-pilot readiness remains held because Docker residual-watch still reports the
+bundled MinIO readiness blocker.
 
 The 2026-06-23 private-pilot readiness remediation proof is recorded in
 [OP_PRIVATE_PILOT_READINESS_REMEDIATION_PROOF_2026-06-23.md](OP_PRIVATE_PILOT_READINESS_REMEDIATION_PROOF_2026-06-23.md).

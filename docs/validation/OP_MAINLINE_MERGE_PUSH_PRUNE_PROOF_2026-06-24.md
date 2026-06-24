@@ -103,23 +103,41 @@ pnpm build
 | `pnpm proof:reconcile -- --proof docs/validation/OP_PRIVATE_PILOT_MINIO_READINESS_BLOCKER_PROOF_2026-06-24.md --files <lane paths>`       | Passed                                    | Reconciled 14 MinIO blocker paths after adding the mainline selector addendum for self-host restore drill selection.                                                                                                                                                                                                                                                                                    |
 | `pnpm proof:reconcile -- --proof docs/validation/OP_VIDEO_MEETINGS_CONTROL_PLANE_PROOF_2026-06-23.md --files <lane paths>`                | Passed                                    | Reconciled 23 video meetings paths and selected commands.                                                                                                                                                                                                                                                                                                                                               |
 | `pnpm proof:reconcile -- --proof docs/validation/OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-24.md --base-plus-dirty origin/main`          | Passed                                    | Reconciled the dirty 98-path mainline proof before the proof evidence update. Final reconciliation is rerun after this proof is committed.                                                                                                                                                                                                                                                              |
-| `git diff --check`                                                                                                                        | Pending                                   | Rerun after proof evidence edits before fast-forwarding `main`.                                                                                                                                                                                                                                                                                                                                         |
+| `git diff --check`                                                                                                                        | Passed                                    | Passed before the first `main` publication. Final docs-only closeout checks are recorded in the push/prune addendum below.                                                                                                                                                                                                                                                                              |
 
 ## Publish And Prune
 
-Publication is pending local validation. After validation passes, local `main` will be
-fast-forwarded to the integration branch, pushed to `origin/main`, and compared against the remote
-main head before pruning.
+Initial publication and prune completed after validation:
 
-Only after parity is proven, the clean sibling worktrees whose branch heads are ancestors of pushed
-`main` may be removed:
+- Local `main` fast-forwarded from `4e2ab1cf5d4c54f26d5b341ce836edec0dadec02` to
+  `42d13ce528bc83df84d7e1dec990f03f7dc50c95`.
+- `git push origin main` updated remote `main` from `4e2ab1cf` to `42d13ce5`.
+- `git fetch origin main`, `git rev-list --left-right --count main...origin/main`,
+  `git rev-parse main origin/main`, and `git ls-remote origin refs/heads/main` verified local,
+  tracking, and remote `main` parity at `42d13ce528bc83df84d7e1dec990f03f7dc50c95`.
+- Exact remote heads for `private-pilot/readiness-remediation-20260623`,
+  `private-pilot/minio-readiness-blocker-20260624`, and
+  `feat/video-meetings-control-plane-20260623` were absent after fetch/prune, so no remote lane
+  branch deletion was needed.
+- Each local lane branch and `merge/open-practice-mainline-20260624` was proven to be an ancestor of
+  pushed `main` before local deletion.
+- Clean sibling worktrees removed:
+  `/Users/bryan/projects/open-practice-minio-readiness-blocker-20260624` and
+  `/Users/bryan/projects/open-practice-video-meetings-control-plane-20260623`.
+- Merged local branches deleted: `private-pilot/readiness-remediation-20260623`,
+  `private-pilot/minio-readiness-blocker-20260624`, `feat/video-meetings-control-plane-20260623`,
+  and `merge/open-practice-mainline-20260624`.
+- `git worktree prune` and `git remote prune origin` completed.
+- Final worktree inventory showed only `/Users/bryan/projects/open-practice` on `main`; the deleted
+  lane and integration branch names no longer resolved locally.
+- Stash count remained `42`.
+- The local dev Postgres container restarted only to rerun migration replay was stopped after prune.
 
-- `/Users/bryan/projects/open-practice-minio-readiness-blocker-20260624`
-- `/Users/bryan/projects/open-practice-video-meetings-control-plane-20260623`
+Private-pilot readiness remains held because Docker residual-watch still reports bundled MinIO as
+`readiness-blocked` because of Critical/High Scout findings and archived upstream source posture.
 
-Merged local lane branches and `merge/open-practice-mainline-20260624` may then be deleted, followed
-by `git worktree prune` and `git remote prune origin`. Stashes must remain untouched; expected final
-stash count is still `42`.
+This proof-only closeout commit is docs-only and is pushed after final selector, proof reconcile,
+format, docs, policy, and diff checks.
 
 ## Final Changed Paths
 
