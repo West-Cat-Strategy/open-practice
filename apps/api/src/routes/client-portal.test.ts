@@ -2,6 +2,7 @@ import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
 import { InMemoryOpenPracticeRepository } from "@open-practice/database";
 import type {
+  ConversationMessageNotificationRecord,
   EmailEventRecord,
   EmailOutboxRecord,
   JobLifecycleRecord,
@@ -109,6 +110,38 @@ class ClientPortalWorkspaceBatchRepository extends InMemoryOpenPracticeRepositor
   }
 }
 
+class ClientPortalNotificationRepository extends InMemoryOpenPracticeRepository {
+  syntheticConversationNotifications: ConversationMessageNotificationRecord[] = [];
+
+  override async listConversationMessageNotifications(
+    firmId: Parameters<InMemoryOpenPracticeRepository["listConversationMessageNotifications"]>[0],
+    options: Parameters<
+      InMemoryOpenPracticeRepository["listConversationMessageNotifications"]
+    >[1] = {},
+  ): ReturnType<InMemoryOpenPracticeRepository["listConversationMessageNotifications"]> {
+    const threadIds = options.threadId ? [options.threadId] : options.threadIds;
+    const syntheticNotifications = this.syntheticConversationNotifications.filter(
+      (notification) => {
+        if (notification.firmId !== firmId) return false;
+        if (threadIds && !threadIds.includes(notification.threadId)) return false;
+        if (options.matterId && notification.matterId !== options.matterId) return false;
+        if (options.recipientUserId && notification.recipientUserId !== options.recipientUserId) {
+          return false;
+        }
+        if (options.messageId && notification.messageId !== options.messageId) return false;
+        return true;
+      },
+    );
+    return [
+      ...(await super.listConversationMessageNotifications(firmId, options)),
+      ...syntheticNotifications,
+    ].sort(
+      (left, right) =>
+        left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id),
+    );
+  }
+}
+
 class ClientPortalFocusedSignatureRepository extends InMemoryOpenPracticeRepository {
   focusedSignatureReads = 0;
 
@@ -129,6 +162,99 @@ class ClientPortalFocusedSignatureRepository extends InMemoryOpenPracticeReposit
     }
     return super.listSignatureRequests(firmId, options);
   }
+}
+
+async function addMatterTwoAdaPortalGrant(
+  repository: InMemoryOpenPracticeRepository,
+  clientAccount: User,
+): Promise<void> {
+  await repository.createMatterContactAssociation({
+    id: `party-${clientAccount.id}-matter-002`,
+    firmId: "firm-west-legal",
+    matterId: "matter-002",
+    contactId: "contact-ada",
+    role: "client",
+    adverse: false,
+    confidential: true,
+  });
+  await repository.createPortalGrant({
+    id: `portal-grant-${clientAccount.id}-matter-002`,
+    firmId: "firm-west-legal",
+    matterId: "matter-002",
+    contactId: "contact-ada",
+    accountUserId: clientAccount.id,
+    grantedByUserId: "user-admin",
+    permissions: ["message"],
+  });
+}
+
+async function addMatterOneAdaPortalGrant(
+  repository: InMemoryOpenPracticeRepository,
+  clientAccount: User,
+): Promise<void> {
+  await repository.createPortalGrant({
+    id: `portal-grant-${clientAccount.id}-matter-001`,
+    firmId: "firm-west-legal",
+    matterId: "matter-001",
+    contactId: "contact-ada",
+    accountUserId: clientAccount.id,
+    grantedByUserId: "user-admin",
+    permissions: ["message"],
+  });
+}
+
+async function addConversationThread(
+  repository: InMemoryOpenPracticeRepository,
+  input: {
+    id: string;
+    matterId: string;
+    status?: "open" | "closed" | "revoked";
+    accessRevokedAt?: string;
+    updatedAt?: string;
+  },
+): Promise<void> {
+  const createdAt = "2026-05-22T10:00:00.000Z";
+  await repository.createConversationThread({
+    id: input.id,
+    firmId: "firm-west-legal",
+    matterId: input.matterId,
+    topic: `Synthetic ${input.id}`,
+    status: input.status ?? "open",
+    exportState: "not_requested",
+    accessRevokedAt: input.accessRevokedAt,
+    notificationBoundary: "internal_only",
+    createdAt,
+    updatedAt: input.updatedAt ?? createdAt,
+    createdByUserId: "user-admin",
+    updatedByUserId: "user-admin",
+    metadata: { privateTopic: "not exposed" },
+  });
+}
+
+function syntheticConversationNotification(input: {
+  id: string;
+  matterId: string;
+  threadId: string;
+  recipientUserId: string;
+  createdAt?: string;
+  readAt?: string;
+  mutedAt?: string;
+}): ConversationMessageNotificationRecord {
+  return {
+    id: input.id,
+    firmId: "firm-west-legal",
+    matterId: input.matterId,
+    threadId: input.threadId,
+    messageId: `message-${input.id}`,
+    recipientUserId: input.recipientUserId,
+    readAt: input.readAt,
+    mutedAt: input.mutedAt,
+    createdAt: input.createdAt ?? "2026-05-22T10:01:00.000Z",
+    updatedAt: input.createdAt ?? "2026-05-22T10:01:00.000Z",
+    createdByUserId: "user-admin",
+    updatedByUserId: "user-admin",
+    metadata: {},
+  };
 }
 
 async function createClientShareableDocument(
@@ -908,7 +1034,30 @@ describe("client portal routes", () => {
     const body = response.json<{
       account: { role: string };
       access: { posture: string; activeGrantCount: number };
-      matters: Array<{ number: string; actionCount: number }>;
+      portalActivity: {
+        readState: string;
+        notificationPosture: string;
+        actionCount: number;
+        attentionCount: number;
+        unreadNotificationCount: number;
+        latestActivityAt?: string;
+        matters: Array<{
+          matterId: string;
+          readState: string;
+          notificationPosture: string;
+          actionCount: number;
+          attentionCount: number;
+          unreadNotificationCount: number;
+          latestActivityAt?: string;
+        }>;
+      };
+      matters: Array<{
+        number: string;
+        actionCount: number;
+        readState?: string;
+        notificationPosture?: string;
+        latestActivityAt?: string;
+      }>;
       billing: {
         billCount: number;
         totalBalanceDueCents: number;
@@ -950,6 +1099,11 @@ describe("client portal routes", () => {
         jurisdiction: string;
         documentCount: number;
         signatureCount: number;
+        attentionCount: number;
+        readState: string;
+        notificationPosture: string;
+        unreadNotificationCount: number;
+        latestActivityAt?: string;
       }>;
       documents: Array<{
         id: string;
@@ -975,8 +1129,31 @@ describe("client portal routes", () => {
     }>();
     expect(body.account.role).toBe("client_external");
     expect(body.access).toMatchObject({ posture: "active", activeGrantCount: 1 });
+    expect(body.portalActivity).toMatchObject({
+      readState: "attention_required",
+      notificationPosture: "attention_required",
+      actionCount: expect.any(Number),
+      attentionCount: expect.any(Number),
+      unreadNotificationCount: 0,
+    });
+    expect(body.portalActivity.latestActivityAt).toBeTruthy();
+    expect(body.portalActivity.matters).toEqual([
+      expect.objectContaining({
+        matterId: "matter-001",
+        readState: "attention_required",
+        notificationPosture: "attention_required",
+        unreadNotificationCount: 0,
+        latestActivityAt: expect.any(String),
+      }),
+    ]);
     expect(body.matters).toEqual([
-      expect.objectContaining({ number: "2026-0001", actionCount: expect.any(Number) }),
+      expect.objectContaining({
+        number: "2026-0001",
+        actionCount: expect.any(Number),
+        readState: "attention_required",
+        notificationPosture: "attention_required",
+        latestActivityAt: expect.any(String),
+      }),
     ]);
     expect(body.matterDetails).toEqual([
       expect.objectContaining({
@@ -985,6 +1162,11 @@ describe("client portal routes", () => {
         jurisdiction: "BC",
         documentCount: 1,
         signatureCount: 2,
+        attentionCount: expect.any(Number),
+        readState: "attention_required",
+        notificationPosture: "attention_required",
+        unreadNotificationCount: 0,
+        latestActivityAt: expect.any(String),
       }),
     ]);
     expect(body.documents).toEqual([
@@ -1242,6 +1424,182 @@ describe("client portal routes", () => {
         }),
       ]),
     );
+  });
+
+  it("ignores notifications on revoked and access-revoked threads in portal activity", async () => {
+    const repository = new ClientPortalNotificationRepository();
+    const clientAccount = user("client_external", []);
+    await repository.createUser(clientAccount);
+    await addMatterTwoAdaPortalGrant(repository, clientAccount);
+    await addConversationThread(repository, {
+      id: "thread-portal-revoked-001",
+      matterId: "matter-002",
+      status: "revoked",
+      accessRevokedAt: "2026-05-22T10:05:00.000Z",
+      updatedAt: "2026-05-22T10:05:00.000Z",
+    });
+    await addConversationThread(repository, {
+      id: "thread-portal-access-revoked-001",
+      matterId: "matter-002",
+      status: "open",
+      accessRevokedAt: "2026-05-22T10:10:00.000Z",
+      updatedAt: "2026-05-22T10:10:00.000Z",
+    });
+    repository.syntheticConversationNotifications.push(
+      syntheticConversationNotification({
+        id: "notification-revoked-thread",
+        matterId: "matter-002",
+        threadId: "thread-portal-revoked-001",
+        recipientUserId: clientAccount.id,
+        createdAt: "2026-05-22T10:06:00.000Z",
+      }),
+      syntheticConversationNotification({
+        id: "notification-access-revoked-thread",
+        matterId: "matter-002",
+        threadId: "thread-portal-access-revoked-001",
+        recipientUserId: clientAccount.id,
+        createdAt: "2026-05-22T10:11:00.000Z",
+      }),
+    );
+
+    const server = testServer({ repository, authUser: clientAccount });
+    const response = await server.inject({
+      method: "GET",
+      url: "/api/client-portal/workspace",
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json<{
+      portalActivity: {
+        readState: string;
+        notificationPosture: string;
+        unreadNotificationCount: number;
+        matters: Array<{
+          matterId: string;
+          readState: string;
+          notificationPosture: string;
+          actionCount: number;
+          unreadNotificationCount: number;
+          messageThreadCount: number;
+        }>;
+      };
+      matters: Array<{
+        id: string;
+        number: string;
+        readState: string;
+        notificationPosture: string;
+        unreadNotificationCount: number;
+      }>;
+    }>();
+    expect(body.portalActivity).toMatchObject({
+      readState: "current",
+      notificationPosture: "none",
+      unreadNotificationCount: 0,
+    });
+    expect(body.portalActivity.matters).toEqual([
+      expect.objectContaining({
+        matterId: "matter-002",
+        readState: "current",
+        notificationPosture: "none",
+        actionCount: 0,
+        unreadNotificationCount: 0,
+        messageThreadCount: 0,
+      }),
+    ]);
+    expect(body.matters).toEqual([
+      expect.objectContaining({
+        id: "matter-002",
+        number: "2026-0002",
+        readState: "current",
+        notificationPosture: "none",
+        unreadNotificationCount: 0,
+      }),
+    ]);
+    const serialized = JSON.stringify(body);
+    expect(serialized).not.toContain("thread-portal-revoked-001");
+    expect(serialized).not.toContain("thread-portal-access-revoked-001");
+    expect(serialized).not.toContain("notification-revoked-thread");
+  });
+
+  it("keeps portal notification counts scoped by matter and recipient", async () => {
+    const repository = new ClientPortalNotificationRepository();
+    const clientAccount: User = {
+      ...user("client_external", []),
+      id: "client-ada-multi-matter",
+    };
+    await repository.createUser(clientAccount);
+    await addMatterOneAdaPortalGrant(repository, clientAccount);
+    await addMatterTwoAdaPortalGrant(repository, clientAccount);
+    await addConversationThread(repository, {
+      id: "thread-portal-matter-001",
+      matterId: "matter-001",
+      updatedAt: "2026-05-22T11:00:00.000Z",
+    });
+    await addConversationThread(repository, {
+      id: "thread-portal-matter-002",
+      matterId: "matter-002",
+      updatedAt: "2026-05-22T11:05:00.000Z",
+    });
+    repository.syntheticConversationNotifications.push(
+      syntheticConversationNotification({
+        id: "notification-matter-001-client",
+        matterId: "matter-001",
+        threadId: "thread-portal-matter-001",
+        recipientUserId: clientAccount.id,
+        createdAt: "2026-05-22T11:01:00.000Z",
+      }),
+      syntheticConversationNotification({
+        id: "notification-matter-002-client",
+        matterId: "matter-002",
+        threadId: "thread-portal-matter-002",
+        recipientUserId: clientAccount.id,
+        createdAt: "2026-05-22T11:06:00.000Z",
+      }),
+      syntheticConversationNotification({
+        id: "notification-matter-002-other-recipient",
+        matterId: "matter-002",
+        threadId: "thread-portal-matter-002",
+        recipientUserId: "client-other-recipient",
+        createdAt: "2026-05-22T11:07:00.000Z",
+      }),
+    );
+
+    const server = testServer({ repository, authUser: clientAccount });
+    const response = await server.inject({
+      method: "GET",
+      url: "/api/client-portal/workspace",
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json<{
+      portalActivity: {
+        unreadNotificationCount: number;
+        matters: Array<{
+          matterId: string;
+          readState: string;
+          notificationPosture: string;
+          unreadNotificationCount: number;
+          messageThreadCount: number;
+        }>;
+      };
+    }>();
+    const activityByMatterId = new Map(
+      body.portalActivity.matters.map((activity) => [activity.matterId, activity]),
+    );
+    expect(body.portalActivity.unreadNotificationCount).toBe(2);
+    expect(activityByMatterId.get("matter-001")).toMatchObject({
+      unreadNotificationCount: 1,
+      messageThreadCount: 1,
+    });
+    expect(activityByMatterId.get("matter-002")).toMatchObject({
+      readState: "unread",
+      notificationPosture: "unread",
+      unreadNotificationCount: 1,
+      messageThreadCount: 1,
+    });
+    const serialized = JSON.stringify(body);
+    expect(serialized).not.toContain("client-other-recipient");
+    expect(serialized).not.toContain("notification-matter-002-other-recipient");
   });
 
   it("uses a focused signature lookup for client portal signature detail", async () => {

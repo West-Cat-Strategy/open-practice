@@ -119,6 +119,44 @@ export function summarizeWorkflowHistory(response: WorkflowHistoryResponse): str
   return `${response.summary.total} workflow histories. ${response.summary.active} active or queued. ${response.summary.failed} failed. ${response.summary.terminal} terminal.`;
 }
 
+const workflowReviewPacketCueLimit = 3;
+const workflowReviewPacketCueTextLimit = 32;
+const workflowReviewPacketSummaryLimit = 220;
+
+function boundedText(value: string, limit: number): string {
+  if (value.length <= limit) return value;
+  return `${value.slice(0, limit - 3).trimEnd()}...`;
+}
+
+export function workflowReviewPacketSummary(workflow: WorkflowHistoryItem): string | undefined {
+  const packet = workflow.reviewPacket;
+  if (!packet) return undefined;
+
+  const posture = [
+    packet.reviewOnly ? "review only" : undefined,
+    packet.automationDisabled ? "automation disabled" : undefined,
+    packet.externalConnectorDisabled ? "external connector disabled" : undefined,
+    packet.backgroundMutationDisabled ? "background mutation disabled" : undefined,
+  ].filter(Boolean);
+  const visibleCues = packet.cues
+    .slice(0, workflowReviewPacketCueLimit)
+    .map((cue) => boundedText(`${cue.label} ${cue.value}`, workflowReviewPacketCueTextLimit));
+  const hiddenCueCount = packet.cues.length - visibleCues.length;
+  const cueSummary = [
+    ...visibleCues,
+    hiddenCueCount > 0 ? `${hiddenCueCount} more cue${hiddenCueCount === 1 ? "" : "s"}` : undefined,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  return boundedText(
+    [posture.join(", "), cueSummary ? `cues ${cueSummary}` : "no safe cues available"]
+      .filter(Boolean)
+      .join(" · "),
+    workflowReviewPacketSummaryLimit,
+  );
+}
+
 export function workerHealthTone(
   status: WorkerHealthResponse["status"],
 ): "neutral" | "ready" | "risk" {

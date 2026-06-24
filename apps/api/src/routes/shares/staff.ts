@@ -107,7 +107,6 @@ export function registerStaffShareRoutes(
           422,
           "NO_SHAREABLE_DOCUMENTS",
           "No documents on this matter are eligible for portal sharing",
-          { matterId: share.matterId },
         );
       }
     }

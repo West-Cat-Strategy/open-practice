@@ -1,3 +1,4 @@
+import type { LedgerReconciliationPacketReview } from "@open-practice/domain";
 import type {
   BillDeliveryState,
   BillingPeriodLockRecord,
@@ -171,6 +172,7 @@ export interface TrustControlsDashboardResponse {
   reconciliations: LedgerReconciliationRecord[];
   balanceSnapshotComparison: LedgerBalanceSnapshotComparison;
   reconciliationFreshness?: LedgerReconciliationFreshnessReview;
+  reconciliationPacketReview?: LedgerReconciliationPacketReview;
   accountingReview: {
     importBatches: LedgerStatementImportBatchRecord[];
     matchRuleProfiles: LedgerStatementMatchRuleProfileRecord[];

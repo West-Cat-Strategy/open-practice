@@ -10,17 +10,38 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 | Snapshot              | Value                                                                |
 | --------------------- | -------------------------------------------------------------------- |
-| Current focus         | 2026-06-23 mainline merge/push/prune closeout is complete.           |
-| Next recommended pick | Pick the next scoped row after refreshing current priorities.        |
+| Current focus         | Private-pilot readiness remediation branch is ready for review.      |
+| Next recommended pick | Review the remediation proof and final validation evidence.          |
 | Ready rows            | 0                                                                    |
 | Candidate rows        | 0                                                                    |
 | In progress rows      | 0                                                                    |
-| Review rows           | 0                                                                    |
+| Review rows           | 1                                                                    |
 | Blocked rows          | 0                                                                    |
 | Archive               | Historical snapshots and proof live in [Archive](archive/README.md). |
 | Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`     |
 
 ## Current Handoff Notes
+
+The 2026-06-23 `private-pilot/readiness-remediation-20260623` branch implements the approved
+private-pilot remediation program. It adds a self-host restore drill and private-pilot release
+behavior, tightens malware-scan/share gating and provider readiness posture, normalizes local
+security review evidence and selector options, and adds review-only P2 depth for workflow packets,
+client portal activity/read-state posture, comms/scheduling handoff, billing/trust reconciliation
+summaries, and document-processing provider readiness. The follow-up fix pass tightens portal
+notification counts after revoked/access-revoked thread filtering, adds matter-scoped backend
+regressions, exposes explicit web projection types, surfaces retry handoff and empty-evidence copy,
+bounds workflow packet summaries, adds restore-drill selector coverage, and moves the E2E harness to
+the webpack dev pipeline used by the production build path after Docker dashboard sweeps exposed a
+Turbopack dev-only `/operations/external-uploads` failure. The optional scanner closure installs and
+runs the local scanner CLIs, fixes the OSV `tar` advisory, updates Docker static/image scan
+wrappers, refreshes app/service image hardening, and records the remaining bundled MinIO
+high/critical Trivy findings as an owner-visible watch item while the pinned upstream source tag is
+still current. Final closeout also records the Docker E2E rerun after clearing local Docker build
+cache: the first upload receipt attempt hit Docker internal storage exhaustion, and the rerun passed
+once the Docker overlay had room. The branch preserves synthetic-only proof, no-live-settlement,
+no-automatic-trust-posting, no provider side effects, no raw private text retention, and no
+unauthenticated API expansion. Evidence is recorded in
+[private-pilot readiness remediation proof](validation/OP_PRIVATE_PILOT_READINESS_REMEDIATION_PROOF_2026-06-23.md).
 
 The 2026-06-23 active-lane mainline closeout integrated six dirty Open Practice lanes through
 `merge/open-practice-mainline-20260623`, fast-forwarded and pushed `main`, then pruned only clean

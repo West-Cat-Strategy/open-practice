@@ -6,6 +6,7 @@ import {
 import type {
   DocumentProcessingDashboardResponse,
   DocumentProcessingDocumentSummary,
+  DocumentProcessingEvidencePacket,
   DocumentProcessingGroup,
   DocumentProcessingLatestExtraction,
   DocumentProcessingLatestJob,
@@ -89,6 +90,33 @@ export function emptyDocumentMetadataSearch(
   };
 }
 
+function emptyDocumentProcessingEvidencePacket(
+  status: string,
+  reason?: string,
+): DocumentProcessingEvidencePacket {
+  return {
+    packet: "document_processing_boundary",
+    posture: "op_authored_metadata_only",
+    status,
+    ...(reason ? { reason } : {}),
+    reviewOnly: true,
+    metadataOnly: true,
+    rawPrivateTextStored: false,
+    rawOcrTextStored: false,
+    rawOcrTextReturned: false,
+    providerPayloadsStored: false,
+    providerPayloadsReturned: false,
+    realProviderActivation: false,
+    providerReadinessCounts: {
+      ready: 0,
+      disabled: 0,
+      reserved: 0,
+      actionable: 0,
+    },
+    jobCounts: emptySummary,
+  };
+}
+
 export function emptyDocumentProcessingWorkbench(
   matterId: string,
   reason = "workbench_unavailable",
@@ -98,6 +126,8 @@ export function emptyDocumentProcessingWorkbench(
     status: "unavailable",
     reason,
     providerStatus: [],
+    providerReadiness: [],
+    evidencePacket: emptyDocumentProcessingEvidencePacket("unavailable", reason),
     workerQueues: [],
     reservedQueues: [],
     actionableTasks: ["ocr"],
@@ -461,10 +491,22 @@ export function summarizeDocumentProcessingWorkbench(
   const reservedQueues = workbench.reservedQueues?.length
     ? workbench.reservedQueues.length
     : workbench.workerQueues.filter(isReservedWorkerQueue).length;
+  const readiness = workbench.evidencePacket?.providerReadinessCounts;
+  const readinessEvidencePresent =
+    readiness &&
+    (readiness.ready > 0 ||
+      readiness.disabled > 0 ||
+      readiness.reserved > 0 ||
+      readiness.actionable > 0);
+  const readinessSuffix = readinessEvidencePresent
+    ? ` ${readiness.ready}/${readiness.actionable} actionable readiness ready. ${readiness.reserved} reserved provider postures.`
+    : "";
   const failed = workbench.summary.failed;
   const active = workbench.summary.active + workbench.summary.queued;
   if (workbench.status === "disabled") {
-    return `Document processing disabled: ${compactDocumentProcessingReason(workbench.reason)}.`;
+    return `Document processing disabled: ${compactDocumentProcessingReason(
+      workbench.reason,
+    )}.${readinessSuffix}`;
   }
   if (workbench.status === "unavailable") {
     return `Processing workbench unavailable: ${compactDocumentProcessingReason(
@@ -475,7 +517,7 @@ export function summarizeDocumentProcessingWorkbench(
     reservedQueues > 0
       ? ` ${reservedQueues} reserved queue${reservedQueues === 1 ? "" : "s"}.`
       : "";
-  return `${configuredProviders} providers configured. ${configuredQueues}/${actionableQueues} actionable worker queues configured.${reservedSuffix} ${active} active or queued jobs. ${failed} failed jobs.`;
+  return `${configuredProviders} providers configured. ${configuredQueues}/${actionableQueues} actionable worker queues configured.${reservedSuffix}${readinessSuffix} ${active} active or queued jobs. ${failed} failed jobs.`;
 }
 
 export async function loadDocumentProcessingDashboardData(input: {

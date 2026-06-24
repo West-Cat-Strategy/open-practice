@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import {
   type CalendarEventRecord,
   type CalendarGuestLinkRecord,
+  type ConversationMessageNotificationRecord,
   type ConversationThreadRecord,
   type DocumentRecord,
   type EmailOutboxRecord,
@@ -31,6 +32,8 @@ import {
 } from "./shared.js";
 
 type ClientPortalActionTone = "neutral" | "ready" | "risk";
+type ClientPortalReadState = "current" | "unread" | "attention_required";
+type ClientPortalNotificationPosture = "none" | "unread" | "attention_required";
 
 type ClientPortalActionFamily =
   | "intake"
@@ -68,6 +71,38 @@ interface ClientPortalMatterActionGroup {
   actions: ClientPortalActionSummary[];
 }
 
+interface ClientPortalNotificationSummary {
+  notificationCount: number;
+  unreadNotificationCount: number;
+  mutedNotificationCount: number;
+  latestNotificationAt?: string;
+}
+
+interface ClientPortalMatterActivitySummary {
+  matterId: string;
+  latestActivityAt?: string;
+  readState: ClientPortalReadState;
+  notificationPosture: ClientPortalNotificationPosture;
+  actionCount: number;
+  attentionCount: number;
+  unreadNotificationCount: number;
+  mutedNotificationCount: number;
+  messageThreadCount: number;
+  documentCount: number;
+  signatureCount: number;
+}
+
+interface ClientPortalWorkspaceActivity {
+  latestActivityAt?: string;
+  readState: ClientPortalReadState;
+  notificationPosture: ClientPortalNotificationPosture;
+  actionCount: number;
+  attentionCount: number;
+  unreadNotificationCount: number;
+  mutedNotificationCount: number;
+  matters: ClientPortalMatterActivitySummary[];
+}
+
 interface ClientPortalMatterDetail {
   id: string;
   number: string;
@@ -81,6 +116,11 @@ interface ClientPortalMatterDetail {
   documentCount: number;
   signatureCount: number;
   actionCount: number;
+  attentionCount: number;
+  latestActivityAt?: string;
+  readState: ClientPortalReadState;
+  notificationPosture: ClientPortalNotificationPosture;
+  unreadNotificationCount: number;
 }
 
 interface ClientPortalDocumentSummary {
@@ -538,14 +578,149 @@ function sortActions(actions: ClientPortalActionSummary[]): ClientPortalActionSu
   });
 }
 
-function sanitizedMatter(matter: Matter, grants: PortalGrant[], actionCount: number) {
+function latestIso(values: Array<string | undefined>): string | undefined {
+  return values
+    .filter((value): value is string => Boolean(value))
+    .sort()
+    .at(-1);
+}
+
+function readState(input: {
+  attentionCount: number;
+  unreadNotificationCount: number;
+}): ClientPortalReadState {
+  if (input.attentionCount > 0) return "attention_required";
+  if (input.unreadNotificationCount > 0) return "unread";
+  return "current";
+}
+
+function notificationPosture(input: {
+  attentionCount: number;
+  unreadNotificationCount: number;
+}): ClientPortalNotificationPosture {
+  if (input.attentionCount > 0) return "attention_required";
+  if (input.unreadNotificationCount > 0) return "unread";
+  return "none";
+}
+
+function conversationNotificationSummary(input: {
+  notifications: ConversationMessageNotificationRecord[];
+  visibleThreadIds: Set<string>;
+}): ClientPortalNotificationSummary {
+  const visibleNotifications = input.notifications.filter((notification) =>
+    input.visibleThreadIds.has(notification.threadId),
+  );
+  const unmutedNotifications = visibleNotifications.filter((notification) => !notification.mutedAt);
+  return {
+    notificationCount: visibleNotifications.length,
+    unreadNotificationCount: unmutedNotifications.filter((notification) => !notification.readAt)
+      .length,
+    mutedNotificationCount: visibleNotifications.filter((notification) => notification.mutedAt)
+      .length,
+    latestNotificationAt: latestIso(
+      visibleNotifications.map((notification) => notification.updatedAt ?? notification.createdAt),
+    ),
+  };
+}
+
+function matterActivitySummary(input: {
+  matterId: string;
+  actions: ClientPortalActionSummary[];
+  bills: ClientPortalBillSummary[];
+  documents: ClientPortalDocumentSummary[];
+  signatures: ClientPortalSignatureSummary[];
+  conversationThreads: ConversationThreadRecord[];
+  notifications: ClientPortalNotificationSummary;
+}): ClientPortalMatterActivitySummary {
+  const attentionCount = input.actions.filter((action) => action.tone === "risk").length;
+  const latestActivityAt = latestIso([
+    ...input.actions.map((action) => action.updatedAt),
+    ...input.bills.flatMap((bill) => [
+      bill.dueAt,
+      bill.issuedAt,
+      ...bill.paymentRequests.map((request) => request.updatedAt),
+    ]),
+    ...input.documents.flatMap((document) => [document.verifiedAt, document.uploadedAt]),
+    ...input.signatures.flatMap((signature) => [
+      signature.completedAt,
+      signature.declinedAt,
+      signature.createdAt,
+    ]),
+    ...input.conversationThreads.map((thread) => thread.updatedAt),
+    input.notifications.latestNotificationAt,
+  ]);
+  return {
+    matterId: input.matterId,
+    latestActivityAt,
+    readState: readState({
+      attentionCount,
+      unreadNotificationCount: input.notifications.unreadNotificationCount,
+    }),
+    notificationPosture: notificationPosture({
+      attentionCount,
+      unreadNotificationCount: input.notifications.unreadNotificationCount,
+    }),
+    actionCount: input.actions.length,
+    attentionCount,
+    unreadNotificationCount: input.notifications.unreadNotificationCount,
+    mutedNotificationCount: input.notifications.mutedNotificationCount,
+    messageThreadCount: input.conversationThreads.length,
+    documentCount: input.documents.length,
+    signatureCount: input.signatures.length,
+  };
+}
+
+function workspaceActivity(
+  matters: ClientPortalMatterActivitySummary[],
+): ClientPortalWorkspaceActivity {
+  const attentionCount = matters.reduce((sum, matter) => sum + matter.attentionCount, 0);
+  const unreadNotificationCount = matters.reduce(
+    (sum, matter) => sum + matter.unreadNotificationCount,
+    0,
+  );
+  return {
+    latestActivityAt: latestIso(matters.map((matter) => matter.latestActivityAt)),
+    readState: readState({ attentionCount, unreadNotificationCount }),
+    notificationPosture: notificationPosture({ attentionCount, unreadNotificationCount }),
+    actionCount: matters.reduce((sum, matter) => sum + matter.actionCount, 0),
+    attentionCount,
+    unreadNotificationCount,
+    mutedNotificationCount: matters.reduce((sum, matter) => sum + matter.mutedNotificationCount, 0),
+    matters,
+  };
+}
+
+function emptyMatterActivity(matterId: string): ClientPortalMatterActivitySummary {
+  return {
+    matterId,
+    readState: "current",
+    notificationPosture: "none",
+    actionCount: 0,
+    attentionCount: 0,
+    unreadNotificationCount: 0,
+    mutedNotificationCount: 0,
+    messageThreadCount: 0,
+    documentCount: 0,
+    signatureCount: 0,
+  };
+}
+
+function sanitizedMatter(
+  matter: Matter,
+  grants: PortalGrant[],
+  activity: ClientPortalMatterActivitySummary,
+) {
   return {
     id: matter.id,
     number: matter.number,
     title: matter.title,
     status: matter.status,
     permissions: uniquePermissions(grants),
-    actionCount,
+    actionCount: activity.actionCount,
+    latestActivityAt: activity.latestActivityAt,
+    readState: activity.readState,
+    notificationPosture: activity.notificationPosture,
+    unreadNotificationCount: activity.unreadNotificationCount,
   };
 }
 
@@ -680,9 +855,7 @@ function signatureActions(signatures: ClientPortalSignatureSummary[]): ClientPor
 function matterDetail(input: {
   matter: Matter;
   grants: PortalGrant[];
-  documentCount: number;
-  signatureCount: number;
-  actionCount: number;
+  activity: ClientPortalMatterActivitySummary;
 }): ClientPortalMatterDetail {
   return {
     id: input.matter.id,
@@ -694,9 +867,14 @@ function matterDetail(input: {
     openedOn: input.matter.openedOn,
     closedOn: input.matter.closedOn,
     permissions: uniquePermissions(input.grants),
-    documentCount: input.documentCount,
-    signatureCount: input.signatureCount,
-    actionCount: input.actionCount,
+    documentCount: input.activity.documentCount,
+    signatureCount: input.activity.signatureCount,
+    actionCount: input.activity.actionCount,
+    attentionCount: input.activity.attentionCount,
+    latestActivityAt: input.activity.latestActivityAt,
+    readState: input.activity.readState,
+    notificationPosture: input.activity.notificationPosture,
+    unreadNotificationCount: input.activity.unreadNotificationCount,
   };
 }
 
@@ -784,6 +962,7 @@ async function buildWorkspace(
   const billingByMatterId = new Map<string, ClientPortalBillSummary[]>();
   const documentsByMatterId = new Map<string, ClientPortalDocumentSummary[]>();
   const signaturesByMatterId = new Map<string, ClientPortalSignatureSummary[]>();
+  const activityByMatterId = new Map<string, ClientPortalMatterActivitySummary>();
   for (const matter of visibleMatterSummaries) {
     const matterGrants = grants
       .filter((grant) => grant.matterId === matter.id)
@@ -827,11 +1006,24 @@ async function buildWorkspace(
       user,
       visibleDocuments: dedupedClientDocuments,
     });
-    const visibleConversationThreadIds = new Set(
+    const notifiedConversationThreadIds = new Set(
       conversationNotifications
         .filter((notification) => notification.recipientUserId === portalPrincipal.userId)
         .map((notification) => notification.threadId),
     );
+    const visibleConversationThreads = conversationThreads.filter(
+      (thread) =>
+        notifiedConversationThreadIds.has(thread.id) &&
+        thread.status !== "revoked" &&
+        !thread.accessRevokedAt,
+    );
+    const visibleConversationThreadIds = new Set(
+      visibleConversationThreads.map((thread) => thread.id),
+    );
+    const notificationSummary = conversationNotificationSummary({
+      notifications: conversationNotifications,
+      visibleThreadIds: visibleConversationThreadIds,
+    });
 
     const clientSignatures = hasPortalPermission(matterGrants, "sign")
       ? signatureRequests.flatMap((signature) => {
@@ -880,7 +1072,20 @@ async function buildWorkspace(
       ...signatureActions(clientSignatures),
     ]);
     actionsByMatterId.set(matter.id, matterActions);
-    billingByMatterId.set(matter.id, billSummaries({ invoices, paymentRequests, contactIds, now }));
+    const clientBills = billSummaries({ invoices, paymentRequests, contactIds, now });
+    billingByMatterId.set(matter.id, clientBills);
+    activityByMatterId.set(
+      matter.id,
+      matterActivitySummary({
+        matterId: matter.id,
+        actions: matterActions,
+        bills: clientBills,
+        documents: dedupedClientDocuments,
+        signatures: clientSignatures,
+        conversationThreads: visibleConversationThreads,
+        notifications: notificationSummary,
+      }),
+    );
   }
 
   const actions = sortActions([...actionsByMatterId.values()].flat());
@@ -890,6 +1095,9 @@ async function buildWorkspace(
   const matterBills = visibleMatterSummaries.map((matter) =>
     matterBillingGroup(matter, billingByMatterId.get(matter.id) ?? []),
   );
+  const matterActivities = visibleMatterSummaries.map(
+    (matter) => activityByMatterId.get(matter.id) ?? emptyMatterActivity(matter.id),
+  );
   return {
     account: sanitizedUser(user),
     access: {
@@ -898,20 +1106,19 @@ async function buildWorkspace(
       matterCount: visibleMatterSummaries.length,
       permissions: uniquePermissions(grants),
     },
+    portalActivity: workspaceActivity(matterActivities),
     matters: visibleMatterSummaries.map((matter) =>
       sanitizedMatter(
         matter,
         grants.filter((grant) => grant.matterId === matter.id),
-        actionsByMatterId.get(matter.id)?.length ?? 0,
+        activityByMatterId.get(matter.id) ?? emptyMatterActivity(matter.id),
       ),
     ),
     matterDetails: visibleMatterSummaries.map((matter) =>
       matterDetail({
         matter,
         grants: grants.filter((grant) => grant.matterId === matter.id),
-        documentCount: documentsByMatterId.get(matter.id)?.length ?? 0,
-        signatureCount: signaturesByMatterId.get(matter.id)?.length ?? 0,
-        actionCount: actionsByMatterId.get(matter.id)?.length ?? 0,
+        activity: activityByMatterId.get(matter.id) ?? emptyMatterActivity(matter.id),
       }),
     ),
     documents: [...documentsByMatterId.values()].flat(),

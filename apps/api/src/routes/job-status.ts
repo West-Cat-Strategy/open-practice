@@ -314,6 +314,7 @@ export function providerStatus(kind: ProviderSettingKind, providers: ProviderSet
     providers: providers.map((provider) => ({
       key: provider.key,
       enabled: provider.enabled,
+      disabledReason: provider.enabled ? undefined : "provider_disabled",
       updatedAt: provider.updatedAt,
     })),
   };

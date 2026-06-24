@@ -1,7 +1,9 @@
 # syntax=docker/dockerfile:1.7
+#checkov:skip=CKV_DOCKER_2:API, web, and worker targets use service-specific Compose/runtime healthchecks; worker has no generic HTTP health endpoint.
 
 FROM node:26.3.0-alpine3.23@sha256:144769ec3f32e8ee36b3cfde91e82bee25d9367b20f31a151f3f7eea3a2a8541 AS runtime-base
-RUN apk add --no-cache libc6-compat
+RUN apk upgrade --no-cache libcrypto3 libssl3 \
+  && apk add --no-cache libc6-compat
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV TURBO_TELEMETRY_DISABLED=1
@@ -64,7 +66,8 @@ FROM runtime-base AS app-runner
 WORKDIR /app
 
 # Don't run production as root
-RUN addgroup --system --gid 1001 nodejs
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx \
+  && addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 RUN chown nextjs:nodejs /app
 USER nextjs
@@ -86,7 +89,8 @@ ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 
 # Don't run production as root
-RUN addgroup --system --gid 1001 nodejs
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx \
+  && addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 RUN chown nextjs:nodejs /app
 USER nextjs

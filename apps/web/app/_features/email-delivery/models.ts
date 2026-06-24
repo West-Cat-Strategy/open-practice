@@ -27,6 +27,22 @@ export interface EmailDeliveryHistoryItem {
   events: EmailDeliveryEventSummary[];
 }
 
+export type EmailDeliveryHandoffStatus =
+  | "delivered"
+  | "delivery_in_progress"
+  | "retry_available"
+  | "cancelled"
+  | "review_required";
+
+export interface EmailDeliveryHandoffSummary {
+  status: EmailDeliveryHandoffStatus;
+  label: string;
+  detail: string;
+  retryEligible: boolean;
+  requiresConfirmation: boolean;
+  tone?: "risk";
+}
+
 export interface EmailDeliveryHistoryResponse {
   emails: EmailDeliveryHistoryItem[];
 }

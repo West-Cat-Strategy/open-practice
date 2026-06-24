@@ -4,6 +4,7 @@ import type {
   CalendarEventReminderRecord,
   CalendarMeetingInvitationBoundary,
   CalendarMeetingLinkMode,
+  CalendarSchedulingRequestSummary,
 } from "@open-practice/domain/calendar-models";
 import type {
   CalendarCredentialSummary,
@@ -89,6 +90,22 @@ export interface MeetingLinkAvailability {
   actionable: boolean;
 }
 
+export interface CalendarStaffHandoffSummary {
+  label: string;
+  detail: string;
+  tone?: "risk";
+  action: "send_confirmed_invites" | "review_request" | "linked_existing_event" | "no_action";
+  publicBookingEnabled: false;
+  providerSyncEnabled: false;
+  nativeMediaEnabled: false;
+}
+
+const disabledCalendarAutomation = {
+  publicBookingEnabled: false,
+  providerSyncEnabled: false,
+  nativeMediaEnabled: false,
+} as const;
+
 export function describeMeetingLinkAvailability(
   event: Pick<
     CalendarEventRecord,
@@ -116,6 +133,86 @@ export function describeMeetingLinkAvailability(
       : "Add another meeting link, leave it blank, or configure Hosted WebRTC before using hosted links.",
     status: "disabled",
     actionable: false,
+  };
+}
+
+export function describeCalendarEventHandoff(
+  event: Pick<
+    CalendarEventRecord,
+    "status" | "meetingLinkMode" | "meetingLinkUrl" | "meetingInvitationBoundary"
+  > & { attendees?: CalendarEventAttendeeRecord[] },
+): CalendarStaffHandoffSummary {
+  const meetingLink = describeMeetingLinkAvailability(event);
+  if (event.status === "cancelled") {
+    return {
+      label: "cancelled",
+      detail: "Cancelled events stay closed to invitation and lobby handoff.",
+      action: "no_action",
+      ...disabledCalendarAutomation,
+    };
+  }
+  if ((event.attendees ?? []).length === 0) {
+    return {
+      label: "add attendees",
+      detail: "Add staff-reviewed attendees before sending invitation handoff.",
+      action: "no_action",
+      ...disabledCalendarAutomation,
+    };
+  }
+  if (meetingLink.actionable) {
+    return {
+      label: "handoff ready",
+      detail:
+        "Staff can send confirmed invitation email handoff with the stored meeting link; public booking and native media stay disabled.",
+      action: "send_confirmed_invites",
+      ...disabledCalendarAutomation,
+    };
+  }
+  return {
+    label: "link review",
+    detail: `${meetingLink.detail} Public booking, provider sync, and native media stay disabled.`,
+    action: "review_request",
+    tone: "risk",
+    ...disabledCalendarAutomation,
+  };
+}
+
+export function describeCalendarSchedulingRequestHandoff(
+  request: CalendarSchedulingRequestSummary,
+): CalendarStaffHandoffSummary {
+  if (request.status === "needs_review") {
+    return {
+      label: "review needed",
+      detail: request.linkedEvent
+        ? "Staff review can keep the existing linked event; no automatic reschedule or provider sync runs."
+        : "Staff review can link an existing same-matter event; no public booking page or event creation runs.",
+      action: "review_request",
+      tone: "risk",
+      ...disabledCalendarAutomation,
+    };
+  }
+  if (request.status === "scheduled") {
+    return {
+      label: "existing event linked",
+      detail: "The request is linked to an existing event only; no automatic event creation ran.",
+      action: "linked_existing_event",
+      ...disabledCalendarAutomation,
+    };
+  }
+  if (request.status === "reviewed") {
+    return {
+      label: "reviewed",
+      detail: "Staff review completed without enabling public booking or provider sync.",
+      action: "no_action",
+      ...disabledCalendarAutomation,
+    };
+  }
+  return {
+    label: "dismissed",
+    detail:
+      "Dismissed scheduling requests stay closed to booking, provider sync, and native media.",
+    action: "no_action",
+    ...disabledCalendarAutomation,
   };
 }
 

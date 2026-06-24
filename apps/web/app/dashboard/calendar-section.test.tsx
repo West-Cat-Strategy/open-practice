@@ -7,6 +7,8 @@ import type { CalendarRadarBuckets } from "../calendar-dashboard";
 import { CalendarSection } from "./calendar-section";
 
 type DashboardCalendarEvent = CalendarDashboardResponse["eventsByMatterId"][string][number];
+type CalendarSchedulingRequest =
+  CalendarDashboardResponse["schedulingRequestsByMatterId"][string][number];
 type CalendarSectionProps = ComponentProps<typeof CalendarSection>;
 
 const syntheticEvent: DashboardCalendarEvent = {
@@ -56,6 +58,34 @@ const calendarBuckets: CalendarRadarBuckets = {
   nextThirtyDays: [],
   tentative: [],
   cancelled: [],
+};
+
+const syntheticSchedulingRequest: CalendarSchedulingRequest = {
+  id: "calendar-scheduling-request-synthetic",
+  matterId: "matter_synthetic",
+  kind: "event_scheduling",
+  status: "needs_review",
+  title: "Review client meeting window",
+  source: { type: "calendar_event", label: "Synthetic hearing" },
+  requestedStartsAt: "2035-06-06T16:00:00.000Z",
+  requestedEndsAt: "2035-06-06T17:00:00.000Z",
+  reminderSummary: {
+    posture: "dashboard_pending",
+    pendingCount: 0,
+    acknowledgedCount: 0,
+  },
+  privacy: { visibility: "staff_only", clientVisible: false },
+  timeCaptureCue: {
+    posture: "none",
+    existingTimeEntryCount: 0,
+    billable: false,
+  },
+  reviewBoundary: {
+    approvalCreatesTask: false,
+    approvalReschedulesEvent: false,
+    approvalCancelsReminder: false,
+    approvalCreatesTimeEntry: false,
+  },
 };
 
 function noop(): void {}
@@ -271,6 +301,19 @@ describe("CalendarSection", () => {
     expect(html).toContain("Add attendee");
     expect(html).toContain("Calendar sync");
     expect(html).toContain("No calendar app passwords have been created.");
+  });
+
+  it("renders scheduling handoff posture without public booking or provider sync", () => {
+    const html = matterlessCalendarMarkup({
+      activeCalendarScope: "matter",
+      activeMatterNumber: "OP-2026-001",
+      activeCalendarSchedulingRequests: [syntheticSchedulingRequest],
+      matterCalendarControlsEnabled: true,
+    });
+
+    expect(html).toContain("Review client meeting window");
+    expect(html).toContain("review needed");
+    expect(html).toContain("no public booking page or event creation runs");
   });
 
   it("renders firm-scoped zero-matter calendar controls without matter-only affordances", () => {

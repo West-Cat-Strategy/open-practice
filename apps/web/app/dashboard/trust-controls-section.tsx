@@ -20,6 +20,7 @@ import {
   accountLabel,
   describeBankFeedImportBatch,
   describeBankFeedReviewBoundary,
+  emptyReconciliationPacketReview,
   type ActiveJurisdictionTrustReportSummary,
   type RecentTrustPosting,
   type TrustReviewSummary,
@@ -167,6 +168,33 @@ export function TrustControlsSection({
   };
   const financialCommandJournal = activeTrustControls.financialCommandJournal;
   const financialCommandEntries = financialCommandJournal.entries.slice(0, 6);
+  const reconciliationPacketReview =
+    activeTrustControls.reconciliationPacketReview ?? emptyReconciliationPacketReview();
+  const hasReconciliationPacketEvidence =
+    reconciliationPacketReview.summary.evidenceCount > 0 ||
+    reconciliationPacketReview.summary.reviewCueCount > 0 ||
+    reconciliationPacketReview.summary.packetsNeedingReviewCount > 0 ||
+    reconciliationPacketReview.packets.some(
+      (packet) =>
+        packet.evidenceCount > 0 ||
+        packet.reviewCueCount > 0 ||
+        packet.pendingCount > 0 ||
+        packet.exceptionCount > 0 ||
+        packet.conflictCount > 0,
+    );
+  const reconciliationPacketSummary = hasReconciliationPacketEvidence
+    ? reconciliationPacketReview.summary
+    : {
+        ...reconciliationPacketReview.summary,
+        packetCount: 0,
+        evidenceCount: 0,
+        reviewCueCount: 0,
+        packetsNeedingReviewCount: 0,
+        latestEvidenceAt: undefined,
+      };
+  const reconciliationPackets = hasReconciliationPacketEvidence
+    ? reconciliationPacketReview.packets.slice(0, 6)
+    : [];
   const protectedAccountingProfiles = accountingReview.accountingProfiles.filter(
     (profile) => profile.protectedFunds.protected,
   );
@@ -444,6 +472,84 @@ export function TrustControlsSection({
           </div>
         </>
       ) : null}
+
+      <div className="section-title">
+        <h3>Reconciliation packet summaries</h3>
+        <span>
+          {hasReconciliationPacketEvidence
+            ? `${reconciliationPacketSummary.evidenceCount} evidence records · ${reconciliationPacketSummary.reviewCueCount} review cues`
+            : "No reconciliation evidence"}
+        </span>
+      </div>
+      <div className="activity-grid two-column">
+        <div className="activity-card">
+          <ClipboardCheck size={18} />
+          <strong>{reconciliationPacketSummary.packetCount} packets</strong>
+          <span>{reconciliationPacketSummary.packetsNeedingReviewCount} need review</span>
+        </div>
+        <div className="activity-card">
+          <FileText size={18} />
+          <strong>{reconciliationPacketSummary.evidenceCount} evidence records</strong>
+          <span>raw evidence payloads {reconciliationPacketReview.policy.rawEvidencePayloads}</span>
+        </div>
+        <div className="activity-card">
+          <AlertTriangle size={18} />
+          <strong>{reconciliationPacketSummary.reviewCueCount} review cues</strong>
+          <span>No auto-reconciliation · no trust posting</span>
+        </div>
+        <div className="activity-card">
+          <Clock3 size={18} />
+          <strong>
+            {reconciliationPacketSummary.latestEvidenceAt
+              ? compactDate(reconciliationPacketSummary.latestEvidenceAt)
+              : "No evidence timestamp"}
+          </strong>
+          <span>
+            {hasReconciliationPacketEvidence
+              ? `generated ${compactDate(reconciliationPacketReview.generatedAt)}`
+              : "no packet evidence generated"}
+          </span>
+        </div>
+      </div>
+      <div className="party-list">
+        {reconciliationPackets.map((packet) => (
+          <div className="party-row" key={packet.kind}>
+            <span>
+              <strong>{packet.label}</strong>
+              <small>
+                {packet.evidenceCount} evidence · {packet.pendingCount} pending ·{" "}
+                {packet.exceptionCount} exceptions · {packet.conflictCount} conflicts
+              </small>
+              <small>
+                {formatCurrency(packet.amountCents)} total ·{" "}
+                {packet.latestEvidenceAt ? compactDate(packet.latestEvidenceAt) : "no timestamp"} ·
+                review only
+              </small>
+            </span>
+            <em className={packet.posture === "needs_review" ? "risk" : undefined}>
+              {packet.posture.replaceAll("_", " ")}
+            </em>
+          </div>
+        ))}
+        {reconciliationPackets.length === 0 ? (
+          <p className="inline-empty">
+            {hasReconciliationPacketEvidence
+              ? "No reconciliation packet rows are present in the current controls payload."
+              : "No reconciliation evidence is present in the current controls payload."}
+          </p>
+        ) : null}
+        <div className="party-row">
+          <span>
+            <strong>Packet boundary</strong>
+            <small>
+              Invoice mutation{" "}
+              {reconciliationPacketReview.policy.invoiceMutation.replaceAll("_", " ")}
+            </small>
+            <small>No live settlement · no provider commands · no public exposure</small>
+          </span>
+          <em>review only</em>
+        </div>
+      </div>
 
       <div className="section-title">
         <h3>Financial command journal</h3>

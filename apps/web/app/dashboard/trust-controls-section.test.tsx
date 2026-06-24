@@ -271,6 +271,108 @@ function buildSyntheticControls(): TrustControlsDashboardResponse {
       jurisdictionCertifiedAccounting: false,
     },
   };
+  controls.reconciliationPacketReview = {
+    generatedAt: "2026-08-15T00:00:00.000Z",
+    reviewOnly: true,
+    packets: [
+      {
+        kind: "ledger",
+        label: "Ledger evidence",
+        evidenceCount: 2,
+        reviewCueCount: 3,
+        pendingCount: 1,
+        exceptionCount: 1,
+        conflictCount: 1,
+        amountCents: 12500,
+        latestEvidenceAt: "2026-06-06T00:40:00.000Z",
+        posture: "needs_review",
+        reviewOnly: true,
+      },
+      {
+        kind: "statement_import",
+        label: "Statement import evidence",
+        evidenceCount: 1,
+        reviewCueCount: 2,
+        pendingCount: 1,
+        exceptionCount: 0,
+        conflictCount: 1,
+        amountCents: 0,
+        latestEvidenceAt: "2026-06-06T00:00:00.000Z",
+        posture: "needs_review",
+        reviewOnly: true,
+      },
+      {
+        kind: "exception",
+        label: "Exception evidence",
+        evidenceCount: 1,
+        reviewCueCount: 2,
+        pendingCount: 1,
+        exceptionCount: 1,
+        conflictCount: 1,
+        amountCents: 100,
+        latestEvidenceAt: "2026-06-30T00:00:00.000Z",
+        posture: "needs_review",
+        reviewOnly: true,
+      },
+      {
+        kind: "trust_transfer",
+        label: "Trust transfer evidence",
+        evidenceCount: 1,
+        reviewCueCount: 1,
+        pendingCount: 1,
+        exceptionCount: 0,
+        conflictCount: 0,
+        amountCents: 12500,
+        latestEvidenceAt: "2026-06-06T00:30:00.000Z",
+        posture: "needs_review",
+        reviewOnly: true,
+      },
+      {
+        kind: "posting_request",
+        label: "Posting request evidence",
+        evidenceCount: 2,
+        reviewCueCount: 1,
+        pendingCount: 1,
+        exceptionCount: 1,
+        conflictCount: 0,
+        amountCents: 300,
+        latestEvidenceAt: "2026-06-09T01:00:00.000Z",
+        posture: "needs_review",
+        reviewOnly: true,
+      },
+      {
+        kind: "payment_import",
+        label: "Payment import evidence",
+        evidenceCount: 1,
+        reviewCueCount: 1,
+        pendingCount: 1,
+        exceptionCount: 0,
+        conflictCount: 1,
+        amountCents: 999,
+        latestEvidenceAt: "2026-06-06T00:50:00.000Z",
+        posture: "needs_review",
+        reviewOnly: true,
+      },
+    ],
+    summary: {
+      packetCount: 6,
+      evidenceCount: 8,
+      reviewCueCount: 10,
+      packetsNeedingReviewCount: 6,
+      latestEvidenceAt: "2026-06-30T00:00:00.000Z",
+      reviewOnly: true,
+    },
+    policy: {
+      source: "existing_ledger_billing_review_records",
+      rawEvidencePayloads: "excluded",
+      automaticReconciliation: false,
+      automaticTrustPosting: false,
+      invoiceMutation: "explicit_command_only",
+      liveSettlement: false,
+      providerCommands: false,
+      publicExposure: false,
+    },
+  };
   controls.accountingReview.matchRuleProfiles = [
     {
       id: "match_profile_synthetic",
@@ -536,6 +638,14 @@ describe("TrustControlsSection", () => {
     expect(html).toContain("0 fresh · 0 watch · 1 stale · 0 never reconciled");
     expect(html).toContain("reviewed through 2026-06-30");
     expect(html).toContain("1 unmatched · 1 exceptions · 16 stale days");
+    expect(html).toContain("Reconciliation packet summaries");
+    expect(html).toContain("8 evidence records · 10 review cues");
+    expect(html).toContain("6 packets");
+    expect(html).toContain("6 need review");
+    expect(html).toContain("Ledger evidence");
+    expect(html).toContain("Payment import evidence");
+    expect(html).toContain("Invoice mutation explicit command only");
+    expect(html).toContain("No live settlement · no provider commands · no public exposure");
     expect(html).toContain("metadata only · manual review required");
     expect(html).toContain("No auto-match · no ledger posting · no live feed");
     expect(html).toContain("operator review only · not jurisdiction-certified");
@@ -581,6 +691,15 @@ describe("TrustControlsSection", () => {
 
     expect(html).toContain("0 accounts");
     expect(html).toContain("No financial command journal entries are present");
+    expect(html).toContain("Reconciliation packet summaries");
+    expect(html).toContain("No reconciliation evidence");
+    expect(html).toContain("0 packets");
+    expect(html).toContain("0 need review");
+    expect(html).toContain(
+      "No reconciliation evidence is present in the current controls payload.",
+    );
+    expect(html).not.toContain("Ledger evidence");
+    expect(html).not.toContain("Payment import evidence");
     expect(html).toContain("No accounting review profiles are recorded");
     expect(html).toContain("No bank-feed import batch metadata is recorded");
     expect(html).toContain("No prepared posting requests are present");

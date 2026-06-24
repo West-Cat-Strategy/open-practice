@@ -35,6 +35,21 @@ export interface WorkflowAuditMetadataInput extends WorkflowAuditMetadata {
 
 export type WorkflowHistoryStatus = WorkflowAuditStatus;
 export type WorkflowHistoryStepSource = "audit" | "job";
+export type WorkflowReviewPacketCueKind = "matter" | "task" | "template" | "document" | "resource";
+
+export interface WorkflowReviewPacketCue {
+  kind: WorkflowReviewPacketCueKind;
+  label: string;
+  value: string;
+}
+
+export interface WorkflowReviewPacket {
+  reviewOnly: true;
+  automationDisabled: true;
+  externalConnectorDisabled: true;
+  backgroundMutationDisabled: true;
+  cues: WorkflowReviewPacketCue[];
+}
 
 export interface WorkflowHistoryStep {
   id: string;
@@ -70,6 +85,7 @@ export interface WorkflowHistoryItem {
   queueNames: OpenPracticeQueueName[];
   jobIds: string[];
   stepCount: number;
+  reviewPacket: WorkflowReviewPacket;
   steps: WorkflowHistoryStep[];
 }
 
@@ -125,6 +141,11 @@ function safeWorkflowStatus(value: unknown): WorkflowAuditStatus | undefined {
     value === "skipped"
     ? value
     : undefined;
+}
+
+function safeCueValue(value: unknown): string | undefined {
+  const safeValue = safeString(value);
+  return safeValue ? safeValue.slice(0, 80) : undefined;
 }
 
 function safeActorType(value: unknown): WorkflowAuditActorType | undefined {
@@ -332,6 +353,114 @@ function workflowFinishedAt(
   return latestIso(steps.map((step) => step.occurredAt));
 }
 
+const workflowReviewPacketMaxCues = 10;
+const workflowReviewPacketMaxCuesPerKind = 2;
+const blockedWorkflowReviewResourcePattern = /connector|provider/i;
+const genericWorkflowReviewResourceTypes = new Set(["resource", "external_resource"]);
+
+function addWorkflowReviewCue(
+  cues: WorkflowReviewPacketCue[],
+  countsByKind: Map<WorkflowReviewPacketCueKind, number>,
+  seen: Set<string>,
+  input: { kind: WorkflowReviewPacketCueKind; label: string; value?: unknown },
+): void {
+  if (cues.length >= workflowReviewPacketMaxCues) return;
+  const value = safeCueValue(input.value);
+  if (!value) return;
+  const currentKindCount = countsByKind.get(input.kind) ?? 0;
+  if (currentKindCount >= workflowReviewPacketMaxCuesPerKind) return;
+  const key = `${input.kind}:${input.label}:${value}`;
+  if (seen.has(key)) return;
+  seen.add(key);
+  countsByKind.set(input.kind, currentKindCount + 1);
+  cues.push({ kind: input.kind, label: input.label, value });
+}
+
+function addWorkflowResourceCue(
+  cues: WorkflowReviewPacketCue[],
+  countsByKind: Map<WorkflowReviewPacketCueKind, number>,
+  seen: Set<string>,
+  resourceType?: string,
+  resourceId?: string,
+): void {
+  if (!resourceType && !resourceId) return;
+  if (resourceType && blockedWorkflowReviewResourcePattern.test(resourceType)) return;
+  if (
+    resourceId &&
+    blockedWorkflowReviewResourcePattern.test(resourceId) &&
+    (!resourceType || genericWorkflowReviewResourceTypes.has(resourceType))
+  ) {
+    return;
+  }
+  addWorkflowReviewCue(cues, countsByKind, seen, {
+    kind: "resource",
+    label: "resource",
+    value:
+      resourceType && resourceId ? `${resourceType}:${resourceId}` : (resourceType ?? resourceId),
+  });
+}
+
+function buildWorkflowReviewPacket(steps: WorkflowHistoryStep[]): WorkflowReviewPacket {
+  const cues: WorkflowReviewPacketCue[] = [];
+  const countsByKind = new Map<WorkflowReviewPacketCueKind, number>();
+  const seen = new Set<string>();
+  const addCue = (input: { kind: WorkflowReviewPacketCueKind; label: string; value?: unknown }) =>
+    addWorkflowReviewCue(cues, countsByKind, seen, input);
+  const addResourceCue = (resourceType?: string, resourceId?: string) =>
+    addWorkflowResourceCue(cues, countsByKind, seen, resourceType, resourceId);
+
+  for (const matterId of [...new Set(steps.flatMap((step) => step.matterIds))].sort()) {
+    addCue({ kind: "matter", label: "matter", value: matterId });
+  }
+
+  for (const step of steps) {
+    addCue({
+      kind: "task",
+      label: "task",
+      value: metadataString(step.metadata, "task") ?? step.jobName,
+    });
+  }
+
+  for (const step of steps) {
+    addCue({
+      kind: "template",
+      label: "template",
+      value: metadataString(step.metadata, "templateId"),
+    });
+    addCue({
+      kind: "template",
+      label: "template",
+      value: metadataString(step.metadata, "templateKey"),
+    });
+  }
+
+  for (const step of steps) {
+    addCue({
+      kind: "document",
+      label: "document",
+      value:
+        metadataString(step.metadata, "documentId") ??
+        (step.resourceType === "document" ? step.resourceId : undefined),
+    });
+  }
+
+  for (const step of steps) {
+    addResourceCue(step.resourceType, step.resourceId);
+    addResourceCue(
+      metadataString(step.metadata, "resourceType"),
+      metadataString(step.metadata, "resourceId"),
+    );
+  }
+
+  return {
+    reviewOnly: true,
+    automationDisabled: true,
+    externalConnectorDisabled: true,
+    backgroundMutationDisabled: true,
+    cues,
+  };
+}
+
 export function buildWorkflowHistoryProjection(
   input: BuildWorkflowHistoryProjectionInput,
 ): WorkflowHistoryProjection {
@@ -385,6 +514,7 @@ export function buildWorkflowHistoryProjection(
         queueNames,
         jobIds,
         stepCount: orderedSteps.length,
+        reviewPacket: buildWorkflowReviewPacket(orderedSteps),
         steps: orderedSteps,
       };
     })

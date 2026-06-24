@@ -6536,6 +6536,7 @@ export default function DashboardClient({
                   imapSettings={imapSettings}
                   matters={matters}
                   overview={overview}
+                  providerStatus={providerStatus}
                   reportingWorkspace={reportingWorkspace}
                   session={session}
                   setupStatus={setupStatus}
@@ -7402,6 +7403,7 @@ export default function DashboardClient({
                   imapSettings={imapSettings}
                   matters={matters}
                   overview={overview}
+                  providerStatus={providerStatus}
                   reportingWorkspace={reportingWorkspace}
                   session={session}
                   setupStatus={setupStatus}

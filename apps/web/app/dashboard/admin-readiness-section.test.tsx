@@ -2,12 +2,14 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { AdminReadinessSection, buildAdminReadinessSummary } from "./admin-readiness-section";
+import { emptyProvidersStatusResponse } from "../provider-status-dashboard";
 import type {
   CapabilitiesResponse,
   EmailSettings,
   ImapSettings,
   MatterSummary,
   PracticeOverview,
+  ProvidersStatusResponse,
   SessionResponse,
   SetupStatusResponse,
   StaffReportingWorkspaceResponse,
@@ -98,6 +100,76 @@ const workerHealth: WorkerHealthResponse = {
 
 const matters = [{ id: "matter-001" }] as unknown as MatterSummary[];
 
+const providerStatus: ProvidersStatusResponse = {
+  ...emptyProvidersStatusResponse("read_only_configuration_posture"),
+  providerSettings: [
+    {
+      kind: "inbound_email",
+      status: "disabled",
+      reason: "provider_disabled",
+      providers: [
+        {
+          key: "maildrop",
+          enabled: false,
+          disabledReason: "provider_disabled",
+          updatedAt: "2026-05-30T00:00:00.000Z",
+        },
+      ],
+    },
+  ],
+  objectStorage: { status: "configured", provider: "s3" },
+  email: {
+    status: "configured",
+    provider: "mailpit",
+    queue: { queueName: "email", status: "configured" },
+  },
+  inboundEmail: {
+    status: "disabled",
+    reason: "provider_disabled",
+    addresses: [],
+    workerQueue: { queueName: "inbound_email", status: "configured" },
+  },
+  externalUploads: {
+    status: "available",
+    provider: "s3",
+    tokenSigning: "configured",
+    s3: "configured",
+  },
+  documentProcessing: {
+    ...emptyProvidersStatusResponse().documentProcessing,
+    status: "disabled",
+    reason: "not_configured",
+    workerQueues: [{ queueName: "ocr", status: "not_configured", reason: "queue_not_configured" }],
+  },
+  bullmq: {
+    producerQueues: [{ queueName: "email", status: "configured" }],
+    workerQueues: [
+      { queueName: "email", status: "configured" },
+      { queueName: "ocr", status: "not_configured", reason: "queue_not_configured" },
+      {
+        queueName: "ai_triage",
+        status: "reserved",
+        reason: "deferred_worker",
+        task: "classification",
+        actionable: false,
+      },
+    ],
+    reservedWorkerQueues: [
+      {
+        queueName: "ai_triage",
+        status: "reserved",
+        reason: "deferred_worker",
+        task: "classification",
+        actionable: false,
+      },
+    ],
+  },
+  jobs: {
+    summary: { total: 2, queued: 1, active: 0, failed: 1, terminal: 0, byQueue: [] },
+    latestRuns: [],
+  },
+};
+
 const emailSettings: EmailSettings = {
   key: "default",
   enabled: true,
@@ -144,6 +216,7 @@ function input() {
     imapSettings,
     matters,
     overview,
+    providerStatus,
     reportingWorkspace,
     session,
     setupStatus,
@@ -168,6 +241,44 @@ describe("AdminReadinessSection", () => {
         detail: expect.stringContaining("does not claim regional hosting guarantees"),
       }),
     );
+    expect(summary.providers).toContainEqual(
+      expect.objectContaining({
+        key: "provider-required-blockers",
+        status: "blocked",
+        detail: expect.stringContaining("OCR queue not configured: queue not configured"),
+      }),
+    );
+    expect(summary.providers).toContainEqual(
+      expect.objectContaining({
+        key: "provider-disabled-boundaries",
+        detail: expect.stringContaining("inbound email disabled: provider disabled · maildrop"),
+      }),
+    );
+    expect(summary.providers).toContainEqual(
+      expect.objectContaining({
+        key: "provider-watch-items",
+        detail: expect.stringContaining("1 failed provider jobs"),
+      }),
+    );
+    expect(
+      buildAdminReadinessSummary({
+        ...input(),
+        providerStatus: {
+          ...providerStatus,
+          email: {
+            ...providerStatus.email,
+            status: "degraded",
+            reason: "provider_rate_limited",
+            provider: "mailpit",
+          },
+        },
+      }).providers,
+    ).toContainEqual(
+      expect.objectContaining({
+        key: "provider-required-blockers",
+        detail: expect.stringContaining("outbound email degraded: provider rate limited · mailpit"),
+      }),
+    );
   });
 
   it("renders bounded export and backup/restore readiness copy", () => {
@@ -177,6 +288,10 @@ describe("AdminReadinessSection", () => {
     expect(markup).toContain("bounded staff export metadata");
     expect(markup).toContain("Backup and restore evidence");
     expect(markup).toContain("no hosted backup guarantee");
+    expect(markup).toContain("Provider readiness");
+    expect(markup).toContain("read-only posture");
+    expect(markup).toContain("Required provider blockers");
+    expect(markup).toContain("Optional disabled boundaries");
   });
 
   it("renders email settings without exposing configured secrets", () => {

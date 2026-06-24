@@ -5,14 +5,16 @@ import { useMemo, useState } from "react";
 import {
   clientPortalAccessLabel,
   clientPortalActionFamilyLabel,
-  clientPortalAttentionCount,
   clientPortalDocumentsForMatter,
   clientPortalMatterDetails,
   clientPortalMatterActionGroups,
   clientPortalMatterActionLabel,
   clientPortalMatterBillingGroups,
   clientPortalMoneyLabel,
+  clientPortalReadStateLabel,
+  clientPortalReadStateTone,
   clientPortalSignaturesForMatter,
+  clientPortalWorkspaceActivityLabel,
 } from "./client-portal-workspace-utils";
 import type {
   ClientPortalSignatureActionState,
@@ -73,7 +75,6 @@ export default function ClientPortalWorkspace({
   const [signatureBusyId, setSignatureBusyId] = useState("");
   const [signatureStatus, setSignatureStatus] = useState("Signature actions ready.");
   const renderWorkspace = useMemo(() => ({ ...workspace, signatures }), [signatures, workspace]);
-  const attentionCount = clientPortalAttentionCount(renderWorkspace);
   const matterDetails = clientPortalMatterDetails(renderWorkspace);
   const matterActionGroups = clientPortalMatterActionGroups(renderWorkspace);
   const matterBillingGroups = clientPortalMatterBillingGroups(renderWorkspace);
@@ -134,7 +135,7 @@ export default function ClientPortalWorkspace({
         <div className="client-portal-status" aria-label="Client portal status">
           <span>{clientPortalAccessLabel(workspace.access)}</span>
           <span>Private details redacted</span>
-          <strong>{attentionCount} need attention</strong>
+          <strong>{clientPortalWorkspaceActivityLabel(renderWorkspace.portalActivity)}</strong>
         </div>
       </section>
 
@@ -158,6 +159,12 @@ export default function ClientPortalWorkspace({
                     <dd>{compactDate(matter.openedOn)}</dd>
                   </div>
                   <div>
+                    <dt>Activity</dt>
+                    <dd className={toneClass(clientPortalReadStateTone(matter.readState))}>
+                      {clientPortalReadStateLabel(matter)}
+                    </dd>
+                  </div>
+                  <div>
                     <dt>Files</dt>
                     <dd>{matter.documentCount}</dd>
                   </div>
@@ -167,7 +174,10 @@ export default function ClientPortalWorkspace({
                   </div>
                 </dl>
               </div>
-              <span>{clientPortalMatterActionLabel(matter.actionCount)}</span>
+              <span>
+                {clientPortalMatterActionLabel(matter.actionCount)}
+                {matter.latestActivityAt ? ` / ${compactDate(matter.latestActivityAt)}` : ""}
+              </span>
             </article>
           ))}
           {matterDetails.length === 0 ? (

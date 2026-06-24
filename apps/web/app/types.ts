@@ -72,6 +72,8 @@ import type {
   User,
 } from "@open-practice/domain";
 import type {
+  DocumentProcessingEvidencePacket,
+  DocumentProcessingProviderReadiness,
   DocumentProcessingProviderStatus,
   DocumentProcessingReservedTask,
 } from "./_features/document-processing/models";
@@ -146,9 +148,12 @@ export type {
   DocumentMetadataTagGroup,
   DocumentProcessingDashboardResponse,
   DocumentProcessingDocumentSummary,
+  DocumentProcessingEvidencePacket,
   DocumentProcessingGroup,
   DocumentProcessingLatestExtraction,
   DocumentProcessingLatestJob,
+  DocumentProcessingProviderEvidencePacket,
+  DocumentProcessingProviderReadiness,
   DocumentProcessingProviderStatus,
   DocumentProcessingQueueSummary,
   DocumentProcessingReservedTask,
@@ -563,6 +568,8 @@ export interface DocumentProcessingStatusResponse {
   reservedTasks?: DocumentProcessingReservedTask[];
   providers: Array<{ kind: string; key: string }>;
   providerStatus: DocumentProcessingProviderStatus[];
+  providerReadiness?: DocumentProcessingProviderReadiness[];
+  evidencePacket?: DocumentProcessingEvidencePacket;
   summary: WorkerRunSummary;
   jobs: WorkerRunSummaryItem[];
 }
@@ -772,6 +779,20 @@ export interface WorkerHealthResponse {
 
 export type WorkflowHistoryStatus = "queued" | "active" | "succeeded" | "failed" | "skipped";
 
+export interface WorkflowReviewPacketCue {
+  kind: "matter" | "task" | "template" | "document" | "resource";
+  label: string;
+  value: string;
+}
+
+export interface WorkflowReviewPacket {
+  reviewOnly: boolean;
+  automationDisabled: boolean;
+  externalConnectorDisabled: boolean;
+  backgroundMutationDisabled: boolean;
+  cues: WorkflowReviewPacketCue[];
+}
+
 export interface WorkflowHistoryStep {
   id: string;
   source: "audit" | "job";
@@ -806,6 +827,7 @@ export interface WorkflowHistoryItem {
   queueNames: string[];
   jobIds: string[];
   stepCount: number;
+  reviewPacket?: WorkflowReviewPacket;
   steps: WorkflowHistoryStep[];
 }
 
@@ -828,6 +850,7 @@ export interface ProviderStatusSetting {
   providers: Array<{
     key: string;
     enabled: boolean;
+    disabledReason?: string;
     updatedAt?: string;
   }>;
 }
@@ -840,6 +863,7 @@ export interface ProviderStatusService {
   providers?: Array<{
     key: string;
     enabled: boolean;
+    disabledReason?: string;
     updatedAt?: string;
   }>;
   queue?: WorkerQueueStatus;
@@ -898,6 +922,8 @@ export type {
 } from "./_features/share-links/models";
 
 export type ClientPortalPermission = "view_documents" | "upload_documents" | "message" | "sign";
+export type ClientPortalReadState = "current" | "unread" | "attention_required";
+export type ClientPortalNotificationPosture = "none" | "unread" | "attention_required";
 
 export type ClientPortalActionFamily =
   | "secure_share"
@@ -935,6 +961,31 @@ export interface ClientPortalMatterActionGroup {
   actionCount: number;
   attentionCount: number;
   actions: ClientPortalActionSummary[];
+}
+
+export interface ClientPortalMatterActivitySummary {
+  matterId: string;
+  latestActivityAt?: string;
+  readState: ClientPortalReadState;
+  notificationPosture: ClientPortalNotificationPosture;
+  actionCount: number;
+  attentionCount: number;
+  unreadNotificationCount: number;
+  mutedNotificationCount: number;
+  messageThreadCount: number;
+  documentCount: number;
+  signatureCount: number;
+}
+
+export interface ClientPortalWorkspaceActivity {
+  latestActivityAt?: string;
+  readState: ClientPortalReadState;
+  notificationPosture: ClientPortalNotificationPosture;
+  actionCount: number;
+  attentionCount: number;
+  unreadNotificationCount: number;
+  mutedNotificationCount: number;
+  matters: ClientPortalMatterActivitySummary[];
 }
 
 export interface ClientPortalPaymentRequestSummary {
@@ -997,6 +1048,11 @@ export interface ClientPortalMatterDetail {
   documentCount: number;
   signatureCount: number;
   actionCount: number;
+  attentionCount?: number;
+  latestActivityAt?: string;
+  readState?: ClientPortalReadState;
+  notificationPosture?: ClientPortalNotificationPosture;
+  unreadNotificationCount?: number;
 }
 
 export interface ClientPortalDocumentSummary {
@@ -1047,7 +1103,12 @@ export interface ClientPortalWorkspaceResponse {
     status: Matter["status"];
     permissions: ClientPortalPermission[];
     actionCount: number;
+    latestActivityAt?: string;
+    readState?: ClientPortalReadState;
+    notificationPosture?: ClientPortalNotificationPosture;
+    unreadNotificationCount?: number;
   }>;
+  portalActivity?: ClientPortalWorkspaceActivity;
   billing?: ClientPortalBillingWorkspace;
   matterDetails?: ClientPortalMatterDetail[];
   documents?: ClientPortalDocumentSummary[];

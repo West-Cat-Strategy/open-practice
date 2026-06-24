@@ -55,6 +55,7 @@
     "security:scan": "node scripts/scan-tracked-secrets.mjs",
     "security:secrets-history": "node scripts/run-gitleaks-history-scan.mjs",
     "selfhost:check": "node scripts/selfhost-check.mjs",
+    "selfhost:restore-drill": "node scripts/selfhost-restore-drill.mjs",
     "test": "turbo test && node --test scripts/*.test.mjs",
     "toolchain:check": "node scripts/check-toolchain.mjs",
     "typecheck": "turbo typecheck",

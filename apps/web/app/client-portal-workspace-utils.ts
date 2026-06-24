@@ -4,6 +4,7 @@ import type {
   ClientPortalMatterBillingGroup,
   ClientPortalMatterDetail,
   ClientPortalMatterActionGroup,
+  ClientPortalReadState,
   ClientPortalSignatureSummary,
   ClientPortalWorkspaceResponse,
 } from "./types";
@@ -38,6 +39,42 @@ export function clientPortalAttentionCount(workspace: ClientPortalWorkspaceRespo
 
 export function clientPortalMatterActionLabel(actionCount: number): string {
   return `${actionCount} action${actionCount === 1 ? "" : "s"}`;
+}
+
+export function clientPortalReadStateTone(
+  readState: ClientPortalReadState | undefined,
+): "neutral" | "ready" | "risk" {
+  if (readState === "attention_required" || readState === "unread") return "risk";
+  if (readState === "current") return "ready";
+  return "neutral";
+}
+
+export function clientPortalReadStateLabel(input: {
+  readState?: ClientPortalReadState;
+  unreadNotificationCount?: number;
+  attentionCount?: number;
+}): string {
+  if (input.readState === "attention_required") {
+    return `${input.attentionCount ?? 0} need attention`;
+  }
+  if (input.readState === "unread") {
+    return `${input.unreadNotificationCount ?? 0} unread`;
+  }
+  if (input.readState === "current") return "Current";
+  return "Activity unavailable";
+}
+
+export function clientPortalWorkspaceActivityLabel(
+  activity: ClientPortalWorkspaceResponse["portalActivity"],
+): string {
+  if (!activity) return "Activity unavailable";
+  if (activity.readState === "attention_required") {
+    return `${activity.attentionCount} need attention`;
+  }
+  if (activity.readState === "unread") {
+    return `${activity.unreadNotificationCount} unread`;
+  }
+  return "Current";
 }
 
 export function clientPortalMoneyLabel(amountCents: number, currency = "CAD"): string {
@@ -82,6 +119,10 @@ export function clientPortalMatterDetails(
     documentCount: 0,
     signatureCount: 0,
     actionCount: matter.actionCount,
+    latestActivityAt: matter.latestActivityAt,
+    readState: matter.readState,
+    notificationPosture: matter.notificationPosture,
+    unreadNotificationCount: matter.unreadNotificationCount,
   }));
 }
 

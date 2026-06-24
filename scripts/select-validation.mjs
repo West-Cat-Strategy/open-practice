@@ -46,6 +46,8 @@ export const COMMANDS = {
   securitySecretsHistory: "pnpm security:secrets-history",
   selfhostCheck:
     "pnpm selfhost:check -- --env-file docker/selfhost.example.env --allow-synthetic-example",
+  selfhostRestoreDrill:
+    "pnpm selfhost:restore-drill -- --env-file docker/selfhost.example.env --allow-synthetic-example",
   test: "pnpm test",
   webTest: "pnpm --filter @open-practice/web test",
   webTypecheck: "pnpm --filter @open-practice/web typecheck",
@@ -71,6 +73,7 @@ export const COMMAND_ORDER = [
   COMMANDS.dockerAppSmoke,
   COMMANDS.dockerScan,
   COMMANDS.selfhostCheck,
+  COMMANDS.selfhostRestoreDrill,
   COMMANDS.e2eHost,
   COMMANDS.e2eDocker,
   COMMANDS.e2eFirstRun,
@@ -343,7 +346,10 @@ function isDatabaseSource(path) {
 
 function isE2EPath(path) {
   return (
-    path === "e2e" || path.startsWith("e2e/") || /^playwright\.config\.(?:[cm]?[jt]s)$/.test(path)
+    path === "e2e" ||
+    path.startsWith("e2e/") ||
+    path === "scripts/run-e2e.mjs" ||
+    /^playwright\.config\.(?:[cm]?[jt]s)$/.test(path)
   );
 }
 
@@ -351,12 +357,27 @@ function isSecurityReviewTooling(path) {
   return [
     "scripts/create-security-review.mjs",
     "scripts/create-security-review.test.mjs",
+    "scripts/lint-docker-config.mjs",
+    "scripts/optional-tooling.mjs",
     "scripts/run-gitleaks-history-scan.mjs",
+    "scripts/run-license-source-scan.mjs",
+    "scripts/run-license-source-scan.test.mjs",
+    "scripts/run-osv-scanner.mjs",
     "scripts/run-semgrep-privacy-rules.mjs",
+    "scripts/scan-docker-images.mjs",
     "scripts/scan-tracked-secrets.mjs",
     "scripts/scan-tracked-secrets.test.mjs",
     "scripts/security-hot-path-rescan.mjs",
     "scripts/security-hot-path-rescan.test.mjs",
+  ].includes(path);
+}
+
+function isSelfhostRestoreDrillTooling(path) {
+  return [
+    "scripts/selfhost-restore-drill.mjs",
+    "scripts/selfhost-restore-drill.test.mjs",
+    "scripts/create-release-proof.mjs",
+    "scripts/create-release-proof.test.mjs",
   ].includes(path);
 }
 
@@ -472,6 +493,10 @@ export function classifyPath(path) {
   if (isSecurityReviewTooling(path)) {
     commands.add(COMMANDS.securityReview);
     commands.add(COMMANDS.securitySecretsHistory);
+  }
+
+  if (isSelfhostRestoreDrillTooling(path)) {
+    commands.add(COMMANDS.selfhostRestoreDrill);
   }
 
   if (isApiContractTooling(path)) {

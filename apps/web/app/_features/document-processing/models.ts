@@ -77,6 +77,7 @@ export interface DocumentProcessingProviderStatus {
   providers?: Array<{
     key: string;
     enabled: boolean;
+    disabledReason?: string;
     updatedAt?: string;
   }>;
 }
@@ -114,6 +115,69 @@ export interface DocumentProcessingSummary {
   failed: number;
   terminal: number;
   byQueue?: DocumentProcessingQueueSummary[];
+}
+
+export interface DocumentProcessingJobCounts {
+  total: number;
+  queued: number;
+  active: number;
+  failed: number;
+  terminal: number;
+}
+
+export interface DocumentProcessingProviderEvidencePacket {
+  packet: "document_processing_provider_readiness" | string;
+  posture: "op_authored_metadata_only" | string;
+  reviewOnly: true;
+  metadataOnly: true;
+  rawPrivateTextStored: false;
+  rawOcrTextStored: false;
+  rawOcrTextReturned: false;
+  providerPayloadsStored: false;
+  providerPayloadsReturned: false;
+  realProviderActivation: false;
+  retainedEvidenceFields: string[];
+  jobCounts: DocumentProcessingJobCounts;
+}
+
+export interface DocumentProcessingProviderReadiness {
+  kind: "ocr" | "ai" | "transcription" | "media" | string;
+  task: "ocr" | "classification" | "transcription" | "media" | string;
+  queueName: string;
+  status: "ready" | "disabled" | "reserved" | string;
+  reason?: string;
+  actionable: boolean;
+  providerStatus: "configured" | "disabled" | string;
+  providerReason?: string;
+  queueStatus: "configured" | "not_configured" | "reserved" | string;
+  queueReason?: string;
+  providerCount: number;
+  enabledProviderCount: number;
+  storageRequired: boolean;
+  storageConfigured?: boolean;
+  evidencePacket: DocumentProcessingProviderEvidencePacket;
+}
+
+export interface DocumentProcessingEvidencePacket {
+  packet: "document_processing_boundary" | string;
+  posture: "op_authored_metadata_only" | string;
+  status: string;
+  reason?: string;
+  reviewOnly: true;
+  metadataOnly: true;
+  rawPrivateTextStored: false;
+  rawOcrTextStored: false;
+  rawOcrTextReturned: false;
+  providerPayloadsStored: false;
+  providerPayloadsReturned: false;
+  realProviderActivation: false;
+  providerReadinessCounts: {
+    ready: number;
+    disabled: number;
+    reserved: number;
+    actionable: number;
+  };
+  jobCounts: DocumentProcessingJobCounts;
 }
 
 export interface DocumentProcessingLatestJob {
@@ -323,6 +387,8 @@ export interface DocumentProcessingWorkbenchResponse {
   status: "configured" | "disabled" | "available" | "unavailable" | string;
   reason?: string;
   providerStatus: DocumentProcessingProviderStatus[];
+  providerReadiness?: DocumentProcessingProviderReadiness[];
+  evidencePacket?: DocumentProcessingEvidencePacket;
   workerQueues: DocumentProcessingWorkerQueueStatus[];
   reservedQueues?: DocumentProcessingWorkerQueueStatus[];
   actionableTasks?: string[];

@@ -212,7 +212,21 @@ function startApi(env) {
 }
 
 function startWeb(env) {
-  return spawnLongLived("web", "pnpm", ["--filter", "@open-practice/web", "dev"], { env });
+  return spawnLongLived(
+    "web",
+    "pnpm",
+    [
+      "--filter",
+      "@open-practice/web",
+      "exec",
+      "next",
+      "dev",
+      "--webpack",
+      "--port",
+      env.WEB_PORT ?? "3000",
+    ],
+    { env },
+  );
 }
 
 async function runPlaywright(env, projects) {

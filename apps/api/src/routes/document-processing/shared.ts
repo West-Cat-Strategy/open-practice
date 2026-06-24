@@ -5,6 +5,8 @@ import type {
   DocumentTextExtractionRecord,
   JobLifecycleRecord,
   LegalResearchArtifactRecord,
+  OpenPracticeQueueName,
+  ProviderSettingKind,
   ProviderSettingRecord,
 } from "@open-practice/domain";
 import {
@@ -15,7 +17,7 @@ import {
 import type { OpenPracticeRepository } from "@open-practice/database";
 import { requireAccess } from "../../http/auth-guards.js";
 import type { ApiAuthContext } from "../../server.js";
-import { providerStatus } from "../job-status.js";
+import { providerStatus, type WorkerQueueStatus } from "../job-status.js";
 import type { ApiRouteDependencies } from "../types.js";
 
 export const idParamsSchema = z.object({ id: z.string().min(1) });
@@ -166,6 +168,260 @@ export interface DocumentConversionReviewSummary {
   providerStatus?: string;
   counts?: DocumentConversionReviewCounts;
   policy: typeof documentConversionReviewPolicy;
+}
+
+export type DocumentProcessingProviderReadinessKind = "ocr" | "ai" | "transcription" | "media";
+
+export type DocumentProcessingProviderReadinessStatus = "ready" | "disabled" | "reserved";
+
+export type DocumentProcessingProviderReadinessReason =
+  | "deferred_worker"
+  | "not_configured"
+  | "provider_disabled"
+  | "queue_not_configured"
+  | "storage_not_configured";
+
+export interface DocumentProcessingJobCounts {
+  total: number;
+  queued: number;
+  active: number;
+  failed: number;
+  terminal: number;
+}
+
+export interface DocumentProcessingProviderEvidencePacket {
+  packet: "document_processing_provider_readiness";
+  posture: typeof documentConversionReviewSummaryPosture;
+  reviewOnly: true;
+  metadataOnly: true;
+  rawPrivateTextStored: false;
+  rawOcrTextStored: false;
+  rawOcrTextReturned: false;
+  providerPayloadsStored: false;
+  providerPayloadsReturned: false;
+  realProviderActivation: false;
+  retainedEvidenceFields: string[];
+  jobCounts: DocumentProcessingJobCounts;
+}
+
+export interface DocumentProcessingProviderReadiness {
+  kind: DocumentProcessingProviderReadinessKind;
+  task: "ocr" | "classification" | "transcription" | "media";
+  queueName: OpenPracticeQueueName;
+  status: DocumentProcessingProviderReadinessStatus;
+  reason?: DocumentProcessingProviderReadinessReason;
+  actionable: boolean;
+  providerStatus: "configured" | "disabled";
+  providerReason?: "provider_disabled" | "not_configured";
+  queueStatus: WorkerQueueStatus["status"];
+  queueReason?: "queue_not_configured" | "deferred_worker";
+  providerCount: number;
+  enabledProviderCount: number;
+  storageRequired: boolean;
+  storageConfigured?: boolean;
+  evidencePacket: DocumentProcessingProviderEvidencePacket;
+}
+
+export interface DocumentProcessingEvidencePacket {
+  packet: "document_processing_boundary";
+  posture: typeof documentConversionReviewSummaryPosture;
+  status: string;
+  reason?: string;
+  reviewOnly: true;
+  metadataOnly: true;
+  rawPrivateTextStored: false;
+  rawOcrTextStored: false;
+  rawOcrTextReturned: false;
+  providerPayloadsStored: false;
+  providerPayloadsReturned: false;
+  realProviderActivation: false;
+  providerReadinessCounts: {
+    ready: number;
+    disabled: number;
+    reserved: number;
+    actionable: number;
+  };
+  jobCounts: DocumentProcessingJobCounts;
+}
+
+const documentProcessingProviderReadinessTasks = {
+  ocr: { task: "ocr", queueName: "ocr", actionable: true, storageRequired: true },
+  ai: {
+    task: "classification",
+    queueName: "ai_triage",
+    actionable: false,
+    storageRequired: false,
+  },
+  transcription: {
+    task: "transcription",
+    queueName: "transcription",
+    actionable: false,
+    storageRequired: false,
+  },
+  media: { task: "media", queueName: "media", actionable: false, storageRequired: false },
+} as const satisfies Record<
+  DocumentProcessingProviderReadinessKind,
+  {
+    task: "ocr" | "classification" | "transcription" | "media";
+    queueName: OpenPracticeQueueName;
+    actionable: boolean;
+    storageRequired: boolean;
+  }
+>;
+
+const retainedEvidenceFields = [
+  "provider_kind",
+  "provider_key",
+  "provider_enabled",
+  "provider_updated_at",
+  "queue_status",
+  "task_status",
+  "job_counts",
+  "policy_flags",
+];
+
+function isDocumentProcessingProviderReadinessKind(
+  value: ProviderSettingKind,
+): value is DocumentProcessingProviderReadinessKind {
+  return value === "ocr" || value === "ai" || value === "transcription" || value === "media";
+}
+
+function isTerminalJobStatus(status: JobLifecycleRecord["status"]): boolean {
+  return status === "completed" || status === "dead_letter" || status === "skipped";
+}
+
+function documentProcessingJobCounts(records: JobLifecycleRecord[]): DocumentProcessingJobCounts {
+  return {
+    total: records.length,
+    queued: records.filter((record) => record.status === "queued").length,
+    active: records.filter((record) => record.status === "active").length,
+    failed: records.filter(
+      (record) => record.status === "failed" || record.status === "dead_letter",
+    ).length,
+    terminal: records.filter((record) => isTerminalJobStatus(record.status)).length,
+  };
+}
+
+function readinessReason(input: {
+  providerState: ReturnType<typeof providerStatus>;
+  queue?: WorkerQueueStatus;
+  task: (typeof documentProcessingProviderReadinessTasks)[DocumentProcessingProviderReadinessKind];
+  storageConfigured: boolean;
+}): {
+  status: DocumentProcessingProviderReadinessStatus;
+  reason?: DocumentProcessingProviderReadinessReason;
+} {
+  if (!input.task.actionable || input.queue?.status === "reserved") {
+    return { status: "reserved", reason: "deferred_worker" };
+  }
+  if (input.providerState.status !== "configured") {
+    return {
+      status: "disabled",
+      reason:
+        input.providerState.reason === "provider_disabled" ? "provider_disabled" : "not_configured",
+    };
+  }
+  if (input.queue?.status !== "configured") {
+    return { status: "disabled", reason: "queue_not_configured" };
+  }
+  if (input.task.storageRequired && !input.storageConfigured) {
+    return { status: "disabled", reason: "storage_not_configured" };
+  }
+  return { status: "ready" };
+}
+
+export function buildDocumentProcessingProviderReadiness(input: {
+  providerStates: Array<ReturnType<typeof providerStatus>>;
+  workerQueues: WorkerQueueStatus[];
+  jobs: JobLifecycleRecord[];
+  storageConfigured: boolean;
+}): DocumentProcessingProviderReadiness[] {
+  return input.providerStates
+    .filter(
+      (
+        state,
+      ): state is ReturnType<typeof providerStatus> & {
+        kind: DocumentProcessingProviderReadinessKind;
+      } => isDocumentProcessingProviderReadinessKind(state.kind),
+    )
+    .map((providerState) => {
+      const task = documentProcessingProviderReadinessTasks[providerState.kind];
+      const queue = input.workerQueues.find((candidate) => candidate.queueName === task.queueName);
+      const reason = readinessReason({
+        providerState,
+        queue,
+        task,
+        storageConfigured: input.storageConfigured,
+      });
+      const queueJobs = input.jobs.filter((job) => job.queueName === task.queueName);
+      const enabledProviderCount = providerState.providers.filter(
+        (provider) => provider.enabled,
+      ).length;
+      const providerReason =
+        providerState.reason === "provider_disabled" || providerState.reason === "not_configured"
+          ? providerState.reason
+          : undefined;
+
+      return {
+        kind: providerState.kind,
+        task: task.task,
+        queueName: task.queueName,
+        status: reason.status,
+        ...(reason.reason ? { reason: reason.reason } : {}),
+        actionable: task.actionable,
+        providerStatus: providerState.status === "configured" ? "configured" : "disabled",
+        ...(providerReason ? { providerReason } : {}),
+        queueStatus: queue?.status ?? "not_configured",
+        ...(queue?.reason ? { queueReason: queue.reason } : {}),
+        providerCount: providerState.providers.length,
+        enabledProviderCount,
+        storageRequired: task.storageRequired,
+        ...(task.storageRequired ? { storageConfigured: input.storageConfigured } : {}),
+        evidencePacket: {
+          packet: "document_processing_provider_readiness",
+          posture: documentConversionReviewSummaryPosture,
+          reviewOnly: true,
+          metadataOnly: true,
+          rawPrivateTextStored: false,
+          rawOcrTextStored: false,
+          rawOcrTextReturned: false,
+          providerPayloadsStored: false,
+          providerPayloadsReturned: false,
+          realProviderActivation: false,
+          retainedEvidenceFields,
+          jobCounts: documentProcessingJobCounts(queueJobs),
+        },
+      };
+    });
+}
+
+export function buildDocumentProcessingEvidencePacket(input: {
+  status: string;
+  reason?: string;
+  readiness: DocumentProcessingProviderReadiness[];
+  jobs: JobLifecycleRecord[];
+}): DocumentProcessingEvidencePacket {
+  return {
+    packet: "document_processing_boundary",
+    posture: documentConversionReviewSummaryPosture,
+    status: input.status,
+    ...(input.reason ? { reason: input.reason } : {}),
+    reviewOnly: true,
+    metadataOnly: true,
+    rawPrivateTextStored: false,
+    rawOcrTextStored: false,
+    rawOcrTextReturned: false,
+    providerPayloadsStored: false,
+    providerPayloadsReturned: false,
+    realProviderActivation: false,
+    providerReadinessCounts: {
+      ready: input.readiness.filter((item) => item.status === "ready").length,
+      disabled: input.readiness.filter((item) => item.status === "disabled").length,
+      reserved: input.readiness.filter((item) => item.status === "reserved").length,
+      actionable: input.readiness.filter((item) => item.actionable).length,
+    },
+    jobCounts: documentProcessingJobCounts(input.jobs),
+  };
 }
 
 export function assertDocumentProcessingAccess(

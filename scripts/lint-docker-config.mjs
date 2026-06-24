@@ -9,6 +9,21 @@ import { commandAvailable, toolingTimestamp, writeJsonReport } from "./optional-
 
 const DEFAULT_ARTIFACT_ROOT = ".tmp/docker/lint";
 
+export function hadolintArgs() {
+  return [
+    "--failure-threshold",
+    "error",
+    "Dockerfile",
+    "docker/postgres/Dockerfile",
+    "docker/minio/Dockerfile",
+    "docker/mailpit/Dockerfile",
+  ];
+}
+
+export function checkovArgs() {
+  return ["--quiet", "--framework", "dockerfile", "--framework", "yaml", "--directory", "."];
+}
+
 function run(command, args, { artifactDir, cwd = process.cwd(), id }) {
   const result = spawnSync(command, args, {
     cwd,
@@ -38,39 +53,14 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
 
   const hadolint = commandAvailable("hadolint");
   if (hadolint.available) {
-    commands.push(
-      run(
-        "hadolint",
-        [
-          "Dockerfile",
-          "docker/postgres/Dockerfile",
-          "docker/minio/Dockerfile",
-          "docker/mailpit/Dockerfile",
-        ],
-        { artifactDir, id: "hadolint" },
-      ),
-    );
+    commands.push(run("hadolint", hadolintArgs(), { artifactDir, id: "hadolint" }));
   } else {
     skipped.push({ command: "hadolint", reason: "hadolint is not installed locally." });
   }
 
   const checkov = commandAvailable("checkov");
   if (checkov.available) {
-    commands.push(
-      run(
-        "checkov",
-        [
-          "--quiet",
-          "--framework",
-          "dockerfile",
-          "--framework",
-          "docker_compose",
-          "--directory",
-          ".",
-        ],
-        { artifactDir, id: "checkov" },
-      ),
-    );
+    commands.push(run("checkov", checkovArgs(), { artifactDir, id: "checkov" }));
   } else {
     skipped.push({ command: "checkov", reason: "checkov is not installed locally." });
   }

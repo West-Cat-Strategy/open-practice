@@ -19,6 +19,7 @@ import type {
   ImapSettings,
   MatterSummary,
   PracticeOverview,
+  ProvidersStatusResponse,
   SessionResponse,
   SetupStatusResponse,
   StaffReportingWorkspaceResponse,
@@ -39,6 +40,7 @@ export interface AdminReadinessSummary {
   access: AdminReadinessItem[];
   portability: AdminReadinessItem[];
   operations: AdminReadinessItem[];
+  providers: AdminReadinessItem[];
 }
 
 function roleLabel(role: SessionResponse["user"]["role"]): string {
@@ -61,10 +63,143 @@ function setupStatusDetail(setupStatus: SetupStatusResponse): string {
   return "First-run setup is complete; owner changes still need explicit staff workflows.";
 }
 
+function compactPosture(value?: string): string {
+  return value ? value.replaceAll("_", " ") : "none";
+}
+
+function compactPostureWithReason(status?: string, reason?: string): string {
+  const statusLabel = compactPosture(status);
+  const reasonLabel = reason ? compactPosture(reason) : undefined;
+  if (!reasonLabel || reasonLabel === statusLabel) return statusLabel;
+  return `${statusLabel}: ${reasonLabel}`;
+}
+
+type ProviderQueue = ProvidersStatusResponse["bullmq"]["workerQueues"][number];
+
+function queuePosture(queue?: ProviderQueue): string {
+  return compactPostureWithReason(queue?.status, queue?.reason);
+}
+
+function servicePosture(service: { status: string; provider?: string; reason?: string }): string {
+  const posture = compactPostureWithReason(service.status, service.reason);
+  if (!service.provider) return posture;
+  if (service.status === "configured" && !service.reason) return compactPosture(service.provider);
+  return `${posture} · ${compactPosture(service.provider)}`;
+}
+
+function summarizeReadinessCues(items: string[], emptyDetail: string): string {
+  if (items.length === 0) return emptyDetail;
+  const visibleItems = items.slice(0, 4);
+  const hiddenCount = items.length - visibleItems.length;
+  return `${visibleItems.join("; ")}${hiddenCount > 0 ? `; ${hiddenCount} more` : ""}.`;
+}
+
+function buildProviderReadinessItems(status: ProvidersStatusResponse): AdminReadinessItem[] {
+  const emailQueue = status.email.queue;
+  const ocrQueue = status.documentProcessing.workerQueues.find(
+    (queue) => queue.queueName === "ocr",
+  );
+  const activeOrQueuedJobs = status.jobs.summary.queued + status.jobs.summary.active;
+  const optionalProviderKinds = new Set([
+    "ai",
+    "inbound_email",
+    "media",
+    "public_intake",
+    "transcription",
+  ]);
+  const requiredBlockers = [
+    status.objectStorage.status !== "configured"
+      ? `object storage ${compactPostureWithReason(status.objectStorage.status, status.objectStorage.reason)}`
+      : undefined,
+    status.externalUploads.tokenSigning !== "configured"
+      ? `share token signing ${compactPostureWithReason(status.externalUploads.tokenSigning, status.externalUploads.reason)}`
+      : undefined,
+    status.email.status !== "configured"
+      ? `outbound email ${servicePosture(status.email)}`
+      : undefined,
+    emailQueue?.status !== "configured" ? `email queue ${queuePosture(emailQueue)}` : undefined,
+    status.documentProcessing.status !== "configured"
+      ? `document processing ${compactPostureWithReason(status.documentProcessing.status, status.documentProcessing.reason)}`
+      : undefined,
+    ocrQueue?.status !== "configured" ? `OCR queue ${queuePosture(ocrQueue)}` : undefined,
+  ].filter((item): item is string => Boolean(item));
+  const disabledProviderSettings = status.providerSettings.flatMap((setting) =>
+    optionalProviderKinds.has(setting.kind)
+      ? setting.providers
+          .filter((provider) => !provider.enabled)
+          .map(
+            (provider) =>
+              `${compactPosture(setting.kind)} ${compactPostureWithReason(
+                setting.status,
+                provider.disabledReason ?? setting.reason ?? "provider_disabled",
+              )} · ${compactPosture(provider.key)}`,
+          )
+      : [],
+  );
+  const optionalDisabled = [
+    status.inboundEmail.status !== "configured"
+      ? `inbound email ${servicePosture(status.inboundEmail)}`
+      : undefined,
+    status.draftAssist.status !== "configured"
+      ? `draft assist ${servicePosture(status.draftAssist)}`
+      : undefined,
+    ...(status.bullmq.reservedWorkerQueues ?? []).map((queue) =>
+      queue.status === "reserved"
+        ? `${compactPosture(queue.queueName)} reserved for ${compactPosture(queue.task)}`
+        : `${compactPosture(queue.queueName)} ${queuePosture(queue)}`,
+    ),
+    ...disabledProviderSettings,
+  ].filter((item): item is string => Boolean(item));
+  const watchItems = [
+    `live health ${compactPostureWithReason(status.liveHealth.status, status.liveHealth.reason)}`,
+    status.jobs.summary.failed > 0
+      ? `${status.jobs.summary.failed} failed provider jobs`
+      : undefined,
+    activeOrQueuedJobs > 0 ? `${activeOrQueuedJobs} active or queued provider jobs` : undefined,
+    status.bullmq.reservedWorkerQueues && status.bullmq.reservedWorkerQueues.length > 0
+      ? `${status.bullmq.reservedWorkerQueues.length} reserved worker queues`
+      : undefined,
+  ].filter((item): item is string => Boolean(item));
+
+  return [
+    {
+      key: "provider-required-blockers",
+      title: "Required provider blockers",
+      detail: summarizeReadinessCues(
+        requiredBlockers,
+        "Object storage, share token signing, outbound email, and OCR queue posture are configured.",
+      ),
+      status: requiredBlockers.length > 0 ? "blocked" : "ready",
+      tone: requiredBlockers.length > 0 ? "blocked" : "ready",
+    },
+    {
+      key: "provider-disabled-boundaries",
+      title: "Optional disabled boundaries",
+      detail: summarizeReadinessCues(
+        optionalDisabled,
+        "Optional provider boundaries do not show disabled posture in the loaded status.",
+      ),
+      status: optionalDisabled.length > 0 ? `${optionalDisabled.length} disabled` : "none",
+      tone: optionalDisabled.length > 0 ? "review" : "ready",
+    },
+    {
+      key: "provider-watch-items",
+      title: "Operator watch items",
+      detail: summarizeReadinessCues(
+        watchItems,
+        "No provider watch items were reported in the loaded read-only posture.",
+      ),
+      status: status.jobs.summary.failed > 0 ? "watch" : "read only",
+      tone: status.jobs.summary.failed > 0 ? "blocked" : "review",
+    },
+  ];
+}
+
 export function buildAdminReadinessSummary(input: {
   capabilities: CapabilitiesResponse;
   matters: MatterSummary[];
   overview: PracticeOverview;
+  providerStatus: ProvidersStatusResponse;
   reportingWorkspace: StaffReportingWorkspaceResponse;
   session: SessionResponse;
   setupStatus: SetupStatusResponse;
@@ -156,6 +291,7 @@ export function buildAdminReadinessSummary(input: {
         tone: input.workerHealth.status === "healthy" ? "ready" : "review",
       },
     ],
+    providers: buildProviderReadinessItems(input.providerStatus),
   };
 }
 
@@ -263,6 +399,7 @@ export function AdminReadinessSection({
   imapSettings,
   matters,
   overview,
+  providerStatus,
   reportingWorkspace,
   session,
   setupStatus,
@@ -275,6 +412,7 @@ export function AdminReadinessSection({
   imapSettings: ImapSettings;
   matters: MatterSummary[];
   overview: PracticeOverview;
+  providerStatus: ProvidersStatusResponse;
   reportingWorkspace: StaffReportingWorkspaceResponse;
   session: SessionResponse;
   setupStatus: SetupStatusResponse;
@@ -284,6 +422,7 @@ export function AdminReadinessSection({
     capabilities,
     matters,
     overview,
+    providerStatus,
     reportingWorkspace,
     session,
     setupStatus,
@@ -453,6 +592,12 @@ export function AdminReadinessSection({
         </div>
       </div>
       <ReadinessList items={summary.operations} />
+
+      <div className="section-title">
+        <h3>Provider readiness</h3>
+        <span>read-only posture · no toggles</span>
+      </div>
+      <ReadinessList items={summary.providers} />
 
       <div className="section-title">
         <h3>Email settings</h3>

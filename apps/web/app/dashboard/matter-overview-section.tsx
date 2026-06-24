@@ -768,6 +768,7 @@ export function MatterOverviewSection({
                   {compactDate(email.lastAttemptAt ?? email.queuedAt)}
                 </small>
                 {email.failureSummary ? <small>{email.failureSummary}</small> : null}
+                <small>{state.detail}</small>
               </span>
               <em className={state.tone === "risk" ? "risk" : undefined}>{state.label}</em>
             </div>
@@ -830,6 +831,7 @@ export function MatterOverviewSection({
                   {latestEvent ? ` · ${latestEvent.eventType}` : ""}
                 </small>
                 {email.failureSummary ? <small>{email.failureSummary}</small> : null}
+                <small>{state.detail}</small>
               </span>
               <em className={state.tone === "risk" ? "risk" : undefined}>{state.label}</em>
             </div>

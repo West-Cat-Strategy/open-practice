@@ -398,6 +398,7 @@ describe("provider status route", () => {
             {
               key: "maildrop",
               enabled: false,
+              disabledReason: "provider_disabled",
               updatedAt: "2026-05-07T10:00:00.000Z",
             },
           ],

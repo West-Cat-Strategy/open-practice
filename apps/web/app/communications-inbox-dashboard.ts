@@ -4,6 +4,7 @@ import type {
   CommunicationsInboxMatterResponse,
   CommunicationsInboxOutboundDelivery,
 } from "./_features/communications/models";
+import { describeEmailDeliveryHandoff } from "./email-delivery-dashboard";
 import type { MatterSummary } from "./types";
 
 export function buildCommunicationsInboxPath(matterId: string): string {
@@ -12,12 +13,17 @@ export function buildCommunicationsInboxPath(matterId: string): string {
 
 export function describeCommunicationsDeliveryState(email: CommunicationsInboxOutboundDelivery): {
   label: string;
+  detail: string;
+  retryEligible: boolean;
   tone?: "risk";
 } {
-  if (email.status === "failed") return { label: "failed", tone: "risk" };
-  if (email.status === "sent") return { label: "sent" };
-  if (email.status === "sending") return { label: "sending" };
-  return { label: email.status.replaceAll("_", " ") };
+  const handoff = describeEmailDeliveryHandoff(email);
+  return {
+    label: handoff.label,
+    detail: handoff.detail,
+    retryEligible: handoff.retryEligible,
+    tone: handoff.tone,
+  };
 }
 
 export function describeCommunicationsHistoryState(item: CommunicationsChannelHistoryItem): {

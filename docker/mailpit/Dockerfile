@@ -31,6 +31,7 @@ LABEL org.opencontainers.image.title="Mailpit" \
 COPY --from=builder /mailpit /mailpit
 
 RUN apk add --no-cache tzdata \
+  && apk upgrade --no-cache libcrypto3 libssl3 \
   && addgroup -S mailpit \
   && adduser -S -D -H -u 10001 -G mailpit mailpit
 
