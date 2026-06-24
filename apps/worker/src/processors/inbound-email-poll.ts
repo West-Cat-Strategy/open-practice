@@ -7,6 +7,7 @@ import {
   parseImapProviderConfig,
   requireCompleteImapProviderConfig,
   serializeImapProviderConfig,
+  type ProviderEgressDnsResolver,
 } from "@open-practice/domain";
 import type { JobLifecycleRecord } from "@open-practice/domain";
 import type { OpenPracticeRepository } from "@open-practice/database";
@@ -17,6 +18,7 @@ import type {
   WorkerJobResult,
   WorkerS3Storage,
 } from "./types.js";
+import { assertProviderEgressAllowed } from "../provider-egress.js";
 
 const IMAP_RAW_MIME_SOURCE = "imap.mailbox_poll";
 const INBOUND_EMAIL_JOB_MAX_ATTEMPTS = 4;
@@ -211,6 +213,7 @@ export async function processInboundEmailPollJob(input: {
   s3: WorkerS3Storage;
   inboundEmailJobQueue?: WorkerJobQueue;
   imapMailboxPoller?: ImapMailboxPoller;
+  providerDnsResolver?: ProviderEgressDnsResolver;
 }): Promise<WorkerJobResult> {
   const { data, repository, s3 } = input;
   if (!input.inboundEmailJobQueue) {
@@ -236,6 +239,11 @@ export async function processInboundEmailPollJob(input: {
   const config = requireCompleteImapProviderConfig(
     parseImapProviderConfig(provider.encryptedConfig),
   );
+  await assertProviderEgressAllowed({
+    hostname: config.host,
+    resolver: input.providerDnsResolver,
+    label: "IMAP provider host",
+  });
   const poller = input.imapMailboxPoller ?? new ImapMailboxPoller();
   const poll = await poller.poll({
     config,

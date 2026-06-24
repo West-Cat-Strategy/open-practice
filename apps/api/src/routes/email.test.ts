@@ -4,7 +4,7 @@ import { InMemoryOpenPracticeRepository } from "@open-practice/database";
 import { serializeSmtpProviderConfig } from "@open-practice/domain";
 import type { ProfessionalRole, User } from "@open-practice/domain";
 import { registerEmailRoutes } from "./email.js";
-import type { ApiJobQueue } from "./types.js";
+import type { ApiJobQueue, ConnectorDnsResolver } from "./types.js";
 
 const servers: FastifyInstance[] = [];
 const emailJobQueue = {
@@ -35,6 +35,7 @@ function testServer(input: {
   emailJobQueue?: ApiJobQueue;
   jwtSecret?: string;
   publicWebBaseUrl?: string;
+  connectorDnsResolver?: ConnectorDnsResolver;
 }): FastifyInstance {
   const server = Fastify({ logger: false });
   const authUser = input.authUser ?? user("owner_admin", ["matter-001", "matter-002"]);
@@ -46,6 +47,7 @@ function testServer(input: {
     emailJobQueue: input.emailJobQueue ?? emailJobQueue,
     jwtSecret: input.jwtSecret,
     publicWebBaseUrl: input.publicWebBaseUrl,
+    connectorDnsResolver: input.connectorDnsResolver ?? (async () => ["203.0.113.10"]),
   });
   servers.push(server);
   return server;
@@ -126,6 +128,59 @@ describe("email routes", () => {
     expect(getResponse.statusCode).toBe(200);
     expect(getResponse.body).not.toContain("smtp-secret");
     expect(getResponse.json().settings.passwordConfigured).toBe(true);
+  });
+
+  it("rejects SMTP settings for unsafe provider egress hosts", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const response = await testServer({ repository }).inject({
+      method: "PUT",
+      url: "/api/email/settings",
+      payload: {
+        enabled: true,
+        host: "127.0.0.1",
+        port: 587,
+        secure: false,
+        username: "mailer@example.test",
+        password: "smtp-secret",
+        fromAddress: "Open Practice <no-reply@example.test>",
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      code: "SMTP_SETTINGS_EGRESS_DENIED",
+    });
+    await expect(
+      repository.listProviderSettings("firm-west-legal", { kind: "smtp" }),
+    ).resolves.toHaveLength(0);
+  });
+
+  it("rejects SMTP settings when DNS resolves to unsafe infrastructure", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const response = await testServer({
+      repository,
+      connectorDnsResolver: async () => ["10.0.0.5"],
+    }).inject({
+      method: "PUT",
+      url: "/api/email/settings",
+      payload: {
+        enabled: true,
+        host: "smtp.example.test",
+        port: 587,
+        secure: false,
+        username: "mailer@example.test",
+        password: "smtp-secret",
+        fromAddress: "Open Practice <no-reply@example.test>",
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      code: "SMTP_SETTINGS_EGRESS_DENIED",
+    });
+    await expect(
+      repository.listProviderSettings("firm-west-legal", { kind: "smtp" }),
+    ).resolves.toHaveLength(0);
   });
 
   it("preserves the SMTP password when settings are updated without a replacement", async () => {
@@ -812,9 +867,9 @@ describe("email routes", () => {
     expect(confirmation.headers["cache-control"]).toBe("no-store");
     expect(confirmation.headers["content-type"]).toContain("text/html");
     expect(confirmation.body).toContain("Email Receipt Confirmation");
-    expect(confirmation.body).toContain(
-      `form method="post" action="/api/portal/email-receipts/${receiptToken}"`,
-    );
+    expect(confirmation.body).toContain(`form method="post" action="/api/portal/email-receipts"`);
+    expect(confirmation.body).toContain(`name="token" value="${receiptToken}"`);
+    expect(confirmation.body).not.toContain(`action="/api/portal/email-receipts/${receiptToken}"`);
     expect(confirmation.body).not.toContain(stored.id);
     expect(confirmation.body).not.toContain("matter-001");
     expect(confirmation.body).not.toContain("client@example.test");
@@ -838,7 +893,10 @@ describe("email routes", () => {
     expect(legacyConfirmation.headers["cache-control"]).toBe("no-store");
     expect(legacyConfirmation.headers["content-type"]).toContain("text/html");
     expect(legacyConfirmation.body).toContain(
-      `form method="post" action="/api/portal/mail/receipts/${receiptToken}"`,
+      `form method="post" action="/api/portal/mail/receipts"`,
+    );
+    expect(legacyConfirmation.body).not.toContain(
+      `action="/api/portal/mail/receipts/${receiptToken}"`,
     );
     const [receiptTokenAfterLegacyGet] = await repository.listEmailReceiptTokens(
       "firm-west-legal",
@@ -848,7 +906,8 @@ describe("email routes", () => {
 
     const recorded = await server.inject({
       method: "POST",
-      url: `/api/portal/email-receipts/${receiptToken}`,
+      url: "/api/portal/email-receipts",
+      payload: { token: receiptToken },
     });
     expect(recorded.statusCode).toBe(200);
     expect(recorded.json()).toMatchObject({
@@ -861,7 +920,8 @@ describe("email routes", () => {
 
     const replay = await server.inject({
       method: "POST",
-      url: `/api/portal/email-receipts/${receiptToken}`,
+      url: "/api/portal/email-receipts",
+      payload: { token: receiptToken },
     });
     expect(replay.statusCode).toBe(200);
     expect(replay.json()).toMatchObject({

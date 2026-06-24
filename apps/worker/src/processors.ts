@@ -6,6 +6,7 @@ import type {
   MailSender,
   OcrProvider,
   OpenPracticeQueueName,
+  ProviderEgressDnsResolver,
 } from "@open-practice/domain";
 import { IMAP_POLL_JOB_NAME } from "@open-practice/domain";
 import type { OpenPracticeRepository } from "@open-practice/database";
@@ -77,6 +78,7 @@ export async function processOpenPracticeJob(input: {
   connectorSecretResolver?: ConnectorSecretResolver;
   connectorHttpDeliverer?: ConnectorHttpDeliverer;
   connectorDnsResolver?: ConnectorDnsResolver;
+  providerDnsResolver?: ProviderEgressDnsResolver;
   connectorJobQueue?: WorkerJobQueue;
   automationProvider?: DocumentAutomationProvider;
   inboundEmailJobQueue?: WorkerJobQueue;
@@ -133,6 +135,7 @@ async function processOpenPracticeJobBody(input: {
   connectorSecretResolver?: ConnectorSecretResolver;
   connectorHttpDeliverer?: ConnectorHttpDeliverer;
   connectorDnsResolver?: ConnectorDnsResolver;
+  providerDnsResolver?: ProviderEgressDnsResolver;
   connectorJobQueue?: WorkerJobQueue;
   automationProvider?: DocumentAutomationProvider;
   inboundEmailJobQueue?: WorkerJobQueue;

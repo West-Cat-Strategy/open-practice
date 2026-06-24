@@ -207,7 +207,6 @@ function publicGuestSessionResponse(input: {
 }) {
   const expired =
     input.link.status !== "revoked" && Date.parse(input.link.expiresAt) <= Date.parse(input.now);
-  const counts = guestCounts(input.links);
   const sessionStatus = expired ? "expired" : sessionStatusForResponse(input.session);
   const guestStatus = expired ? "revoked" : input.link.status;
   const meetingAccessStatus =
@@ -225,7 +224,6 @@ function publicGuestSessionResponse(input: {
       lobbyStatus: sessionStatus,
       startsAt: input.event.startsAt,
       endsAt: input.event.endsAt,
-      ...counts,
     },
     guest: {
       status: guestStatus,
@@ -236,10 +234,6 @@ function publicGuestSessionResponse(input: {
     },
     lobby: {
       status: sessionStatus,
-      waitingCount: counts.waitingCount,
-      admittedCount: counts.admittedCount,
-      deniedCount: counts.deniedCount,
-      revokedCount: counts.revokedCount,
     },
     meetingAccess: {
       status: meetingAccessStatus,

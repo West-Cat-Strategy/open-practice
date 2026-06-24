@@ -21,6 +21,22 @@ const publicReceiptParamsSchema = z.object({
   token: z.string().min(32),
 });
 
+const publicReceiptBodySchema = z.object({
+  token: z.string().min(32).optional(),
+});
+
+function registerReceiptUrlEncodedParser(server: FastifyInstance): void {
+  if (server.hasContentTypeParser("application/x-www-form-urlencoded")) return;
+  server.addContentTypeParser(
+    "application/x-www-form-urlencoded",
+    { parseAs: "string" },
+    (_request, payload, done) => {
+      const form = new URLSearchParams(typeof payload === "string" ? payload : payload.toString());
+      done(null, Object.fromEntries(form.entries()));
+    },
+  );
+}
+
 function escapeReceiptPageHtml(value: string): string {
   return value
     .replaceAll("&", "&amp;")
@@ -29,15 +45,20 @@ function escapeReceiptPageHtml(value: string): string {
     .replaceAll('"', "&quot;");
 }
 
-function buildReceiptActionPath(routeUrl: string | undefined, token: string): string {
+function buildReceiptActionPath(routeUrl: string | undefined): string {
   const basePath = routeUrl?.includes("/api/portal/mail/receipts/")
     ? "/api/portal/mail/receipts"
     : "/api/portal/email-receipts";
-  return `${basePath}/${encodeURIComponent(token)}`;
+  return basePath;
 }
 
-function renderReceiptConfirmationPage(input: { actionPath: string; alreadyRecorded: boolean }) {
+function renderReceiptConfirmationPage(input: {
+  actionPath: string;
+  token: string;
+  alreadyRecorded: boolean;
+}) {
   const actionPath = escapeReceiptPageHtml(input.actionPath);
+  const token = escapeReceiptPageHtml(input.token);
   const message = input.alreadyRecorded
     ? "This email receipt has already been confirmed."
     : "Confirm that this email was received.";
@@ -53,6 +74,7 @@ function renderReceiptConfirmationPage(input: { actionPath: string; alreadyRecor
       <h1>Email Receipt Confirmation</h1>
       <p>${message}</p>
       <form method="post" action="${actionPath}" autocomplete="off">
+        <input type="hidden" name="token" value="${token}">
         <button type="submit">Confirm Receipt</button>
       </form>
     </main>
@@ -64,6 +86,8 @@ export function registerEmailReceiptRoutes(
   server: FastifyInstance,
   { repository, jwtSecret }: EmailReceiptRouteDependencies,
 ): void {
+  registerReceiptUrlEncodedParser(server);
+
   const readReceiptToken = async (
     request: FastifyRequest,
   ): Promise<{
@@ -73,11 +97,15 @@ export function registerEmailReceiptRoutes(
   }> => {
     const secret = requireReceiptSecret(jwtSecret);
     const routeParams = request.params as { token?: string } | undefined;
+    const body = publicReceiptBodySchema.safeParse(request.body ?? {});
+    const headerToken = publicTokenPathFromHeader(readPublicTokenHeader(request.headers));
     const params = parseRequestPart(
       publicReceiptParamsSchema,
       routeParams?.token
         ? routeParams
-        : publicTokenPathFromHeader(readPublicTokenHeader(request.headers)),
+        : body.success && body.data.token
+          ? { token: body.data.token }
+          : headerToken,
       "params",
     );
     const tokenHash = hashToken(params.token, secret);
@@ -97,7 +125,8 @@ export function registerEmailReceiptRoutes(
     const { token, receiptToken } = await readReceiptToken(request);
     return reply.type("text/html; charset=utf-8").send(
       renderReceiptConfirmationPage({
-        actionPath: buildReceiptActionPath(request.routeOptions.url, token),
+        actionPath: buildReceiptActionPath(request.routeOptions.url),
+        token,
         alreadyRecorded: Boolean(receiptToken.recordedAt),
       }),
     );

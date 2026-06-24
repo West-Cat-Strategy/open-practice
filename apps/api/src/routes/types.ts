@@ -56,6 +56,7 @@ export interface ProviderAdapterPorts {
 export interface ApiRouteDependencies extends ProviderAdapterPorts {
   repository: OpenPracticeRepository;
   publicWebBaseUrl?: string;
+  publicApiBaseUrl?: string;
   meetingLinks?: {
     providerKey: string;
     hostedMeetingBaseUrl?: string;

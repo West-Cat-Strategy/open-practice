@@ -189,6 +189,7 @@ export const envSchema = z.object({
   WEBAUTHN_RP_ID: z.string().default("localhost"),
   WEBAUTHN_ORIGIN: z.string().default("http://localhost:3000"),
   PUBLIC_WEB_BASE_URL: optionalUrl,
+  OPEN_PRACTICE_PUBLIC_API_ORIGIN: optionalUrl,
   WEBRTC_MEETING_PROVIDER_KEY: optionalString,
   WEBRTC_MEETING_BASE_URL: optionalUrl,
   STRIPE_SECRET_KEY: optionalString,
@@ -246,6 +247,7 @@ interface ApiOptions {
   ocrJobQueue?: ApiJobQueue;
   sessionTtlHours?: number;
   publicWebBaseUrl?: string;
+  publicApiBaseUrl?: string;
   publicConsultationIntake?: {
     allowedOrigins?: string[];
     firmId: string;
@@ -330,6 +332,9 @@ export function validateProductionReadiness(env: ApiEnv): void {
   }
   if (!env.OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY) {
     throw new Error("OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY is required in production");
+  }
+  if (!env.OPEN_PRACTICE_PUBLIC_API_ORIGIN) {
+    throw new Error("OPEN_PRACTICE_PUBLIC_API_ORIGIN is required in production");
   }
   if (
     env.S3_ENDPOINT &&
@@ -624,6 +629,7 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
     emailJobQueue: options.emailJobQueue,
     jwtSecret: options.jwtSecret,
     publicWebBaseUrl: options.publicWebBaseUrl,
+    publicApiBaseUrl: options.publicApiBaseUrl,
     meetingLinks: options.meetingLinks,
   });
   registerClientPortalRoutes(server, {
@@ -694,12 +700,14 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
     emailJobQueue: options.emailJobQueue,
     jwtSecret: options.jwtSecret,
     publicWebBaseUrl: options.publicWebBaseUrl,
+    connectorDnsResolver: options.connectorDnsResolver,
   });
   registerInboundEmailRoutes(server, {
     repository: options.repository,
     ocrJobQueue: options.ocrJobQueue,
     inboundEmailJobQueue: options.inboundEmailJobQueue,
     s3: options.s3,
+    connectorDnsResolver: options.connectorDnsResolver,
   });
   registerShareRoutes(server, {
     repository: options.repository,
@@ -1182,6 +1190,7 @@ if (process.env.NODE_ENV !== "test") {
     ocrJobQueue,
     sessionTtlHours: env.SESSION_TTL_HOURS,
     publicWebBaseUrl: env.PUBLIC_WEB_BASE_URL ?? env.WEBAUTHN_ORIGIN,
+    publicApiBaseUrl: env.OPEN_PRACTICE_PUBLIC_API_ORIGIN,
     publicConsultationIntake: {
       allowedOrigins: splitCsvEnv(env.PUBLIC_CONSULTATION_INTAKE_ALLOWED_ORIGINS),
       firmId: env.PUBLIC_CONSULTATION_INTAKE_FIRM_ID ?? env.DEV_AUTH_FIRM_ID,

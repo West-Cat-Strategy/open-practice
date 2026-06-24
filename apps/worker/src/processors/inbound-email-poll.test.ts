@@ -24,6 +24,7 @@ const pollRecoveryMetadata = {
   automaticDocumentPromotion: false,
   automaticMatterCreation: false,
 };
+const safeProviderDnsResolver = async () => ["203.0.113.10"];
 
 function fakeQueue(input: { rejectParser?: boolean } = {}) {
   const added: Array<{
@@ -101,6 +102,7 @@ describe("IMAP inbound email polling worker", () => {
       mailSender: {} as never,
       inboundEmailParser: {} as never,
       inboundEmailJobQueue: queue,
+      providerDnsResolver: safeProviderDnsResolver,
       imapMailboxPoller: {
         async poll() {
           return {
@@ -201,6 +203,7 @@ describe("IMAP inbound email polling worker", () => {
       mailSender: {} as never,
       inboundEmailParser: {} as never,
       inboundEmailJobQueue: queue,
+      providerDnsResolver: safeProviderDnsResolver,
       imapMailboxPoller: poller,
     };
 
@@ -228,6 +231,7 @@ describe("IMAP inbound email polling worker", () => {
         mailSender: {} as never,
         inboundEmailParser: {} as never,
         inboundEmailJobQueue: queue,
+        providerDnsResolver: safeProviderDnsResolver,
         imapMailboxPoller: {
           async poll() {
             return {
@@ -272,5 +276,38 @@ describe("IMAP inbound email polling worker", () => {
     });
     expect(parserJob?.metadata).not.toHaveProperty("rawStorageKey");
     expect(JSON.stringify(parserJob?.metadata)).not.toContain(".eml");
+  });
+
+  it("rejects unsafe IMAP provider DNS before opening the mailbox", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await enableImap(repository);
+    const { queue, added } = fakeQueue();
+    const { s3, puts } = fakeS3();
+    let pollCalled = false;
+
+    await expect(
+      processOpenPracticeJob({
+        queueName: "inbound_email",
+        jobName: IMAP_POLL_JOB_NAME,
+        data: { firmId: "firm-west-legal" },
+        repository,
+        s3,
+        ocrProvider: {} as never,
+        mailSender: {} as never,
+        inboundEmailParser: {} as never,
+        inboundEmailJobQueue: queue,
+        providerDnsResolver: async () => ["10.0.0.7"],
+        imapMailboxPoller: {
+          async poll() {
+            pollCalled = true;
+            return { uidValidity: 7, messages: [], nextState: {} };
+          },
+        } as never,
+      }),
+    ).rejects.toThrow("IMAP provider host failed egress guardrail validation");
+
+    expect(pollCalled).toBe(false);
+    expect(puts).toHaveLength(0);
+    expect(added).toHaveLength(0);
   });
 });

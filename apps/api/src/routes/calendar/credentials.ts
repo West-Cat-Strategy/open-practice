@@ -4,7 +4,7 @@ import type { CalendarCredentialRecord } from "@open-practice/domain";
 import { createSessionToken, hashPassword } from "../../http/auth-helpers.js";
 import { requireFreshAuth } from "../../http/fresh-auth.js";
 import { parseRequestPart } from "../../http/validation.js";
-import { baseUrl, recordCalendarAuditEvent } from "./shared.js";
+import { recordCalendarAuditEvent, trustedApiBaseUrl } from "./shared.js";
 import type { CalendarRouteDependencies } from "./shared.js";
 
 const calendarCredentialBodySchema = z.object({
@@ -30,7 +30,7 @@ export function registerCalendarCredentialRoutes(
   server: FastifyInstance,
   dependencies: CalendarRouteDependencies,
 ): void {
-  const { repository } = dependencies;
+  const { repository, publicApiBaseUrl } = dependencies;
 
   server.post("/api/calendar/credentials", async (request, reply) => {
     requireFreshAuth(request.auth);
@@ -62,13 +62,14 @@ export function registerCalendarCredentialRoutes(
       },
     });
 
+    const calendarBaseUrl = trustedApiBaseUrl(request, publicApiBaseUrl);
     return reply.code(201).send({
       credential: credentialResponse(credential),
       username,
       password,
-      caldavUrl: `${baseUrl(request)}/caldav`,
-      principalUrl: `${baseUrl(request)}/caldav/principals/${encodeURIComponent(username)}/`,
-      calendarHomeUrl: `${baseUrl(request)}/caldav/calendars/${encodeURIComponent(username)}/`,
+      caldavUrl: `${calendarBaseUrl}/caldav`,
+      principalUrl: `${calendarBaseUrl}/caldav/principals/${encodeURIComponent(username)}/`,
+      calendarHomeUrl: `${calendarBaseUrl}/caldav/calendars/${encodeURIComponent(username)}/`,
     });
   });
 

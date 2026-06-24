@@ -15,10 +15,16 @@ type RegisterEmailRouteOptions = ApiRouteDependencies & {
 
 export function registerEmailRoutes(
   server: FastifyInstance,
-  { repository, emailJobQueue, jwtSecret, publicWebBaseUrl }: RegisterEmailRouteOptions,
+  {
+    repository,
+    emailJobQueue,
+    jwtSecret,
+    publicWebBaseUrl,
+    connectorDnsResolver,
+  }: RegisterEmailRouteOptions,
 ): void {
   registerEmailStatusRoutes(server, { repository });
-  registerEmailSettingsRoutes(server, { repository });
+  registerEmailSettingsRoutes(server, { repository, connectorDnsResolver });
   registerEmailTemplateDraftRoutes(server, { repository });
   registerEmailOutboxRoutes(server, { repository, emailJobQueue, jwtSecret, publicWebBaseUrl });
   registerEmailReceiptRoutes(server, { repository, jwtSecret });

@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   buildOutboundWebhookTestDeliverySimulation,
   isDeniedOutboundWebhookAddress,
+  validateProviderEgressDns,
+  validateProviderEgressHost,
   validateOutboundWebhookDestination,
 } from "./outbound-webhooks.js";
 
@@ -60,6 +62,60 @@ describe("outbound webhook guardrails", () => {
     expect(isDeniedOutboundWebhookAddress("fec0::1")).toBe(true);
     expect(isDeniedOutboundWebhookAddress("203.0.113.10")).toBe(false);
     expect(isDeniedOutboundWebhookAddress("64:ff9b::cb00:710a")).toBe(false);
+  });
+
+  it("rejects provider egress hosts that point at local or internal infrastructure", () => {
+    expect(validateProviderEgressHost("smtp.example.test")).toEqual({
+      ok: true,
+      host: "smtp.example.test",
+    });
+    expect(validateProviderEgressHost("localhost")).toEqual({
+      ok: false,
+      reason: "private_network_denied",
+    });
+    expect(validateProviderEgressHost("169.254.169.254")).toEqual({
+      ok: false,
+      reason: "private_network_denied",
+    });
+    expect(validateProviderEgressHost("metadata.google.internal")).toEqual({
+      ok: false,
+      reason: "private_network_denied",
+    });
+    expect(validateProviderEgressHost("smtp.example.test/path")).toEqual({
+      ok: false,
+      reason: "invalid_host",
+    });
+    expect(validateProviderEgressHost("smtp.example.test:25")).toEqual({
+      ok: false,
+      reason: "invalid_host",
+    });
+  });
+
+  it("rejects provider egress DNS results that resolve to denied networks", async () => {
+    await expect(
+      validateProviderEgressDns({
+        hostname: "smtp.example.test",
+        resolver: async () => ["203.0.113.10"],
+      }),
+    ).resolves.toEqual({ ok: true });
+    await expect(
+      validateProviderEgressDns({
+        hostname: "smtp.example.test",
+        resolver: async () => ["10.0.0.5"],
+      }),
+    ).resolves.toEqual({ ok: false, reason: "private_network_denied" });
+    await expect(
+      validateProviderEgressDns({
+        hostname: "smtp.example.test",
+        resolver: async () => ["64:ff9b::0a00:0005"],
+      }),
+    ).resolves.toEqual({ ok: false, reason: "private_network_denied" });
+    await expect(
+      validateProviderEgressDns({
+        hostname: "smtp.example.test",
+        resolver: async () => [],
+      }),
+    ).resolves.toEqual({ ok: false, reason: "dns_resolution_failed" });
   });
 
   it("builds provider-neutral signing metadata without exposing a secret value", () => {

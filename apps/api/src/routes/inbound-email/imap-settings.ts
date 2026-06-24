@@ -10,6 +10,7 @@ import {
 import { ApiHttpError } from "../../http/response.js";
 import { parseRequestPart } from "../../http/validation.js";
 import { appendRouteAuditEvent } from "../audit-events.js";
+import { assertProviderEgressAllowed } from "../provider-egress.js";
 import { assertInboundEmailAccess, type InboundEmailRouteDependencies } from "./shared.js";
 import { enqueueImapMailboxPoll, serializeImapPollEnqueueResult } from "./imap-polling.js";
 
@@ -87,7 +88,7 @@ function providerId(firmId: string): string {
 
 export function registerInboundEmailImapSettingsRoutes(
   server: FastifyInstance,
-  { repository, inboundEmailJobQueue }: InboundEmailRouteDependencies,
+  { repository, inboundEmailJobQueue, connectorDnsResolver }: InboundEmailRouteDependencies,
 ): void {
   server.get("/api/inbound-email/settings/imap", async (request) => {
     assertInboundEmailAccess(request.auth, { resource: "provider_setting", action: "read" });
@@ -104,7 +105,17 @@ export function registerInboundEmailImapSettingsRoutes(
       await repository.listProviderSettings(request.auth.firmId, { kind: "inbound_email" })
     ).find((candidate) => candidate.key === IMAP_INBOUND_PROVIDER_KEY);
     const config = nextImapConfig({ existing, body });
-    if (body.enabled) assertEnabledImapConfigComplete(config);
+    if (body.enabled) {
+      assertEnabledImapConfigComplete(config);
+      const host = config.host;
+      if (!host) throw new ApiHttpError(400, "IMAP_SETTINGS_INCOMPLETE", "IMAP host is required.");
+      await assertProviderEgressAllowed({
+        hostname: host,
+        resolver: connectorDnsResolver,
+        code: "IMAP_SETTINGS_EGRESS_DENIED",
+        field: "IMAP host",
+      });
+    }
 
     const now = new Date().toISOString();
     const saved = await repository.upsertProviderSetting({
@@ -161,6 +172,14 @@ export function registerInboundEmailImapSettingsRoutes(
       );
     }
     assertEnabledImapConfigComplete(config);
+    const host = config.host;
+    if (!host) throw new ApiHttpError(400, "IMAP_SETTINGS_INCOMPLETE", "IMAP host is required.");
+    await assertProviderEgressAllowed({
+      hostname: host,
+      resolver: connectorDnsResolver,
+      code: "IMAP_SETTINGS_EGRESS_DENIED",
+      field: "IMAP host",
+    });
 
     const poll = await enqueueImapMailboxPoll({
       repository,

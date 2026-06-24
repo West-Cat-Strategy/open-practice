@@ -36,7 +36,7 @@ export function buildContentSecurityPolicy({
   const allowDevelopmentSources = !production || relaxed;
   const scriptSrc = allowDevelopmentSources
     ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
-    : "script-src 'self' 'unsafe-inline'";
+    : "script-src 'self'";
   const connectSrc = allowDevelopmentSources
     ? "connect-src 'self' http://localhost:* http://127.0.0.1:*"
     : "connect-src 'self'";

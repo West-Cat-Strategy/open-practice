@@ -3,15 +3,19 @@ import { z } from "zod";
 import { buildICalendarFeed } from "@open-practice/domain";
 import type { CalendarEventRecord } from "@open-practice/domain";
 import { parseRequestPart } from "../../http/validation.js";
-import { assertCalendarAccess } from "./shared.js";
+import { assertCalendarAccess, trustedApiBaseUrl } from "./shared.js";
 import type { CalendarRouteDependencies } from "./shared.js";
 
 const calendarFeedParamsSchema = z.object({
   matterId: z.string().min(1),
 });
 
-export function webcalSubscriptionUrl(request: FastifyRequest, matterId: string): string {
-  const host = request.headers.host ?? request.hostname;
+export function webcalSubscriptionUrl(
+  request: FastifyRequest,
+  matterId: string,
+  publicApiBaseUrl?: string,
+): string {
+  const host = new URL(trustedApiBaseUrl(request, publicApiBaseUrl)).host;
   return `webcal://${host}/api/calendar/matters/${encodeURIComponent(matterId)}.ics`;
 }
 

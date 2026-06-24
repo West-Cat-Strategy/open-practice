@@ -22,6 +22,22 @@ export type OutboundWebhookDestinationValidation =
       reason: "invalid_url" | "https_required" | "credentials_denied" | "private_network_denied";
     };
 
+export type ProviderEgressHostValidation =
+  | {
+      ok: true;
+      host: string;
+    }
+  | {
+      ok: false;
+      reason: "invalid_host" | "private_network_denied";
+    };
+
+export type ProviderEgressDnsValidation =
+  | { ok: true }
+  | { ok: false; reason: "dns_resolution_failed" | "private_network_denied" };
+
+export type ProviderEgressDnsResolver = (hostname: string) => Promise<string[]>;
+
 export interface OutboundWebhookSigningMetadata {
   algorithm: "hmac-sha256";
   signatureHeader: "x-open-practice-signature";
@@ -227,6 +243,47 @@ export function validateOutboundWebhookDestination(
     host: normalizedHost(parsed.hostname),
     port: parsed.port || undefined,
   };
+}
+
+export function validateProviderEgressHost(hostname: string): ProviderEgressHostValidation {
+  const trimmed = hostname.trim();
+  if (
+    !trimmed ||
+    trimmed.length > 255 ||
+    trimmed.includes(":") ||
+    /[/?#@\\]/.test(trimmed) ||
+    trimmed.includes("..")
+  ) {
+    return { ok: false, reason: "invalid_host" };
+  }
+
+  const host = normalizedHost(trimmed);
+  if (!host || host.includes("[") || host.includes("]")) {
+    return { ok: false, reason: "invalid_host" };
+  }
+  if (isPrivateOrInternalHost(host)) {
+    return { ok: false, reason: "private_network_denied" };
+  }
+  return { ok: true, host };
+}
+
+export async function validateProviderEgressDns(input: {
+  hostname: string;
+  resolver: ProviderEgressDnsResolver;
+}): Promise<ProviderEgressDnsValidation> {
+  let addresses: string[];
+  try {
+    addresses = await input.resolver(input.hostname);
+  } catch {
+    return { ok: false, reason: "dns_resolution_failed" };
+  }
+  if (addresses.length === 0) {
+    return { ok: false, reason: "dns_resolution_failed" };
+  }
+  if (addresses.some((address) => isDeniedOutboundWebhookAddress(address))) {
+    return { ok: false, reason: "private_network_denied" };
+  }
+  return { ok: true };
 }
 
 export function buildOutboundWebhookSigningMetadata(
