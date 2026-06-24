@@ -2,7 +2,7 @@ import rateLimit from "@fastify/rate-limit";
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
 import { InMemoryOpenPracticeRepository } from "@open-practice/database";
-import type { ProfessionalRole, User } from "@open-practice/domain";
+import type { DocumentScanStatus, ProfessionalRole, User } from "@open-practice/domain";
 import { authorizationFixtureCases } from "@open-practice/domain/authorization-fixtures";
 import { PUBLIC_TOKEN_HEADER, hashToken } from "../http/auth-helpers.js";
 import {
@@ -69,9 +69,13 @@ function testServer(input: {
   return server;
 }
 
-async function addShareableDocument(repository: InMemoryOpenPracticeRepository): Promise<void> {
+async function addDocumentWithScanStatus(
+  repository: InMemoryOpenPracticeRepository,
+  scanStatus: DocumentScanStatus = "passed",
+  documentId = "doc-shareable-001",
+): Promise<void> {
   await repository.createDocumentUploadIntent({
-    id: "doc-shareable-001",
+    id: documentId,
     firmId: "firm-west-legal",
     matterId: "matter-001",
     title: "Client disclosure.pdf",
@@ -82,10 +86,14 @@ async function addShareableDocument(repository: InMemoryOpenPracticeRepository):
   });
   await repository.completeDocumentUpload({
     firmId: "firm-west-legal",
-    documentId: "doc-shareable-001",
+    documentId,
     checksumSha256: "b8f3bcb433c2666c1f9f72d8c9f6f2bf792ee18f746375a42dbf17447275d4b2",
-    scanStatus: "passed",
+    scanStatus,
   });
+}
+
+async function addShareableDocument(repository: InMemoryOpenPracticeRepository): Promise<void> {
+  await addDocumentWithScanStatus(repository, "passed");
 }
 
 async function enableSmtp(repository: InMemoryOpenPracticeRepository): Promise<void> {
@@ -276,6 +284,68 @@ describe("share routes", () => {
     expect(ineligibleDocument.json()).toMatchObject({
       message: "No documents on this matter are eligible for portal sharing",
     });
+    expect(ineligibleDocument.body).not.toContain("matter-001");
+  });
+
+  it.each(["pending", "queued", "failed"] as const)(
+    "blocks %s malware-scan posture before creating document shares",
+    async (scanStatus) => {
+      const repository = new InMemoryOpenPracticeRepository();
+      await addDocumentWithScanStatus(repository, scanStatus, `doc-${scanStatus}`);
+      const server = testServer({ repository, authUser: user("licensee", ["matter-001"]) });
+
+      const response = await server.inject({
+        method: "POST",
+        url: "/api/shares",
+        payload: { matterId: "matter-001", permissions: ["view_documents"] },
+      });
+
+      expect(response.statusCode).toBe(422);
+      expect(response.json()).toMatchObject({
+        code: "NO_SHAREABLE_DOCUMENTS",
+        message: "No documents on this matter are eligible for portal sharing",
+      });
+      expect(response.body).not.toContain("matter-001");
+      expect(response.body).not.toContain("storageKey");
+      expect(response.body).not.toContain(
+        "b8f3bcb433c2666c1f9f72d8c9f6f2bf792ee18f746375a42dbf17447275d4b2",
+      );
+      await expect(
+        repository.listShareLinks("firm-west-legal", { matterId: "matter-001" }),
+      ).resolves.toEqual([]);
+    },
+  );
+
+  it("allows not_required malware-scan posture for document shares", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await addDocumentWithScanStatus(repository, "not_required", "doc-not-required");
+    const authedServer = testServer({ repository, authUser: user("licensee", ["matter-001"]) });
+
+    const created = await authedServer.inject({
+      method: "POST",
+      url: "/api/shares",
+      payload: { matterId: "matter-001", permissions: ["view_documents"] },
+    });
+
+    expect(created.statusCode).toBe(201);
+    expect(created.json()).toMatchObject({
+      share: { matterId: "matter-001", permissions: ["view_documents"] },
+    });
+    const publicServer = testServer({ repository, withAuthHook: false });
+    const response = await publicServer.inject({
+      method: "GET",
+      url: `/api/portal/shares/${created.json().token}`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      share: { id: created.json().share.id, permissions: ["view_documents"] },
+      documents: [expect.objectContaining({ id: "doc-not-required" })],
+    });
+    expect(response.body).not.toContain("scanStatus");
+    await expect(
+      repository.listShareLinks("firm-west-legal", { matterId: "matter-001" }),
+    ).resolves.toHaveLength(1);
   });
 
   it("queues optional share notifications while the raw token is available", async () => {
@@ -472,6 +542,52 @@ describe("share routes", () => {
     );
     expect(accessLogs.filter((log) => log.shareLinkId === created.json().share.id)).toHaveLength(2);
   });
+
+  it.each(["pending", "queued", "failed"] as const)(
+    "re-checks %s malware-scan posture on public share reads",
+    async (scanStatus) => {
+      const repository = new InMemoryOpenPracticeRepository();
+      await addShareableDocument(repository);
+      const authedServer = testServer({ repository });
+      const created = await authedServer.inject({
+        method: "POST",
+        url: "/api/shares",
+        payload: { matterId: "matter-001", permissions: ["view_documents"] },
+      });
+      expect(created.statusCode).toBe(201);
+      await repository.updateDocumentScanStatus({
+        firmId: "firm-west-legal",
+        documentId: "doc-shareable-001",
+        scanStatus,
+      });
+
+      const publicServer = testServer({ repository, withAuthHook: false });
+      const response = await publicServer.inject({
+        method: "GET",
+        url: `/api/portal/shares/${created.json().token}`,
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({
+        share: { id: created.json().share.id, permissions: ["view_documents"] },
+        documents: [],
+      });
+      expect(response.body).not.toContain("Client disclosure.pdf");
+      expect(response.body).not.toContain("storageKey");
+      expect(response.body).not.toContain("scanStatus");
+      await expect(repository.listAccessLogs("firm-west-legal")).resolves.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            shareLinkId: created.json().share.id,
+            resourceType: "share_link",
+            resourceId: created.json().share.id,
+            action: "view",
+            metadata: { outcome: "granted", documentCount: 0 },
+          }),
+        ]),
+      );
+    },
+  );
 
   it("rate-limits public share views without leaking token material", async () => {
     const repository = new InMemoryOpenPracticeRepository();

@@ -86,6 +86,30 @@ export function compactProviderStatus(value?: string): string {
   return value ? value.replaceAll("_", " ") : "none";
 }
 
+function compactProviderStatusWithReason(status?: string, reason?: string): string {
+  const label = compactProviderStatus(status);
+  const reasonLabel = reason ? compactProviderStatus(reason) : undefined;
+  if (!reasonLabel || reasonLabel === label) return label;
+  return `${label}: ${reasonLabel}`;
+}
+
+function compactQueueStatus(queue?: WorkerQueueStatus): string {
+  return compactProviderStatusWithReason(queue?.status, queue?.reason);
+}
+
+function compactServiceProviderStatus(service: {
+  status: string;
+  provider?: string;
+  reason?: string;
+}): string {
+  const posture = compactProviderStatusWithReason(service.status, service.reason);
+  if (!service.provider) return posture;
+  if (service.status === "configured" && !service.reason) {
+    return compactProviderStatus(service.provider);
+  }
+  return `${posture} · ${compactProviderStatus(service.provider)}`;
+}
+
 function configuredQueueCount(queues: WorkerQueueStatus[]): number {
   return queues.filter((queue) => queue.status === "configured").length;
 }
@@ -118,7 +142,7 @@ export function providerPostureRows(status: ProvidersStatusResponse): Array<{
       key: "email",
       label: "Outbound email",
       status: compactProviderStatus(status.email.status),
-      detail: `Provider ${compactProviderStatus(status.email.provider ?? status.email.reason)} · queue ${compactProviderStatus(emailQueue?.status)}`,
+      detail: `Provider ${compactServiceProviderStatus(status.email)} · queue ${compactQueueStatus(emailQueue)}`,
       tone:
         status.email.status === "configured" && emailQueue?.status === "configured"
           ? "ready"
@@ -128,14 +152,14 @@ export function providerPostureRows(status: ProvidersStatusResponse): Array<{
       key: "inbound-email",
       label: "Inbound email",
       status: compactProviderStatus(status.inboundEmail.status),
-      detail: `${status.inboundEmail.addresses?.length ?? 0} addresses · queue ${compactProviderStatus(inboundQueue?.status)}`,
+      detail: `${status.inboundEmail.addresses?.length ?? 0} addresses · provider ${compactServiceProviderStatus(status.inboundEmail)} · queue ${compactQueueStatus(inboundQueue)}`,
       tone: status.inboundEmail.status === "configured" ? "ready" : "neutral",
     },
     {
       key: "document-processing",
       label: "Document processing",
       status: compactProviderStatus(status.documentProcessing.status),
-      detail: `${compactProviderStatus(ocrQueue?.status)} OCR queue · ${status.documentProcessing.reservedQueues?.length ?? 0} reserved queues`,
+      detail: `${compactQueueStatus(ocrQueue)} OCR queue · ${status.documentProcessing.reservedQueues?.length ?? 0} reserved queues`,
       tone:
         status.documentProcessing.status === "configured" && ocrQueue?.status === "configured"
           ? "ready"
@@ -145,14 +169,14 @@ export function providerPostureRows(status: ProvidersStatusResponse): Array<{
       key: "external-uploads",
       label: "External uploads",
       status: compactProviderStatus(status.externalUploads.status),
-      detail: `Storage ${compactProviderStatus(status.externalUploads.s3)} · tokens ${compactProviderStatus(status.externalUploads.tokenSigning)}`,
+      detail: `Storage ${compactProviderStatusWithReason(status.externalUploads.s3, status.externalUploads.s3 === "configured" ? undefined : status.externalUploads.reason)} · tokens ${compactProviderStatusWithReason(status.externalUploads.tokenSigning, status.externalUploads.tokenSigning === "configured" ? undefined : status.externalUploads.reason)}`,
       tone: status.externalUploads.status === "available" ? "ready" : "risk",
     },
     {
       key: "draft-assist",
       label: "Draft assist",
       status: compactProviderStatus(status.draftAssist.status),
-      detail: `Provider ${compactProviderStatus(status.draftAssist.provider ?? status.draftAssist.reason)}`,
+      detail: `Provider ${compactServiceProviderStatus(status.draftAssist)}`,
       tone: status.draftAssist.status === "configured" ? "ready" : "neutral",
     },
   ];

@@ -29,15 +29,18 @@ pnpm security:review
 ```
 
 The packet writes ignored local evidence under
-`.tmp/open-practice-security-review/<timestamp>/`, including dirty-tree selector output,
-tracked-secret JSON without matched secret values, dependency audit, license JSON, CycloneDX SBOM,
-policy output, the existing hot-path rescan helper, Docker residual watch, and a final secret scan
-over the generated artifact. It also records optional local Gitleaks, Semgrep, OSV, ScanCode,
-Hadolint, Checkov, Trivy, and Cosign wrapper results when those binaries and local inputs are
-available; missing optional tooling is reported as skipped local evidence. It keeps running after
-failed required commands for diagnosis, then exits nonzero if any required command failed. It does
-not enable GitHub Actions, Dependabot, CodeQL default setup, remote required checks, external SaaS
-scans, or a formal Codex Security repository-wide scan.
+`.tmp/open-practice-security-review/<timestamp>/`, including selector output, tracked-secret JSON
+without matched secret values, dependency audit, license JSON, CycloneDX SBOM, policy output, the
+existing hot-path rescan helper, Docker residual watch, and a final secret scan over the generated
+artifact. Use `--dirty`, `--files <paths...>`, `--base <ref>`, or `--base-plus-dirty <ref>` to match
+the proof selector mode; the default remains dirty-tree review. The packet records a normalized
+evidence summary for selector input, tracked-secret counts, dependency license totals, optional
+scanner status/skipped reasons, and artifact paths. It also records optional local Gitleaks,
+Semgrep, OSV, ScanCode, Hadolint, Checkov, and Trivy wrapper results when those binaries and local
+inputs are available; missing optional tooling is reported as skipped local evidence. It keeps
+running after failed required commands for diagnosis, then exits nonzero if any required command
+failed. It does not run Cosign, enable GitHub Actions, Dependabot, CodeQL default setup, remote
+required checks, external SaaS scans, or a formal Codex Security repository-wide scan.
 
 ## Hot-Path Security Rescans
 
@@ -90,6 +93,10 @@ evidence directory is needed.
 - For self-host profile changes, run
   `pnpm selfhost:check -- --env-file docker/selfhost.example.env --allow-synthetic-example` for the
   synthetic render proof, then repeat with the operator's ignored env file before real startup.
+- For private self-hosted pilot release handoff, run
+  `pnpm selfhost:restore-drill -- --env-file docker/selfhost.example.env --allow-synthetic-example`
+  directly or `pnpm release:local -- --private-pilot` to include the restore drill alongside the
+  release proof. The drill writes only redacted ignored evidence and uses synthetic markers.
 
 ### Docker Dependency Snapshot
 

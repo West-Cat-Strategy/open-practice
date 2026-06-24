@@ -13,7 +13,12 @@ import {
   summarizeJobRuns,
 } from "../job-status.js";
 import type { ApiJobQueue, ApiRouteDependencies } from "../types.js";
-import { localOcrProviderSetting, ocrProviderBodySchema } from "./shared.js";
+import {
+  buildDocumentProcessingEvidencePacket,
+  buildDocumentProcessingProviderReadiness,
+  localOcrProviderSetting,
+  ocrProviderBodySchema,
+} from "./shared.js";
 
 export async function buildDocumentProcessingStatus(input: {
   repository: ApiRouteDependencies["repository"];
@@ -41,16 +46,24 @@ export async function buildDocumentProcessingStatus(input: {
     providerStates.find((providerState) => providerState.kind === "ocr") ??
     providerStatus("ocr", []);
   const configuredOcrProviders = (providers[0] ?? []).filter((provider) => provider.enabled);
+  const status = configuredOcrProviders.length > 0 && input.s3 ? "configured" : "disabled";
+  const reason =
+    configuredOcrProviders.length > 0 && input.s3
+      ? undefined
+      : ocrProviderState.reason === "provider_disabled"
+        ? "provider_disabled"
+        : configuredOcrProviders.length > 0 && !input.s3
+          ? "storage_not_configured"
+          : "not_configured";
+  const providerReadiness = buildDocumentProcessingProviderReadiness({
+    providerStates,
+    workerQueues,
+    jobs,
+    storageConfigured: Boolean(input.s3),
+  });
   return {
-    status: configuredOcrProviders.length > 0 && input.s3 ? "configured" : "disabled",
-    reason:
-      configuredOcrProviders.length > 0 && input.s3
-        ? undefined
-        : ocrProviderState.reason === "provider_disabled"
-          ? "provider_disabled"
-          : configuredOcrProviders.length > 0 && !input.s3
-            ? "storage_not_configured"
-            : "not_configured",
+    status,
+    reason,
     workers: workerQueues.filter((queue) => queue.status === "configured"),
     workerQueues,
     reservedQueues,
@@ -62,6 +75,13 @@ export async function buildDocumentProcessingStatus(input: {
       key: provider.key,
     })),
     providerStatus: providerStates,
+    providerReadiness,
+    evidencePacket: buildDocumentProcessingEvidencePacket({
+      status,
+      reason,
+      readiness: providerReadiness,
+      jobs,
+    }),
     summary: summarizeJobRuns(jobs),
     jobs: jobs.map(serializeJobRun),
   };

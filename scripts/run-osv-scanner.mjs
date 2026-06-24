@@ -18,7 +18,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
         "pnpm-lock.yaml",
         "--format",
         "json",
-        "--output",
+        "--output-file",
         path.join(artifactDir, "osv.json"),
       ],
       missingMessage:

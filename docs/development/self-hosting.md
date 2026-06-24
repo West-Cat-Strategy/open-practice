@@ -97,6 +97,13 @@ Do not enable `OPEN_PRACTICE_ALLOW_DOCKER_BRIDGE_SETUP` or development auth help
 ## Operations
 
 - Back up PostgreSQL and object storage together, and test restores before relying on the profile.
+- Run
+  `pnpm selfhost:restore-drill -- --env-file docker/selfhost.example.env --allow-synthetic-example`
+  for the checked-in synthetic profile and repeat with an ignored operator env before relying on a
+  deployment. The drill uses a disposable Compose project, synthetic PostgreSQL and MinIO markers,
+  `pg_dump`, an object-storage archive, fresh-volume restore, checksum verification, API `/health`,
+  and web `/api/setup/status`, then writes redacted local evidence under
+  `.tmp/open-practice-selfhost-restore-drill/<timestamp>/`.
 - Treat Redis as execution state, not a legal record. PostgreSQL remains the durable source of truth
   for job lifecycle and legal/audit records.
 - Run `pnpm docker:residual-watch`, `pnpm docker:app-smoke`, and `pnpm e2e:docker` for image,

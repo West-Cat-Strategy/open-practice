@@ -1,6 +1,8 @@
 FROM postgres:18-alpine@sha256:1b1689b20d16a014a3d195653381cf2caa75a41a92d93b255a9d6ea29fd353aa AS upstream
+#checkov:skip=CKV_DOCKER_3:The official Postgres entrypoint starts as root, then drops to postgres; this wrapper replaces gosu with su-exec and validates that path.
 
 RUN apk add --no-cache "libcurl>=8.19.0-r0" su-exec \
+  && apk upgrade --no-cache libcrypto3 libssl3 \
   && rm -f /usr/local/bin/gosu \
   && sed -i 's/gosu/su-exec/g' \
     /usr/local/bin/docker-entrypoint.sh \
@@ -29,6 +31,8 @@ VOLUME /var/lib/postgresql/data
 STOPSIGNAL SIGINT
 
 EXPOSE 5432
+
+HEALTHCHECK --interval=10s --timeout=5s --retries=5 CMD pg_isready -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-postgres}" || exit 1
 
 ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["postgres"]

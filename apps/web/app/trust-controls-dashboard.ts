@@ -77,6 +77,33 @@ export function buildJurisdictionalTrustReportPath(
   return query ? `${basePath}?${query}` : basePath;
 }
 
+export function emptyReconciliationPacketReview(): NonNullable<
+  TrustControlsDashboardResponse["reconciliationPacketReview"]
+> {
+  return {
+    generatedAt: new Date(0).toISOString(),
+    reviewOnly: true,
+    packets: [],
+    summary: {
+      packetCount: 0,
+      evidenceCount: 0,
+      reviewCueCount: 0,
+      packetsNeedingReviewCount: 0,
+      reviewOnly: true,
+    },
+    policy: {
+      source: "existing_ledger_billing_review_records",
+      rawEvidencePayloads: "excluded",
+      automaticReconciliation: false,
+      automaticTrustPosting: false,
+      invoiceMutation: "explicit_command_only",
+      liveSettlement: false,
+      providerCommands: false,
+      publicExposure: false,
+    },
+  };
+}
+
 export function emptyTrustControlsDashboard(): TrustControlsDashboardResponse {
   return {
     ledger: {
@@ -138,6 +165,7 @@ export function emptyTrustControlsDashboard(): TrustControlsDashboardResponse {
       },
       reviewOnly: true,
     },
+    reconciliationPacketReview: emptyReconciliationPacketReview(),
     accountingReview: {
       importBatches: [],
       matchRuleProfiles: [],

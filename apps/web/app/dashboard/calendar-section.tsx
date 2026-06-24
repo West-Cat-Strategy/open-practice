@@ -1,8 +1,10 @@
 import { AlertTriangle, CalendarDays, Clock3, Link2, Plus, X } from "lucide-react";
 import type { CalendarMeetingLinkMode } from "@open-practice/domain/calendar-models";
 import {
+  describeCalendarEventHandoff,
   describeCalendarEventTiming,
   describeCalendarGuestSessionStatus,
+  describeCalendarSchedulingRequestHandoff,
   describeMeetingInvitationBoundary,
   describeMeetingLinkAvailability,
   type CalendarRadarBuckets,
@@ -347,41 +349,38 @@ export function CalendarSection({
         <span>{activeCalendarSchedulingRequests.length} review records</span>
       </div>
       <div className="party-list">
-        {activeCalendarSchedulingRequests.map((request) => (
-          <div className="party-row" key={request.id}>
-            <span>
-              <strong>
-                {request.title} · {compactStatus(request.status)}
-              </strong>
-              <small>
-                {compactStatus(request.kind)} · source {request.source.label} · due{" "}
-                {compactDate(request.requestedDueAt)} · event{" "}
-                {request.linkedEvent
-                  ? `${request.linkedEvent.title} (${compactDate(request.linkedEvent.startsAt)})`
-                  : "needs scheduling"}
-              </small>
-              <small>
-                reminder {compactStatus(request.reminderSummary.posture)} · privacy{" "}
-                {compactStatus(request.privacy.visibility)} · time{" "}
-                {request.timeCaptureCue.redacted
-                  ? "restricted"
-                  : `${request.timeCaptureCue.posture.replace(/_/g, " ")}${
-                      request.timeCaptureCue.suggestedMinutes
-                        ? ` (${request.timeCaptureCue.suggestedMinutes}m)`
-                        : ""
-                    }`}
-              </small>
-            </span>
-            <em className={request.status === "needs_review" ? "risk" : undefined}>
-              {request.reviewBoundary.approvalCreatesTask ||
-              request.reviewBoundary.approvalReschedulesEvent ||
-              request.reviewBoundary.approvalCancelsReminder ||
-              request.reviewBoundary.approvalCreatesTimeEntry
-                ? "Automation enabled"
-                : "Review only"}
-            </em>
-          </div>
-        ))}
+        {activeCalendarSchedulingRequests.map((request) => {
+          const handoff = describeCalendarSchedulingRequestHandoff(request);
+          return (
+            <div className="party-row" key={request.id}>
+              <span>
+                <strong>
+                  {request.title} · {compactStatus(request.status)}
+                </strong>
+                <small>
+                  {compactStatus(request.kind)} · source {request.source.label} · due{" "}
+                  {compactDate(request.requestedDueAt)} · event{" "}
+                  {request.linkedEvent
+                    ? `${request.linkedEvent.title} (${compactDate(request.linkedEvent.startsAt)})`
+                    : "needs scheduling"}
+                </small>
+                <small>
+                  reminder {compactStatus(request.reminderSummary.posture)} · privacy{" "}
+                  {compactStatus(request.privacy.visibility)} · time{" "}
+                  {request.timeCaptureCue.redacted
+                    ? "restricted"
+                    : `${request.timeCaptureCue.posture.replace(/_/g, " ")}${
+                        request.timeCaptureCue.suggestedMinutes
+                          ? ` (${request.timeCaptureCue.suggestedMinutes}m)`
+                          : ""
+                      }`}
+                </small>
+                <small>{handoff.detail}</small>
+              </span>
+              <em className={handoff.tone === "risk" ? "risk" : undefined}>{handoff.label}</em>
+            </div>
+          );
+        })}
         {activeCalendarSchedulingRequests.length === 0 ? (
           <p className="inline-empty">
             {matterCalendarControlsEnabled
@@ -476,6 +475,7 @@ export function CalendarSection({
           const timing = describeCalendarEventTiming(event);
           const attendees = event.attendees ?? [];
           const meetingLinkAvailability = describeMeetingLinkAvailability(event);
+          const eventHandoff = describeCalendarEventHandoff(event);
           const meetingLinkMode = calendarMeetingLinkModeValue(
             event,
             calendarMeetingLinkModesByEventId,
@@ -510,6 +510,7 @@ export function CalendarSection({
                   <small>
                     {describeMeetingInvitationBoundary(event.meetingInvitationBoundary)}
                   </small>
+                  {matterCalendarControlsEnabled ? <small>{eventHandoff.detail}</small> : null}
                 </span>
                 <div className="row-actions">
                   <em

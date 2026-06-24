@@ -9,7 +9,10 @@ import {
   clientPortalMatterActionLabel,
   clientPortalMatterBillingGroups,
   clientPortalMoneyLabel,
+  clientPortalReadStateLabel,
+  clientPortalReadStateTone,
   clientPortalSignaturesForMatter,
+  clientPortalWorkspaceActivityLabel,
 } from "./client-portal-workspace-utils";
 import type { ClientPortalWorkspaceResponse } from "./types";
 
@@ -26,6 +29,30 @@ const workspace: ClientPortalWorkspaceResponse = {
     matterCount: 1,
     permissions: ["view_documents", "upload_documents"],
   },
+  portalActivity: {
+    latestActivityAt: "2026-06-11T10:00:00.000Z",
+    readState: "unread",
+    notificationPosture: "unread",
+    actionCount: 2,
+    attentionCount: 0,
+    unreadNotificationCount: 1,
+    mutedNotificationCount: 0,
+    matters: [
+      {
+        matterId: "matter-001",
+        latestActivityAt: "2026-06-11T10:00:00.000Z",
+        readState: "unread",
+        notificationPosture: "unread",
+        actionCount: 2,
+        attentionCount: 0,
+        unreadNotificationCount: 1,
+        mutedNotificationCount: 0,
+        messageThreadCount: 1,
+        documentCount: 1,
+        signatureCount: 1,
+      },
+    ],
+  },
   matters: [
     {
       id: "matter-001",
@@ -34,6 +61,10 @@ const workspace: ClientPortalWorkspaceResponse = {
       status: "open",
       permissions: ["view_documents"],
       actionCount: 2,
+      latestActivityAt: "2026-06-11T10:00:00.000Z",
+      readState: "unread",
+      notificationPosture: "unread",
+      unreadNotificationCount: 1,
     },
   ],
   matterDetails: [
@@ -49,6 +80,11 @@ const workspace: ClientPortalWorkspaceResponse = {
       documentCount: 1,
       signatureCount: 1,
       actionCount: 3,
+      attentionCount: 0,
+      latestActivityAt: "2026-06-11T10:00:00.000Z",
+      readState: "unread",
+      notificationPosture: "unread",
+      unreadNotificationCount: 1,
     },
   ],
   documents: [
@@ -107,6 +143,10 @@ describe("client portal workspace helpers", () => {
     expect(clientPortalActionFamilyLabel("client_action")).toBe("Client action");
     expect(clientPortalActionFamilyLabel("payment_request")).toBe("Payment request");
     expect(clientPortalActionFamilyLabel("signature")).toBe("Signature");
+    expect(clientPortalWorkspaceActivityLabel(workspace.portalActivity)).toBe("1 unread");
+    expect(clientPortalReadStateLabel(workspace.matterDetails![0]!)).toBe("1 unread");
+    expect(clientPortalReadStateTone("unread")).toBe("risk");
+    expect(clientPortalReadStateTone("current")).toBe("ready");
   });
 
   it("summarizes attention and matter action counts", () => {

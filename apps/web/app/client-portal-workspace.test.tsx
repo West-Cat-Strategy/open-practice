@@ -17,6 +17,30 @@ const workspace: ClientPortalWorkspaceResponse = {
     matterCount: 1,
     permissions: ["view_documents", "upload_documents", "message"],
   },
+  portalActivity: {
+    latestActivityAt: "2026-06-11T10:00:00.000Z",
+    readState: "attention_required",
+    notificationPosture: "attention_required",
+    actionCount: 2,
+    attentionCount: 1,
+    unreadNotificationCount: 0,
+    mutedNotificationCount: 0,
+    matters: [
+      {
+        matterId: "matter-001",
+        latestActivityAt: "2026-06-11T10:00:00.000Z",
+        readState: "attention_required",
+        notificationPosture: "attention_required",
+        actionCount: 2,
+        attentionCount: 1,
+        unreadNotificationCount: 0,
+        mutedNotificationCount: 0,
+        messageThreadCount: 1,
+        documentCount: 1,
+        signatureCount: 1,
+      },
+    ],
+  },
   matters: [
     {
       id: "matter-001",
@@ -25,6 +49,10 @@ const workspace: ClientPortalWorkspaceResponse = {
       status: "open",
       permissions: ["view_documents", "upload_documents", "message"],
       actionCount: 2,
+      latestActivityAt: "2026-06-11T10:00:00.000Z",
+      readState: "attention_required",
+      notificationPosture: "attention_required",
+      unreadNotificationCount: 0,
     },
   ],
   matterDetails: [
@@ -40,6 +68,11 @@ const workspace: ClientPortalWorkspaceResponse = {
       documentCount: 1,
       signatureCount: 1,
       actionCount: 3,
+      attentionCount: 1,
+      latestActivityAt: "2026-06-11T10:00:00.000Z",
+      readState: "attention_required",
+      notificationPosture: "attention_required",
+      unreadNotificationCount: 0,
     },
   ],
   documents: [
@@ -172,6 +205,8 @@ describe("ClientPortalWorkspace", () => {
     expect(html).toContain("Payment request pending");
     expect(html).toContain("CAD 132.30");
     expect(html).toContain("1 open");
+    expect(html).toContain("1 need attention");
+    expect(html).toContain("Activity");
     expect(html).toContain("Bodies");
     expect(html).toContain("redacted");
     expect(html).not.toContain("tokenHash");

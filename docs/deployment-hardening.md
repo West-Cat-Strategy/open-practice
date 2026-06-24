@@ -144,4 +144,6 @@ Environment variables must be treated as deployment inputs, not application defa
 Release hardening should include a migration dry run, backup restore proof for PostgreSQL and object
 storage, `pnpm release:local`, and a smoke test for S3 presign/upload-complete, embedded session
 login/logout, embedded signature events, billing dashboard reads, manual payment allocation, and
-trust-transfer-request evidence creation.
+trust-transfer-request evidence creation. Private self-hosted pilot handoff can run
+`pnpm release:local -- --private-pilot` to include the restore drill in the release proof; the
+default `pnpm release:local` behavior remains unchanged.

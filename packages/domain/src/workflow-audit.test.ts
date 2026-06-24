@@ -122,6 +122,7 @@ describe("workflow history projection", () => {
           matterId: "matter-001",
           documentId: "doc-001",
           task: "ocr",
+          templateId: "template-ocr-001",
           rawBody: "Synthetic raw document text",
           storageKey: "matters/matter-001/private.pdf",
           token: "synthetic-token",
@@ -168,6 +169,19 @@ describe("workflow history projection", () => {
           queueNames: ["ocr"],
           jobIds: ["job-ocr-001"],
           stepCount: 2,
+          reviewPacket: {
+            reviewOnly: true,
+            automationDisabled: true,
+            externalConnectorDisabled: true,
+            backgroundMutationDisabled: true,
+            cues: [
+              { kind: "matter", label: "matter", value: "matter-001" },
+              { kind: "task", label: "task", value: "ocr" },
+              { kind: "template", label: "template", value: "template-ocr-001" },
+              { kind: "document", label: "document", value: "doc-001" },
+              { kind: "resource", label: "resource", value: "document:doc-001" },
+            ],
+          },
         },
       ],
     });
@@ -177,6 +191,130 @@ describe("workflow history projection", () => {
     expect(serialized).not.toContain("private.pdf");
     expect(serialized).not.toContain("synthetic-token");
     expect(serialized).not.toContain("private-idempotency-key");
+  });
+
+  it("keeps workflow review packets bounded and free of provider connector cues", () => {
+    const jobs: JobLifecycleRecord[] = [
+      {
+        id: "job-connector-001",
+        firmId: "firm-west-legal",
+        queueName: "connectors",
+        jobName: "sync_external_record",
+        status: "queued",
+        targetResourceType: "connector",
+        targetResourceId: "provider-case-001",
+        attemptsMade: 0,
+        maxAttempts: 1,
+        queuedAt: "2026-05-02T10:00:00.000Z",
+        metadata: {
+          requestId: "req-connector-001",
+          matterId: "matter-001",
+          task: "external_sync_preview",
+          templateId: "template-001",
+          templateKey: "template-key-001",
+          documentId: "doc-001",
+          resourceType: "provider",
+          resourceId: "provider-private-001",
+          providerPayload: { raw: true },
+          rawBody: "Synthetic private provider payload",
+        },
+      },
+    ];
+
+    const projection = buildWorkflowHistoryProjection({
+      jobs,
+      auditEvents: [
+        auditEvent({
+          id: "audit-connector-001",
+          action: "connector.sync.queued",
+          resourceType: "connector",
+          resourceId: "provider-case-001",
+          occurredAt: "2026-05-02T09:59:00.000Z",
+          metadata: {
+            requestId: "req-connector-001",
+            matterIds: ["matter-001", "matter-002", "matter-003"],
+            workflowStatus: "queued",
+            providerPayload: { raw: true },
+            rawBody: "Synthetic private provider payload",
+          },
+        }),
+      ],
+      generatedAt: "2026-05-02T10:02:00.000Z",
+    });
+    const reviewPacket = projection.workflows[0]!.reviewPacket;
+
+    expect(reviewPacket).toMatchObject({
+      reviewOnly: true,
+      automationDisabled: true,
+      externalConnectorDisabled: true,
+      backgroundMutationDisabled: true,
+    });
+    expect(reviewPacket.cues).toHaveLength(6);
+    expect(reviewPacket.cues.filter((cue) => cue.kind === "matter")).toHaveLength(2);
+    expect(reviewPacket.cues).toEqual([
+      { kind: "matter", label: "matter", value: "matter-001" },
+      { kind: "matter", label: "matter", value: "matter-002" },
+      { kind: "task", label: "task", value: "external_sync_preview" },
+      { kind: "template", label: "template", value: "template-001" },
+      { kind: "template", label: "template", value: "template-key-001" },
+      { kind: "document", label: "document", value: "doc-001" },
+    ]);
+    expect(JSON.stringify(reviewPacket)).not.toContain("provider");
+    expect(JSON.stringify(reviewPacket)).not.toContain("Synthetic private provider payload");
+  });
+
+  it("omits provider-looking resource ids when resource type is absent or generic", () => {
+    const jobs: JobLifecycleRecord[] = [
+      {
+        id: "job-generic-resource-001",
+        firmId: "firm-west-legal",
+        queueName: "reports",
+        jobName: "external_resource_sync",
+        status: "queued",
+        targetResourceId: "provider-private-001",
+        attemptsMade: 0,
+        maxAttempts: 1,
+        queuedAt: "2026-05-02T10:00:00.000Z",
+        metadata: {
+          requestId: "req-generic-resource-001",
+          matterId: "matter-001",
+          task: "sync_preview",
+          resourceId: "connector-private-002",
+          resourceType: "resource",
+        },
+      },
+    ];
+
+    const projection = buildWorkflowHistoryProjection({
+      jobs,
+      auditEvents: [
+        auditEvent({
+          id: "audit-generic-resource-001",
+          action: "external_resource.sync.queued",
+          resourceType: "resource",
+          resourceId: "connector-private-003",
+          occurredAt: "2026-05-02T09:59:00.000Z",
+          metadata: {
+            requestId: "req-generic-resource-001",
+            matterId: "matter-001",
+            workflowStatus: "queued",
+            resourceType: "resource",
+            resourceId: "provider-private-004",
+          },
+        }),
+      ],
+      generatedAt: "2026-05-02T10:02:00.000Z",
+    });
+    const reviewPacket = projection.workflows[0]!.reviewPacket;
+
+    expect(reviewPacket.cues).toEqual([
+      { kind: "matter", label: "matter", value: "matter-001" },
+      { kind: "task", label: "task", value: "sync_preview" },
+    ]);
+    expect(reviewPacket.cues.some((cue) => cue.kind === "resource")).toBe(false);
+    const serialized = JSON.stringify(reviewPacket);
+    expect(serialized).not.toContain("provider-private");
+    expect(serialized).not.toContain("connector-private");
   });
 
   it("keeps job-only histories and supports matter, queue, and status filters", () => {

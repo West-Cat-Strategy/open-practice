@@ -6,6 +6,7 @@ import {
   type OpenPracticeRepository,
 } from "@open-practice/database";
 import {
+  defaultPaymentImportReviewBoundary,
   financialCommandJournalActions,
   type LedgerReconciliationRecord,
 } from "@open-practice/domain";
@@ -269,6 +270,41 @@ describe("ledger routes", () => {
       createdByUserId: "user-admin",
       createdAt: "2026-05-31T18:15:00.000Z",
     });
+    await repository.createTrustTransferRequest({
+      id: "trust-transfer-route-packet",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      clientContactId: "contact-ada",
+      invoiceId: "invoice-001",
+      requestedByUserId: "user-admin",
+      amountCents: 4800,
+      status: "approved",
+      reason: "Synthetic route packet transfer reason must stay out of controls.",
+      requestedAt: "2026-05-31T18:20:00.000Z",
+      reviewedByUserId: "user-admin",
+      reviewedAt: "2026-05-31T18:25:00.000Z",
+      evidence: { privateNote: "Synthetic private trust-transfer evidence" },
+    });
+    await repository.createPaymentImportReviewRecord({
+      id: "payment-import-route-packet",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      providerLabel: "synthetic_processor",
+      eventFamily: "deposit",
+      eventStatus: "posted",
+      externalEventId: "evt_route_packet",
+      externalDepositId: "dep_route_packet",
+      amountCents: 4800,
+      currency: "CAD",
+      importedAt: "2026-05-31T18:30:00.000Z",
+      importedByUserId: "user-admin",
+      candidateManualPaymentId: "payment-001",
+      duplicateOfRecordId: "payment-import-review-001",
+      reviewState: "needs_review",
+      normalizedEvidenceFingerprint: "route-packet-fingerprint",
+      boundaries: defaultPaymentImportReviewBoundary(),
+      updatedAt: "2026-05-31T18:35:00.000Z",
+    });
 
     const response = await testServer({ repository }).inject({
       method: "GET",
@@ -360,6 +396,54 @@ describe("ledger routes", () => {
         ],
         reviewOnly: true,
       },
+      reconciliationPacketReview: {
+        reviewOnly: true,
+        summary: {
+          packetCount: 6,
+          reviewOnly: true,
+        },
+        packets: expect.arrayContaining([
+          expect.objectContaining({
+            kind: "ledger",
+            reviewOnly: true,
+          }),
+          expect.objectContaining({
+            kind: "statement_import",
+            evidenceCount: expect.any(Number),
+            reviewOnly: true,
+          }),
+          expect.objectContaining({
+            kind: "exception",
+            exceptionCount: expect.any(Number),
+            reviewOnly: true,
+          }),
+          expect.objectContaining({
+            kind: "trust_transfer",
+            pendingCount: expect.any(Number),
+            amountCents: expect.any(Number),
+            reviewOnly: true,
+          }),
+          expect.objectContaining({
+            kind: "posting_request",
+            reviewOnly: true,
+          }),
+          expect.objectContaining({
+            kind: "payment_import",
+            conflictCount: expect.any(Number),
+            reviewOnly: true,
+          }),
+        ]),
+        policy: {
+          source: "existing_ledger_billing_review_records",
+          rawEvidencePayloads: "excluded",
+          automaticReconciliation: false,
+          automaticTrustPosting: false,
+          invoiceMutation: "explicit_command_only",
+          liveSettlement: false,
+          providerCommands: false,
+          publicExposure: false,
+        },
+      },
       diagnostics: {
         pendingApprovalTransactionIds: ["trust-retainer"],
         rejectedApprovalTransactionIds: ["matter-002-retainer"],
@@ -418,6 +502,10 @@ describe("ledger routes", () => {
         compliancePosture: "operational_controls_only_not_jurisdiction_certified",
       },
     });
+    const serializedControls = JSON.stringify(response.json());
+    expect(serializedControls).not.toContain("Synthetic private trust-transfer evidence");
+    expect(serializedControls).not.toContain("Synthetic route packet transfer reason");
+    expect(serializedControls).not.toContain("route-packet-fingerprint");
     expect(
       response
         .json<{ ledger: { entries: Array<{ matterId: string }> } }>()
@@ -953,6 +1041,37 @@ describe("ledger routes", () => {
   it("filters matter-scoped ledger controls and hides reconciliation data", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     await seedMatterTwoLedgerControls(repository);
+    await repository.createTrustTransferRequest({
+      id: "trust-transfer-hidden-matter-002-controls",
+      firmId: "firm-west-legal",
+      matterId: "matter-002",
+      clientContactId: "contact-northstar",
+      invoiceId: "invoice-hidden-matter-002",
+      requestedByUserId: "user-admin",
+      amountCents: 990000,
+      status: "pending_approval",
+      reason: "Synthetic hidden matter transfer reason must not leak.",
+      requestedAt: "2026-05-31T18:20:00.000Z",
+      evidence: { privateNote: "Synthetic hidden matter trust-transfer evidence" },
+    });
+    await repository.createPaymentImportReviewRecord({
+      id: "payment-import-hidden-matter-002-controls",
+      firmId: "firm-west-legal",
+      matterId: "matter-002",
+      providerLabel: "synthetic_processor",
+      eventFamily: "deposit",
+      eventStatus: "posted",
+      externalEventId: "evt_hidden_matter_002_controls",
+      externalDepositId: "dep_hidden_matter_002_controls",
+      amountCents: 880000,
+      currency: "CAD",
+      importedAt: "2026-05-31T18:30:00.000Z",
+      importedByUserId: "user-admin",
+      reviewState: "needs_review",
+      normalizedEvidenceFingerprint: "hidden-matter-002-controls-fingerprint",
+      boundaries: defaultPaymentImportReviewBoundary(),
+      updatedAt: "2026-05-31T18:35:00.000Z",
+    });
     await repository.createLedgerTransactionApproval({
       id: "approval-matter-001",
       firmId: "firm-west-legal",
@@ -964,8 +1083,38 @@ describe("ledger routes", () => {
     await repository.createLedgerReconciliation({
       ...reconciliationRecord({ id: "reconciliation-hidden" }),
     });
+    const server = testServer({ repository });
+    const hiddenPostingRequest = await server.inject({
+      method: "POST",
+      url: "/api/ledger/posting-requests/prepare",
+      payload: preparedPostingRequestPayload({
+        id: "posting-request-hidden-matter-002-controls",
+        proposedTransaction: ledgerTransactionPayload({
+          id: "prepared-hidden-matter-002-controls",
+          idempotencyKey: "prepared-hidden-matter-002-controls-key",
+          entries: [
+            {
+              matterId: "matter-002",
+              clientId: "contact-northstar",
+              accountId: "acct-client-liability",
+              debitCents: 99000,
+              creditCents: 0,
+              memo: "Hidden matter prepared transfer",
+            },
+            {
+              matterId: "matter-002",
+              clientId: "contact-northstar",
+              accountId: "acct-trust-bank",
+              debitCents: 0,
+              creditCents: 99000,
+              memo: "Hidden matter prepared transfer",
+            },
+          ],
+        }),
+      }),
+    });
 
-    const response = await testServer({ repository }).inject({
+    const response = await server.inject({
       method: "GET",
       url: "/api/ledger/controls?matterId=matter-001",
       headers: {
@@ -974,13 +1123,26 @@ describe("ledger routes", () => {
       },
     });
 
+    expect(hiddenPostingRequest.statusCode).toBe(200);
     expect(response.statusCode).toBe(200);
-    expect(
-      response
-        .json<{ ledger: { entries: Array<{ matterId: string }> } }>()
-        .ledger.entries.map((entry) => entry.matterId),
-    ).toEqual(["matter-001", "matter-001"]);
-    expect(response.json()).toMatchObject({
+    const body = response.json<{
+      ledger: { entries: Array<{ matterId: string }> };
+      postingRequests: Array<{ id: string }>;
+      postingRequestSummary: { totalCount: number };
+      reconciliationPacketReview: {
+        packets: Array<{
+          kind: string;
+          evidenceCount: number;
+          pendingCount: number;
+          amountCents: number;
+        }>;
+      };
+    }>();
+    expect(body.ledger.entries.map((entry) => entry.matterId)).toEqual([
+      "matter-001",
+      "matter-001",
+    ]);
+    expect(body).toMatchObject({
       approvals: [
         {
           id: "approval-matter-001",
@@ -1040,6 +1202,32 @@ describe("ledger routes", () => {
         },
       },
     });
+    expect(body.postingRequests).toEqual([]);
+    expect(body.postingRequestSummary.totalCount).toBe(0);
+    const packetsByKind = new Map(
+      body.reconciliationPacketReview.packets.map((packet) => [packet.kind, packet]),
+    );
+    expect(packetsByKind.get("trust_transfer")).toMatchObject({
+      evidenceCount: 1,
+      pendingCount: 1,
+      amountCents: 13230,
+    });
+    expect(packetsByKind.get("payment_import")).toMatchObject({
+      evidenceCount: 1,
+      pendingCount: 1,
+      amountCents: 13230,
+    });
+    expect(packetsByKind.get("posting_request")).toMatchObject({
+      evidenceCount: 0,
+      pendingCount: 0,
+      amountCents: 0,
+    });
+    const serialized = JSON.stringify(body);
+    expect(serialized).not.toContain("trust-transfer-hidden-matter-002-controls");
+    expect(serialized).not.toContain("payment-import-hidden-matter-002-controls");
+    expect(serialized).not.toContain("posting-request-hidden-matter-002-controls");
+    expect(serialized).not.toContain("Synthetic hidden matter transfer reason");
+    expect(serialized).not.toContain("hidden-matter-002-controls-fingerprint");
   });
 
   it("denies unauthorized ledger control reads", async () => {

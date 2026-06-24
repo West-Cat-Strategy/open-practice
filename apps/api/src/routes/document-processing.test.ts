@@ -111,6 +111,66 @@ describe("document processing routes", () => {
           status: "not_configured",
         }),
       ]),
+      providerReadiness: expect.arrayContaining([
+        expect.objectContaining({
+          kind: "ocr",
+          task: "ocr",
+          queueName: "ocr",
+          status: "disabled",
+          reason: "not_configured",
+          actionable: true,
+          providerStatus: "disabled",
+          providerReason: "not_configured",
+          queueStatus: "not_configured",
+          queueReason: "queue_not_configured",
+          storageRequired: true,
+          storageConfigured: true,
+          evidencePacket: expect.objectContaining({
+            packet: "document_processing_provider_readiness",
+            posture: "op_authored_metadata_only",
+            metadataOnly: true,
+            rawPrivateTextStored: false,
+            providerPayloadsStored: false,
+            realProviderActivation: false,
+            jobCounts: { total: 0, queued: 0, active: 0, failed: 0, terminal: 0 },
+          }),
+        }),
+        expect.objectContaining({
+          kind: "ai",
+          task: "classification",
+          status: "reserved",
+          reason: "deferred_worker",
+          actionable: false,
+        }),
+        expect.objectContaining({
+          kind: "transcription",
+          task: "transcription",
+          status: "reserved",
+          reason: "deferred_worker",
+          actionable: false,
+        }),
+      ]),
+      evidencePacket: {
+        packet: "document_processing_boundary",
+        posture: "op_authored_metadata_only",
+        status: "disabled",
+        reason: "not_configured",
+        reviewOnly: true,
+        metadataOnly: true,
+        rawPrivateTextStored: false,
+        rawOcrTextStored: false,
+        rawOcrTextReturned: false,
+        providerPayloadsStored: false,
+        providerPayloadsReturned: false,
+        realProviderActivation: false,
+        providerReadinessCounts: {
+          ready: 0,
+          disabled: 1,
+          reserved: 3,
+          actionable: 1,
+        },
+        jobCounts: { total: 0, queued: 0, active: 0, failed: 0, terminal: 0 },
+      },
     });
   });
 
@@ -305,11 +365,56 @@ describe("document processing routes", () => {
             {
               key: "local-tesseract",
               enabled: false,
+              disabledReason: "provider_disabled",
               updatedAt: "2026-05-02T09:00:00.000Z",
             },
           ],
         }),
       ]),
+      providerReadiness: expect.arrayContaining([
+        expect.objectContaining({
+          kind: "ocr",
+          task: "ocr",
+          status: "disabled",
+          reason: "provider_disabled",
+          providerStatus: "disabled",
+          providerReason: "provider_disabled",
+          providerCount: 1,
+          enabledProviderCount: 0,
+          evidencePacket: expect.objectContaining({
+            metadataOnly: true,
+            providerPayloadsStored: false,
+            providerPayloadsReturned: false,
+            realProviderActivation: false,
+            retainedEvidenceFields: expect.arrayContaining([
+              "provider_kind",
+              "queue_status",
+              "job_counts",
+              "policy_flags",
+            ]),
+            jobCounts: { total: 1, queued: 0, active: 0, failed: 1, terminal: 1 },
+          }),
+        }),
+      ]),
+      evidencePacket: expect.objectContaining({
+        packet: "document_processing_boundary",
+        status: "disabled",
+        reason: "provider_disabled",
+        metadataOnly: true,
+        rawPrivateTextStored: false,
+        rawOcrTextStored: false,
+        rawOcrTextReturned: false,
+        providerPayloadsStored: false,
+        providerPayloadsReturned: false,
+        realProviderActivation: false,
+        providerReadinessCounts: {
+          ready: 0,
+          disabled: 1,
+          reserved: 3,
+          actionable: 1,
+        },
+        jobCounts: { total: 1, queued: 0, active: 0, failed: 1, terminal: 1 },
+      }),
       summary: {
         total: 1,
         failed: 1,
@@ -334,6 +439,7 @@ describe("document processing routes", () => {
     });
     expect(response.json().jobs[0].metadata).not.toHaveProperty("content");
     expect(response.json().jobs[0].metadata).not.toHaveProperty("storageKey");
+    expect(JSON.stringify(response.json())).not.toContain("synthetic-disabled-config");
   });
 
   it("queues OCR jobs with durable redacted lifecycle metadata", async () => {
@@ -776,6 +882,26 @@ describe("document processing routes", () => {
       createdAt: "2026-05-02T12:11:00.000Z",
       completedAt: "2026-05-02T12:12:00.000Z",
     });
+    await repository.createDocumentTextExtraction({
+      id: "extraction-other-matter",
+      firmId,
+      documentId: "doc-matter-002",
+      engine: "tesseract",
+      status: "completed",
+      language: "eng",
+      confidence: 0.98,
+      textStorageKey: "matters/matter-002/doc-matter-002.txt",
+      extractedText: "Synthetic other-matter OCR text must stay out of matter 001 workbench.",
+      metadata: {
+        language: "eng",
+        textLength: 512,
+        suggestedClassification: "financial",
+        storageKey: "matters/matter-002/doc-matter-002.txt",
+        providerPayload: { private: true },
+      },
+      createdAt: "2026-05-02T12:16:00.000Z",
+      completedAt: "2026-05-02T12:17:00.000Z",
+    });
 
     const response = await testServer({ repository, ocrJobQueue: fakeOcrQueue().queue }).inject({
       method: "GET",
@@ -799,6 +925,66 @@ describe("document processing routes", () => {
           ],
         }),
       ]),
+      providerReadiness: expect.arrayContaining([
+        expect.objectContaining({
+          kind: "ocr",
+          task: "ocr",
+          queueName: "ocr",
+          status: "ready",
+          actionable: true,
+          providerStatus: "configured",
+          queueStatus: "configured",
+          providerCount: 1,
+          enabledProviderCount: 1,
+          storageRequired: true,
+          storageConfigured: true,
+          evidencePacket: expect.objectContaining({
+            packet: "document_processing_provider_readiness",
+            posture: "op_authored_metadata_only",
+            metadataOnly: true,
+            rawPrivateTextStored: false,
+            rawOcrTextStored: false,
+            rawOcrTextReturned: false,
+            providerPayloadsStored: false,
+            providerPayloadsReturned: false,
+            realProviderActivation: false,
+            jobCounts: { total: 1, queued: 0, active: 1, failed: 0, terminal: 0 },
+          }),
+        }),
+        expect.objectContaining({
+          kind: "ai",
+          task: "classification",
+          status: "reserved",
+          reason: "deferred_worker",
+          actionable: false,
+        }),
+        expect.objectContaining({
+          kind: "transcription",
+          task: "transcription",
+          status: "reserved",
+          reason: "deferred_worker",
+          actionable: false,
+        }),
+      ]),
+      evidencePacket: expect.objectContaining({
+        packet: "document_processing_boundary",
+        posture: "op_authored_metadata_only",
+        status: "configured",
+        metadataOnly: true,
+        rawPrivateTextStored: false,
+        rawOcrTextStored: false,
+        rawOcrTextReturned: false,
+        providerPayloadsStored: false,
+        providerPayloadsReturned: false,
+        realProviderActivation: false,
+        providerReadinessCounts: {
+          ready: 1,
+          disabled: 0,
+          reserved: 3,
+          actionable: 1,
+        },
+        jobCounts: { total: 1, queued: 0, active: 1, failed: 0, terminal: 0 },
+      }),
       workerQueues: expect.arrayContaining([{ queueName: "ocr", status: "configured" }]),
       reservedQueues: expect.arrayContaining([
         expect.objectContaining({ queueName: "ai_triage", status: "reserved" }),
@@ -924,6 +1110,11 @@ describe("document processing routes", () => {
     expect(JSON.stringify(documentItem.reviewSuggestions)).not.toContain("private");
     expect(JSON.stringify(documentItem.reviewSuggestions)).not.toContain("storageKey");
     expect(JSON.stringify(documentItem.reviewSuggestions)).not.toContain("providerPayload");
+    const serialized = JSON.stringify(response.json());
+    expect(serialized).not.toContain("doc-matter-002");
+    expect(serialized).not.toContain("job-other-matter");
+    expect(serialized).not.toContain("extraction-other-matter");
+    expect(serialized).not.toContain("Synthetic other-matter OCR text");
   });
 
   it("filters metadata search posture with tag cues while redacting raw OCR text", async () => {
@@ -1333,6 +1524,26 @@ describe("document processing routes", () => {
     expect(workbench.json()).toMatchObject({
       status: "disabled",
       reason: "storage_not_configured",
+      providerReadiness: expect.arrayContaining([
+        expect.objectContaining({
+          kind: "ocr",
+          status: "disabled",
+          reason: "storage_not_configured",
+          providerStatus: "configured",
+          queueStatus: "configured",
+          storageRequired: true,
+          storageConfigured: false,
+        }),
+      ]),
+      evidencePacket: expect.objectContaining({
+        reason: "storage_not_configured",
+        providerReadinessCounts: {
+          ready: 0,
+          disabled: 1,
+          reserved: 3,
+          actionable: 1,
+        },
+      }),
       documents: expect.arrayContaining([
         expect.objectContaining({
           document: expect.objectContaining({ id: "doc-001" }),

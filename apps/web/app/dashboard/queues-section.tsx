@@ -29,6 +29,7 @@ import {
   type ConnectorRecoveryAction,
   type PendingConnectorRecovery,
 } from "../connector-outbox-dashboard";
+import { workflowReviewPacketSummary } from "../worker-runs-dashboard";
 
 export interface ProviderPostureRow {
   key: string;
@@ -1112,6 +1113,7 @@ function WorkflowHistoryBlock({
       <div className="party-list queue-section-list">
         {workflowHistory.workflows.slice(0, 6).map((workflow) => {
           const state = workflowHistoryStatus(workflow.status);
+          const packetSummary = workflowReviewPacketSummary(workflow);
           return (
             <div className="party-row" key={workflow.id}>
               <span>
@@ -1126,6 +1128,7 @@ function WorkflowHistoryBlock({
                     .map((step) => `${step.source}: ${step.label}`)
                     .join(" · ")}
                 </small>
+                {packetSummary ? <small>Review packet: {packetSummary}</small> : null}
               </span>
               <em className={state.tone === "risk" ? "risk" : undefined}>{state.label}</em>
             </div>

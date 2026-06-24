@@ -19,6 +19,8 @@ import {
 import type { ApiRouteDependencies } from "../types.js";
 import {
   assertDocumentProcessingAccess,
+  buildDocumentProcessingEvidencePacket,
+  buildDocumentProcessingProviderReadiness,
   buildDocumentConversionReviewSummary,
   conversionReviewArtifactForDocument,
   documentReviewQueueSummary,
@@ -149,19 +151,34 @@ export function registerDocumentProcessingWorkbenchRoutes(
     );
     const documentItems = documentEntries.map((entry) => entry.item);
     const ocrReady = ocrProviderState.status === "configured" && Boolean(s3);
+    const status = ocrReady ? "configured" : "disabled";
+    const reason =
+      ocrProviderState.status === "configured" && s3
+        ? undefined
+        : ocrProviderState.reason === "provider_disabled"
+          ? "provider_disabled"
+          : ocrProviderState.status === "configured" && !s3
+            ? "storage_not_configured"
+            : "not_configured";
+    const providerReadiness = buildDocumentProcessingProviderReadiness({
+      providerStates,
+      workerQueues,
+      jobs,
+      storageConfigured: Boolean(s3),
+    });
 
     return {
       matterId: query.matterId,
-      status: ocrReady ? "configured" : "disabled",
-      reason:
-        ocrProviderState.status === "configured" && s3
-          ? undefined
-          : ocrProviderState.reason === "provider_disabled"
-            ? "provider_disabled"
-            : ocrProviderState.status === "configured" && !s3
-              ? "storage_not_configured"
-              : "not_configured",
+      status,
+      reason,
       providerStatus: providerStates,
+      providerReadiness,
+      evidencePacket: buildDocumentProcessingEvidencePacket({
+        status,
+        reason,
+        readiness: providerReadiness,
+        jobs,
+      }),
       workerQueues,
       reservedQueues,
       actionableTasks: actionableDocumentProcessingTasks,

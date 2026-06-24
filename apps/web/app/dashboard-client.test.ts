@@ -195,6 +195,7 @@ import {
   summarizeWorkerRuns,
   workerHealthTone,
   workflowHistorySafeContext,
+  workflowReviewPacketSummary,
   workerRunsForFilter,
   workerRunSafeContext,
 } from "./worker-runs-dashboard";
@@ -1735,6 +1736,13 @@ describe("dashboard client behavior", () => {
       providers: [{ key: "mailpit", enabled: true }],
       queue: { queueName: "email", status: "configured" },
     };
+    status.inboundEmail = {
+      status: "disabled",
+      reason: "provider_disabled",
+      provider: "maildrop",
+      addresses: [],
+      workerQueue: { queueName: "inbound_email", status: "configured" },
+    };
     status.bullmq.producerQueues = [{ queueName: "email", status: "configured" }];
     status.bullmq.workerQueues = [
       { queueName: "email", status: "configured" },
@@ -1775,9 +1783,36 @@ describe("dashboard client behavior", () => {
           tone: "ready",
         }),
         expect.objectContaining({
+          key: "inbound-email",
+          status: "disabled",
+          detail:
+            "0 addresses · provider disabled: provider disabled · maildrop · queue configured",
+          tone: "neutral",
+        }),
+        expect.objectContaining({
           key: "document-processing",
           status: "disabled",
-          detail: "not configured OCR queue · 1 reserved queues",
+          detail: "not configured: queue not configured OCR queue · 1 reserved queues",
+          tone: "risk",
+        }),
+      ]),
+    );
+    expect(
+      providerPostureRows({
+        ...status,
+        email: {
+          ...status.email,
+          status: "degraded",
+          reason: "provider_rate_limited",
+          provider: "mailpit",
+        },
+      }),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "email",
+          status: "degraded",
+          detail: "Provider degraded: provider rate limited · mailpit · queue configured",
           tone: "risk",
         }),
       ]),
@@ -1931,7 +1966,13 @@ describe("dashboard client behavior", () => {
         failureSummary: "Mailbox unavailable",
         events: [],
       }),
-    ).toEqual({ label: "failed", tone: "risk" });
+    ).toMatchObject({
+      label: "retry handoff",
+      detail:
+        "Failed delivery can be retried by staff after confirming recipients; no automatic send starts from the dashboard summary.",
+      retryEligible: true,
+      tone: "risk",
+    });
     expect(
       describeCommunicationsHistoryState({
         id: "client-update-draft:message-001",
@@ -3869,6 +3910,18 @@ describe("dashboard client behavior", () => {
             queueNames: ["ocr"],
             jobIds: ["job-ocr-001"],
             stepCount: 2,
+            reviewPacket: {
+              reviewOnly: true,
+              automationDisabled: true,
+              externalConnectorDisabled: true,
+              backgroundMutationDisabled: true,
+              cues: [
+                { kind: "matter" as const, label: "matter", value: "matter-001" },
+                { kind: "task" as const, label: "task", value: "ocr" },
+                { kind: "template" as const, label: "template", value: "template-ocr-001" },
+                { kind: "document" as const, label: "document", value: "doc-001" },
+              ],
+            },
             steps: [
               {
                 id: "audit-ocr-001",
@@ -3925,6 +3978,10 @@ describe("dashboard client behavior", () => {
     expect(writableHtml).toContain("Workflow history");
     expect(writableHtml).toContain("document processing ocr queued");
     expect(writableHtml).toContain("2 steps");
+    expect(writableHtml).toContain("Review packet");
+    expect(writableHtml).toContain("automation disabled");
+    expect(writableHtml).toContain("background mutation disabled");
+    expect(writableHtml).toContain("template template-ocr-001");
     expect(writableHtml).not.toContain("must not render");
     expect(writableHtml).toContain("Task/deadline review");
     expect(writableHtml).toContain("Review tenant evidence package");
@@ -4657,6 +4714,46 @@ describe("dashboard client behavior", () => {
       status: "disabled",
       reason: "provider_disabled",
     });
+    expect(summarizeDocumentProcessingWorkbench(disabled)).toBe(
+      "Document processing disabled: provider disabled.",
+    );
+    expect(
+      summarizeDocumentProcessingWorkbench(
+        documentProcessingWorkbench({
+          status: "disabled",
+          reason: "provider_disabled",
+          evidencePacket: {
+            packet: "document_processing_boundary",
+            posture: "op_authored_metadata_only",
+            status: "disabled",
+            reason: "provider_disabled",
+            reviewOnly: true,
+            metadataOnly: true,
+            rawPrivateTextStored: false,
+            rawOcrTextStored: false,
+            rawOcrTextReturned: false,
+            providerPayloadsStored: false,
+            providerPayloadsReturned: false,
+            realProviderActivation: false,
+            providerReadinessCounts: {
+              ready: 1,
+              disabled: 1,
+              reserved: 2,
+              actionable: 1,
+            },
+            jobCounts: {
+              total: 0,
+              queued: 0,
+              active: 0,
+              failed: 0,
+              terminal: 0,
+            },
+          },
+        }),
+      ),
+    ).toBe(
+      "Document processing disabled: provider disabled. 1/1 actionable readiness ready. 2 reserved provider postures.",
+    );
     expect(describeDocumentQueueAction(item, disabled)).toEqual({
       canQueue: false,
       label: "Queue OCR",
@@ -5027,10 +5124,16 @@ describe("dashboard client behavior", () => {
     } satisfies MatterSummary;
 
     const renderMatterOverview = ({
+      activeCommunicationsInbox = undefined,
+      activeEmailDeliveries = [],
       canRecordLifecycleTransition = true,
       lifecycleTransitionStatus = "No lifecycle readiness review recorded in this session.",
       recordingLifecycleTransition = false,
     }: {
+      activeCommunicationsInbox?: Parameters<
+        typeof MatterOverviewSection
+      >[0]["activeCommunicationsInbox"];
+      activeEmailDeliveries?: Parameters<typeof MatterOverviewSection>[0]["activeEmailDeliveries"];
       canRecordLifecycleTransition?: boolean;
       lifecycleTransitionStatus?: string;
       recordingLifecycleTransition?: boolean;
@@ -5038,8 +5141,8 @@ describe("dashboard client behavior", () => {
       renderToStaticMarkup(
         createElement(MatterOverviewSection, {
           activeActivitySummary: summarizeMatterActivity([]),
-          activeCommunicationsInbox: undefined,
-          activeEmailDeliveries: [],
+          activeCommunicationsInbox,
+          activeEmailDeliveries,
           activeLegalClinicProfile: undefined,
           activeLegalClinicProgram: undefined,
           activeMatter,
@@ -5121,6 +5224,44 @@ describe("dashboard client behavior", () => {
     expect(html).toContain('data-action-key="matter_lifecycle_review.record"');
     expect(html).toContain('aria-label="Record review"');
     expect(html).toContain(">Record review</button>");
+
+    const failedEmailDelivery = {
+      id: "email-delivery-synthetic",
+      matterId: activeMatter.id,
+      templateKey: "client.update",
+      status: "failed",
+      recipientCount: 2,
+      attemptCount: 3,
+      queuedAt: "2026-06-20T10:00:00.000Z",
+      lastAttemptAt: "2026-06-20T10:05:00.000Z",
+      failedAt: "2026-06-20T10:05:00.000Z",
+      terminalFailureAt: "2026-06-20T10:05:00.000Z",
+      failureSummary: "Synthetic SMTP failure",
+      events: [],
+    };
+    const communicationsHtml = renderMatterOverview({
+      activeCommunicationsInbox: {
+        status: "available",
+        matterId: activeMatter.id,
+        channelState: {
+          inboundEmailStatus: "configured",
+          outboundEmailStatus: "configured",
+          inboundEmailAddressCount: 1,
+          enabledInboundEmailAddressCount: 1,
+        },
+        inboundEmail: [],
+        outboundDeliveryHistory: [failedEmailDelivery],
+        conversations: [],
+        channelHistory: [],
+        clientUpdateDraftRequests: [],
+        contactCues: [],
+      },
+      activeEmailDeliveries: [failedEmailDelivery],
+    });
+    expect(communicationsHtml).toContain("retry handoff");
+    expect(communicationsHtml).toContain(
+      "Failed delivery can be retried by staff after confirming recipients; no automatic send starts from the dashboard summary.",
+    );
 
     const busyHtml = renderMatterOverview({
       lifecycleTransitionStatus: "Recording lifecycle readiness review...",
@@ -5263,6 +5404,17 @@ describe("dashboard client behavior", () => {
           queueNames: ["ocr"],
           jobIds: ["job-ocr-retry"],
           stepCount: 1,
+          reviewPacket: {
+            reviewOnly: true,
+            automationDisabled: true,
+            externalConnectorDisabled: true,
+            backgroundMutationDisabled: true,
+            cues: [
+              { kind: "matter" as const, label: "matter", value: "matter-001" },
+              { kind: "task" as const, label: "task", value: "ocr" },
+              { kind: "document" as const, label: "document", value: "doc-001" },
+            ],
+          },
           steps: [],
         },
       ],
@@ -5274,6 +5426,29 @@ describe("dashboard client behavior", () => {
     expect(workflowHistorySafeContext(workflowHistory.workflows[0]!)).toBe(
       "target document:doc-001 · matters matter-001 · queues ocr · 1 job refs",
     );
+    expect(workflowReviewPacketSummary(workflowHistory.workflows[0]!)).toBe(
+      "review only, automation disabled, external connector disabled, background mutation disabled · cues matter matter-001 · task ocr · document doc-001",
+    );
+
+    const denseWorkflow = {
+      ...workflowHistory.workflows[0]!,
+      reviewPacket: {
+        reviewOnly: true,
+        automationDisabled: true,
+        externalConnectorDisabled: true,
+        backgroundMutationDisabled: true,
+        cues: Array.from({ length: 10 }, (_, index) => ({
+          kind: "resource" as const,
+          label: `cue-${index + 1}`,
+          value: `synthetic-review-packet-value-${index + 1}-with-extra-context-that-should-not-overflow`,
+        })),
+      },
+    };
+    const denseSummary = workflowReviewPacketSummary(denseWorkflow)!;
+    expect(denseSummary.length).toBeLessThanOrEqual(220);
+    expect(denseSummary).toContain("7 more cues");
+    expect(denseSummary).toContain("...");
+    expect(denseSummary).not.toContain("with-extra-context-that-should-not-overflow");
   });
 
   it("describes compact worker health without raw job detail", () => {

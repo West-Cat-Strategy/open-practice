@@ -22,8 +22,13 @@ export function buildReleaseArtifactDir({
   return path.resolve(cwd ?? process.cwd(), artifactRoot, releaseTimestamp(now));
 }
 
-export function releaseProofCommands({ sbomPath, licenseJsonPath, artifactDir } = {}) {
-  return [
+export function releaseProofCommands({
+  sbomPath,
+  licenseJsonPath,
+  artifactDir,
+  privatePilot = false,
+} = {}) {
+  const commands = [
     {
       id: "changed-path-selector",
       command: "pnpm",
@@ -62,20 +67,32 @@ export function releaseProofCommands({ sbomPath, licenseJsonPath, artifactDir } 
     },
     { id: "local-ci-gate", command: "pnpm", args: ["ci:local"], required: true },
     { id: "migration-replay", command: "pnpm", args: ["migrations:replay"], required: true },
-    {
-      id: "artifact-secret-scan",
-      command: "pnpm",
-      args: [
-        "security:scan",
-        "--",
-        "--path",
-        artifactDir ?? DEFAULT_ARTIFACT_ROOT,
-        "--fail-on-skipped",
-        "--scan-large-files",
-      ],
-      required: true,
-    },
   ];
+
+  if (privatePilot) {
+    commands.push({
+      id: "selfhost-restore-drill",
+      command: "pnpm",
+      args: ["selfhost:restore-drill"],
+      required: true,
+    });
+  }
+
+  commands.push({
+    id: "artifact-secret-scan",
+    command: "pnpm",
+    args: [
+      "security:scan",
+      "--",
+      "--path",
+      artifactDir ?? DEFAULT_ARTIFACT_ROOT,
+      "--fail-on-skipped",
+      "--scan-large-files",
+    ],
+    required: true,
+  });
+
+  return commands;
 }
 
 function run(command, args, { cwd, outputDir, id, env = {}, spawn = spawnSync }) {
@@ -128,6 +145,7 @@ export function createReleaseProof({
   now = new Date(),
   artifactRoot = DEFAULT_ARTIFACT_ROOT,
   spawn = spawnSync,
+  privatePilot = false,
 } = {}) {
   const artifactDir = buildReleaseArtifactDir({ cwd, now, artifactRoot });
   const commandsDir = path.join(artifactDir, "commands");
@@ -136,13 +154,19 @@ export function createReleaseProof({
   const licenseJsonPath = path.join(artifactDir, "dependency-licenses.json");
   const metadata = {
     generatedAt: now.toISOString(),
+    privatePilot,
     artifactDir,
     git: gitMetadata(cwd, spawn),
     skippedChecks: [],
     commands: [],
   };
 
-  for (const command of releaseProofCommands({ sbomPath, licenseJsonPath, artifactDir })) {
+  for (const command of releaseProofCommands({
+    sbomPath,
+    licenseJsonPath,
+    artifactDir,
+    privatePilot,
+  })) {
     const result = run(command.command, command.args, {
       cwd,
       outputDir: commandsDir,
@@ -186,12 +210,49 @@ export function createReleaseProof({
   return metadata;
 }
 
+export function parseReleaseProofArgs(rawArgs) {
+  const args = rawArgs[0] === "--" ? rawArgs.slice(1) : rawArgs;
+  let privatePilot = false;
+
+  for (const arg of args) {
+    if (arg === "--help" || arg === "-h") return { help: true, privatePilot };
+    if (arg === "--private-pilot") {
+      privatePilot = true;
+      continue;
+    }
+    throw new Error(`Unknown argument: ${arg}`);
+  }
+
+  return { help: false, privatePilot };
+}
+
+function usage() {
+  return [
+    "Usage:",
+    "  node scripts/create-release-proof.mjs [--private-pilot]",
+    "",
+    "The private-pilot mode adds the self-host restore drill to the local release proof.",
+  ].join("\n");
+}
+
 function isMainModule() {
   return process.argv[1] === fileURLToPath(import.meta.url);
 }
 
 if (isMainModule()) {
-  const metadata = createReleaseProof();
+  let options;
+  try {
+    options = parseReleaseProofArgs(process.argv.slice(2));
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    console.error(usage());
+    process.exit(1);
+  }
+  if (options.help) {
+    console.log(usage());
+    process.exit(0);
+  }
+  const metadata = createReleaseProof({ privatePilot: options.privatePilot });
   console.log(`Release proof ${metadata.status}: ${metadata.artifactDir}`);
   if (metadata.status !== "passed") {
     console.error(`Failed required commands: ${metadata.failedRequiredCommandIds.join(", ")}`);

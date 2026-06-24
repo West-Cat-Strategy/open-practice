@@ -372,6 +372,7 @@ describe("jobs routes", () => {
         matterId: "matter-001",
         documentId: "doc-001",
         task: "ocr",
+        templateId: "template-ocr-001",
         rawBody: "raw document text must not be exposed",
         storageKey: "matters/matter-001/private.pdf",
         token: "synthetic-token",
@@ -417,6 +418,19 @@ describe("jobs routes", () => {
           queueNames: ["ocr"],
           jobIds: ["job-ocr-workflow"],
           stepCount: 2,
+          reviewPacket: {
+            reviewOnly: true,
+            automationDisabled: true,
+            externalConnectorDisabled: true,
+            backgroundMutationDisabled: true,
+            cues: [
+              { kind: "matter", label: "matter", value: "matter-001" },
+              { kind: "task", label: "task", value: "ocr" },
+              { kind: "template", label: "template", value: "template-ocr-001" },
+              { kind: "document", label: "document", value: "doc-001" },
+              { kind: "resource", label: "resource", value: "document:doc-001" },
+            ],
+          },
         }),
       ],
     });

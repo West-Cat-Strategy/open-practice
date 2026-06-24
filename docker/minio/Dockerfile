@@ -32,12 +32,15 @@ COPY --from=builder /src/LICENSE /licenses/LICENSE
 COPY --from=builder /src/CREDITS /licenses/CREDITS
 
 RUN apk add --no-cache ca-certificates tzdata \
+  && apk upgrade --no-cache libcrypto3 libssl3 \
   && addgroup -S minio \
   && adduser -S -D -H -u 10001 -G minio minio \
   && mkdir -p /data \
   && chown -R minio:minio /data /licenses
 
 EXPOSE 9000/tcp 9001/tcp
+
+HEALTHCHECK --interval=15s --timeout=5s --start-period=10s CMD wget -q -O /dev/null http://127.0.0.1:9000/minio/health/ready || exit 1
 
 VOLUME ["/data"]
 

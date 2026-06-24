@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 
 import {
@@ -53,21 +54,24 @@ describe("select-validation contract", () => {
   });
 
   it("routes runtime configuration changes through docs, policy, and build checks", () => {
-    assert.deepEqual(
-      selectCommands([".dockerignore", "docker-compose.yml", "docker/prod/Caddyfile"]),
-      [
-        COMMANDS.dockerLint,
-        COMMANDS.dockerResidualWatch,
-        COMMANDS.dockerAppSmoke,
-        COMMANDS.dockerScan,
-        COMMANDS.selfhostCheck,
-        COMMANDS.e2eDocker,
-        COMMANDS.formatCheck,
-        COMMANDS.docsCheck,
-        COMMANDS.policyCheck,
-        COMMANDS.build,
-      ],
-    );
+    const commands = selectCommands([
+      ".dockerignore",
+      "docker-compose.yml",
+      "docker/prod/Caddyfile",
+    ]);
+    assert.deepEqual(commands, [
+      COMMANDS.dockerLint,
+      COMMANDS.dockerResidualWatch,
+      COMMANDS.dockerAppSmoke,
+      COMMANDS.dockerScan,
+      COMMANDS.selfhostCheck,
+      COMMANDS.e2eDocker,
+      COMMANDS.formatCheck,
+      COMMANDS.docsCheck,
+      COMMANDS.policyCheck,
+      COMMANDS.build,
+    ]);
+    assert.equal(commands.includes(COMMANDS.selfhostRestoreDrill), false);
   });
 
   it("routes dependency manifests through audit and license evidence", () => {
@@ -98,15 +102,20 @@ describe("select-validation contract", () => {
   });
 
   it("routes Playwright and e2e harness changes through every browser lane", () => {
-    assert.deepEqual(selectCommands(["playwright.config.ts", "e2e/host.spec.ts"]), [
-      COMMANDS.ciLocal,
-      COMMANDS.e2eHost,
-      COMMANDS.e2eDocker,
-      COMMANDS.e2eFirstRun,
-      COMMANDS.e2eMatterless,
-      COMMANDS.e2eClientPortal,
-      COMMANDS.e2eA11y,
-    ]);
+    assert.deepEqual(
+      selectCommands(["playwright.config.ts", "e2e/host.spec.ts", "scripts/run-e2e.mjs"]),
+      [
+        COMMANDS.ciLocal,
+        COMMANDS.e2eHost,
+        COMMANDS.e2eDocker,
+        COMMANDS.e2eFirstRun,
+        COMMANDS.e2eMatterless,
+        COMMANDS.e2eClientPortal,
+        COMMANDS.e2eA11y,
+        COMMANDS.policyCheck,
+        COMMANDS.test,
+      ],
+    );
   });
 
   it("routes root docs through docs and policy checks", () => {
@@ -183,19 +192,44 @@ describe("select-validation contract", () => {
   });
 
   it("routes local security tooling changes through the security review packet", () => {
+    const commands = selectCommands([
+      "scripts/create-security-review.mjs",
+      "scripts/scan-tracked-secrets.mjs",
+      "scripts/security-hot-path-rescan.mjs",
+      "scripts/run-license-source-scan.mjs",
+    ]);
+    assert.deepEqual(commands, [
+      COMMANDS.securityReview,
+      COMMANDS.securitySecretsHistory,
+      COMMANDS.policyCheck,
+      COMMANDS.test,
+    ]);
+    assert.equal(commands.includes(COMMANDS.selfhostRestoreDrill), false);
+  });
+
+  it("routes self-host restore drill and private-pilot release proof tooling to the restore drill", () => {
     assert.deepEqual(
       selectCommands([
-        "scripts/create-security-review.mjs",
-        "scripts/scan-tracked-secrets.mjs",
-        "scripts/security-hot-path-rescan.mjs",
+        "scripts/selfhost-restore-drill.mjs",
+        "scripts/selfhost-restore-drill.test.mjs",
+        "scripts/create-release-proof.mjs",
+        "scripts/create-release-proof.test.mjs",
       ]),
-      [
-        COMMANDS.securityReview,
-        COMMANDS.securitySecretsHistory,
-        COMMANDS.policyCheck,
-        COMMANDS.test,
-      ],
+      [COMMANDS.selfhostRestoreDrill, COMMANDS.policyCheck, COMMANDS.test],
     );
+  });
+
+  it("keeps release attestation outside the security review selector lane", () => {
+    assert.deepEqual(selectCommands(["scripts/attest-release-artifacts.mjs"]), [
+      COMMANDS.policyCheck,
+      COMMANDS.test,
+    ]);
+  });
+
+  it("documents security review selector modes without dirty-tree-only wording", () => {
+    const testingGuide = readFileSync("docs/testing/TESTING.md", "utf8");
+    assert(!testingGuide.includes("the dirty-tree selector"));
+    assert.match(testingGuide, /--dirty`, `--files`, `--base`, or `--base-plus-dirty`/);
   });
 
   it("routes API contract and privacy-rule tooling through their local checks", () => {

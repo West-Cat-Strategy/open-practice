@@ -9,6 +9,7 @@ import {
   ledgerControlsDiagnostics,
   ledgerPostingRequestReviewSummary,
   ledgerReconciliationFreshnessReview,
+  ledgerReconciliationPacketReview,
 } from "@open-practice/domain";
 import { hasFirmWideLedgerAccess } from "../../http/auth-guards.js";
 import { parseRequestPart } from "../../http/validation.js";
@@ -55,7 +56,11 @@ export function registerLedgerReadRoutes(
     });
 
     const ledger = await repository.getLedger(request.auth.firmId, query);
-    const postingRequests = await repository.listLedgerPostingRequests(request.auth.firmId, query);
+    const [postingRequests, trustTransferRequests, paymentImportReviewRecords] = await Promise.all([
+      repository.listLedgerPostingRequests(request.auth.firmId, query),
+      repository.listTrustTransferRequests(request.auth.firmId, query),
+      repository.listPaymentImportReviewRecords(request.auth.firmId, query),
+    ]);
     const visibleTransactionIds = new Set(ledger.entries.map((entry) => entry.transactionId));
     const [allApprovals, audit, financialCommandAuditEvents] = await Promise.all([
       repository.listLedgerTransactionApprovals(request.auth.firmId),
@@ -68,15 +73,21 @@ export function registerLedgerReadRoutes(
     const approvals = allApprovals.filter((approval) =>
       visibleTransactionIds.has(approval.transactionId),
     );
-    const [reconciliations, importBatches, matchRuleProfiles, accountingProfiles] =
-      hasFirmWideAccess
-        ? await Promise.all([
-            repository.listLedgerReconciliations(request.auth.firmId),
-            repository.listLedgerStatementImportBatches(request.auth.firmId),
-            repository.listLedgerStatementMatchRuleProfiles(request.auth.firmId),
-            repository.listLedgerAccountingReviewProfiles(request.auth.firmId),
-          ])
-        : [[], [], [], []];
+    const [
+      reconciliations,
+      importBatches,
+      matchRuleProfiles,
+      accountingProfiles,
+      exceptionResolutions,
+    ] = hasFirmWideAccess
+      ? await Promise.all([
+          repository.listLedgerReconciliations(request.auth.firmId),
+          repository.listLedgerStatementImportBatches(request.auth.firmId),
+          repository.listLedgerStatementMatchRuleProfiles(request.auth.firmId),
+          repository.listLedgerAccountingReviewProfiles(request.auth.firmId),
+          repository.listLedgerReconciliationExceptionResolutions(request.auth.firmId),
+        ])
+      : [[], [], [], [], []];
     const diagnostics = ledgerControlsDiagnostics({
       ledger,
       approvals,
@@ -100,6 +111,18 @@ export function registerLedgerReadRoutes(
       reconciliationFreshness: ledgerReconciliationFreshnessReview({
         accounts: hasFirmWideAccess ? ledger.accounts : [],
         reconciliations: hasFirmWideAccess ? reconciliations : [],
+        generatedAt,
+      }),
+      reconciliationPacketReview: ledgerReconciliationPacketReview({
+        ledger,
+        approvals,
+        postingRequests,
+        reconciliations,
+        importBatches,
+        exceptionResolutions,
+        trustTransferRequests,
+        paymentImportReviewRecords,
+        diagnostics,
         generatedAt,
       }),
       diagnostics,

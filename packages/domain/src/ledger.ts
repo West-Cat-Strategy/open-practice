@@ -1,3 +1,4 @@
+import type { PaymentImportReviewRecord, TrustTransferRequestRecord } from "./billing.js";
 import type { LegalClinicMatterProfile } from "./legal-clinics.js";
 import type { Matter, Province } from "./models.js";
 
@@ -388,6 +389,52 @@ export interface LedgerBankFeedReconciliationReviewSummary {
   trustDisbursementAutomation: false;
   importBatchStoragePosture: "metadata_only_no_statement_rows";
   reviewOnly: true;
+}
+
+export type LedgerReconciliationPacketKind =
+  | "ledger"
+  | "statement_import"
+  | "exception"
+  | "trust_transfer"
+  | "posting_request"
+  | "payment_import";
+
+export interface LedgerReconciliationPacketSummary {
+  kind: LedgerReconciliationPacketKind;
+  label: string;
+  evidenceCount: number;
+  reviewCueCount: number;
+  pendingCount: number;
+  exceptionCount: number;
+  conflictCount: number;
+  amountCents: number;
+  latestEvidenceAt?: string;
+  posture: "clear" | "needs_review";
+  reviewOnly: true;
+}
+
+export interface LedgerReconciliationPacketReview {
+  generatedAt: string;
+  reviewOnly: true;
+  packets: LedgerReconciliationPacketSummary[];
+  summary: {
+    packetCount: number;
+    evidenceCount: number;
+    reviewCueCount: number;
+    packetsNeedingReviewCount: number;
+    latestEvidenceAt?: string;
+    reviewOnly: true;
+  };
+  policy: {
+    source: "existing_ledger_billing_review_records";
+    rawEvidencePayloads: "excluded";
+    automaticReconciliation: false;
+    automaticTrustPosting: false;
+    invoiceMutation: "explicit_command_only";
+    liveSettlement: false;
+    providerCommands: false;
+    publicExposure: false;
+  };
 }
 
 export type LedgerBalanceSnapshotReviewReason =
@@ -1106,6 +1153,236 @@ export function ledgerBankFeedReconciliationReviewSummary(input: {
     trustDisbursementAutomation: false,
     importBatchStoragePosture: "metadata_only_no_statement_rows",
     reviewOnly: true,
+  };
+}
+
+function packetPosture(input: {
+  reviewCueCount: number;
+  exceptionCount?: number;
+  conflictCount?: number;
+}): LedgerReconciliationPacketSummary["posture"] {
+  return input.reviewCueCount > 0 ||
+    (input.exceptionCount ?? 0) > 0 ||
+    (input.conflictCount ?? 0) > 0
+    ? "needs_review"
+    : "clear";
+}
+
+function postingRequestAmountCents(request: LedgerPostingRequestRecord): number {
+  const debitCents = request.entries.reduce((sum, entry) => sum + entry.debitCents, 0);
+  const creditCents = request.entries.reduce((sum, entry) => sum + entry.creditCents, 0);
+  return Math.max(debitCents, creditCents);
+}
+
+export function ledgerReconciliationPacketReview(input: {
+  ledger: LedgerControlsLedgerSnapshot;
+  approvals: LedgerTransactionApprovalRecord[];
+  postingRequests: LedgerPostingRequestRecord[];
+  reconciliations: LedgerReconciliationRecord[];
+  importBatches: LedgerStatementImportBatchRecord[];
+  exceptionResolutions: LedgerReconciliationExceptionResolutionRecord[];
+  trustTransferRequests: TrustTransferRequestRecord[];
+  paymentImportReviewRecords: PaymentImportReviewRecord[];
+  diagnostics: LedgerControlsDiagnostics;
+  generatedAt?: string;
+}): LedgerReconciliationPacketReview {
+  const generatedAt = input.generatedAt ?? new Date().toISOString();
+  const ledgerTransactionIds = uniqueInOrder(
+    input.ledger.entries.map((entry) => entry.transactionId),
+  );
+  const trustBalanceValues = Object.values(input.ledger.trustBalances);
+  const ledgerReviewCueCount =
+    input.diagnostics.pendingApprovalTransactionIds.length +
+    input.diagnostics.rejectedApprovalTransactionIds.length +
+    input.diagnostics.overdrawnBalanceKeys.length;
+
+  const reviewReadyImportBatchCount = input.importBatches.filter(
+    (batch) => batch.status === "review_ready",
+  ).length;
+  const duplicateStatementRowCount = input.importBatches.reduce(
+    (sum, batch) => sum + batch.duplicateStatementRowCount,
+    0,
+  );
+
+  const exceptionReconciliationIds = new Set(input.diagnostics.exceptionReconciliationIds);
+  for (const reconciliation of input.reconciliations) {
+    if (reconciliation.status === "exception") exceptionReconciliationIds.add(reconciliation.id);
+  }
+  const exceptionReconciliations = input.reconciliations.filter((reconciliation) =>
+    exceptionReconciliationIds.has(reconciliation.id),
+  );
+  const unmatchedStatementRowCount = input.reconciliations.reduce(
+    (sum, reconciliation) =>
+      sum + reconciliation.statementRows.filter((row) => row.reviewDecision === "unmatched").length,
+    0,
+  );
+
+  const pendingTrustTransferCount = input.trustTransferRequests.filter(
+    (request) => request.status === "pending_approval",
+  ).length;
+  const approvedUnlinkedTrustTransferCount = input.trustTransferRequests.filter(
+    (request) => request.status === "approved" && !request.ledgerTransactionId,
+  ).length;
+  const rejectedTrustTransferCount = input.trustTransferRequests.filter(
+    (request) => request.status === "rejected",
+  ).length;
+
+  const postingRequestSummary = ledgerPostingRequestReviewSummary(input.postingRequests);
+  const paymentImportConflictCount = input.paymentImportReviewRecords.filter(
+    (record) => record.conflictReason || record.duplicateOfRecordId,
+  ).length;
+
+  const packets: LedgerReconciliationPacketSummary[] = [
+    {
+      kind: "ledger",
+      label: "Ledger evidence",
+      evidenceCount: ledgerTransactionIds.length + input.approvals.length,
+      reviewCueCount: ledgerReviewCueCount,
+      pendingCount: input.diagnostics.pendingApprovalTransactionIds.length,
+      exceptionCount: input.diagnostics.overdrawnBalanceKeys.length,
+      conflictCount: input.diagnostics.rejectedApprovalTransactionIds.length,
+      amountCents: trustBalanceValues.reduce((sum, balanceCents) => sum + balanceCents, 0),
+      latestEvidenceAt: latestIso([
+        ...input.ledger.entries.map((entry) => entry.postedAt),
+        ...input.approvals.map((approval) => approval.decidedAt),
+      ]),
+      posture: packetPosture({
+        reviewCueCount: ledgerReviewCueCount,
+        exceptionCount: input.diagnostics.overdrawnBalanceKeys.length,
+        conflictCount: input.diagnostics.rejectedApprovalTransactionIds.length,
+      }),
+      reviewOnly: true,
+    },
+    {
+      kind: "statement_import",
+      label: "Statement import evidence",
+      evidenceCount: input.importBatches.length,
+      reviewCueCount: reviewReadyImportBatchCount + duplicateStatementRowCount,
+      pendingCount: reviewReadyImportBatchCount,
+      exceptionCount: 0,
+      conflictCount: duplicateStatementRowCount,
+      amountCents: 0,
+      latestEvidenceAt: latestIso(input.importBatches.map((batch) => batch.createdAt)),
+      posture: packetPosture({
+        reviewCueCount: reviewReadyImportBatchCount + duplicateStatementRowCount,
+        conflictCount: duplicateStatementRowCount,
+      }),
+      reviewOnly: true,
+    },
+    {
+      kind: "exception",
+      label: "Exception evidence",
+      evidenceCount: exceptionReconciliations.length + input.exceptionResolutions.length,
+      reviewCueCount: exceptionReconciliations.length + unmatchedStatementRowCount,
+      pendingCount: exceptionReconciliations.length,
+      exceptionCount: exceptionReconciliations.length,
+      conflictCount: unmatchedStatementRowCount,
+      amountCents: exceptionReconciliations.reduce(
+        (sum, reconciliation) =>
+          sum + Math.abs(reconciliation.actualBalanceCents - reconciliation.expectedBalanceCents),
+        0,
+      ),
+      latestEvidenceAt: latestIso([
+        ...exceptionReconciliations.map((reconciliation) => reconciliation.createdAt),
+        ...input.exceptionResolutions.map((resolution) => resolution.recordedAt),
+      ]),
+      posture: packetPosture({
+        reviewCueCount: exceptionReconciliations.length + unmatchedStatementRowCount,
+        exceptionCount: exceptionReconciliations.length,
+        conflictCount: unmatchedStatementRowCount,
+      }),
+      reviewOnly: true,
+    },
+    {
+      kind: "trust_transfer",
+      label: "Trust transfer evidence",
+      evidenceCount: input.trustTransferRequests.length,
+      reviewCueCount: pendingTrustTransferCount + approvedUnlinkedTrustTransferCount,
+      pendingCount: pendingTrustTransferCount + approvedUnlinkedTrustTransferCount,
+      exceptionCount: rejectedTrustTransferCount,
+      conflictCount: 0,
+      amountCents: input.trustTransferRequests.reduce(
+        (sum, request) => sum + request.amountCents,
+        0,
+      ),
+      latestEvidenceAt: latestIso(
+        input.trustTransferRequests.map((request) => request.reviewedAt ?? request.requestedAt),
+      ),
+      posture: packetPosture({
+        reviewCueCount: pendingTrustTransferCount + approvedUnlinkedTrustTransferCount,
+        exceptionCount: rejectedTrustTransferCount,
+      }),
+      reviewOnly: true,
+    },
+    {
+      kind: "posting_request",
+      label: "Posting request evidence",
+      evidenceCount: input.postingRequests.length,
+      reviewCueCount: postingRequestSummary.pendingApprovalCount,
+      pendingCount: postingRequestSummary.pendingApprovalCount,
+      exceptionCount: postingRequestSummary.rejectedCount,
+      conflictCount: 0,
+      amountCents: input.postingRequests.reduce(
+        (sum, request) => sum + postingRequestAmountCents(request),
+        0,
+      ),
+      latestEvidenceAt: latestIso(
+        input.postingRequests.map((request) => request.reviewedAt ?? request.preparedAt),
+      ),
+      posture: packetPosture({
+        reviewCueCount: postingRequestSummary.pendingApprovalCount,
+        exceptionCount: postingRequestSummary.rejectedCount,
+      }),
+      reviewOnly: true,
+    },
+    {
+      kind: "payment_import",
+      label: "Payment import evidence",
+      evidenceCount: input.paymentImportReviewRecords.length,
+      reviewCueCount: input.paymentImportReviewRecords.length,
+      pendingCount: input.paymentImportReviewRecords.filter(
+        (record) => record.reviewState === "needs_review",
+      ).length,
+      exceptionCount: 0,
+      conflictCount: paymentImportConflictCount,
+      amountCents: input.paymentImportReviewRecords.reduce(
+        (sum, record) => sum + record.amountCents,
+        0,
+      ),
+      latestEvidenceAt: latestIso(
+        input.paymentImportReviewRecords.map((record) => record.updatedAt),
+      ),
+      posture: packetPosture({
+        reviewCueCount: input.paymentImportReviewRecords.length,
+        conflictCount: paymentImportConflictCount,
+      }),
+      reviewOnly: true,
+    },
+  ];
+
+  return {
+    generatedAt,
+    reviewOnly: true,
+    packets,
+    summary: {
+      packetCount: packets.length,
+      evidenceCount: packets.reduce((sum, packet) => sum + packet.evidenceCount, 0),
+      reviewCueCount: packets.reduce((sum, packet) => sum + packet.reviewCueCount, 0),
+      packetsNeedingReviewCount: packets.filter((packet) => packet.posture === "needs_review")
+        .length,
+      latestEvidenceAt: latestIso(packets.map((packet) => packet.latestEvidenceAt)),
+      reviewOnly: true,
+    },
+    policy: {
+      source: "existing_ledger_billing_review_records",
+      rawEvidencePayloads: "excluded",
+      automaticReconciliation: false,
+      automaticTrustPosting: false,
+      invoiceMutation: "explicit_command_only",
+      liveSettlement: false,
+      providerCommands: false,
+      publicExposure: false,
+    },
   };
 }
 
