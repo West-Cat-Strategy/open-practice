@@ -119,6 +119,10 @@ const calendarSchedulingRequestBodySchema = z
   .refine((value) => Boolean(value.requestedStartsAt) === Boolean(value.requestedEndsAt), {
     message: "Scheduling requests require both requestedStartsAt and requestedEndsAt",
     path: ["requestedEndsAt"],
+  })
+  .refine((value) => !value.calendarReminderId || Boolean(value.calendarEventId), {
+    message: "Scheduling requests with calendarReminderId require calendarEventId",
+    path: ["calendarEventId"],
   });
 
 const calendarSchedulingReviewBodySchema = z
@@ -126,6 +130,10 @@ const calendarSchedulingReviewBodySchema = z
     matterId: z.string().min(1),
     status: z.enum(["reviewed", "dismissed", "scheduled"]),
     calendarEventId: z.string().min(1).optional(),
+  })
+  .refine((value) => value.status !== "scheduled" || Boolean(value.calendarEventId), {
+    message: "Scheduled requests require calendarEventId",
+    path: ["calendarEventId"],
   })
   .refine((value) => value.status === "scheduled" || !value.calendarEventId, {
     message: "Only scheduled requests may link calendarEventId",
@@ -153,7 +161,7 @@ function assertCalendarEventRangeForRequest(startsAt: string, endsAt: string): v
 }
 
 function calendarEventAuditMetadata(event: CalendarEventRecord): Record<string, unknown> {
-  return {
+  const metadata: Record<string, unknown> = {
     scope: calendarEventScope(event),
     matterId: event.matterId,
     clientContactId: event.clientContactId,
@@ -163,7 +171,11 @@ function calendarEventAuditMetadata(event: CalendarEventRecord): Record<string, 
     sequence: event.sequence,
     attendeeCount: event.attendees?.length ?? 0,
     reminderCount: event.reminders?.length ?? 0,
+    hasMeetingLink: Boolean(event.meetingLinkUrl),
   };
+  if (event.meetingLinkMode) metadata.meetingLinkMode = event.meetingLinkMode;
+  if (event.meetingProviderKey) metadata.meetingProviderKey = event.meetingProviderKey;
+  return metadata;
 }
 
 function schedulingRequestAuditMetadata(
@@ -196,6 +208,20 @@ async function schedulingRequestSummaryForResponse(input: {
     events: input.events,
     includeTimeCapture: input.includeTimeCapture,
   })[0];
+}
+
+async function calendarReminderOwnerEvent(input: {
+  repository: CalendarRouteDependencies["repository"];
+  firmId: string;
+  matterId: string;
+  reminderId: string;
+}): Promise<CalendarEventRecord | undefined> {
+  const events = await input.repository.listCalendarEvents(input.firmId, {
+    matterId: input.matterId,
+  });
+  return events.find((event) =>
+    (event.reminders ?? []).some((reminder) => reminder.id === input.reminderId),
+  );
 }
 
 function sortCalendarEvents(events: CalendarEventRecord[]): CalendarEventRecord[] {
@@ -468,8 +494,7 @@ export function registerCalendarRoutes(
       return reply.code(404).send({ error: "NotFound", message: "Scheduling request not found" });
     }
     let linkedEvent: CalendarEventRecord | undefined;
-    const linkedEventId =
-      body.status === "scheduled" ? (body.calendarEventId ?? existing.calendarEventId) : undefined;
+    const linkedEventId = body.status === "scheduled" ? body.calendarEventId : undefined;
     if (linkedEventId) {
       linkedEvent = await repository.getCalendarEvent(
         request.auth.firmId,
@@ -480,6 +505,34 @@ export function registerCalendarRoutes(
         throw new ApiHttpError(404, "CALENDAR_EVENT_NOT_FOUND", "Calendar event not found", {
           eventId: linkedEventId,
         });
+      }
+      if (existing.calendarReminderId) {
+        const reminderOwner = await calendarReminderOwnerEvent({
+          repository,
+          firmId: request.auth.firmId,
+          matterId: body.matterId,
+          reminderId: existing.calendarReminderId,
+        });
+        if (!reminderOwner) {
+          throw new ApiHttpError(
+            404,
+            "CALENDAR_REMINDER_NOT_FOUND",
+            "Calendar reminder link not found",
+            { reminderId: existing.calendarReminderId },
+          );
+        }
+        if (reminderOwner.status === "cancelled") {
+          throw new ApiHttpError(404, "CALENDAR_EVENT_NOT_FOUND", "Calendar event not found", {
+            eventId: reminderOwner.id,
+          });
+        }
+        if (linkedEvent.id !== reminderOwner.id) {
+          throw new ApiHttpError(
+            409,
+            "CALENDAR_REMINDER_EVENT_MISMATCH",
+            "Scheduling request reminder must be scheduled against its owning calendar event",
+          );
+        }
       }
     }
     const now = new Date().toISOString();

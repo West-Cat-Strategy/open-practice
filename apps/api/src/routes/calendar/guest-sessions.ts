@@ -56,6 +56,24 @@ const publicGuestCheckInBodySchema = z
   })
   .optional();
 
+const TERMINAL_GUEST_LINK_STATUSES = new Set<CalendarGuestLinkRecord["status"]>([
+  "admitted",
+  "denied",
+  "revoked",
+]);
+
+function guestSessionNotFoundError(): ApiHttpError {
+  return new ApiHttpError(404, "GUEST_SESSION_NOT_FOUND", "Guest session was not found");
+}
+
+function guestSessionTransitionUnavailableError(): ApiHttpError {
+  return new ApiHttpError(
+    409,
+    "GUEST_SESSION_TRANSITION_UNAVAILABLE",
+    "Guest session transition is unavailable",
+  );
+}
+
 function requireGuestAccessSecret(jwtSecret: string | undefined): string {
   if (jwtSecret) return jwtSecret;
   throw new ApiHttpError(
@@ -67,9 +85,14 @@ function requireGuestAccessSecret(jwtSecret: string | undefined): string {
 
 function readGuestSessionPublicToken(request: FastifyRequest): string {
   const params = request.params as { token?: string } | undefined;
+  const pathToken = params?.token;
+  const headerToken = readPublicTokenHeader(request.headers);
+  if (pathToken && headerToken && pathToken !== headerToken) {
+    throw guestSessionNotFoundError();
+  }
   return parseRequestPart(
     publicGuestSessionParamsSchema,
-    params?.token ? params : publicTokenPathFromHeader(readPublicTokenHeader(request.headers)),
+    pathToken ? { token: pathToken } : publicTokenPathFromHeader(headerToken),
     "params",
   ).token;
 }
@@ -109,6 +132,21 @@ function sessionStatusForResponse(
   if (session.status === "locked") return "locked";
   if (session.status === "ended") return "ended";
   return "created";
+}
+
+function assertGuestSessionTransitionAvailable(session: CalendarMeetingSessionRecord): void {
+  if (session.status === "ended") {
+    throw guestSessionTransitionUnavailableError();
+  }
+}
+
+function assertGuestLinkTransitionAvailable(link: CalendarGuestLinkRecord, now: string): void {
+  if (
+    Date.parse(link.expiresAt) <= Date.parse(now) ||
+    TERMINAL_GUEST_LINK_STATUSES.has(link.status)
+  ) {
+    throw guestSessionTransitionUnavailableError();
+  }
 }
 
 function sanitizeGuestLink(link: CalendarGuestLinkRecord) {
@@ -333,6 +371,7 @@ async function resolvePublicGuestSession(input: {
   repository: CalendarRouteDependencies["repository"];
   jwtSecret?: string;
   token: string;
+  transitionUnavailableOnExpiredOrRevoked?: boolean;
   expiredLinkAccessLog?: {
     action: AccessLogRecord["action"];
     request: FastifyRequest;
@@ -348,7 +387,7 @@ async function resolvePublicGuestSession(input: {
     hashToken(input.token, secret),
   );
   if (!link) {
-    throw new ApiHttpError(404, "GUEST_SESSION_NOT_FOUND", "Guest session was not found");
+    throw guestSessionNotFoundError();
   }
   if (link.status === "revoked" || Date.parse(link.expiresAt) <= Date.now()) {
     if (input.expiredLinkAccessLog) {
@@ -365,6 +404,9 @@ async function resolvePublicGuestSession(input: {
         }),
       );
     }
+    if (input.transitionUnavailableOnExpiredOrRevoked) {
+      throw guestSessionTransitionUnavailableError();
+    }
     throw new ApiHttpError(410, "GUEST_SESSION_EXPIRED", "Guest session is no longer available");
   }
   const [event, session] = await Promise.all([
@@ -377,7 +419,7 @@ async function resolvePublicGuestSession(input: {
     ),
   ]);
   if (!event || !session) {
-    throw new ApiHttpError(404, "GUEST_SESSION_NOT_FOUND", "Guest session was not found");
+    throw guestSessionNotFoundError();
   }
   const links = await input.repository.listCalendarGuestLinks(link.firmId, {
     matterId: link.matterId,
@@ -488,6 +530,7 @@ export function registerCalendarGuestSessionRoutes(
     if (!existing) {
       throw new ApiHttpError(404, "MEETING_SESSION_NOT_FOUND", "Meeting session not found");
     }
+    assertGuestSessionTransitionAvailable(existing);
     const occurredAt = new Date().toISOString();
     const updated = await repository.updateCalendarMeetingSessionStatus({
       firmId: request.auth.firmId,
@@ -592,13 +635,7 @@ export function registerCalendarGuestSessionRoutes(
       if (!session) {
         throw new ApiHttpError(404, "MEETING_SESSION_NOT_FOUND", "Meeting session not found");
       }
-      if (session.status === "ended") {
-        throw new ApiHttpError(
-          409,
-          "MEETING_SESSION_ENDED",
-          "Guest links cannot be issued for ended sessions",
-        );
-      }
+      assertGuestSessionTransitionAvailable(session);
       const now = new Date();
       const token = createSessionToken();
       const link = await repository.createCalendarGuestLink({
@@ -657,6 +694,16 @@ export function registerCalendarGuestSessionRoutes(
       params.eventId,
       body.matterId,
     );
+    const session = await repository.getCalendarMeetingSession(
+      request.auth.firmId,
+      body.matterId,
+      event.id,
+      params.sessionId,
+    );
+    if (!session) {
+      throw new ApiHttpError(404, "MEETING_SESSION_NOT_FOUND", "Meeting session not found");
+    }
+    assertGuestSessionTransitionAvailable(session);
     const existing = await repository.getCalendarGuestLink(
       request.auth.firmId,
       body.matterId,
@@ -668,6 +715,7 @@ export function registerCalendarGuestSessionRoutes(
       throw new ApiHttpError(404, "GUEST_LINK_NOT_FOUND", "Guest link not found");
     }
     const occurredAt = new Date().toISOString();
+    assertGuestLinkTransitionAvailable(existing, occurredAt);
     const guest =
       guestAction.status === "revoked"
         ? await repository.revokeCalendarGuestLink({
@@ -701,12 +749,6 @@ export function registerCalendarGuestSessionRoutes(
       occurredAt,
       metadata: guestLinkAuditMetadata(guest),
     });
-    const session = await repository.getCalendarMeetingSession(
-      request.auth.firmId,
-      body.matterId,
-      event.id,
-      params.sessionId,
-    );
     return {
       session: session ? await calendarGuestSessionWithLinks(repository, session, event) : null,
       guest: sanitizeGuestLink(guest),
@@ -773,9 +815,29 @@ export function registerCalendarGuestSessionRoutes(
       repository,
       jwtSecret,
       token: readGuestSessionPublicToken(request),
+      transitionUnavailableOnExpiredOrRevoked: true,
       expiredLinkAccessLog: { action: "submit", request },
     });
     const now = new Date().toISOString();
+    if (
+      resolved.session.status === "ended" ||
+      TERMINAL_GUEST_LINK_STATUSES.has(resolved.link.status)
+    ) {
+      await repository.createAccessLog(
+        publicGuestSessionAccessLog({
+          link: resolved.link,
+          action: "submit",
+          request,
+          metadata: {
+            outcome: "transition_unavailable",
+            status: resolved.link.status,
+            lobbyStatus: resolved.session.status,
+            publicTokenTransitionUnavailable: true,
+          },
+        }),
+      );
+      throw guestSessionTransitionUnavailableError();
+    }
     const expired = Date.parse(resolved.link.expiresAt) <= Date.parse(now);
     if (!expired && resolved.session.status === "lobby_open" && resolved.link.status === "issued") {
       const waiting = await repository.updateCalendarGuestLinkStatus({

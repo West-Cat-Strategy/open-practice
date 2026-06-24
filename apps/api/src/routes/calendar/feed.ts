@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { buildICalendarFeed } from "@open-practice/domain";
+import type { CalendarEventRecord } from "@open-practice/domain";
 import { parseRequestPart } from "../../http/validation.js";
 import { assertCalendarAccess } from "./shared.js";
 import type { CalendarRouteDependencies } from "./shared.js";
@@ -12,6 +13,15 @@ const calendarFeedParamsSchema = z.object({
 export function webcalSubscriptionUrl(request: FastifyRequest, matterId: string): string {
   const host = request.headers.host ?? request.hostname;
   return `webcal://${host}/api/calendar/matters/${encodeURIComponent(matterId)}.ics`;
+}
+
+function calendarEventWithoutMeetingDisclosure(event: CalendarEventRecord): CalendarEventRecord {
+  const safeEvent: CalendarEventRecord = { ...event };
+  delete safeEvent.meetingLinkMode;
+  delete safeEvent.meetingLinkUrl;
+  delete safeEvent.meetingRoomId;
+  delete safeEvent.meetingProviderKey;
+  return safeEvent;
 }
 
 export function registerCalendarFeedRoutes(
@@ -29,7 +39,7 @@ export function registerCalendarFeedRoutes(
     });
     return reply.type("text/calendar; charset=utf-8").send(
       buildICalendarFeed({
-        events,
+        events: events.map(calendarEventWithoutMeetingDisclosure),
         calendarName: `Open Practice ${params.matterId}`,
         generatedAt: new Date().toISOString(),
       }),

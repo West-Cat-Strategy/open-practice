@@ -7,7 +7,7 @@ import type { CalendarRadarBuckets } from "../calendar-dashboard";
 import { CalendarSection } from "./calendar-section";
 
 type DashboardCalendarEvent = CalendarDashboardResponse["eventsByMatterId"][string][number];
-type CalendarSchedulingRequest =
+type DashboardSchedulingRequest =
   CalendarDashboardResponse["schedulingRequestsByMatterId"][string][number];
 type CalendarSectionProps = ComponentProps<typeof CalendarSection>;
 
@@ -60,21 +60,28 @@ const calendarBuckets: CalendarRadarBuckets = {
   cancelled: [],
 };
 
-const syntheticSchedulingRequest: CalendarSchedulingRequest = {
-  id: "calendar-scheduling-request-synthetic",
+const syntheticSchedulingRequest: DashboardSchedulingRequest = {
+  id: "schedule_request_synthetic",
   matterId: "matter_synthetic",
   kind: "event_scheduling",
   status: "needs_review",
-  title: "Review client meeting window",
-  source: { type: "calendar_event", label: "Synthetic hearing" },
+  title: "Synthetic video check-in",
+  source: {
+    type: "manual",
+    label: "Staff note",
+  },
+  requestedDueAt: "2035-06-06T18:00:00.000Z",
   requestedStartsAt: "2035-06-06T16:00:00.000Z",
   requestedEndsAt: "2035-06-06T17:00:00.000Z",
   reminderSummary: {
-    posture: "dashboard_pending",
+    posture: "none",
     pendingCount: 0,
     acknowledgedCount: 0,
   },
-  privacy: { visibility: "staff_only", clientVisible: false },
+  privacy: {
+    visibility: "staff_only",
+    clientVisible: false,
+  },
   timeCaptureCue: {
     posture: "none",
     existingTimeEntryCount: 0,
@@ -130,6 +137,8 @@ function matterlessCalendarMarkup(
       calendarMeetingLinkModesByEventId: {},
       calendarMeetingLinkUrlsByEventId: {},
       calendarMeetingStatus: "Meeting attendees have not changed.",
+      calendarSchedulingReviewEventIdsByRequestId: {},
+      calendarSchedulingReviewStatus: "Scheduling requests have not changed.",
       calendarOneTimeSecret: null,
       calendarReminderAt: "2035-06-05T09:00",
       calendarReminderNote: "",
@@ -151,6 +160,7 @@ function matterlessCalendarMarkup(
       updatingCalendarGuestSessionKey: "",
       updatingCalendarMeetingLinkEventId: "",
       updatingCalendarReminderId: "",
+      reviewingCalendarSchedulingRequestKey: "",
       onAddCalendarAttendee: noop,
       onAddCalendarReminder: noop,
       onCancelCalendarEvent: noop,
@@ -166,6 +176,7 @@ function matterlessCalendarMarkup(
       onRemoveCalendarReminder: noop,
       onRescheduleCalendarEvent: noop,
       onRevokeCalendarCredential: noop,
+      onReviewCalendarSchedulingRequest: noop,
       onSetCalendarAttendeeEmail: noop,
       onSetCalendarAttendeeName: noop,
       onSetCalendarAttendeeRole: noop,
@@ -181,6 +192,7 @@ function matterlessCalendarMarkup(
       onSetCalendarMeetingEventId: noop,
       onSetCalendarMeetingLinkMode: noop,
       onSetCalendarMeetingLinkUrl: noop,
+      onSetCalendarSchedulingReviewEventId: noop,
       onSetCalendarReminderAt: noop,
       onSetCalendarReminderEventId: noop,
       onSetCalendarReminderNote: noop,
@@ -195,15 +207,20 @@ function matterlessCalendarMarkup(
 
 describe("CalendarSection", () => {
   it("renders calendar operations without changing copy or classes", () => {
+    const eventWithStoredLink: DashboardCalendarEvent = {
+      ...syntheticEvent,
+      meetingLinkMode: "external_url",
+      meetingLinkUrl: "https://video.example.test/raw-stored-room",
+    };
     const html = renderToStaticMarkup(
       createElement(CalendarSection, {
         activeCalendarBuckets: calendarBuckets,
-        activeCalendarEvents: [syntheticEvent],
+        activeCalendarEvents: [eventWithStoredLink],
         activeCalendarLinks: {
           caldavUrl: "https://calendar.example.test/caldav/matter_synthetic",
           subscriptionUrl: "https://calendar.example.test/feed/matter_synthetic.ics",
         },
-        activeCalendarSchedulingRequests: [],
+        activeCalendarSchedulingRequests: [syntheticSchedulingRequest],
         activeCalendarScope: "matter",
         activeMatterNumber: "OP-2026-001",
         addingCalendarAttendee: false,
@@ -227,6 +244,8 @@ describe("CalendarSection", () => {
         calendarMeetingLinkModesByEventId: {},
         calendarMeetingLinkUrlsByEventId: {},
         calendarMeetingStatus: "Meeting attendees have not changed.",
+        calendarSchedulingReviewEventIdsByRequestId: {},
+        calendarSchedulingReviewStatus: "Scheduling requests have not changed.",
         calendarOneTimeSecret: null,
         calendarReminderAt: "2035-06-05T09:00",
         calendarReminderNote: "",
@@ -242,10 +261,11 @@ describe("CalendarSection", () => {
         removingCalendarAttendeeId: "",
         removingCalendarReminderId: "",
         revokingCalendarCredentialId: "",
-        selectedCalendarMeetingEvent: syntheticEvent,
-        selectedCalendarReminderEvent: syntheticEvent,
+        selectedCalendarMeetingEvent: eventWithStoredLink,
+        selectedCalendarReminderEvent: eventWithStoredLink,
         sendingCalendarInvitationsEventId: "",
         matterCalendarControlsEnabled: true,
+        reviewingCalendarSchedulingRequestKey: "",
         updatingCalendarEventId: "",
         updatingCalendarGuestSessionKey: "",
         updatingCalendarMeetingLinkEventId: "",
@@ -265,6 +285,7 @@ describe("CalendarSection", () => {
         onRemoveCalendarReminder: noop,
         onRescheduleCalendarEvent: noop,
         onRevokeCalendarCredential: noop,
+        onReviewCalendarSchedulingRequest: noop,
         onSetCalendarAttendeeEmail: noop,
         onSetCalendarAttendeeName: noop,
         onSetCalendarAttendeeRole: noop,
@@ -280,6 +301,7 @@ describe("CalendarSection", () => {
         onSetCalendarMeetingEventId: noop,
         onSetCalendarMeetingLinkMode: noop,
         onSetCalendarMeetingLinkUrl: noop,
+        onSetCalendarSchedulingReviewEventId: noop,
         onSetCalendarReminderAt: noop,
         onSetCalendarReminderEventId: noop,
         onSetCalendarReminderNote: noop,
@@ -292,10 +314,22 @@ describe("CalendarSection", () => {
 
     expect(html).toContain('class="activity-grid calendar-radar-grid"');
     expect(html).toContain("Deadline radar");
-    expect(html).toContain("No scheduling request records for this matter.");
+    expect(html).toContain("Synthetic video check-in");
+    expect(html).toContain("Existing event");
+    expect(html).toContain("Reviewed");
+    expect(html).toContain("Dismiss");
+    expect(html).toContain("Link event");
     expect(html).toContain("Calendar events");
     expect(html).toContain("OP-2026-001");
     expect(html).toContain("Synthetic hearing");
+    expect(html).toContain("Invitation handoff review");
+    expect(html).toContain("Hosted lobby blocked");
+    expect(html).toContain("Attendees ready");
+    expect(html).toContain("Meeting link saved");
+    expect(html).toContain("Stored meeting link saved; URL hidden.");
+    expect(html).not.toContain("raw-stored-room");
+    expect(html).toContain("Guest access disabled");
+    expect(html).toContain("Invitation email disabled");
     expect(html).toContain("Meeting link");
     expect(html).toContain("Save link");
     expect(html).toContain("Add attendee");
@@ -303,17 +337,165 @@ describe("CalendarSection", () => {
     expect(html).toContain("No calendar app passwords have been created.");
   });
 
-  it("renders scheduling handoff posture without public booking or provider sync", () => {
-    const html = matterlessCalendarMarkup({
-      activeCalendarScope: "matter",
-      activeMatterNumber: "OP-2026-001",
-      activeCalendarSchedulingRequests: [syntheticSchedulingRequest],
-      matterCalendarControlsEnabled: true,
-    });
+  it("orders scheduling reviews and renders explicit safe next steps", () => {
+    const scheduledRequest: DashboardSchedulingRequest = {
+      ...syntheticSchedulingRequest,
+      id: "schedule_request_scheduled",
+      status: "scheduled",
+      title: "Scheduled synthetic review",
+      linkedEvent: {
+        id: syntheticEvent.id,
+        title: syntheticEvent.title,
+        startsAt: syntheticEvent.startsAt,
+        endsAt: syntheticEvent.endsAt,
+        status: syntheticEvent.status,
+      },
+    };
+    const reviewedRequest: DashboardSchedulingRequest = {
+      ...syntheticSchedulingRequest,
+      id: "schedule_request_reviewed",
+      status: "reviewed",
+      title: "Reviewed synthetic request",
+    };
+    const dismissedRequest: DashboardSchedulingRequest = {
+      ...syntheticSchedulingRequest,
+      id: "schedule_request_dismissed",
+      status: "dismissed",
+      title: "Dismissed synthetic request",
+    };
+    const laterNeedsReview: DashboardSchedulingRequest = {
+      ...syntheticSchedulingRequest,
+      id: "schedule_request_later",
+      title: "Later video check-in",
+      requestedDueAt: "2035-06-07T18:00:00.000Z",
+    };
 
-    expect(html).toContain("Review client meeting window");
-    expect(html).toContain("review needed");
-    expect(html).toContain("no public booking page or event creation runs");
+    const html = matterlessCalendarMarkup(
+      {
+        activeCalendarScope: "matter",
+        activeMatterNumber: "OP-2026-001",
+        matterCalendarControlsEnabled: true,
+        activeCalendarSchedulingRequests: [
+          dismissedRequest,
+          scheduledRequest,
+          laterNeedsReview,
+          reviewedRequest,
+          syntheticSchedulingRequest,
+        ],
+        calendarSchedulingReviewEventIdsByRequestId: {
+          [laterNeedsReview.id]: syntheticEvent.id,
+        },
+      },
+      [syntheticEvent],
+    );
+
+    expect(html.indexOf("Synthetic video check-in")).toBeLessThan(
+      html.indexOf("Later video check-in"),
+    );
+    expect(html.indexOf("Later video check-in")).toBeLessThan(
+      html.indexOf("Scheduled synthetic review"),
+    );
+    expect(html.indexOf("Scheduled synthetic review")).toBeLessThan(
+      html.indexOf("Reviewed synthetic request"),
+    );
+    expect(html.indexOf("Reviewed synthetic request")).toBeLessThan(
+      html.indexOf("Dismissed synthetic request"),
+    );
+    expect(html).toContain("Event not selected");
+    expect(html).toContain("Safe next step");
+    expect(html).toContain("Already reviewed");
+    expect(html).toContain("no public booking or provider sync runs");
+
+    const noEligibleHtml = matterlessCalendarMarkup(
+      {
+        activeCalendarScope: "matter",
+        activeMatterNumber: "OP-2026-001",
+        matterCalendarControlsEnabled: true,
+        activeCalendarSchedulingRequests: [syntheticSchedulingRequest],
+      },
+      [{ ...syntheticEvent, status: "cancelled" }],
+    );
+
+    expect(noEligibleHtml).toContain("No eligible event");
+    expect(noEligibleHtml).toContain("without creating events");
+  });
+
+  it("keeps matterless scheduling review display-only", () => {
+    const html = matterlessCalendarMarkup(
+      {
+        activeCalendarSchedulingRequests: [syntheticSchedulingRequest],
+      },
+      [syntheticEvent],
+    );
+
+    expect(html).toContain("Matter required");
+    expect(html).toContain("matterless calendars stay display-only");
+    expect(html).not.toContain("Link scheduling request to an existing event");
+    expect(html).not.toContain("Mark scheduling request reviewed");
+  });
+
+  it("renders guest queue disabled reasons without guest or room identifiers", () => {
+    const hostedEvent: DashboardCalendarEvent = {
+      ...syntheticEvent,
+      meetingLinkMode: "hosted_webrtc",
+      meetingLinkUrl: "https://video.example.test/rooms/raw-room-url",
+      meetingRoomId: "room_secret_identifier",
+      meetingInvitationBoundary: {
+        meetingLinks: { status: "configured", provider: "synthetic-meeting" },
+        guestAccess: { status: "configured", provider: "synthetic-meeting" },
+        invitationEmail: { status: "configured", provider: "mailpit" },
+      },
+    };
+    const html = matterlessCalendarMarkup(
+      {
+        activeCalendarScope: "matter",
+        activeMatterNumber: "OP-2026-001",
+        matterCalendarControlsEnabled: true,
+        activeCalendarEvents: [hostedEvent],
+        calendarGuestSessionsByEventId: {
+          [hostedEvent.id]: [
+            {
+              id: "guest_session_synthetic",
+              eventId: hostedEvent.id,
+              status: "locked",
+              createdAt: "2035-06-06T15:00:00.000Z",
+              updatedAt: "2035-06-06T15:30:00.000Z",
+              issuedCount: 1,
+              waitingCount: 1,
+              admittedCount: 0,
+              deniedCount: 1,
+              revokedCount: 0,
+              guests: [
+                {
+                  id: "guest_private_waiting_identifier",
+                  sessionId: "guest_session_synthetic",
+                  status: "waiting",
+                  checkedInAt: "2035-06-06T15:15:00.000Z",
+                  expiresAt: "2035-06-06T16:15:00.000Z",
+                },
+                {
+                  id: "guest_private_denied_identifier",
+                  sessionId: "guest_session_synthetic",
+                  status: "denied",
+                  deniedAt: "2035-06-06T15:25:00.000Z",
+                  expiresAt: "2035-06-06T16:10:00.000Z",
+                },
+              ],
+            },
+          ],
+        },
+      },
+      [hostedEvent],
+    );
+
+    expect(html).toContain("Hosted lobby ready");
+    expect(html).toContain("0 blockers");
+    expect(html).toContain("Actions disabled: Lobby locked");
+    expect(html).not.toContain("guest_private_waiting_identifier");
+    expect(html).not.toContain("guest_private_denied_identifier");
+    expect(html).not.toContain("room_secret_identifier");
+    expect(html).not.toContain("raw-room-url");
+    expect(html).not.toContain("synthetic-meeting");
   });
 
   it("renders firm-scoped zero-matter calendar controls without matter-only affordances", () => {
@@ -331,8 +513,12 @@ describe("CalendarSection", () => {
     expect(html).toContain('<option disabled="" value="matter">Matter</option>');
     expect(html).toContain("Synthetic hearing");
     expect(html).toContain("available after selecting a matter");
+    expect(html).toContain("event lifecycle actions are disabled");
+    expect(html).toContain("reminder actions are disabled");
     expect(html).toContain("Scheduling request review is available after selecting a matter.");
     expect(html).not.toContain('<span class="field-label">Meeting link</span>');
+    expect(html).not.toContain("Reviewed");
+    expect(html).not.toContain("Link event");
     expect(html).not.toContain("Send invites");
     expect(html).not.toContain("Add attendee");
     expect(html).not.toContain("Meeting attendees");

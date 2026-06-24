@@ -10,12 +10,12 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 | Snapshot              | Value                                                                 |
 | --------------------- | --------------------------------------------------------------------- |
-| Current focus         | 2026-06-24 private-pilot branches are being prepared for mainline.     |
+| Current focus         | 2026-06-24 private-pilot and video branches are being prepared for mainline.     |
 | Next recommended pick | Complete the mainline merge/push/prune proof and publish only if green. |
 | Ready rows            | 0                                                                     |
 | Candidate rows        | 0                                                                     |
 | In progress rows      | 0                                                                     |
-| Review rows           | 2                                                                     |
+| Review rows           | 3                                                                     |
 | Blocked rows          | 0                                                                     |
 | Archive               | Historical snapshots and proof live in [Archive](archive/README.md).  |
 | Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`      |
@@ -53,6 +53,21 @@ residual-watch gate while default `pnpm release:local` stays unchanged. Admin Re
 owner-visible read-only blocker copy pointing to external HTTPS object storage or separate MinIO
 hardening proof before private-pilot handoff. Evidence is recorded in
 [private-pilot MinIO readiness blocker proof](validation/OP_PRIVATE_PILOT_MINIO_READINESS_BLOCKER_PROOF_2026-06-24.md).
+
+The 2026-06-23 `feat/video-meetings-control-plane-20260623` branch in
+`/Users/bryan/projects/open-practice-video-meetings-control-plane-20260623` extends the existing
+video meeting control plane without native media delivery. It adds Calendar workspace
+scheduling-review controls over the existing review route, per-event readiness labels, public
+guest-session manual refresh and waiting-only polling without page reload, header/path token
+mismatch handling, terminal guest-session `409` transitions, CalDAV/iCalendar meeting-link
+preservation/non-disclosure, and safe meeting/session/invitation audit metadata while preserving no
+native media, signaling, chat, recording, upload, public booking, provider sync, new dependency, or
+migration scope. The current proof covers the 23-path branch set and records green selector-driven
+package, build, host E2E, first-run, matterless, client-portal, and a11y validation; Docker E2E is
+skipped with reason because no Docker/container/provider-runtime path changed. Evidence is recorded
+in
+[video meetings control-plane proof](validation/OP_VIDEO_MEETINGS_CONTROL_PLANE_PROOF_2026-06-23.md).
+
 
 The 2026-06-23 active-lane mainline closeout integrated six dirty Open Practice lanes through
 `merge/open-practice-mainline-20260623`, fast-forwarded and pushed `main`, then pruned only clean

@@ -143,6 +143,7 @@ import {
   buildCalendarMeetingLinkPayload,
   buildCalendarReminderPayload,
   buildCalendarReschedulePayload,
+  buildCalendarSchedulingReviewPayload,
   removeCalendarEventReminder,
   removeStandaloneCalendarEventReminder,
   removeCalendarEventAttendee,
@@ -151,8 +152,10 @@ import {
   upsertCalendarCredential,
   upsertCalendarEventReminder,
   upsertCalendarGuestSession,
+  upsertCalendarSchedulingRequest,
   upsertStandaloneCalendarEvent,
   upsertStandaloneCalendarEventReminder,
+  type CalendarSchedulingReviewDecision,
 } from "./calendar-dashboard";
 import {
   buildDocumentRetentionHoldDecisionPath,
@@ -388,6 +391,7 @@ import type {
   CalendarInvitationResponse,
   CalendarMeetingLinkMutationResponse,
   CalendarReminderMutationResponse,
+  CalendarSchedulingRequestReviewResponse,
 } from "./_features/calendar/models";
 import type {
   ConnectorOperationsResponse,
@@ -594,6 +598,8 @@ type DashboardDraft = DraftingDashboardResponse["draftsByMatterId"][string][numb
 type DashboardDraftAssistRecord = DraftAssistRecordsResponse["records"][number];
 type DashboardIntakeVariableProposal = IntakeVariableProposalsResponse["proposals"][number];
 type DashboardCalendarEvent = CalendarDashboardResponse["eventsByMatterId"][string][number];
+type DashboardCalendarSchedulingRequest =
+  CalendarDashboardResponse["schedulingRequestsByMatterId"][string][number];
 type DashboardCalendarScope = NonNullable<DashboardCalendarEvent["scope"]>;
 type DashboardTaskListResponse = { tasks: TaskDeadlineWorkbenchResponse["tasks"] };
 type InboundMatterDraftResponse = {
@@ -1327,6 +1333,18 @@ export default function DashboardClient({
   const [calendarEventsByMatterId, setCalendarEventsByMatterId] = useState(
     calendar.eventsByMatterId,
   );
+  const [calendarSchedulingRequestsByMatterId, setCalendarSchedulingRequestsByMatterId] = useState(
+    calendar.schedulingRequestsByMatterId,
+  );
+  const [
+    calendarSchedulingReviewEventIdsByRequestId,
+    setCalendarSchedulingReviewEventIdsByRequestId,
+  ] = useState<Record<string, string>>({});
+  const [calendarSchedulingReviewStatus, setCalendarSchedulingReviewStatus] = useState(
+    "Scheduling requests have not changed.",
+  );
+  const [reviewingCalendarSchedulingRequestKey, setReviewingCalendarSchedulingRequestKey] =
+    useState("");
   const [standaloneCalendarEvents, setStandaloneCalendarEvents] = useState(
     calendar.standaloneEvents,
   );
@@ -1714,7 +1732,7 @@ export default function DashboardClient({
       : activeStandaloneCalendarEvents;
   const activeCalendarSchedulingRequests =
     activeCalendarScope === "matter" && activeMatter
-      ? (calendar.schedulingRequestsByMatterId?.[activeMatter.id] ?? [])
+      ? (calendarSchedulingRequestsByMatterId[activeMatter.id] ?? [])
       : [];
   const activeCalendarLinks =
     activeCalendarScope === "matter" && activeMatter
@@ -4662,6 +4680,63 @@ export default function DashboardClient({
     setUpdatingCalendarMeetingLinkEventId("");
   }
 
+  async function reviewCalendarSchedulingRequest(
+    request: DashboardCalendarSchedulingRequest,
+    status: CalendarSchedulingReviewDecision,
+    calendarEventId?: string,
+  ): Promise<void> {
+    if (!activeMatter) return;
+    if (status === "scheduled" && !calendarEventId) {
+      setCalendarSchedulingReviewStatus("Choose an existing event before marking scheduled.");
+      return;
+    }
+
+    const actionKey = `${request.id}:${status}`;
+    setReviewingCalendarSchedulingRequestKey(actionKey);
+    setCalendarSchedulingReviewStatus(
+      status === "scheduled"
+        ? "Linking scheduling request to existing event..."
+        : status === "reviewed"
+          ? "Recording scheduling review..."
+          : "Dismissing scheduling request...",
+    );
+
+    try {
+      const payload = await requestDashboardJson<CalendarSchedulingRequestReviewResponse>(
+        apiBaseUrl,
+        `/api/calendar/scheduling-requests/${encodeURIComponent(request.id)}/review`,
+        {
+          method: "PATCH",
+          headers: devHeaders,
+          payload: buildCalendarSchedulingReviewPayload({
+            matterId: activeMatter.id,
+            status,
+            calendarEventId,
+          }),
+        },
+      );
+      setCalendarSchedulingRequestsByMatterId((current) =>
+        upsertCalendarSchedulingRequest(current, activeMatter.id, payload.schedulingRequest),
+      );
+      setCalendarSchedulingReviewEventIdsByRequestId((current) => {
+        const next = { ...current };
+        delete next[request.id];
+        return next;
+      });
+      setCalendarSchedulingReviewStatus(
+        status === "scheduled"
+          ? "Scheduling request linked to an existing event."
+          : status === "reviewed"
+            ? "Scheduling request marked reviewed."
+            : "Scheduling request dismissed.",
+      );
+    } catch (error) {
+      setCalendarSchedulingReviewStatus(`Scheduling review failed: ${dashboardApiStatus(error)}`);
+    } finally {
+      setReviewingCalendarSchedulingRequestKey("");
+    }
+  }
+
   function syncCalendarGuestSession(session: CalendarGuestSessionSummary): void {
     setCalendarGuestSessionsByEventId((current) => upsertCalendarGuestSession(current, session));
   }
@@ -6241,6 +6316,10 @@ export default function DashboardClient({
                   calendarMeetingLinkModesByEventId={calendarMeetingLinkModesByEventId}
                   calendarMeetingLinkUrlsByEventId={calendarMeetingLinkUrlsByEventId}
                   calendarMeetingStatus={calendarMeetingStatus}
+                  calendarSchedulingReviewEventIdsByRequestId={
+                    calendarSchedulingReviewEventIdsByRequestId
+                  }
+                  calendarSchedulingReviewStatus={calendarSchedulingReviewStatus}
                   calendarOneTimeSecret={calendarOneTimeSecret}
                   calendarReminderAt={calendarReminderAt}
                   calendarReminderNote={calendarReminderNote}
@@ -6260,6 +6339,7 @@ export default function DashboardClient({
                   selectedCalendarReminderEvent={selectedCalendarReminderEvent}
                   sendingCalendarInvitationsEventId={sendingCalendarInvitationsEventId}
                   matterCalendarControlsEnabled={matterCalendarControlsEnabled}
+                  reviewingCalendarSchedulingRequestKey={reviewingCalendarSchedulingRequestKey}
                   updatingCalendarEventId={updatingCalendarEventId}
                   updatingCalendarGuestSessionKey={updatingCalendarGuestSessionKey}
                   updatingCalendarMeetingLinkEventId={updatingCalendarMeetingLinkEventId}
@@ -6289,6 +6369,9 @@ export default function DashboardClient({
                   onRevokeCalendarCredential={(credentialId) =>
                     void revokeCalendarCredential(credentialId)
                   }
+                  onReviewCalendarSchedulingRequest={(request, status, calendarEventId) =>
+                    void reviewCalendarSchedulingRequest(request, status, calendarEventId)
+                  }
                   onSetCalendarAttendeeEmail={setCalendarAttendeeEmail}
                   onSetCalendarAttendeeName={setCalendarAttendeeName}
                   onSetCalendarAttendeeRole={setCalendarAttendeeRole}
@@ -6312,6 +6395,12 @@ export default function DashboardClient({
                     setCalendarMeetingLinkUrlsByEventId((current) => ({
                       ...current,
                       [eventId]: url,
+                    }))
+                  }
+                  onSetCalendarSchedulingReviewEventId={(requestId, eventId) =>
+                    setCalendarSchedulingReviewEventIdsByRequestId((current) => ({
+                      ...current,
+                      [requestId]: eventId,
                     }))
                   }
                   onSetCalendarReminderAt={setCalendarReminderAt}
@@ -7152,6 +7241,10 @@ export default function DashboardClient({
                   calendarMeetingLinkModesByEventId={calendarMeetingLinkModesByEventId}
                   calendarMeetingLinkUrlsByEventId={calendarMeetingLinkUrlsByEventId}
                   calendarMeetingStatus={calendarMeetingStatus}
+                  calendarSchedulingReviewEventIdsByRequestId={
+                    calendarSchedulingReviewEventIdsByRequestId
+                  }
+                  calendarSchedulingReviewStatus={calendarSchedulingReviewStatus}
                   calendarOneTimeSecret={calendarOneTimeSecret}
                   calendarReminderAt={calendarReminderAt}
                   calendarReminderNote={calendarReminderNote}
@@ -7171,6 +7264,7 @@ export default function DashboardClient({
                   selectedCalendarReminderEvent={selectedCalendarReminderEvent}
                   sendingCalendarInvitationsEventId={sendingCalendarInvitationsEventId}
                   matterCalendarControlsEnabled={matterCalendarControlsEnabled}
+                  reviewingCalendarSchedulingRequestKey={reviewingCalendarSchedulingRequestKey}
                   updatingCalendarEventId={updatingCalendarEventId}
                   updatingCalendarGuestSessionKey={updatingCalendarGuestSessionKey}
                   updatingCalendarMeetingLinkEventId={updatingCalendarMeetingLinkEventId}
@@ -7200,6 +7294,9 @@ export default function DashboardClient({
                   onRevokeCalendarCredential={(credentialId) =>
                     void revokeCalendarCredential(credentialId)
                   }
+                  onReviewCalendarSchedulingRequest={(request, status, calendarEventId) =>
+                    void reviewCalendarSchedulingRequest(request, status, calendarEventId)
+                  }
                   onSetCalendarAttendeeEmail={setCalendarAttendeeEmail}
                   onSetCalendarAttendeeName={setCalendarAttendeeName}
                   onSetCalendarAttendeeRole={setCalendarAttendeeRole}
@@ -7223,6 +7320,12 @@ export default function DashboardClient({
                     setCalendarMeetingLinkUrlsByEventId((current) => ({
                       ...current,
                       [eventId]: url,
+                    }))
+                  }
+                  onSetCalendarSchedulingReviewEventId={(requestId, eventId) =>
+                    setCalendarSchedulingReviewEventIdsByRequestId((current) => ({
+                      ...current,
+                      [requestId]: eventId,
                     }))
                   }
                   onSetCalendarReminderAt={setCalendarReminderAt}

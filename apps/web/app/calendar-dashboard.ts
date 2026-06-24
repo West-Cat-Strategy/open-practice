@@ -74,7 +74,7 @@ export function describeMeetingInvitationBoundary(
   if (!boundary) return "Meeting links disabled.";
   const linkStatus =
     boundary.meetingLinks.status === "configured"
-      ? `Meeting links configured${boundary.meetingLinks.provider ? ` (${boundary.meetingLinks.provider})` : ""}.`
+      ? "Meeting links configured."
       : "Meeting links disabled.";
   const guestAccessStatus =
     boundary.guestAccess.status === "configured"
@@ -100,11 +100,68 @@ export interface CalendarStaffHandoffSummary {
   nativeMediaEnabled: false;
 }
 
+export interface CalendarMeetingReadinessItem {
+  id: string;
+  label: string;
+  detail: string;
+  status: "ready" | "review" | "disabled";
+  blockerCount?: number;
+}
+
+export type CalendarSchedulingReviewDecision = "reviewed" | "dismissed" | "scheduled";
+
+export interface CalendarSchedulingReviewNextStep {
+  label: string;
+  detail: string;
+  canMarkReviewed: boolean;
+  canDismiss: boolean;
+  canLinkEvent: boolean;
+  linkEventDisabledReason?: string;
+}
+
 const disabledCalendarAutomation = {
   publicBookingEnabled: false,
   providerSyncEnabled: false,
   nativeMediaEnabled: false,
 } as const;
+
+const schedulingRequestStatusOrder: Record<CalendarSchedulingRequestSummary["status"], number> = {
+  needs_review: 0,
+  scheduled: 1,
+  reviewed: 2,
+  dismissed: 3,
+};
+
+function schedulingRequestSortTime(request: CalendarSchedulingRequestSummary): number {
+  return (
+    Date.parse(
+      request.requestedDueAt ??
+        request.requestedStartsAt ??
+        request.linkedEvent?.startsAt ??
+        request.reviewedAt ??
+        "",
+    ) || 0
+  );
+}
+
+function blockerSummary(blockers: string[], readyDetail: string): string {
+  if (blockers.length === 0) return `0 blockers; ${readyDetail}`;
+  return `${blockers.length} blocker${blockers.length === 1 ? "" : "s"}: ${blockers.join("; ")}.`;
+}
+
+export function sortCalendarSchedulingRequests(
+  requests: CalendarSchedulingRequestSummary[],
+): CalendarSchedulingRequestSummary[] {
+  return [...requests].sort((left, right) => {
+    const statusDifference =
+      schedulingRequestStatusOrder[left.status] - schedulingRequestStatusOrder[right.status];
+    if (statusDifference !== 0) return statusDifference;
+    const timeDifference = schedulingRequestSortTime(left) - schedulingRequestSortTime(right);
+    if (timeDifference !== 0) return timeDifference;
+    const titleDifference = left.title.localeCompare(right.title);
+    return titleDifference === 0 ? left.id.localeCompare(right.id) : titleDifference;
+  });
+}
 
 export function describeMeetingLinkAvailability(
   event: Pick<
@@ -115,7 +172,7 @@ export function describeMeetingLinkAvailability(
   if (event.meetingLinkUrl) {
     const providerDetail =
       event.meetingLinkMode === "hosted_webrtc"
-        ? `${event.meetingProviderKey ?? "Hosted WebRTC"} link ready`
+        ? "Hosted WebRTC link ready"
         : "External meeting link ready";
     return {
       label: "Send link invite",
@@ -163,7 +220,7 @@ export function describeCalendarEventHandoff(
     return {
       label: "handoff ready",
       detail:
-        "Staff can send confirmed invitation email handoff with the stored meeting link; public booking and native media stay disabled.",
+        "Staff can send confirmed invitation email handoff with the stored meeting link; public booking, provider sync, and native media stay disabled.",
       action: "send_confirmed_invites",
       ...disabledCalendarAutomation,
     };
@@ -216,6 +273,174 @@ export function describeCalendarSchedulingRequestHandoff(
   };
 }
 
+export function describeCalendarSchedulingReviewNextStep(input: {
+  request: CalendarSchedulingRequestSummary;
+  matterCalendarControlsEnabled: boolean;
+  eligibleEventCount: number;
+  selectedEventId?: string;
+}): CalendarSchedulingReviewNextStep {
+  if (!input.matterCalendarControlsEnabled) {
+    return {
+      label: "Matter required",
+      detail:
+        "Select a matter to enable scheduling review actions; matterless calendars stay display-only.",
+      canMarkReviewed: false,
+      canDismiss: false,
+      canLinkEvent: false,
+      linkEventDisabledReason: "Matter required.",
+    };
+  }
+  if (input.request.status !== "needs_review") {
+    return {
+      label: "Already reviewed",
+      detail: `This request is ${input.request.status.replace("_", " ")}; review actions stay disabled.`,
+      canMarkReviewed: false,
+      canDismiss: false,
+      canLinkEvent: false,
+      linkEventDisabledReason: "Already reviewed.",
+    };
+  }
+  if (input.eligibleEventCount === 0) {
+    return {
+      label: "No eligible event",
+      detail:
+        "Linking needs an active same-matter event. Staff can still mark reviewed or dismiss without creating events.",
+      canMarkReviewed: true,
+      canDismiss: true,
+      canLinkEvent: false,
+      linkEventDisabledReason: "No eligible event.",
+    };
+  }
+  if (!input.selectedEventId) {
+    return {
+      label: "Event not selected",
+      detail:
+        "Choose an existing same-matter event before linking. Review or dismissal remains available.",
+      canMarkReviewed: true,
+      canDismiss: true,
+      canLinkEvent: false,
+      linkEventDisabledReason: "Event not selected.",
+    };
+  }
+  return {
+    label: "Safe next step",
+    detail:
+      "Link the selected existing event, mark reviewed, or dismiss; no public booking or provider sync runs.",
+    canMarkReviewed: true,
+    canDismiss: true,
+    canLinkEvent: true,
+  };
+}
+
+export function calendarMeetingReadinessItems(
+  event: Pick<
+    CalendarEventRecord,
+    "status" | "meetingLinkMode" | "meetingLinkUrl" | "meetingRoomId" | "meetingInvitationBoundary"
+  > & { attendees?: CalendarEventAttendeeRecord[] },
+  sessions: CalendarGuestSessionSummary[] = [],
+): CalendarMeetingReadinessItem[] {
+  const attendees = event.attendees ?? [];
+  const activeSession = sessions.find((session) => session.status !== "ended");
+  const hostedLinkReady =
+    event.status !== "cancelled" &&
+    event.meetingLinkMode === "hosted_webrtc" &&
+    Boolean(event.meetingRoomId);
+  const guestAccessConfigured =
+    event.meetingInvitationBoundary?.guestAccess.status === "configured";
+  const invitationEmailConfigured =
+    event.meetingInvitationBoundary?.invitationEmail.status === "configured";
+  const invitationBlockers = [
+    ...(event.status === "cancelled" ? ["event is cancelled"] : []),
+    ...(attendees.length === 0 ? ["add staff-reviewed attendees"] : []),
+    ...(!event.meetingLinkUrl ? ["save a meeting link for link handoff"] : []),
+    ...(!invitationEmailConfigured ? ["configure invitation email"] : []),
+  ];
+  const hostedLobbyBlockers = [
+    ...(event.status === "cancelled" ? ["event is cancelled"] : []),
+    ...(event.meetingLinkMode !== "hosted_webrtc" ? ["choose hosted meeting mode"] : []),
+    ...(!event.meetingRoomId ? ["save hosted meeting link"] : []),
+    ...(!guestAccessConfigured ? ["configure guest access"] : []),
+  ];
+  return [
+    {
+      id: "invitation-handoff",
+      label:
+        invitationBlockers.length === 0 ? "Invitation handoff ready" : "Invitation handoff review",
+      detail: blockerSummary(
+        invitationBlockers,
+        "confirmed invitation handoff can proceed without exposing stored links.",
+      ),
+      status: invitationBlockers.length === 0 ? "ready" : "review",
+      blockerCount: invitationBlockers.length,
+    },
+    {
+      id: "hosted-lobby",
+      label: hostedLobbyBlockers.length === 0 ? "Hosted lobby ready" : "Hosted lobby blocked",
+      detail: blockerSummary(
+        hostedLobbyBlockers,
+        activeSession
+          ? `staff-controlled lobby is ${activeSession.status} with ${activeSession.waitingCount} waiting.`
+          : "staff can create a staff-controlled lobby when guest access is needed.",
+      ),
+      status: hostedLobbyBlockers.length === 0 ? "ready" : "disabled",
+      blockerCount: hostedLobbyBlockers.length,
+    },
+    {
+      id: "attendees",
+      label: attendees.length > 0 ? "Attendees ready" : "Add attendees",
+      detail:
+        attendees.length > 0
+          ? `${attendees.length} staff-reviewed attendee${attendees.length === 1 ? "" : "s"} linked.`
+          : "Invite handoff waits for at least one staff-reviewed attendee.",
+      status: attendees.length > 0 ? "ready" : "review",
+    },
+    {
+      id: "meeting-link",
+      label: event.meetingLinkUrl ? "Meeting link saved" : "Meeting link needed",
+      detail: event.meetingLinkUrl
+        ? "Stored meeting link can be included in confirmed invitations."
+        : "Choose blank, external, or configured hosted WebRTC before sending link invitations.",
+      status: event.meetingLinkUrl ? "ready" : "review",
+    },
+    {
+      id: "guest-access",
+      label: guestAccessConfigured ? "Guest access configured" : "Guest access disabled",
+      detail: guestAccessConfigured
+        ? "Guest status tokens can be issued from a staff-created lobby."
+        : "Guest status tokens stay disabled until hosted access and signing are configured.",
+      status: guestAccessConfigured ? "ready" : "disabled",
+    },
+    {
+      id: "lobby",
+      label: activeSession
+        ? activeSession.status === "open"
+          ? "Lobby open"
+          : `Lobby ${activeSession.status}`
+        : "No active lobby",
+      detail: activeSession
+        ? `${activeSession.waitingCount} waiting, ${activeSession.admittedCount} admitted, ${activeSession.deniedCount} denied.`
+        : hostedLinkReady && guestAccessConfigured
+          ? "Create a staff-controlled lobby when guest access is needed."
+          : "Lobby controls wait for a hosted meeting link and guest access.",
+      status: activeSession
+        ? activeSession.status === "open"
+          ? "ready"
+          : "review"
+        : hostedLinkReady && guestAccessConfigured
+          ? "review"
+          : "disabled",
+    },
+    {
+      id: "invitation-email",
+      label: invitationEmailConfigured ? "Invitation email ready" : "Invitation email disabled",
+      detail: invitationEmailConfigured
+        ? "Confirmed invitation delivery can queue through the configured email boundary."
+        : "Invitation attempts stay skipped until SMTP and the email queue are configured.",
+      status: invitationEmailConfigured ? "ready" : "disabled",
+    },
+  ];
+}
+
 export function describeCalendarGuestSessionStatus(
   session: Pick<
     CalendarGuestSessionSummary,
@@ -235,6 +460,61 @@ export function describeCalendarGuestSessionStatus(
   return `${lobby}; ${session.waitingCount} waiting, ${session.admittedCount} admitted, ${session.deniedCount} denied, ${session.revokedCount} revoked.`;
 }
 
+const guestStatusOrder = {
+  waiting: 0,
+  issued: 1,
+  admitted: 2,
+  denied: 2,
+  revoked: 2,
+} as const;
+
+function guestDecisionTimestamp(guest: CalendarGuestSessionSummary["guests"][number]): string {
+  return guest.admittedAt ?? guest.deniedAt ?? guest.revokedAt ?? guest.expiresAt;
+}
+
+function guestQueueTimestamp(guest: CalendarGuestSessionSummary["guests"][number]): string {
+  if (guest.status === "waiting") return guest.checkedInAt ?? guest.expiresAt;
+  if (guest.status === "issued") return guest.expiresAt;
+  return guestDecisionTimestamp(guest);
+}
+
+export function isTerminalCalendarGuestStatus(
+  status: CalendarGuestSessionSummary["guests"][number]["status"],
+): boolean {
+  return status === "admitted" || status === "denied" || status === "revoked";
+}
+
+export function describeCalendarGuestActionDisabledReason(
+  session: Pick<CalendarGuestSessionSummary, "status">,
+  guest: Pick<CalendarGuestSessionSummary["guests"][number], "status">,
+): string | null {
+  if (session.status === "ended" || session.status === "expired") {
+    return "Lobby ended; guest actions are closed.";
+  }
+  if (session.status === "locked") {
+    return "Lobby locked; reopen the lobby before changing guest decisions.";
+  }
+  if (session.status !== "open") {
+    return "Lobby is not open; open the lobby before changing guest decisions.";
+  }
+  if (isTerminalCalendarGuestStatus(guest.status)) {
+    return "Guest decision is terminal for this queue view.";
+  }
+  return null;
+}
+
+export function sortCalendarGuestSessionGuests(
+  guests: CalendarGuestSessionSummary["guests"],
+): CalendarGuestSessionSummary["guests"] {
+  return [...guests].sort((left, right) => {
+    const statusDifference = guestStatusOrder[left.status] - guestStatusOrder[right.status];
+    if (statusDifference !== 0) return statusDifference;
+    const timeDifference =
+      (Date.parse(guestQueueTimestamp(left)) || 0) - (Date.parse(guestQueueTimestamp(right)) || 0);
+    return timeDifference === 0 ? left.id.localeCompare(right.id) : timeDifference;
+  });
+}
+
 export function sortCalendarGuestSessions(
   sessions: CalendarGuestSessionSummary[],
 ): CalendarGuestSessionSummary[] {
@@ -244,6 +524,40 @@ export function sortCalendarGuestSessions(
     const updatedDifference = Date.parse(right.updatedAt) - Date.parse(left.updatedAt);
     return updatedDifference === 0 ? left.id.localeCompare(right.id) : updatedDifference;
   });
+}
+
+export function buildCalendarSchedulingReviewPayload(input: {
+  matterId: string;
+  status: CalendarSchedulingReviewDecision;
+  calendarEventId?: string;
+}): {
+  matterId: string;
+  status: CalendarSchedulingReviewDecision;
+  calendarEventId?: string;
+} {
+  return {
+    matterId: input.matterId,
+    status: input.status,
+    ...(input.status === "scheduled" && input.calendarEventId
+      ? { calendarEventId: input.calendarEventId }
+      : {}),
+  };
+}
+
+export function upsertCalendarSchedulingRequest(
+  requestsByMatterId: Record<string, CalendarSchedulingRequestSummary[]>,
+  matterId: string,
+  request: CalendarSchedulingRequestSummary,
+): Record<string, CalendarSchedulingRequestSummary[]> {
+  const existingRequests = requestsByMatterId[matterId] ?? [];
+  const exists = existingRequests.some((candidate) => candidate.id === request.id);
+  const nextRequests = exists
+    ? existingRequests.map((candidate) => (candidate.id === request.id ? request : candidate))
+    : [...existingRequests, request];
+  return {
+    ...requestsByMatterId,
+    [matterId]: sortCalendarSchedulingRequests(nextRequests),
+  };
 }
 
 export function upsertCalendarGuestSession(
@@ -565,8 +879,9 @@ export async function loadCalendarDashboardData(input: {
 
   for (const matterResponse of matterResponses) {
     eventsByMatterId[matterResponse.matterId] = matterResponse.response.events;
-    schedulingRequestsByMatterId[matterResponse.matterId] =
-      matterResponse.response.schedulingRequests ?? [];
+    schedulingRequestsByMatterId[matterResponse.matterId] = sortCalendarSchedulingRequests(
+      matterResponse.response.schedulingRequests ?? [],
+    );
     for (const session of matterResponse.response.guestSessions ?? []) {
       guestSessionsByEventId[session.eventId] = sortCalendarGuestSessions([
         ...(guestSessionsByEventId[session.eventId] ?? []),
