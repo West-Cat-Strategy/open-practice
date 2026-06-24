@@ -24,12 +24,12 @@ import {
 
 const idParamsSchema = z.object({ id: z.string().min(1) });
 
-const clientSignatureEventBodySchema = z.object({
-  status: z.enum(["viewed", "completed", "declined"]),
-  consentText: z.string().min(1).optional(),
-  occurredAt: z.string().datetime({ offset: true }).optional(),
-  evidence: z.record(z.string(), z.unknown()).default({}),
-});
+const clientSignatureEventBodySchema = z
+  .object({
+    status: z.literal("viewed"),
+    evidence: z.record(z.string(), z.unknown()).default({}),
+  })
+  .strict();
 
 type ClientPortalSignatureActionState = "ready_to_sign" | "viewed" | "completed" | "declined";
 
@@ -183,6 +183,13 @@ function assertCanRecordSignatureEvent(input: {
       "Signer already has a terminal status",
     );
   }
+  if (input.nextStatus !== "viewed") {
+    throw new ApiHttpError(
+      403,
+      "SIGNATURE_CLIENT_PORTAL_TERMINAL_PROOF_REQUIRED",
+      "Client portal signature events require provider evidence for terminal states",
+    );
+  }
 }
 
 export function registerClientPortalSignatureRoutes(
@@ -248,7 +255,6 @@ export function registerClientPortalSignatureRoutes(
       currentSignerStatus: visible.summary.signerStatus,
       nextStatus: body.status,
     });
-    const occurredAt = body.occurredAt ?? now;
     const event: SignatureProviderEventRecord = {
       id: crypto.randomUUID(),
       firmId: request.auth.firmId,
@@ -256,13 +262,12 @@ export function registerClientPortalSignatureRoutes(
       provider: visible.request.provider,
       externalId: visible.request.externalId,
       status: body.status,
-      occurredAt,
+      occurredAt: now,
       evidence: trustedEvidence(
         {
           mode: "client_portal_embedded",
           actorUserId: request.auth.user.id,
           signerId: visible.signer.id,
-          consentText: body.consentText,
           ip: request.ip,
           userAgent: userAgentFromRequest(request),
         },

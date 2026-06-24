@@ -821,7 +821,15 @@ export const samplePortalGrants: PortalGrant[] = [
     matterId: "matter-001",
     contactId: "contact-ada",
     grantedByUserId: "user-licensee",
-    permissions: ["view_documents", "upload_documents", "message", "sign"],
+    permissions: [
+      "view_documents",
+      "upload_documents",
+      "message",
+      "complete_intake",
+      "view_invoices",
+      "view_appointments_tasks",
+      "sign",
+    ],
   },
 ];
 
@@ -1310,6 +1318,16 @@ export const sampleAuditEvents: AuditEvent[] = [
     resourceType: "portal_grant",
     resourceId: "grant-001",
     occurredAt: "2026-04-03T18:15:00.000Z",
-    metadata: { permissions: ["view_documents", "upload_documents", "message", "sign"] },
+    metadata: {
+      permissions: [
+        "view_documents",
+        "upload_documents",
+        "message",
+        "complete_intake",
+        "view_invoices",
+        "view_appointments_tasks",
+        "sign",
+      ],
+    },
   }),
 ];

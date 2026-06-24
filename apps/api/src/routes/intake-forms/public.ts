@@ -77,11 +77,12 @@ const publicCompleteBodySchema = z.object({
   checksumSha256: z.string().transform(normalizeChecksumSha256),
 });
 
-const publicSignatureBodySchema = z.object({
-  status: z.enum(["completed", "declined"]),
-  consentText: z.string().min(1).optional(),
-  evidence: z.record(z.string(), z.unknown()).default({}),
-});
+const publicSignatureBodySchema = z
+  .object({
+    consentText: z.string().min(1).optional(),
+    evidence: z.record(z.string(), z.unknown()).default({}),
+  })
+  .strict();
 
 function serializePublicUploadDocument(document: {
   id: string;
@@ -903,27 +904,6 @@ export function registerPublicIntakeFormRoutes(
         signers: [signerRecord],
         event: initialEvent,
       });
-      const embeddedEvent = await repository.recordSignatureProviderEvent({
-        id: crypto.randomUUID(),
-        firmId: link.firmId,
-        signatureRequestId: signatureRequest.id,
-        provider: signatureRequest.provider,
-        externalId: signatureRequest.externalId,
-        status: body.status,
-        occurredAt: now,
-        evidence: trustedEvidence(
-          {
-            mode: "embedded_intake_signature_request",
-            formLinkId: link.id,
-            itemId: params.itemId,
-            signerId: signerRecord.id,
-            consentText: body.consentText ?? item.consentText,
-            ip: request.ip,
-            userAgent: requestUserAgent(request),
-          },
-          body.evidence,
-        ),
-      });
       const action = await repository.upsertIntakeFormItemAction({
         id: `${link.id}:${params.itemId}:signature`,
         firmId: link.firmId,
@@ -932,7 +912,7 @@ export function registerPublicIntakeFormRoutes(
         formLinkId: link.id,
         itemId: params.itemId,
         kind: "signature",
-        status: body.status,
+        status: "intent_created",
         documentId: document.id,
         signatureRequestId: signatureRequest.id,
         evidence: {
@@ -943,7 +923,6 @@ export function registerPublicIntakeFormRoutes(
           signerCount: 1,
         },
         createdAt: now,
-        completedAt: now,
       });
       await repository.appendAuditEvent({
         id: crypto.randomUUID(),
@@ -960,7 +939,7 @@ export function registerPublicIntakeFormRoutes(
           itemId: params.itemId,
           documentId: document.id,
           provider: signatureRequest.provider,
-          status: embeddedEvent.status,
+          status: signatureRequest.status,
           signerCount: 1,
         },
       });
@@ -971,7 +950,7 @@ export function registerPublicIntakeFormRoutes(
         resourceType: "signature_request",
         resourceId: signatureRequest.id,
         metadata: {
-          outcome: body.status,
+          outcome: signatureRequest.status,
           itemId: params.itemId,
           documentId: document.id,
           signatureRequestId: signatureRequest.id,
@@ -979,7 +958,7 @@ export function registerPublicIntakeFormRoutes(
       });
       return {
         action: serializePublicItemAction(action),
-        signatureRequest: { id: signatureRequest.id, status: body.status },
+        signatureRequest: { id: signatureRequest.id, status: signatureRequest.status },
       };
     }
 
@@ -991,7 +970,7 @@ export function registerPublicIntakeFormRoutes(
       formLinkId: link.id,
       itemId: params.itemId,
       kind: "signature",
-      status: body.status,
+      status: "completed",
       evidence: trustedEvidence(
         {
           mode: "embedded_intake_attestation",
@@ -1011,7 +990,7 @@ export function registerPublicIntakeFormRoutes(
       action: "sign",
       resourceType: "intake_form_item",
       resourceId: params.itemId,
-      metadata: { outcome: body.status },
+      metadata: { outcome: "completed" },
     });
     return { action: serializePublicItemAction(recorded) };
   };

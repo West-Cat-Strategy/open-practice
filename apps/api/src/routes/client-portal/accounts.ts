@@ -9,7 +9,15 @@ import { appendRouteAuditEvent } from "../audit-events.js";
 import type { ApiRouteDependencies } from "../types.js";
 import { activePortalGrant, contactEmail, normalizedEmail, sanitizedUser } from "./shared.js";
 
-const portalPermissionSchema = z.enum(["view_documents", "upload_documents", "message", "sign"]);
+const portalPermissionSchema = z.enum([
+  "view_documents",
+  "upload_documents",
+  "message",
+  "complete_intake",
+  "view_invoices",
+  "view_appointments_tasks",
+  "sign",
+]);
 
 const clientPortalAccountBodySchema = z.object({
   matterId: z.string().min(1),
@@ -23,6 +31,9 @@ const defaultPortalPermissions: PortalGrant["permissions"] = [
   "view_documents",
   "upload_documents",
   "message",
+  "complete_intake",
+  "view_invoices",
+  "view_appointments_tasks",
   "sign",
 ];
 

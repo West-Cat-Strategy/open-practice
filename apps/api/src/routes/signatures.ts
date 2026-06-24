@@ -148,6 +148,33 @@ function signatureEnvelopeMetadataForRequest(
   };
 }
 
+async function updateIntakeSignatureActionForProviderEvent(input: {
+  repository: ApiRouteDependencies["repository"];
+  event: SignatureProviderEventRecord;
+}): Promise<void> {
+  if (input.event.status !== "completed" && input.event.status !== "declined") return;
+  const terminalStatus = input.event.status;
+  const actions = await input.repository.listIntakeFormItemActions(input.event.firmId);
+  await Promise.all(
+    actions
+      .filter((action) => action.signatureRequestId === input.event.signatureRequestId)
+      .filter((action) => action.kind === "signature")
+      .filter((action) => action.status !== "completed" && action.status !== "declined")
+      .map((action) =>
+        input.repository.upsertIntakeFormItemAction({
+          ...action,
+          status: terminalStatus,
+          completedAt: input.event.occurredAt,
+          evidence: {
+            ...action.evidence,
+            providerTerminalEventId: input.event.id,
+            providerTerminalStatus: terminalStatus,
+          },
+        }),
+      ),
+  );
+}
+
 export function registerSignatureRoutes(
   server: FastifyInstance,
   { repository, signatureProvider, emailJobQueue }: ApiRouteDependencies,
@@ -334,6 +361,7 @@ export function registerSignatureRoutes(
       },
     };
     const recorded = await repository.recordSignatureProviderEvent(event);
+    await updateIntakeSignatureActionForProviderEvent({ repository, event: recorded });
     await appendRouteAuditEvent(repository, request.auth, {
       action: "signature_provider_event.recorded",
       resourceType: "signature_request",

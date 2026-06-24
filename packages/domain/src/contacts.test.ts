@@ -316,13 +316,29 @@ describe("contact dossiers", () => {
     const ada = dossiers.find((dossier) => dossier.contact.id === "contact-ada")!;
     expect(ada.portal).toEqual({
       activeGrantCount: 1,
-      permissionLabels: ["message", "sign", "upload_documents", "view_documents"],
+      permissionLabels: [
+        "complete_intake",
+        "message",
+        "sign",
+        "upload_documents",
+        "view_appointments_tasks",
+        "view_documents",
+        "view_invoices",
+      ],
     });
     expect(ada.matters).toEqual([
       expect.objectContaining({
         matterId: "matter-001",
         portalActive: true,
-        portalPermissions: ["message", "sign", "upload_documents", "view_documents"],
+        portalPermissions: [
+          "complete_intake",
+          "message",
+          "sign",
+          "upload_documents",
+          "view_appointments_tasks",
+          "view_documents",
+          "view_invoices",
+        ],
       }),
     ]);
     expect(ada.relationships).toEqual([

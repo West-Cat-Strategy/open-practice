@@ -861,7 +861,15 @@ describe("client portal routes", () => {
     });
     expect(body.grant).toMatchObject({
       status: "active",
-      permissions: ["view_documents", "upload_documents", "message", "sign"],
+      permissions: [
+        "view_documents",
+        "upload_documents",
+        "message",
+        "complete_intake",
+        "view_invoices",
+        "view_appointments_tasks",
+        "sign",
+      ],
     });
     expect(body.setup.status).toBe("token_created");
     expect(body.setup.token).toBeTruthy();
@@ -1370,7 +1378,7 @@ describe("client portal routes", () => {
     });
     expect(JSON.stringify(documentResponse.json())).not.toContain("storageKey");
 
-    const signatureResponse = await server.inject({
+    const terminalSignatureResponse = await server.inject({
       method: "POST",
       url: "/api/client-portal/signatures/signature-client-portal-001/events",
       payload: {
@@ -1382,18 +1390,41 @@ describe("client portal routes", () => {
         },
       },
     });
+    expect(terminalSignatureResponse.statusCode).toBe(400);
+    expect(JSON.stringify(terminalSignatureResponse.json())).not.toContain(
+      "PRIVATE portal signature consent",
+    );
+
+    const timestampForgeryResponse = await server.inject({
+      method: "POST",
+      url: "/api/client-portal/signatures/signature-client-portal-001/events",
+      payload: {
+        status: "viewed",
+        occurredAt: "2001-01-01T00:00:00.000Z",
+      },
+    });
+    expect(timestampForgeryResponse.statusCode).toBe(400);
+
+    const signatureResponse = await server.inject({
+      method: "POST",
+      url: "/api/client-portal/signatures/signature-client-portal-001/events",
+      payload: {
+        status: "viewed",
+        evidence: {
+          tokenHash: "private-token-hash",
+          publicEventId: "portal-signature-event-001",
+        },
+      },
+    });
     expect(signatureResponse.statusCode).toBe(200);
     expect(signatureResponse.json()).toMatchObject({
       status: "processed",
       signature: {
         id: "signature-client-portal-001",
-        signerStatus: "completed",
-        actionState: "completed",
+        signerStatus: "viewed",
+        actionState: "viewed",
       },
     });
-    expect(JSON.stringify(signatureResponse.json())).not.toContain(
-      "PRIVATE portal signature consent",
-    );
     expect(JSON.stringify(signatureResponse.json())).not.toContain("private-token-hash");
     const clientPortalSignature = (await repository.listSignatureRequests("firm-west-legal")).find(
       (request) => request.id === "signature-client-portal-001",
@@ -1405,8 +1436,7 @@ describe("client portal routes", () => {
       expect.arrayContaining([
         expect.objectContaining({
           id: "signature-client-portal-signer-001",
-          status: "completed",
-          completedAt: expect.any(String),
+          status: "viewed",
         }),
         expect.objectContaining({
           id: "signature-client-portal-signer-002",
@@ -1414,6 +1444,20 @@ describe("client portal routes", () => {
         }),
       ]),
     );
+    const clientPortalSignatureEvent = (
+      await repository.listSignatureProviderEvents("firm-west-legal", {
+        signatureRequestId: "signature-client-portal-001",
+      })
+    ).find((event) => event.status === "viewed");
+    expect(clientPortalSignatureEvent).toMatchObject({
+      status: "viewed",
+      evidence: expect.objectContaining({
+        mode: "client_portal_embedded",
+        signerId: "signature-client-portal-signer-001",
+      }),
+    });
+    expect(clientPortalSignatureEvent?.occurredAt).not.toBe("2001-01-01T00:00:00.000Z");
+    expect(clientPortalSignatureEvent?.evidence).not.toHaveProperty("consentText");
     const signatureAudit = await repository.listAuditEvents("firm-west-legal");
     expect(signatureAudit.events).toEqual(
       expect.arrayContaining([
@@ -1424,6 +1468,47 @@ describe("client portal routes", () => {
         }),
       ]),
     );
+  });
+
+  it("hides workspace action families when granular portal permissions are missing", async () => {
+    const repository = new ClientPortalWorkspaceBatchRepository();
+    const setupServer = testServer({ repository });
+    const setup = await setupServer.inject({
+      method: "POST",
+      url: "/api/client-portal/accounts",
+      payload: {
+        matterId: "matter-001",
+        contactId: "contact-ada",
+        permissions: ["view_documents", "message"],
+      },
+    });
+    const setupBody = setup.json<{ account: { email: string } }>();
+    const clientAccount = await repository.getUserByEmail(
+      "firm-west-legal",
+      setupBody.account.email,
+    );
+    if (!clientAccount) throw new Error("expected synthetic client account");
+    await addClientPortalRecords(repository);
+
+    const response = await testServer({ repository, authUser: clientAccount }).inject({
+      method: "GET",
+      url: "/api/client-portal/workspace",
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json<{
+      billing: { billCount: number; matterBills: Array<{ bills: unknown[] }> };
+      signatures: unknown[];
+      actions: Array<{ family: string }>;
+    }>();
+    const families = body.actions.map((action) => action.family);
+    expect(families).toEqual(expect.arrayContaining(["receipt", "client_update"]));
+    expect(families).not.toEqual(
+      expect.arrayContaining(["intake", "guest_session", "payment_request", "signature"]),
+    );
+    expect(body.billing.billCount).toBe(0);
+    expect(body.billing.matterBills.flatMap((group) => group.bills)).toHaveLength(0);
+    expect(body.signatures).toHaveLength(0);
   });
 
   it("ignores notifications on revoked and access-revoked threads in portal activity", async () => {

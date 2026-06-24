@@ -1024,6 +1024,10 @@ async function buildWorkspace(
       notifications: conversationNotifications,
       visibleThreadIds: visibleConversationThreadIds,
     });
+    const canMessage = hasPortalPermission(matterGrants, "message");
+    const canCompleteIntake = hasPortalPermission(matterGrants, "complete_intake");
+    const canViewInvoices = hasPortalPermission(matterGrants, "view_invoices");
+    const canViewAppointmentsTasks = hasPortalPermission(matterGrants, "view_appointments_tasks");
 
     const clientSignatures = hasPortalPermission(matterGrants, "sign")
       ? signatureRequests.flatMap((signature) => {
@@ -1049,7 +1053,7 @@ async function buildWorkspace(
     signaturesByMatterId.set(matter.id, clientSignatures);
 
     const matterActions = sortActions([
-      ...(hasPortalPermission(matterGrants, "message")
+      ...(canViewAppointmentsTasks
         ? [
             ...guestSessionActions({
               guestLinks,
@@ -1057,22 +1061,32 @@ async function buildWorkspace(
               principal: portalPrincipal,
               now,
             }),
+          ]
+        : []),
+      ...(canMessage
+        ? [
             ...conversationActions({
               threads: conversationThreads,
               visibleThreadIds: visibleConversationThreadIds,
             }),
+            ...clientUpdateActions({ emails, userEmail: user.email }),
+            ...receiptActions({ tokens: receiptTokens, emails, userEmail: user.email, now }),
           ]
         : []),
-      ...Array.from(contactIds).flatMap((contactId) =>
-        intakeActions({ links: intakeLinks, itemActions, contactId, now }),
-      ),
-      ...clientUpdateActions({ emails, userEmail: user.email }),
-      ...receiptActions({ tokens: receiptTokens, emails, userEmail: user.email, now }),
-      ...paymentRequestActions({ requests: paymentRequests, invoices, contactIds, now }),
+      ...(canCompleteIntake
+        ? Array.from(contactIds).flatMap((contactId) =>
+            intakeActions({ links: intakeLinks, itemActions, contactId, now }),
+          )
+        : []),
+      ...(canViewInvoices
+        ? paymentRequestActions({ requests: paymentRequests, invoices, contactIds, now })
+        : []),
       ...signatureActions(clientSignatures),
     ]);
     actionsByMatterId.set(matter.id, matterActions);
-    const clientBills = billSummaries({ invoices, paymentRequests, contactIds, now });
+    const clientBills = canViewInvoices
+      ? billSummaries({ invoices, paymentRequests, contactIds, now })
+      : [];
     billingByMatterId.set(matter.id, clientBills);
     activityByMatterId.set(
       matter.id,
