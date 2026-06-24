@@ -224,18 +224,108 @@ describe("CalDAV routes", () => {
     expect(fetched.body).toContain("ATTENDEE");
     expect(fetched.body.replace(/\r\n /g, "")).toContain("ada.morgan@example.test");
 
+    const meetingLink = await server.inject({
+      method: "PATCH",
+      url: "/api/calendar/events/ios-event-001/meeting-link",
+      headers: await freshSessionHeaders(server, "user-licensee"),
+      payload: {
+        matterId: "matter-001",
+        mode: "external_url",
+        url: "https://video.example.test/caldav-preserved",
+      },
+    });
+    expect(meetingLink.statusCode).toBe(200);
+    const eventWithMeetingLink = await repository.getCalendarEvent(
+      "firm-west-legal",
+      "matter-001",
+      "ios-event-001",
+    );
+    expect(eventWithMeetingLink).toBeDefined();
+    const hostedRoomId = "calendar-room-caldav-redacted";
+    await repository.upsertCalendarEvent({
+      ...eventWithMeetingLink!,
+      meetingLinkMode: "hosted_webrtc",
+      meetingLinkUrl: `https://meet.example.test/rooms/${hostedRoomId}`,
+      meetingRoomId: hostedRoomId,
+      meetingProviderKey: "open-practice-webrtc",
+      sequence: eventWithMeetingLink!.sequence + 1,
+      updatedAt: new Date().toISOString(),
+      updatedByUserId: "user-licensee",
+    });
+
+    const fetchedWithMeetingLink = await server.inject({
+      method: "GET",
+      url: objectUrl,
+      headers: { authorization: basic(credential.username, credential.password) },
+    });
+    expect(fetchedWithMeetingLink.statusCode).toBe(200);
+    expect(fetchedWithMeetingLink.body).not.toContain("caldav-preserved");
+    expect(fetchedWithMeetingLink.body).not.toContain("video.example.test");
+    expect(fetchedWithMeetingLink.body).not.toContain("meet.example.test");
+    expect(fetchedWithMeetingLink.body).not.toContain(hostedRoomId);
+    expect(fetchedWithMeetingLink.body).not.toContain("open-practice-webrtc");
+    const meetingLinkEtag = fetchedWithMeetingLink.headers.etag as string;
+
+    const reportWithMeetingLink = await injectCalDav(server, {
+      method: "REPORT",
+      url: `/caldav/calendars/${encodeURIComponent(credential.username)}/matter-001/`,
+      headers: {
+        authorization: basic(credential.username, credential.password),
+        "content-type": "application/xml",
+      },
+      payload: `<C:calendar-multiget xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav"><D:prop><D:getetag/><C:calendar-data/></D:prop><D:href>${objectUrl}</D:href></C:calendar-multiget>`,
+    });
+    expect(reportWithMeetingLink.statusCode).toBe(207);
+    expect(reportWithMeetingLink.body).toContain("SUMMARY:iOS synced prep call");
+    expect(reportWithMeetingLink.body).not.toContain("caldav-preserved");
+    expect(reportWithMeetingLink.body).not.toContain("video.example.test");
+    expect(reportWithMeetingLink.body).not.toContain("meet.example.test");
+    expect(reportWithMeetingLink.body).not.toContain(hostedRoomId);
+    expect(reportWithMeetingLink.body).not.toContain("open-practice-webrtc");
+
+    const inboundMeetingPayload = eventPayload
+      .replace("iOS synced prep call", "Updated prep call")
+      .replace(
+        "LOCATION:Open Practice office",
+        "LOCATION:Open Practice office\r\nURL:https://video.example.test/caldav-inbound\r\nCONFERENCE;VALUE=URI:https://video.example.test/caldav-inbound-room",
+      );
     const updated = await server.inject({
       method: "PUT",
       url: objectUrl,
       headers: {
         authorization: basic(credential.username, credential.password),
         "content-type": "text/calendar",
-        "if-match": etag,
+        "if-match": meetingLinkEtag,
       },
-      payload: eventPayload.replace("iOS synced prep call", "Updated prep call"),
+      payload: inboundMeetingPayload,
     });
     expect(updated.statusCode).toBe(204);
     const updatedEtag = updated.headers.etag as string;
+    const storedAfterInbound = await repository.getCalendarEvent(
+      "firm-west-legal",
+      "matter-001",
+      "ios-event-001",
+    );
+    expect(storedAfterInbound).toMatchObject({
+      meetingLinkMode: "hosted_webrtc",
+      meetingLinkUrl: `https://meet.example.test/rooms/${hostedRoomId}`,
+      meetingRoomId: hostedRoomId,
+      meetingProviderKey: "open-practice-webrtc",
+    });
+    expect(JSON.stringify(storedAfterInbound)).not.toContain("caldav-inbound");
+
+    const fetchedAfterInbound = await server.inject({
+      method: "GET",
+      url: objectUrl,
+      headers: { authorization: basic(credential.username, credential.password) },
+    });
+    expect(fetchedAfterInbound.statusCode).toBe(200);
+    expect(fetchedAfterInbound.body).toContain("SUMMARY:Updated prep call");
+    expect(fetchedAfterInbound.body).not.toContain("caldav-preserved");
+    expect(fetchedAfterInbound.body).not.toContain("caldav-inbound");
+    expect(fetchedAfterInbound.body).not.toContain("meet.example.test");
+    expect(fetchedAfterInbound.body).not.toContain(hostedRoomId);
+    expect(fetchedAfterInbound.body).not.toContain("open-practice-webrtc");
 
     const stale = await server.inject({
       method: "PUT",
@@ -271,9 +361,15 @@ describe("CalDAV routes", () => {
       "calendar.credential.created",
       "calendar.event.created",
       "calendar.event.updated",
+      "calendar.event.updated",
       "calendar.event.deleted",
     ]);
-    expect(repository.recordedAuditEvents.slice(1)).toEqual([
+    expect(JSON.stringify(repository.recordedAuditEvents)).not.toContain("caldav-preserved");
+    const caldavAuditEvents = repository.recordedAuditEvents.filter((event) => {
+      const metadata = event.metadata as Record<string, unknown> | undefined;
+      return metadata?.source === "caldav";
+    });
+    expect(caldavAuditEvents).toEqual([
       expect.objectContaining({
         actorId: "user-licensee",
         resourceType: "calendar_event",

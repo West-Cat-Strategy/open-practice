@@ -65,12 +65,15 @@ test.describe("host Playwright suite", () => {
     ).toBeVisible();
 
     await app.admitGuest(guest.sessionId, guest.guestId);
-    await page.reload();
+    await page.getByRole("button", { name: "Refresh guest session status" }).click();
     await expect(
       page.getByRole("status").filter({ hasText: "You have been admitted." }),
     ).toBeVisible();
     await expect(page.getByText("admitted", { exact: true }).first()).toBeVisible();
     await expect(page.locator("body")).not.toContainText(guest.token);
+    await expect(page.locator("body")).not.toContainText(
+      /tokenHash|guestAccessToken|meetingLinkUrl|meetingRoomId/i,
+    );
   });
 
   test("renders the client portal workspace without leaking private fields @client-portal", async ({

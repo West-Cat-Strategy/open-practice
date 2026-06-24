@@ -34,6 +34,12 @@ export function canCheckInToGuestSession(payload: PublicGuestSessionResponse | n
   return payload?.session.status === "open" && payload.guest?.status === "issued";
 }
 
+export function shouldPollPublicGuestSession(payload: PublicGuestSessionResponse | null): boolean {
+  if (!payload) return false;
+  if (payload.session.status === "expired" || payload.session.status === "ended") return false;
+  return payload.guest?.status === "waiting";
+}
+
 export function guestSessionAttentionItems(
   payload: PublicGuestSessionResponse | null,
 ): PublicTokenActionItem[] {

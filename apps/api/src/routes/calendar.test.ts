@@ -101,6 +101,48 @@ function deliveryConfirmation(recipientCount = 1) {
   return { confirmed: true, channel: "email", recipientCount };
 }
 
+function expectGuestTransitionUnavailable(
+  response: { statusCode: number; json: () => unknown },
+  token?: string,
+) {
+  expect(response.statusCode).toBe(409);
+  expect(response.json()).toMatchObject({ code: "GUEST_SESSION_TRANSITION_UNAVAILABLE" });
+  const body = JSON.stringify(response.json());
+  if (token) expect(body).not.toContain(token);
+  expect(body).not.toContain("meet.example.test");
+  expect(body).not.toContain("Morgan tenancy dispute");
+  expect(body).not.toContain("issuedCount");
+  expect(body).not.toContain("waitingCount");
+  expect(body).not.toContain("admittedCount");
+  expect(body).not.toContain("deniedCount");
+  expect(body).not.toContain("revokedCount");
+}
+
+async function openHostedGuestSession(server: FastifyInstance): Promise<string> {
+  const hosted = await server.inject({
+    method: "PATCH",
+    url: "/api/calendar/events/calendar-event-002/meeting-link",
+    payload: { matterId: "matter-001", mode: "hosted_webrtc" },
+  });
+  expect(hosted.statusCode).toBe(200);
+
+  const created = await server.inject({
+    method: "POST",
+    url: "/api/calendar/events/calendar-event-002/guest-sessions",
+    payload: { matterId: "matter-001" },
+  });
+  expect(created.statusCode).toBe(201);
+  const sessionId = created.json().session.id;
+
+  const opened = await server.inject({
+    method: "POST",
+    url: `/api/calendar/events/calendar-event-002/guest-sessions/${sessionId}/open`,
+    payload: { matterId: "matter-001" },
+  });
+  expect(opened.statusCode).toBe(200);
+  return sessionId;
+}
+
 afterEach(async () => {
   await Promise.all(servers.splice(0).map((server) => server.close()));
 });
@@ -245,6 +287,193 @@ describe("calendar routes", () => {
     expect(serializedAudit).not.toContain("2026-05-09T17:00:00.000Z");
     expect(serializedAudit).not.toContain("hasRequestedWindow");
     expect(serializedAudit).not.toContain("linkedEventId");
+  });
+
+  it("requires calendarEventId before linking a reminder scheduling request", async () => {
+    const server = testServer(user("licensee", ["matter-001"]));
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/calendar/scheduling-requests",
+      payload: {
+        matterId: "matter-001",
+        kind: "reminder_review",
+        title: "Review synthetic reminder",
+        sourceType: "calendar_reminder",
+        sourceLabel: "Synthetic reminder",
+        calendarReminderId: "calendar-reminder-001",
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      code: "VALIDATION_ERROR",
+      message: "Invalid request body",
+    });
+  });
+
+  it("requires calendarEventId before marking a scheduling request scheduled", async () => {
+    const server = testServer(user("licensee", ["matter-001"]));
+
+    const created = await server.inject({
+      method: "POST",
+      url: "/api/calendar/scheduling-requests",
+      payload: {
+        matterId: "matter-001",
+        kind: "event_scheduling",
+        title: "Synthetic scheduling request",
+        sourceType: "manual",
+        sourceLabel: "Synthetic source",
+      },
+    });
+    expect(created.statusCode).toBe(201);
+
+    const response = await server.inject({
+      method: "PATCH",
+      url: `/api/calendar/scheduling-requests/${created.json().schedulingRequest.id}/review`,
+      payload: {
+        matterId: "matter-001",
+        status: "scheduled",
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      code: "VALIDATION_ERROR",
+      message: "Invalid request body",
+    });
+  });
+
+  it("keeps reminder scheduling reviews bound to the reminder-owning event", async () => {
+    const repository = new AuditRecordingRepository();
+    const server = testServer(user("licensee", ["matter-001"]), repository);
+
+    const reminder = await server.inject({
+      method: "POST",
+      url: "/api/calendar/events/calendar-event-001/reminders",
+      payload: {
+        matterId: "matter-001",
+        remindAt: "2026-05-05T15:45:00.000Z",
+      },
+    });
+    expect(reminder.statusCode).toBe(201);
+    const reminderId = reminder.json().reminder.id;
+
+    const created = await server.inject({
+      method: "POST",
+      url: "/api/calendar/scheduling-requests",
+      payload: {
+        matterId: "matter-001",
+        kind: "reminder_review",
+        title: "Review synthetic reminder",
+        sourceType: "calendar_reminder",
+        sourceLabel: "Synthetic reminder",
+        calendarEventId: "calendar-event-001",
+        calendarReminderId: reminderId,
+      },
+    });
+    expect(created.statusCode).toBe(201);
+    const requestId = created.json().schedulingRequest.id;
+
+    const mismatch = await server.inject({
+      method: "PATCH",
+      url: `/api/calendar/scheduling-requests/${requestId}/review`,
+      payload: {
+        matterId: "matter-001",
+        status: "scheduled",
+        calendarEventId: "calendar-event-002",
+      },
+    });
+    expect(mismatch.statusCode).toBe(409);
+    expect(mismatch.json()).toMatchObject({ code: "CALENDAR_REMINDER_EVENT_MISMATCH" });
+
+    const reviewed = await server.inject({
+      method: "PATCH",
+      url: `/api/calendar/scheduling-requests/${requestId}/review`,
+      payload: {
+        matterId: "matter-001",
+        status: "reviewed",
+      },
+    });
+    expect(reviewed.statusCode).toBe(200);
+    expect(reviewed.json().schedulingRequest).toMatchObject({
+      id: requestId,
+      status: "reviewed",
+      linkedReminderId: reminderId,
+    });
+    expect(reviewed.json().schedulingRequest).not.toHaveProperty("linkedEvent");
+    await expect(
+      repository.getCalendarSchedulingRequest("firm-west-legal", "matter-001", requestId),
+    ).resolves.toMatchObject({
+      status: "reviewed",
+      calendarReminderId: reminderId,
+      calendarEventId: undefined,
+    });
+
+    const scheduled = await server.inject({
+      method: "PATCH",
+      url: `/api/calendar/scheduling-requests/${requestId}/review`,
+      payload: {
+        matterId: "matter-001",
+        status: "scheduled",
+        calendarEventId: "calendar-event-001",
+      },
+    });
+    expect(scheduled.statusCode).toBe(200);
+    expect(scheduled.json().schedulingRequest).toMatchObject({
+      id: requestId,
+      status: "scheduled",
+      linkedEvent: { id: "calendar-event-001" },
+      linkedReminderId: reminderId,
+    });
+  });
+
+  it("keeps cancelled reminder-owner events on the not-found scheduling path", async () => {
+    const server = testServer(user("licensee", ["matter-001"]));
+
+    const reminder = await server.inject({
+      method: "POST",
+      url: "/api/calendar/events/calendar-event-002/reminders",
+      payload: {
+        matterId: "matter-001",
+        remindAt: "2026-05-07T17:30:00.000Z",
+      },
+    });
+    expect(reminder.statusCode).toBe(201);
+
+    const created = await server.inject({
+      method: "POST",
+      url: "/api/calendar/scheduling-requests",
+      payload: {
+        matterId: "matter-001",
+        kind: "reminder_review",
+        title: "Review synthetic reminder",
+        sourceType: "calendar_reminder",
+        sourceLabel: "Synthetic reminder",
+        calendarEventId: "calendar-event-002",
+        calendarReminderId: reminder.json().reminder.id,
+      },
+    });
+    expect(created.statusCode).toBe(201);
+
+    const cancelled = await server.inject({
+      method: "POST",
+      url: "/api/calendar/events/calendar-event-002/cancel",
+      payload: { matterId: "matter-001" },
+    });
+    expect(cancelled.statusCode).toBe(200);
+
+    const scheduled = await server.inject({
+      method: "PATCH",
+      url: `/api/calendar/scheduling-requests/${created.json().schedulingRequest.id}/review`,
+      payload: {
+        matterId: "matter-001",
+        status: "scheduled",
+        calendarEventId: "calendar-event-002",
+      },
+    });
+    expect(scheduled.statusCode).toBe(404);
+    expect(scheduled.json()).toMatchObject({ code: "CALENDAR_EVENT_NOT_FOUND" });
   });
 
   it("blocks cross-matter calendar reads and export", async () => {
@@ -1316,6 +1545,34 @@ describe("calendar routes", () => {
     expect(JSON.stringify(repository.recordedAuditEvents)).not.toContain("meet.example.test");
   });
 
+  it("omits stored meeting control-plane fields from matter calendar feeds", async () => {
+    const repository = new AuditRecordingRepository();
+    const server = testServer(user("licensee", ["matter-001"]), repository, undefined, {
+      providerKey: "open-practice-webrtc",
+      hostedMeetingBaseUrl: "https://meet.example.test/rooms",
+    });
+
+    const hosted = await server.inject({
+      method: "PATCH",
+      url: "/api/calendar/events/calendar-event-002/meeting-link",
+      payload: { matterId: "matter-001", mode: "hosted_webrtc" },
+    });
+    expect(hosted.statusCode).toBe(200);
+    const roomId = hosted.json().event.meetingRoomId;
+
+    const feed = await server.inject({
+      method: "GET",
+      url: "/api/calendar/matters/matter-001.ics",
+    });
+
+    expect(feed.statusCode).toBe(200);
+    expect(feed.body).toContain("SUMMARY:Client preparation call");
+    expect(feed.body).not.toContain("https://meet.example.test");
+    expect(feed.body).not.toContain(roomId);
+    expect(feed.body).not.toContain("open-practice-webrtc");
+    expect(feed.body).not.toContain("tokenHash");
+  });
+
   it("reports configured hosted meeting and guest-access boundaries without issuing room sessions", async () => {
     const repository = new AuditRecordingRepository();
     const server = testServer(user("licensee", ["matter-001"]), repository, undefined, {
@@ -1410,6 +1667,31 @@ describe("calendar routes", () => {
     expect(JSON.stringify(publicStatus.json())).not.toContain("meet.example.test");
     expect(JSON.stringify(publicStatus.json())).not.toContain("ada.morgan@example.test");
 
+    const headerPublicStatus = await server.inject({
+      method: "GET",
+      url: "/api/portal/guest-sessions",
+      headers: { "x-open-practice-public-token": token },
+    });
+    expect(headerPublicStatus.statusCode).toBe(200);
+    expect(headerPublicStatus.json()).toMatchObject({
+      session: { status: "open", lobbyStatus: "open" },
+      guest: { status: "issued" },
+    });
+
+    const mismatchedToken = createSessionToken();
+    const tokenMismatch = await server.inject({
+      method: "GET",
+      url: `/api/portal/guest-sessions/${token}`,
+      headers: { "x-open-practice-public-token": mismatchedToken },
+    });
+    expect(tokenMismatch.statusCode).toBe(404);
+    expect(tokenMismatch.json()).toMatchObject({
+      code: "GUEST_SESSION_NOT_FOUND",
+      message: "Guest session was not found",
+    });
+    expect(JSON.stringify(tokenMismatch.json())).not.toContain(token);
+    expect(JSON.stringify(tokenMismatch.json())).not.toContain(mismatchedToken);
+
     const checkedIn = await server.inject({
       method: "POST",
       url: `/api/portal/guest-sessions/${token}/check-in`,
@@ -1469,6 +1751,13 @@ describe("calendar routes", () => {
     expect(JSON.stringify(publicEnded.json())).not.toContain("waitingCount");
     expect(JSON.stringify(publicEnded.json())).not.toContain("revokedCount");
 
+    const publicEndedCheckIn = await server.inject({
+      method: "POST",
+      url: `/api/portal/guest-sessions/${token}/check-in`,
+      payload: { attendanceConfirmation: { source: "guest_status_page" } },
+    });
+    expectGuestTransitionUnavailable(publicEndedCheckIn, token);
+
     const auditJson = JSON.stringify(repository.recordedAuditEvents);
     expect(repository.recordedAuditEvents.map((event) => event.action)).toEqual(
       expect.arrayContaining([
@@ -1504,6 +1793,145 @@ describe("calendar routes", () => {
     expect(publicGuestAccessLogs.every((log) => log.actorId === undefined)).toBe(true);
     expect(JSON.stringify(publicGuestAccessLogs)).not.toContain("waitingCount");
     expect(JSON.stringify(publicGuestAccessLogs)).not.toContain("revokedCount");
+  });
+
+  it("returns generic transition unavailable for ended and terminal guest-session actions", async () => {
+    const repository = new AuditRecordingRepository();
+    const server = testServer(user("licensee", ["matter-001"]), repository, undefined, {
+      providerKey: "open-practice-webrtc",
+      hostedMeetingBaseUrl: "https://meet.example.test/rooms",
+      guestAccessTokenSigningConfigured: true,
+    });
+    const sessionId = await openHostedGuestSession(server);
+
+    const issued = await server.inject({
+      method: "POST",
+      url: `/api/calendar/events/calendar-event-002/guest-sessions/${sessionId}/guest-links`,
+      payload: { matterId: "matter-001" },
+    });
+    expect(issued.statusCode).toBe(201);
+    const token = issued.json().token;
+    const guestId = issued.json().guest.id;
+
+    const checkedIn = await server.inject({
+      method: "POST",
+      url: `/api/portal/guest-sessions/${token}/check-in`,
+      payload: { attendanceConfirmation: { source: "guest_status_page" } },
+    });
+    expect(checkedIn.statusCode).toBe(200);
+
+    const admitted = await server.inject({
+      method: "POST",
+      url: `/api/calendar/events/calendar-event-002/guest-sessions/${sessionId}/guests/${guestId}/admit`,
+      payload: { matterId: "matter-001" },
+    });
+    expect(admitted.statusCode).toBe(200);
+
+    const terminalDeny = await server.inject({
+      method: "POST",
+      url: `/api/calendar/events/calendar-event-002/guest-sessions/${sessionId}/guests/${guestId}/deny`,
+      payload: { matterId: "matter-001" },
+    });
+    expectGuestTransitionUnavailable(terminalDeny, token);
+
+    const ended = await server.inject({
+      method: "POST",
+      url: `/api/calendar/events/calendar-event-002/guest-sessions/${sessionId}/end`,
+      payload: { matterId: "matter-001" },
+    });
+    expect(ended.statusCode).toBe(200);
+
+    const reopen = await server.inject({
+      method: "POST",
+      url: `/api/calendar/events/calendar-event-002/guest-sessions/${sessionId}/open`,
+      payload: { matterId: "matter-001" },
+    });
+    expectGuestTransitionUnavailable(reopen, token);
+
+    const issueAfterEnd = await server.inject({
+      method: "POST",
+      url: `/api/calendar/events/calendar-event-002/guest-sessions/${sessionId}/guest-links`,
+      payload: { matterId: "matter-001" },
+    });
+    expectGuestTransitionUnavailable(issueAfterEnd, token);
+
+    const admitAfterEnd = await server.inject({
+      method: "POST",
+      url: `/api/calendar/events/calendar-event-002/guest-sessions/${sessionId}/guests/${guestId}/admit`,
+      payload: { matterId: "matter-001" },
+    });
+    expectGuestTransitionUnavailable(admitAfterEnd, token);
+  });
+
+  it("returns generic transition unavailable for expired and revoked guest links", async () => {
+    const repository = new AuditRecordingRepository();
+    const server = testServer(user("licensee", ["matter-001"]), repository, undefined, {
+      providerKey: "open-practice-webrtc",
+      hostedMeetingBaseUrl: "https://meet.example.test/rooms",
+      guestAccessTokenSigningConfigured: true,
+    });
+    const sessionId = await openHostedGuestSession(server);
+    const now = new Date().toISOString();
+    const expiredToken = createSessionToken();
+    const expiredLink = await repository.createCalendarGuestLink({
+      id: "calendar-guest-link-expired-staff-action",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      eventId: "calendar-event-002",
+      sessionId,
+      tokenHash: hashToken(expiredToken, guestAccessJwtSecret),
+      status: "waiting",
+      expiresAt: "2026-01-01T13:00:00.000Z",
+      createdAt: now,
+      updatedAt: now,
+      createdByUserId: "user-licensee",
+      updatedByUserId: "user-licensee",
+      metadata: {},
+    });
+
+    const expiredAdmit = await server.inject({
+      method: "POST",
+      url: `/api/calendar/events/calendar-event-002/guest-sessions/${sessionId}/guests/${expiredLink.id}/admit`,
+      payload: { matterId: "matter-001" },
+    });
+    expectGuestTransitionUnavailable(expiredAdmit, expiredToken);
+
+    const issued = await server.inject({
+      method: "POST",
+      url: `/api/calendar/events/calendar-event-002/guest-sessions/${sessionId}/guest-links`,
+      payload: { matterId: "matter-001" },
+    });
+    expect(issued.statusCode).toBe(201);
+    const token = issued.json().token;
+    const guestId = issued.json().guest.id;
+
+    const revoked = await server.inject({
+      method: "POST",
+      url: `/api/calendar/events/calendar-event-002/guest-sessions/${sessionId}/guests/${guestId}/revoke`,
+      payload: { matterId: "matter-001" },
+    });
+    expect(revoked.statusCode).toBe(200);
+
+    const revokedAdmit = await server.inject({
+      method: "POST",
+      url: `/api/calendar/events/calendar-event-002/guest-sessions/${sessionId}/guests/${guestId}/admit`,
+      payload: { matterId: "matter-001" },
+    });
+    expectGuestTransitionUnavailable(revokedAdmit, token);
+
+    const revokedCheckIn = await server.inject({
+      method: "POST",
+      url: `/api/portal/guest-sessions/${token}/check-in`,
+      payload: { attendanceConfirmation: { source: "guest_status_page" } },
+    });
+    expectGuestTransitionUnavailable(revokedCheckIn, token);
+
+    const accessLogs = await repository.listAccessLogs("firm-west-legal", {
+      resourceType: "calendar_guest_link",
+      resourceId: guestId,
+    });
+    expect(JSON.stringify(accessLogs)).not.toContain(token);
+    expect(JSON.stringify(accessLogs)).not.toContain(expiredToken);
   });
 
   it("logs expired hosted guest-session token probes before returning generic 410", async () => {
@@ -1757,6 +2185,16 @@ describe("calendar routes", () => {
       meetingLinkIncluded: true,
     });
     expect(JSON.stringify(email?.metadata)).not.toContain("video.example.test");
+    const invitationAudit = repository.recordedAuditEvents.find(
+      (event) => event.action === "calendar.invitation.queued",
+    );
+    expect(invitationAudit?.metadata).toMatchObject({
+      requestedMeetingLink: true,
+      meetingLinkMode: "external_url",
+      meetingLinkIncluded: true,
+    });
+    expect(JSON.stringify(invitationAudit?.metadata)).not.toContain("video.example.test");
+    expect(JSON.stringify(invitationAudit?.metadata)).not.toContain("tokenHash");
   });
 
   it("requires confirmation before calendar invitations update attendee delivery state", async () => {

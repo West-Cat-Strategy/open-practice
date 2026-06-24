@@ -20,6 +20,35 @@ function auditEvent(overrides: Partial<AuditEvent> = {}): AuditEvent {
   };
 }
 
+const SENSITIVE_CALENDAR_METADATA_KEYS = [
+  "meetingUrl",
+  "meetingLinkUrl",
+  "rawMeetingUrl",
+  "roomUrl",
+  "meetingRoomUrl",
+  "meetingRoomId",
+  "token",
+  "rawToken",
+  "guestToken",
+  "guestAccessToken",
+  "tokenHash",
+  "attendeeEmail",
+  "recipientEmail",
+  "email",
+  "invitationBody",
+  "meetingInvitationBody",
+  "messageBody",
+  "textBody",
+  "htmlBody",
+  "body",
+] as const;
+
+function expectNoSensitiveCalendarMetadataHints(resourceHints: readonly string[]): void {
+  for (const key of SENSITIVE_CALENDAR_METADATA_KEYS) {
+    expect(resourceHints).not.toContain(key);
+  }
+}
+
 describe("audit event taxonomy", () => {
   it("classifies known route audit events with safe metadata hints", () => {
     const classification = classifyAuditEvent(auditEvent());
@@ -1336,61 +1365,276 @@ describe("audit event taxonomy", () => {
     }
   });
 
-  it("classifies hosted calendar meeting session and guest link events without token hints", () => {
-    const sessionClassification = classifyAuditEvent(
+  it("classifies calendar event updates with safe meeting-link metadata only", () => {
+    const classification = classifyAuditEvent(
       auditEvent({
-        action: "calendar.meeting_session.updated",
-        resourceType: "calendar_meeting_session",
-        resourceId: "meeting-session-001",
+        action: "calendar.event.updated",
+        resourceType: "calendar_event",
+        resourceId: "calendar-event-001",
         metadata: {
           matterId: "matter-001",
           eventId: "calendar-event-001",
-          sessionId: "meeting-session-001",
-          status: "lobby_open",
-          retentionUntil: "2026-08-03T16:00:00.000Z",
+          uid: "calendar-event-001@open-practice.local",
+          scope: "matter",
+          clientContactId: undefined,
+          status: "confirmed",
+          sequence: 3,
+          attendeeCount: 1,
+          reminderCount: 1,
+          meetingLinkMode: "external_url",
+          meetingProviderKey: "open-practice-webrtc",
+          hasMeetingLink: true,
+          startsAtChanged: true,
+          endsAtChanged: false,
+          source: "caldav",
+          credentialId: "calendar-credential-001",
+          meetingLinkUrl: "https://video.example.test/private-room",
+          meetingUrl: "https://video.example.test/private-room",
+          meetingRoomId: "room-private-001",
+          token: "raw-token-should-not-classify",
+          tokenHash: "hmac-sha256:should-not-classify",
+          attendeeEmail: "ada.morgan@example.test",
+          invitationBody: "Synthetic invitation body should not classify.",
         },
       }),
-    );
-    expect(sessionClassification).toMatchObject({
-      category: "calendar",
-      known: true,
-      matterScope: "matter",
-      resourceTypeMatches: true,
-    });
-    expect(sessionClassification.metadataHints.resource).toEqual(
-      expect.arrayContaining(["eventId", "sessionId", "status", "retentionUntil"]),
     );
 
-    const guestLinkClassification = classifyAuditEvent(
-      auditEvent({
-        action: "calendar.guest_link.revoked",
-        resourceType: "calendar_guest_link",
-        resourceId: "guest-link-001",
-        metadata: {
-          matterId: "matter-001",
-          eventId: "calendar-event-001",
-          sessionId: "meeting-session-001",
-          linkId: "guest-link-001",
-          status: "revoked",
-          revokedAt: "2026-05-03T16:20:00.000Z",
-          checkedInAt: "2026-05-03T16:10:00.000Z",
-          retentionUntil: "2026-08-03T16:00:00.000Z",
-          tokenHash: "should-not-be-a-hint",
-          email: "should-not-be-a-hint@example.test",
-        },
-      }),
-    );
-    expect(guestLinkClassification).toMatchObject({
+    expect(classification).toMatchObject({
       category: "calendar",
       known: true,
       matterScope: "matter",
       resourceTypeMatches: true,
     });
-    expect(guestLinkClassification.metadataHints.resource).toEqual(
-      expect.arrayContaining(["eventId", "sessionId", "linkId", "status", "revokedAt"]),
+    expect(classification.metadataHints.resource).toEqual(
+      expect.arrayContaining([
+        "eventId",
+        "uid",
+        "scope",
+        "status",
+        "sequence",
+        "attendeeCount",
+        "reminderCount",
+        "meetingLinkMode",
+        "meetingProviderKey",
+        "hasMeetingLink",
+        "startsAtChanged",
+        "endsAtChanged",
+        "source",
+        "credentialId",
+      ]),
     );
-    expect(guestLinkClassification.metadataHints.resource).not.toContain("tokenHash");
-    expect(guestLinkClassification.metadataHints.resource).not.toContain("email");
+    expectNoSensitiveCalendarMetadataHints(classification.metadataHints.resource);
+  });
+
+  it("classifies calendar invitation audit events with safe boundary metadata only", () => {
+    const cases = [
+      {
+        action: "calendar.invitation.queued",
+        metadata: {
+          matterId: "matter-001",
+          eventId: "calendar-event-001",
+          attendeeId: "calendar-attendee-001",
+          attendeeCount: 1,
+          invitationStatus: "queued",
+          emailId: "email-001",
+          jobId: "job-001",
+          requestedMeetingLink: true,
+          meetingLinkMode: "external_url",
+          meetingLinkIncluded: true,
+          meetingProviderKey: "open-practice-webrtc",
+          requestedGuestAccessToken: false,
+          meetingLinksStatus: "configured",
+          meetingLinksProvider: "open-practice-webrtc",
+          guestAccessStatus: "configured",
+          guestAccessProvider: "open-practice-webrtc",
+          invitationEmailStatus: "configured",
+          invitationEmailProvider: "smtp",
+          meetingBoundary: "calendar_invitation_or_staff_handoff",
+          meetingLinkUrl: "https://video.example.test/private-room",
+          guestAccessToken: "raw-token-should-not-classify",
+          tokenHash: "hmac-sha256:should-not-classify",
+          attendeeEmail: "ada.morgan@example.test",
+          invitationBody: "Synthetic invitation body should not classify.",
+        },
+        expectedHints: ["emailId", "jobId"],
+      },
+      {
+        action: "calendar.invitation.skipped",
+        metadata: {
+          matterId: "matter-001",
+          eventId: "calendar-event-001",
+          attendeeId: "calendar-attendee-001",
+          attendeeCount: 1,
+          invitationStatus: "skipped",
+          requestedMeetingLink: false,
+          meetingLinkMode: "blank",
+          meetingLinkIncluded: false,
+          requestedGuestAccessToken: false,
+          meetingLinksStatus: "disabled",
+          meetingLinksReason: "not_configured",
+          guestAccessStatus: "disabled",
+          guestAccessReason: "not_configured",
+          invitationEmailStatus: "disabled",
+          invitationEmailReason: "smtp_not_configured",
+          reason: "email_delivery_not_configured",
+          meetingBoundary: "calendar_invitation_or_staff_handoff",
+          meetingUrl: "https://video.example.test/private-room",
+          token: "raw-token-should-not-classify",
+          tokenHash: "hmac-sha256:should-not-classify",
+          email: "ada.morgan@example.test",
+          textBody: "Synthetic invitation body should not classify.",
+        },
+        expectedHints: ["reason"],
+      },
+    ];
+
+    for (const { action, metadata, expectedHints } of cases) {
+      const classification = classifyAuditEvent(
+        auditEvent({
+          action,
+          resourceType: "calendar_event",
+          resourceId: "calendar-event-001",
+          metadata,
+        }),
+      );
+
+      expect(classification).toMatchObject({
+        category: "calendar",
+        known: true,
+        matterScope: "matter",
+        resourceTypeMatches: true,
+      });
+      expect(classification.metadataHints.resource).toEqual(
+        expect.arrayContaining([
+          "eventId",
+          "attendeeId",
+          "attendeeCount",
+          "invitationStatus",
+          "requestedMeetingLink",
+          "meetingLinkMode",
+          "meetingLinkIncluded",
+          "meetingProviderKey",
+          "requestedGuestAccessToken",
+          "meetingLinksStatus",
+          "guestAccessStatus",
+          "invitationEmailStatus",
+          "meetingBoundary",
+          ...expectedHints,
+        ]),
+      );
+      expectNoSensitiveCalendarMetadataHints(classification.metadataHints.resource);
+    }
+  });
+
+  it("classifies hosted calendar meeting session events without URL or token hints", () => {
+    for (const action of [
+      "calendar.meeting_session.created",
+      "calendar.meeting_session.updated",
+      "calendar.meeting_session.ended",
+    ]) {
+      const classification = classifyAuditEvent(
+        auditEvent({
+          action,
+          resourceType: "calendar_meeting_session",
+          resourceId: "meeting-session-001",
+          metadata: {
+            matterId: "matter-001",
+            eventId: "calendar-event-001",
+            sessionId: "meeting-session-001",
+            status: action.endsWith(".ended") ? "ended" : "lobby_open",
+            endedAt: action.endsWith(".ended") ? "2026-05-03T16:45:00.000Z" : undefined,
+            retentionUntil: "2026-08-03T16:00:00.000Z",
+            issuedCount: 1,
+            waitingCount: 0,
+            admittedCount: 1,
+            deniedCount: 0,
+            revokedCount: 0,
+            meetingLinkUrl: "https://video.example.test/private-room",
+            token: "raw-token-should-not-classify",
+            tokenHash: "hmac-sha256:should-not-classify",
+            attendeeEmail: "ada.morgan@example.test",
+          },
+        }),
+      );
+
+      expect(classification).toMatchObject({
+        category: "calendar",
+        known: true,
+        matterScope: "matter",
+        resourceTypeMatches: true,
+      });
+      expect(classification.metadataHints.resource).toEqual(
+        expect.arrayContaining([
+          "eventId",
+          "sessionId",
+          "status",
+          "endedAt",
+          "retentionUntil",
+          "issuedCount",
+          "waitingCount",
+          "admittedCount",
+          "deniedCount",
+          "revokedCount",
+        ]),
+      );
+      expectNoSensitiveCalendarMetadataHints(classification.metadataHints.resource);
+    }
+  });
+
+  it("classifies hosted calendar guest link events without URL, token, email, or body hints", () => {
+    for (const action of [
+      "calendar.guest_link.created",
+      "calendar.guest_link.updated",
+      "calendar.guest_link.revoked",
+    ]) {
+      const classification = classifyAuditEvent(
+        auditEvent({
+          action,
+          resourceType: "calendar_guest_link",
+          resourceId: "guest-link-001",
+          metadata: {
+            matterId: "matter-001",
+            eventId: "calendar-event-001",
+            sessionId: "meeting-session-001",
+            linkId: "guest-link-001",
+            status: action.endsWith(".revoked") ? "revoked" : "admitted",
+            expiresAt: "2026-05-03T18:00:00.000Z",
+            checkedInAt: "2026-05-03T16:10:00.000Z",
+            admittedAt: "2026-05-03T16:20:00.000Z",
+            deniedAt: undefined,
+            revokedAt: action.endsWith(".revoked") ? "2026-05-03T16:30:00.000Z" : undefined,
+            retentionUntil: "2026-08-03T16:00:00.000Z",
+            meetingUrl: "https://video.example.test/private-room",
+            guestToken: "raw-token-should-not-classify",
+            tokenHash: "hmac-sha256:should-not-classify",
+            email: "ada.morgan@example.test",
+            invitationBody: "Synthetic invitation body should not classify.",
+          },
+        }),
+      );
+
+      expect(classification).toMatchObject({
+        category: "calendar",
+        known: true,
+        matterScope: "matter",
+        resourceTypeMatches: true,
+      });
+      expect(classification.metadataHints.resource).toEqual(
+        expect.arrayContaining([
+          "eventId",
+          "sessionId",
+          "linkId",
+          "status",
+          "expiresAt",
+          "checkedInAt",
+          "admittedAt",
+          "deniedAt",
+          "revokedAt",
+          "retentionUntil",
+        ]),
+      );
+      expectNoSensitiveCalendarMetadataHints(classification.metadataHints.resource);
+    }
   });
 
   it("classifies workflow audit events with envelope metadata hints", () => {

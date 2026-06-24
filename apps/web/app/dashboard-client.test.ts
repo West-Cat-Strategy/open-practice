@@ -129,16 +129,22 @@ import {
   buildCalendarRadarBuckets,
   buildCalendarReminderPayload,
   buildCalendarReschedulePayload,
+  buildCalendarSchedulingReviewPayload,
+  calendarMeetingReadinessItems,
+  describeCalendarSchedulingReviewNextStep,
   describeCalendarEventTiming,
   describeMeetingInvitationBoundary,
   describeMeetingLinkAvailability,
   loadCalendarDashboardData,
   removeCalendarEventReminder,
   removeCalendarEventAttendee,
+  sortCalendarGuestSessionGuests,
+  sortCalendarSchedulingRequests,
   upsertCalendarEvent,
   upsertCalendarEventAttendee,
   upsertCalendarCredential,
   upsertCalendarEventReminder,
+  upsertCalendarSchedulingRequest,
 } from "./calendar-dashboard";
 import {
   buildContactDataQualityResolutionPayload,
@@ -6186,6 +6192,154 @@ describe("dashboard client behavior", () => {
     });
   });
 
+  it("builds scheduling-review payloads and keeps request state matter-scoped", () => {
+    const existingRequest = {
+      id: "calendar-scheduling-request-001",
+      matterId: "matter-001",
+      kind: "event_scheduling" as const,
+      status: "needs_review" as const,
+      title: "Synthetic meeting follow-up",
+      source: { type: "manual" as const, label: "Staff note" },
+      requestedDueAt: "2026-05-03T16:00:00.000Z",
+      reminderSummary: {
+        posture: "none" as const,
+        pendingCount: 0,
+        acknowledgedCount: 0,
+      },
+      privacy: { visibility: "staff_only" as const, clientVisible: false as const },
+      timeCaptureCue: {
+        posture: "none" as const,
+        existingTimeEntryCount: 0,
+        billable: false,
+      },
+      reviewBoundary: {
+        approvalCreatesTask: false as const,
+        approvalReschedulesEvent: false as const,
+        approvalCancelsReminder: false as const,
+        approvalCreatesTimeEntry: false as const,
+      },
+    };
+    const scheduledRequest = {
+      ...existingRequest,
+      status: "scheduled" as const,
+      requestedDueAt: "2026-05-07T16:00:00.000Z",
+      linkedEvent: {
+        id: "calendar-event-001",
+        title: "Synthetic filing deadline",
+        startsAt: "2026-05-05T16:00:00.000Z",
+        endsAt: "2026-05-05T16:30:00.000Z",
+        status: "confirmed" as const,
+      },
+    };
+    const reviewedRequest = {
+      ...existingRequest,
+      id: "calendar-scheduling-request-reviewed",
+      status: "reviewed" as const,
+      title: "Reviewed synthetic follow-up",
+      requestedDueAt: "2026-05-06T16:00:00.000Z",
+    };
+    const dismissedRequest = {
+      ...existingRequest,
+      id: "calendar-scheduling-request-dismissed",
+      status: "dismissed" as const,
+      title: "Dismissed synthetic follow-up",
+      requestedDueAt: "2026-05-04T16:00:00.000Z",
+    };
+    const earlierNeedsReviewRequest = {
+      ...existingRequest,
+      id: "calendar-scheduling-request-earlier",
+      title: "Earlier synthetic follow-up",
+      requestedDueAt: "2026-05-01T16:00:00.000Z",
+    };
+
+    expect(
+      buildCalendarSchedulingReviewPayload({
+        matterId: "matter-001",
+        status: "scheduled",
+        calendarEventId: "calendar-event-001",
+      }),
+    ).toEqual({
+      matterId: "matter-001",
+      status: "scheduled",
+      calendarEventId: "calendar-event-001",
+    });
+    expect(
+      buildCalendarSchedulingReviewPayload({
+        matterId: "matter-001",
+        status: "reviewed",
+        calendarEventId: "calendar-event-001",
+      }),
+    ).toEqual({ matterId: "matter-001", status: "reviewed" });
+    expect(
+      upsertCalendarSchedulingRequest(
+        { "matter-001": [existingRequest], "matter-002": [] },
+        "matter-001",
+        scheduledRequest,
+      ),
+    ).toEqual({
+      "matter-001": [scheduledRequest],
+      "matter-002": [],
+    });
+    expect(
+      sortCalendarSchedulingRequests([
+        dismissedRequest,
+        scheduledRequest,
+        existingRequest,
+        reviewedRequest,
+        earlierNeedsReviewRequest,
+      ]).map((request) => request.id),
+    ).toEqual([
+      "calendar-scheduling-request-earlier",
+      "calendar-scheduling-request-001",
+      "calendar-scheduling-request-001",
+      "calendar-scheduling-request-reviewed",
+      "calendar-scheduling-request-dismissed",
+    ]);
+    expect(
+      describeCalendarSchedulingReviewNextStep({
+        request: existingRequest,
+        matterCalendarControlsEnabled: false,
+        eligibleEventCount: 1,
+        selectedEventId: "calendar-event-001",
+      }),
+    ).toMatchObject({
+      label: "Matter required",
+      canLinkEvent: false,
+    });
+    expect(
+      describeCalendarSchedulingReviewNextStep({
+        request: existingRequest,
+        matterCalendarControlsEnabled: true,
+        eligibleEventCount: 0,
+      }),
+    ).toMatchObject({
+      label: "No eligible event",
+      canMarkReviewed: true,
+      canLinkEvent: false,
+    });
+    expect(
+      describeCalendarSchedulingReviewNextStep({
+        request: existingRequest,
+        matterCalendarControlsEnabled: true,
+        eligibleEventCount: 1,
+      }),
+    ).toMatchObject({
+      label: "Event not selected",
+      canLinkEvent: false,
+    });
+    expect(
+      describeCalendarSchedulingReviewNextStep({
+        request: reviewedRequest,
+        matterCalendarControlsEnabled: true,
+        eligibleEventCount: 1,
+        selectedEventId: "calendar-event-001",
+      }),
+    ).toMatchObject({
+      label: "Already reviewed",
+      canDismiss: false,
+    });
+  });
+
   it("builds calendar event and reminder lifecycle payloads", () => {
     expect(
       buildCalendarEventPayload({
@@ -6434,7 +6588,7 @@ describe("dashboard client behavior", () => {
         guestAccess: { status: "configured", provider: "synthetic-meeting" },
         invitationEmail: { status: "configured", provider: "mailpit" },
       }),
-    ).toBe("Meeting links configured (synthetic-meeting). Guest access tokens configured.");
+    ).toBe("Meeting links configured. Guest access tokens configured.");
     expect(
       describeMeetingLinkAvailability({
         ...calendarEvent({
@@ -6451,10 +6605,118 @@ describe("dashboard client behavior", () => {
     ).toEqual({
       label: "Send link invite",
       detail:
-        "synthetic-meeting link ready; the invitation action can include the stored meeting link.",
+        "Hosted WebRTC link ready; the invitation action can include the stored meeting link.",
       status: "configured",
       actionable: true,
     });
+  });
+
+  it("summarizes meeting readiness and guest ordering without raw meeting secrets", () => {
+    const items = calendarMeetingReadinessItems(
+      calendarEvent({
+        meetingLinkMode: "external_url",
+        meetingLinkUrl: "https://video.example.test/rooms/raw-secret-room",
+        meetingInvitationBoundary: {
+          meetingLinks: { status: "configured", provider: "synthetic-meeting" },
+          guestAccess: { status: "configured", provider: "synthetic-meeting" },
+          invitationEmail: { status: "configured", provider: "mailpit" },
+        },
+        attendees: [
+          {
+            id: "calendar-attendee-001",
+            firmId: "firm-west-legal",
+            matterId: "matter-001",
+            eventId: "calendar-event-001",
+            name: "Synthetic Reviewer",
+            email: "reviewer@example.test",
+            role: "required",
+            responseStatus: "needs_action",
+            invitationStatus: "not_sent",
+            createdAt: "2026-05-01T12:00:00.000Z",
+            updatedAt: "2026-05-01T12:00:00.000Z",
+            createdByUserId: "user-licensee",
+            updatedByUserId: "user-licensee",
+          },
+        ],
+      }),
+      [
+        {
+          id: "guest-session-001",
+          eventId: "calendar-event-001",
+          status: "open",
+          createdAt: "2026-05-01T12:00:00.000Z",
+          updatedAt: "2026-05-01T12:10:00.000Z",
+          issuedCount: 2,
+          waitingCount: 1,
+          admittedCount: 1,
+          deniedCount: 0,
+          revokedCount: 0,
+          guests: [],
+        },
+      ],
+    );
+    const sortedGuests = sortCalendarGuestSessionGuests([
+      {
+        id: "guest-terminal-later",
+        sessionId: "guest-session-001",
+        status: "revoked",
+        expiresAt: "2026-05-01T12:05:00.000Z",
+        revokedAt: "2026-05-01T12:45:00.000Z",
+      },
+      {
+        id: "guest-waiting-later",
+        sessionId: "guest-session-001",
+        status: "waiting",
+        expiresAt: "2026-05-01T12:30:00.000Z",
+        checkedInAt: "2026-05-01T12:20:00.000Z",
+      },
+      {
+        id: "guest-issued-later",
+        sessionId: "guest-session-001",
+        status: "issued",
+        expiresAt: "2026-05-01T12:15:00.000Z",
+      },
+      {
+        id: "guest-terminal-earlier",
+        sessionId: "guest-session-001",
+        status: "denied",
+        expiresAt: "2026-05-01T12:55:00.000Z",
+        deniedAt: "2026-05-01T12:35:00.000Z",
+      },
+      {
+        id: "guest-waiting-earlier",
+        sessionId: "guest-session-001",
+        status: "waiting",
+        expiresAt: "2026-05-01T12:35:00.000Z",
+        checkedInAt: "2026-05-01T12:10:00.000Z",
+      },
+      {
+        id: "guest-issued-earlier",
+        sessionId: "guest-session-001",
+        status: "issued",
+        expiresAt: "2026-05-01T12:05:00.000Z",
+      },
+    ]);
+
+    expect(items.map((item) => item.label)).toEqual([
+      "Invitation handoff ready",
+      "Hosted lobby blocked",
+      "Attendees ready",
+      "Meeting link saved",
+      "Guest access configured",
+      "Lobby open",
+      "Invitation email ready",
+    ]);
+    expect(JSON.stringify(items)).not.toContain("raw-secret-room");
+    expect(JSON.stringify(items)).not.toContain("synthetic-meeting");
+    expect(sortedGuests.map((guest) => guest.id)).toEqual([
+      "guest-waiting-earlier",
+      "guest-waiting-later",
+      "guest-issued-earlier",
+      "guest-issued-later",
+      "guest-terminal-earlier",
+      "guest-terminal-later",
+    ]);
   });
 
   it("builds intake form link paths, create payloads, and review state", async () => {

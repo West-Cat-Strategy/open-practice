@@ -95,11 +95,21 @@ function responseXml(resourceHref: string, props: string, status = 200): string 
 }
 
 function calendarData(event: CalendarEventRecord): string {
+  const safeEvent = calendarEventWithoutMeetingDisclosure(event);
   return `<C:calendar-data>${xmlEscape(
     `BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Open Practice//Matter Calendar//EN\r\nCALSCALE:GREGORIAN\r\n${buildICalendarEvent(
-      event,
+      safeEvent,
     )}\r\nEND:VCALENDAR\r\n`,
   )}</C:calendar-data>`;
+}
+
+function calendarEventWithoutMeetingDisclosure(event: CalendarEventRecord): CalendarEventRecord {
+  const safeEvent: CalendarEventRecord = { ...event };
+  delete safeEvent.meetingLinkMode;
+  delete safeEvent.meetingLinkUrl;
+  delete safeEvent.meetingRoomId;
+  delete safeEvent.meetingProviderKey;
+  return safeEvent;
 }
 
 function eventProps(event: CalendarEventRecord, includeCalendarData: boolean): string {
@@ -576,7 +586,7 @@ export function registerCalDavRoutes(
           .type("text/calendar; charset=utf-8")
           .send(
             `BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Open Practice//Matter Calendar//EN\r\nCALSCALE:GREGORIAN\r\n${buildICalendarEvent(
-              event,
+              calendarEventWithoutMeetingDisclosure(event),
             )}\r\nEND:VCALENDAR\r\n`,
           );
       }),
@@ -641,6 +651,10 @@ export function registerCalDavRoutes(
             location: parsed.location,
             status: parsed.status,
             sequence: existing ? Math.max(parsed.sequence, existing.sequence + 1) : parsed.sequence,
+            meetingLinkMode: existing?.meetingLinkMode,
+            meetingLinkUrl: existing?.meetingLinkUrl,
+            meetingRoomId: existing?.meetingRoomId,
+            meetingProviderKey: existing?.meetingProviderKey,
             createdAt: existing?.createdAt ?? now,
             updatedAt: now,
             createdByUserId: existing?.createdByUserId ?? auth.context.user.id,

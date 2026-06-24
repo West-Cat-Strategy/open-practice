@@ -56,6 +56,10 @@ export interface CalendarMeetingLinkMutationResponse {
   event: CalendarEventRecord;
 }
 
+export interface CalendarSchedulingRequestReviewResponse {
+  schedulingRequest: CalendarSchedulingRequestSummary;
+}
+
 export interface CalendarInvitationResult {
   attendee: CalendarEventAttendeeRecord;
   queuedEmail?: {

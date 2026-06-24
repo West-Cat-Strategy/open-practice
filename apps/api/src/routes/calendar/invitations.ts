@@ -47,7 +47,7 @@ function calendarInvitationText(
     .join("\n");
 }
 
-function assertMeetingIssuanceAllowed(input: {
+function assertMeetingInvitationBoundaryAllowed(input: {
   includeMeetingLink: boolean;
   issueGuestAccessToken: boolean;
   event: CalendarEventRecord;
@@ -92,7 +92,7 @@ export function registerCalendarInvitationRoutes(
       dependencies,
       request.auth.firmId,
     );
-    assertMeetingIssuanceAllowed({
+    assertMeetingInvitationBoundaryAllowed({
       includeMeetingLink: body.includeMeetingLink,
       issueGuestAccessToken: body.issueGuestAccessToken,
       event,

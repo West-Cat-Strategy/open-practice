@@ -1,10 +1,14 @@
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { PublicGuestSessionResponse } from "../types";
+import GuestSessionRunner from "./GuestSessionRunner";
 import {
   buildGuestSessionPath,
   canCheckInToGuestSession,
   describePublicGuestSessionStatus,
   guestSessionAttentionItems,
+  shouldPollPublicGuestSession,
 } from "./runner-utils";
 
 function guestSessionPayload(
@@ -97,5 +101,60 @@ describe("guest session runner utilities", () => {
         guestSessionPayload({ session: { status: "locked" }, guest: { status: "issued" } }),
       ),
     ).toEqual([expect.objectContaining({ id: "locked", status: "locked" })]);
+  });
+
+  it("polls only while the public guest is waiting", () => {
+    expect(
+      shouldPollPublicGuestSession(
+        guestSessionPayload({ guest: { status: "waiting" }, session: { status: "open" } }),
+      ),
+    ).toBe(true);
+    expect(
+      shouldPollPublicGuestSession(
+        guestSessionPayload({ guest: { status: "waiting" }, session: { status: "locked" } }),
+      ),
+    ).toBe(true);
+    expect(
+      shouldPollPublicGuestSession(
+        guestSessionPayload({ guest: { status: "admitted" }, session: { status: "open" } }),
+      ),
+    ).toBe(false);
+    expect(
+      shouldPollPublicGuestSession(
+        guestSessionPayload({ guest: { status: "denied" }, session: { status: "open" } }),
+      ),
+    ).toBe(false);
+    expect(
+      shouldPollPublicGuestSession(
+        guestSessionPayload({ guest: { status: "revoked" }, session: { status: "open" } }),
+      ),
+    ).toBe(false);
+    expect(
+      shouldPollPublicGuestSession(
+        guestSessionPayload({ guest: { status: "waiting" }, session: { status: "expired" } }),
+      ),
+    ).toBe(false);
+    expect(
+      shouldPollPublicGuestSession(
+        guestSessionPayload({ guest: { status: "waiting" }, session: { status: "ended" } }),
+      ),
+    ).toBe(false);
+  });
+
+  it("renders a manual refresh control without exposing URL or token material", () => {
+    const html = renderToStaticMarkup(
+      createElement(GuestSessionRunner, {
+        apiBaseUrl: "https://api.example.test",
+        token: "raw-token-with/slash",
+      }),
+    );
+
+    expect(html).toContain("Refresh");
+    expect(html).toContain("Refresh guest session status");
+    expect(html).toContain("Loading guest session");
+    expect(html).toContain("Last checked pending.");
+    expect(html).not.toContain("raw-token-with");
+    expect(html).not.toContain("https://api.example.test");
+    expect(html).not.toContain("/api/portal/guest-sessions");
   });
 });

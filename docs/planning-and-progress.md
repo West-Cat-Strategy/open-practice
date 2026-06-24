@@ -10,8 +10,8 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 | Snapshot              | Value                                                                |
 | --------------------- | -------------------------------------------------------------------- |
-| Current focus         | 2026-06-23 mainline merge/push/prune closeout is complete.           |
-| Next recommended pick | Pick the next scoped row after refreshing current priorities.        |
+| Current focus         | Video meetings control-plane branch is ready for review.             |
+| Next recommended pick | Review `feat/video-meetings-control-plane-20260623` proof and diff.  |
 | Ready rows            | 0                                                                    |
 | Candidate rows        | 0                                                                    |
 | In progress rows      | 0                                                                    |
@@ -21,6 +21,20 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 | Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`     |
 
 ## Current Handoff Notes
+
+The 2026-06-23 `feat/video-meetings-control-plane-20260623` branch in
+`/Users/bryan/projects/open-practice-video-meetings-control-plane-20260623` extends the existing
+video meeting control plane without native media delivery. It adds Calendar workspace
+scheduling-review controls over the existing review route, per-event readiness labels, public
+guest-session manual refresh and waiting-only polling without page reload, header/path token
+mismatch handling, terminal guest-session `409` transitions, CalDAV/iCalendar meeting-link
+preservation/non-disclosure, and safe meeting/session/invitation audit metadata while preserving no
+native media, signaling, chat, recording, upload, public booking, provider sync, new dependency, or
+migration scope. The current proof covers the 23-path branch set and records green selector-driven
+package, build, host E2E, first-run, matterless, client-portal, and a11y validation; Docker E2E is
+skipped with reason because no Docker/container/provider-runtime path changed. Evidence is recorded
+in
+[video meetings control-plane proof](validation/OP_VIDEO_MEETINGS_CONTROL_PLANE_PROOF_2026-06-23.md).
 
 The 2026-06-23 active-lane mainline closeout integrated six dirty Open Practice lanes through
 `merge/open-practice-mainline-20260623`, fast-forwarded and pushed `main`, then pruned only clean

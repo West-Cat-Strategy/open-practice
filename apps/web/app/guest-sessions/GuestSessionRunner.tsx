@@ -1,7 +1,7 @@
 "use client";
 
-import { LogIn, ShieldCheck, Video } from "lucide-react";
-import { useEffect, useState } from "react";
+import { LogIn, RefreshCw, ShieldCheck, Video } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 import { PublicTokenNeedsAttention } from "../publicTokenActions";
 import {
   publicTokenHeaders,
@@ -16,6 +16,7 @@ import {
   describePublicGuestSessionStatus,
   guestSessionAttentionItems,
   publicGuestSessionErrorMessage,
+  shouldPollPublicGuestSession,
   type PublicGuestSessionErrorBody,
 } from "./runner-utils";
 
@@ -24,20 +25,28 @@ interface GuestSessionRunnerProps {
   token: string;
 }
 
+type GuestSessionLoadMode = "load" | "refresh";
+
 export default function GuestSessionRunner({ apiBaseUrl, token }: GuestSessionRunnerProps) {
   const [payload, setPayload] = useState<PublicGuestSessionResponse | null>(null);
   const [status, setStatus] = useState("Loading guest session...");
+  const [loadingMode, setLoadingMode] = useState<GuestSessionLoadMode | null>("load");
+  const [lastCheckedAt, setLastCheckedAt] = useState<string | null>(null);
   const [checkingIn, setCheckingIn] = useState(false);
   const attentionItems = guestSessionAttentionItems(payload);
+  const loadingGuestSession = loadingMode !== null;
+  const refreshingGuestSession = loadingMode === "refresh";
 
-  useEffect(() => {
-    let cancelled = false;
-    async function loadGuestSession(): Promise<void> {
+  const loadGuestSession = useCallback(
+    async (mode: GuestSessionLoadMode, signal?: AbortSignal): Promise<void> => {
+      setLoadingMode(mode);
+      setStatus(mode === "refresh" ? "Refreshing guest session..." : "Loading guest session...");
       try {
         const response = await fetch(`${apiBaseUrl}${buildGuestSessionPath()}`, {
           headers: publicTokenHeaders(token),
+          signal,
         });
-        if (cancelled) return;
+        if (signal?.aborted) return;
         if (!response.ok) {
           const body = (await readPublicTokenError(response)) as PublicGuestSessionErrorBody;
           setStatus(
@@ -46,17 +55,47 @@ export default function GuestSessionRunner({ apiBaseUrl, token }: GuestSessionRu
           return;
         }
         const nextPayload = (await response.json()) as PublicGuestSessionResponse;
+        if (signal?.aborted) return;
         setPayload(nextPayload);
         setStatus(describePublicGuestSessionStatus(nextPayload));
       } catch (error) {
-        if (!cancelled) setStatus(publicTokenNetworkErrorMessage("Load", error));
+        if (!signal?.aborted) {
+          setStatus(publicTokenNetworkErrorMessage(mode === "refresh" ? "Refresh" : "Load", error));
+        }
+      } finally {
+        if (!signal?.aborted) {
+          setLastCheckedAt(new Date().toISOString());
+          setLoadingMode(null);
+        }
       }
-    }
-    void loadGuestSession();
+    },
+    [apiBaseUrl, token],
+  );
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void loadGuestSession("load", controller.signal);
     return () => {
-      cancelled = true;
+      controller.abort();
     };
-  }, [apiBaseUrl, token]);
+  }, [loadGuestSession]);
+
+  useEffect(() => {
+    if (!shouldPollPublicGuestSession(payload)) return;
+    const controller = new AbortController();
+    let pollInFlight = false;
+    const intervalId = window.setInterval(() => {
+      if (pollInFlight) return;
+      pollInFlight = true;
+      void loadGuestSession("refresh", controller.signal).finally(() => {
+        pollInFlight = false;
+      });
+    }, 30_000);
+    return () => {
+      controller.abort();
+      window.clearInterval(intervalId);
+    };
+  }, [loadGuestSession, payload?.guest?.status, payload?.session.status]);
 
   async function checkIn(): Promise<void> {
     setCheckingIn(true);
@@ -75,6 +114,7 @@ export default function GuestSessionRunner({ apiBaseUrl, token }: GuestSessionRu
       const nextPayload = (await response.json()) as PublicGuestSessionResponse;
       setPayload(nextPayload);
       setStatus(describePublicGuestSessionStatus(nextPayload));
+      setLastCheckedAt(new Date().toISOString());
     } catch (error) {
       setStatus(publicTokenNetworkErrorMessage("Check-in", error));
     } finally {
@@ -99,6 +139,31 @@ export default function GuestSessionRunner({ apiBaseUrl, token }: GuestSessionRu
     >
       <PublicStatusMessage>{status}</PublicStatusMessage>
 
+      <div className="public-form-action" aria-label="Guest session status controls">
+        <div>
+          <strong>Latest lobby status</strong>
+          <small>
+            {payload ? describePublicGuestSessionStatus(payload) : "Waiting for lobby status."}
+          </small>
+          <small>
+            {lastCheckedAt
+              ? `Last checked ${new Date(lastCheckedAt).toLocaleString()}`
+              : "Last checked pending."}
+          </small>
+        </div>
+        <button
+          aria-busy={refreshingGuestSession}
+          aria-label="Refresh guest session status"
+          className="secondary-button"
+          disabled={loadingGuestSession || checkingIn}
+          onClick={() => void loadGuestSession("refresh")}
+          type="button"
+        >
+          <RefreshCw size={16} aria-hidden="true" />
+          {refreshingGuestSession ? "Refreshing..." : "Refresh"}
+        </button>
+      </div>
+
       <PublicTokenNeedsAttention
         emptyLabel="No action is needed on this guest session right now."
         items={attentionItems}
@@ -112,7 +177,7 @@ export default function GuestSessionRunner({ apiBaseUrl, token }: GuestSessionRu
           </div>
           <button
             className="secondary-button"
-            disabled={checkingIn}
+            disabled={checkingIn || loadingGuestSession}
             onClick={() => void checkIn()}
             type="button"
           >

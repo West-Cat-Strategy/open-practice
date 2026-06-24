@@ -1,11 +1,19 @@
 import { AlertTriangle, CalendarDays, Clock3, Link2, Plus, X } from "lucide-react";
 import type { CalendarMeetingLinkMode } from "@open-practice/domain/calendar-models";
 import {
+  calendarMeetingReadinessItems,
+  describeCalendarGuestActionDisabledReason,
+  describeCalendarEventHandoff,
   describeCalendarEventTiming,
   describeCalendarGuestSessionStatus,
+  describeCalendarSchedulingReviewNextStep,
+  describeCalendarSchedulingRequestHandoff,
   describeMeetingInvitationBoundary,
   describeMeetingLinkAvailability,
+  sortCalendarGuestSessionGuests,
+  sortCalendarSchedulingRequests,
   type CalendarRadarBuckets,
+  type CalendarSchedulingReviewDecision,
 } from "../calendar-dashboard";
 import { compactDate, compactStatus } from "../_features/dashboard/formatters";
 import type {
@@ -58,6 +66,8 @@ export interface CalendarSectionProps {
   calendarMeetingLinkModesByEventId: Record<string, CalendarMeetingLinkMode>;
   calendarMeetingLinkUrlsByEventId: Record<string, string>;
   calendarMeetingStatus: string;
+  calendarSchedulingReviewEventIdsByRequestId: Record<string, string>;
+  calendarSchedulingReviewStatus: string;
   calendarOneTimeSecret: CalendarCredentialCreateResponse | null;
   calendarReminderAt: string;
   calendarReminderNote: string;
@@ -77,6 +87,7 @@ export interface CalendarSectionProps {
   selectedCalendarReminderEvent?: DashboardCalendarEvent;
   sendingCalendarInvitationsEventId: string;
   matterCalendarControlsEnabled: boolean;
+  reviewingCalendarSchedulingRequestKey: string;
   updatingCalendarEventId: string;
   updatingCalendarGuestSessionKey: string;
   updatingCalendarMeetingLinkEventId: string;
@@ -106,6 +117,11 @@ export interface CalendarSectionProps {
   onRemoveCalendarReminder: (eventId: string, reminderId: string) => void;
   onRescheduleCalendarEvent: (event: DashboardCalendarEvent) => void;
   onRevokeCalendarCredential: (credentialId: string) => void;
+  onReviewCalendarSchedulingRequest: (
+    request: CalendarSchedulingRequest,
+    status: CalendarSchedulingReviewDecision,
+    calendarEventId?: string,
+  ) => void;
   onSetCalendarAttendeeEmail: (value: string) => void;
   onSetCalendarAttendeeName: (value: string) => void;
   onSetCalendarAttendeeRole: (value: "required" | "optional") => void;
@@ -121,6 +137,7 @@ export interface CalendarSectionProps {
   onSetCalendarMeetingEventId: (value: string) => void;
   onSetCalendarMeetingLinkMode: (eventId: string, mode: CalendarMeetingLinkMode) => void;
   onSetCalendarMeetingLinkUrl: (eventId: string, url: string) => void;
+  onSetCalendarSchedulingReviewEventId: (requestId: string, eventId: string) => void;
   onSetCalendarReminderAt: (value: string) => void;
   onSetCalendarReminderEventId: (value: string) => void;
   onSetCalendarReminderNote: (value: string) => void;
@@ -154,7 +171,21 @@ function calendarMeetingLinkUrlValue(
   event: DashboardCalendarEvent,
   valuesByEventId: Record<string, string>,
 ): string {
-  return valuesByEventId[event.id] ?? event.meetingLinkUrl ?? "";
+  return valuesByEventId[event.id] ?? "";
+}
+
+function guestTimestampSummary(guest: CalendarGuestSessionSummary["guests"][number]): string {
+  const lifecycle = guest.checkedInAt
+    ? `checked in ${compactDate(guest.checkedInAt)}`
+    : "not checked in";
+  const decision = guest.admittedAt
+    ? `admitted ${compactDate(guest.admittedAt)}`
+    : guest.deniedAt
+      ? `denied ${compactDate(guest.deniedAt)}`
+      : guest.revokedAt
+        ? `revoked ${compactDate(guest.revokedAt)}`
+        : "awaiting staff decision";
+  return `${lifecycle} · ${decision} · expires ${compactDate(guest.expiresAt)}`;
 }
 
 export function CalendarSection({
@@ -185,6 +216,8 @@ export function CalendarSection({
   calendarMeetingLinkModesByEventId,
   calendarMeetingLinkUrlsByEventId,
   calendarMeetingStatus,
+  calendarSchedulingReviewEventIdsByRequestId,
+  calendarSchedulingReviewStatus,
   calendarOneTimeSecret,
   calendarReminderAt,
   calendarReminderNote,
@@ -204,6 +237,7 @@ export function CalendarSection({
   selectedCalendarReminderEvent,
   sendingCalendarInvitationsEventId,
   matterCalendarControlsEnabled,
+  reviewingCalendarSchedulingRequestKey,
   updatingCalendarEventId,
   updatingCalendarGuestSessionKey,
   updatingCalendarMeetingLinkEventId,
@@ -223,6 +257,7 @@ export function CalendarSection({
   onRemoveCalendarReminder,
   onRescheduleCalendarEvent,
   onRevokeCalendarCredential,
+  onReviewCalendarSchedulingRequest,
   onSetCalendarAttendeeEmail,
   onSetCalendarAttendeeName,
   onSetCalendarAttendeeRole,
@@ -238,6 +273,7 @@ export function CalendarSection({
   onSetCalendarMeetingEventId,
   onSetCalendarMeetingLinkMode,
   onSetCalendarMeetingLinkUrl,
+  onSetCalendarSchedulingReviewEventId,
   onSetCalendarReminderAt,
   onSetCalendarReminderEventId,
   onSetCalendarReminderNote,
@@ -347,41 +383,125 @@ export function CalendarSection({
         <span>{activeCalendarSchedulingRequests.length} review records</span>
       </div>
       <div className="party-list">
-        {activeCalendarSchedulingRequests.map((request) => (
-          <div className="party-row" key={request.id}>
-            <span>
-              <strong>
-                {request.title} · {compactStatus(request.status)}
-              </strong>
-              <small>
-                {compactStatus(request.kind)} · source {request.source.label} · due{" "}
-                {compactDate(request.requestedDueAt)} · event{" "}
-                {request.linkedEvent
-                  ? `${request.linkedEvent.title} (${compactDate(request.linkedEvent.startsAt)})`
-                  : "needs scheduling"}
-              </small>
-              <small>
-                reminder {compactStatus(request.reminderSummary.posture)} · privacy{" "}
-                {compactStatus(request.privacy.visibility)} · time{" "}
-                {request.timeCaptureCue.redacted
-                  ? "restricted"
-                  : `${request.timeCaptureCue.posture.replace(/_/g, " ")}${
-                      request.timeCaptureCue.suggestedMinutes
-                        ? ` (${request.timeCaptureCue.suggestedMinutes}m)`
-                        : ""
-                    }`}
-              </small>
-            </span>
-            <em className={request.status === "needs_review" ? "risk" : undefined}>
-              {request.reviewBoundary.approvalCreatesTask ||
-              request.reviewBoundary.approvalReschedulesEvent ||
-              request.reviewBoundary.approvalCancelsReminder ||
-              request.reviewBoundary.approvalCreatesTimeEntry
-                ? "Automation enabled"
-                : "Review only"}
-            </em>
-          </div>
-        ))}
+        {sortCalendarSchedulingRequests(activeCalendarSchedulingRequests).map((request) => {
+          const handoff = describeCalendarSchedulingRequestHandoff(request);
+          const eligibleEvents = matterCalendarControlsEnabled
+            ? activeCalendarEvents.filter(
+                (event) => event.matterId === request.matterId && event.status !== "cancelled",
+              )
+            : [];
+          const linkedEventId =
+            request.linkedEvent &&
+            eligibleEvents.some((event) => event.id === request.linkedEvent?.id)
+              ? request.linkedEvent.id
+              : "";
+          const selectedReviewEventId =
+            calendarSchedulingReviewEventIdsByRequestId[request.id] ?? linkedEventId;
+          const reviewNextStep = describeCalendarSchedulingReviewNextStep({
+            request,
+            matterCalendarControlsEnabled,
+            eligibleEventCount: eligibleEvents.length,
+            selectedEventId: selectedReviewEventId,
+          });
+          const busyPrefix = `${request.id}:`;
+          const reviewBusy = reviewingCalendarSchedulingRequestKey.startsWith(busyPrefix);
+          return (
+            <div className="party-row" key={request.id}>
+              <span>
+                <strong>
+                  {request.title} · {compactStatus(request.status)}
+                </strong>
+                <small>
+                  {compactStatus(request.kind)} · source {request.source.label} · due{" "}
+                  {compactDate(request.requestedDueAt)} · event{" "}
+                  {request.linkedEvent
+                    ? `${request.linkedEvent.title} (${compactDate(request.linkedEvent.startsAt)})`
+                    : "needs scheduling"}
+                </small>
+                <small>
+                  reminder {compactStatus(request.reminderSummary.posture)} · privacy{" "}
+                  {compactStatus(request.privacy.visibility)} · time{" "}
+                  {request.timeCaptureCue.redacted
+                    ? "restricted"
+                    : `${request.timeCaptureCue.posture.replace(/_/g, " ")}${
+                        request.timeCaptureCue.suggestedMinutes
+                          ? ` (${request.timeCaptureCue.suggestedMinutes}m)`
+                          : ""
+                      }`}
+                </small>
+                <small>{handoff.detail}</small>
+                <small>
+                  {reviewNextStep.label}: {reviewNextStep.detail}
+                </small>
+                {matterCalendarControlsEnabled && request.status === "needs_review" ? (
+                  <div className="calendar-meeting-link-form">
+                    <label>
+                      <span className="field-label">Existing event</span>
+                      <select
+                        disabled={reviewBusy || eligibleEvents.length === 0}
+                        onChange={(event) =>
+                          onSetCalendarSchedulingReviewEventId(
+                            request.id,
+                            event.currentTarget.value,
+                          )
+                        }
+                        value={selectedReviewEventId}
+                      >
+                        <option disabled value="">
+                          Select event
+                        </option>
+                        {eligibleEvents.map((event) => (
+                          <option key={event.id} value={event.id}>
+                            {event.title} · {compactDate(event.startsAt)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <button
+                      aria-label={`Mark scheduling request reviewed: ${reviewNextStep.detail}`}
+                      className="secondary-button compact-button row-button"
+                      disabled={reviewBusy || !reviewNextStep.canMarkReviewed}
+                      onClick={() => onReviewCalendarSchedulingRequest(request, "reviewed")}
+                      title={reviewNextStep.detail}
+                      type="button"
+                    >
+                      Reviewed
+                    </button>
+                    <button
+                      aria-label={`Dismiss scheduling request: ${reviewNextStep.detail}`}
+                      className="secondary-button compact-button row-button"
+                      disabled={reviewBusy || !reviewNextStep.canDismiss}
+                      onClick={() => onReviewCalendarSchedulingRequest(request, "dismissed")}
+                      title={reviewNextStep.detail}
+                      type="button"
+                    >
+                      Dismiss
+                    </button>
+                    <button
+                      aria-label={`Link scheduling request to an existing event: ${
+                        reviewNextStep.linkEventDisabledReason ?? reviewNextStep.detail
+                      }`}
+                      className="secondary-button compact-button row-button"
+                      disabled={reviewBusy || !reviewNextStep.canLinkEvent}
+                      onClick={() =>
+                        onReviewCalendarSchedulingRequest(
+                          request,
+                          "scheduled",
+                          selectedReviewEventId,
+                        )
+                      }
+                      title={reviewNextStep.linkEventDisabledReason ?? reviewNextStep.detail}
+                      type="button"
+                    >
+                      Link event
+                    </button>
+                  </div>
+                ) : null}
+              </span>
+              <em className={handoff.tone === "risk" ? "risk" : undefined}>{handoff.label}</em>
+            </div>
+          );
+        })}
         {activeCalendarSchedulingRequests.length === 0 ? (
           <p className="inline-empty">
             {matterCalendarControlsEnabled
@@ -390,6 +510,9 @@ export function CalendarSection({
           </p>
         ) : null}
       </div>
+      <p className="inline-empty" role="status">
+        {calendarSchedulingReviewStatus}
+      </p>
 
       <div className="share-controls calendar-event-controls">
         <div className="section-title">
@@ -400,6 +523,7 @@ export function CalendarSection({
           <label className="search-field">
             <span>Title</span>
             <input
+              disabled={!matterCalendarControlsEnabled}
               onChange={(event) => onSetCalendarEventTitle(event.target.value)}
               value={calendarEventTitle}
             />
@@ -407,6 +531,7 @@ export function CalendarSection({
           <label className="search-field">
             <span>Starts</span>
             <input
+              disabled={!matterCalendarControlsEnabled}
               onChange={(event) => onSetCalendarEventStartsAt(event.target.value)}
               type="datetime-local"
               value={calendarEventStartsAt}
@@ -415,6 +540,7 @@ export function CalendarSection({
           <label className="search-field">
             <span>Ends</span>
             <input
+              disabled={!matterCalendarControlsEnabled}
               onChange={(event) => onSetCalendarEventEndsAt(event.target.value)}
               type="datetime-local"
               value={calendarEventEndsAt}
@@ -423,6 +549,7 @@ export function CalendarSection({
           <label className="search-field">
             <span>Status</span>
             <select
+              disabled={!matterCalendarControlsEnabled}
               onChange={(event) =>
                 onSetCalendarEventStatusValue(
                   event.target.value as DashboardCalendarEvent["status"],
@@ -438,6 +565,7 @@ export function CalendarSection({
           <label className="search-field">
             <span>Location</span>
             <input
+              disabled={!matterCalendarControlsEnabled}
               onChange={(event) => onSetCalendarEventLocation(event.target.value)}
               value={calendarEventLocation}
             />
@@ -445,6 +573,7 @@ export function CalendarSection({
           <label className="search-field">
             <span>Description</span>
             <input
+              disabled={!matterCalendarControlsEnabled}
               onChange={(event) => onSetCalendarEventDescription(event.target.value)}
               value={calendarEventDescription}
             />
@@ -452,19 +581,32 @@ export function CalendarSection({
           <button
             className="secondary-button compact-button"
             disabled={
+              !matterCalendarControlsEnabled ||
               creatingCalendarEvent ||
               !calendarEventTitle.trim() ||
               !calendarEventStartsAt ||
               !calendarEventEndsAt
             }
             onClick={() => void onCreateCalendarEvent()}
+            title={
+              matterCalendarControlsEnabled
+                ? "Create event"
+                : "Matter required before changing calendar events."
+            }
             type="button"
           >
             <Plus size={16} />
             {creatingCalendarEvent ? "Creating..." : "Create event"}
           </button>
         </div>
-        <p className="inline-empty">{calendarEventLifecycleStatus}</p>
+        {!matterCalendarControlsEnabled ? (
+          <p className="inline-empty">
+            Matter required: event lifecycle actions are disabled in matterless calendar views.
+          </p>
+        ) : null}
+        <p className="inline-empty" role="status">
+          {calendarEventLifecycleStatus}
+        </p>
       </div>
 
       <div className="section-title">
@@ -491,6 +633,8 @@ export function CalendarSection({
             (meetingLinkMode === "external_url" && Boolean(meetingLinkUrl.trim())) ||
             (meetingLinkMode === "hosted_webrtc" && hostedMeetingConfigured);
           const guestSessions = calendarGuestSessionsByEventId[event.id] ?? [];
+          const eventHandoff = describeCalendarEventHandoff(event);
+          const readinessItems = calendarMeetingReadinessItems(event, guestSessions);
           const guestAccessConfigured =
             event.meetingInvitationBoundary?.guestAccess.status === "configured";
           const hostedGuestSessionReady =
@@ -510,6 +654,7 @@ export function CalendarSection({
                   <small>
                     {describeMeetingInvitationBoundary(event.meetingInvitationBoundary)}
                   </small>
+                  {matterCalendarControlsEnabled ? <small>{eventHandoff.detail}</small> : null}
                 </span>
                 <div className="row-actions">
                   <em
@@ -543,19 +688,34 @@ export function CalendarSection({
                   <button
                     className="secondary-button compact-button row-button"
                     disabled={
+                      !matterCalendarControlsEnabled ||
                       updatingCalendarEventId === event.id ||
                       !calendarEventStartsAt ||
                       !calendarEventEndsAt
                     }
                     onClick={() => void onRescheduleCalendarEvent(event)}
+                    title={
+                      matterCalendarControlsEnabled
+                        ? "Reschedule event"
+                        : "Matter required before changing calendar events."
+                    }
                     type="button"
                   >
                     {updatingCalendarEventId === event.id ? "Rescheduling..." : "Reschedule"}
                   </button>
                   <button
                     className="secondary-button compact-button row-button"
-                    disabled={event.status === "cancelled" || cancelingCalendarEventId === event.id}
+                    disabled={
+                      !matterCalendarControlsEnabled ||
+                      event.status === "cancelled" ||
+                      cancelingCalendarEventId === event.id
+                    }
                     onClick={() => void onCancelCalendarEvent(event)}
+                    title={
+                      matterCalendarControlsEnabled
+                        ? "Cancel event"
+                        : "Matter required before changing calendar events."
+                    }
                     type="button"
                   >
                     {cancelingCalendarEventId === event.id ? "Cancelling..." : "Cancel"}
@@ -605,7 +765,7 @@ export function CalendarSection({
                         onChange={(inputEvent) =>
                           onSetCalendarMeetingLinkUrl(event.id, inputEvent.currentTarget.value)
                         }
-                        placeholder="https://meet.example.test/room"
+                        placeholder="Paste HTTPS meeting link"
                       />
                     </label>
                   ) : null}
@@ -613,7 +773,7 @@ export function CalendarSection({
                     <p className="inline-empty">Hosted WebRTC meetings are not configured.</p>
                   ) : null}
                   {event.meetingLinkUrl ? (
-                    <code className="calendar-meeting-link-url">{event.meetingLinkUrl}</code>
+                    <p className="inline-empty">Stored meeting link saved; URL hidden.</p>
                   ) : null}
                   <button
                     className="secondary-button compact-button row-button"
@@ -627,6 +787,21 @@ export function CalendarSection({
                   >
                     {updatingCalendarMeetingLinkEventId === event.id ? "Saving..." : "Save link"}
                   </button>
+                </div>
+              ) : null}
+              {matterCalendarControlsEnabled ? (
+                <div className="calendar-attendee-list" aria-label={`${event.title} readiness`}>
+                  {readinessItems.map((item) => (
+                    <div className="calendar-attendee-row" key={item.id}>
+                      <span>
+                        <strong>{item.label}</strong>
+                        <small>{item.detail}</small>
+                      </span>
+                      <em className={item.status === "ready" ? undefined : "risk"}>
+                        {item.status}
+                      </em>
+                    </div>
+                  ))}
                 </div>
               ) : null}
               {matterCalendarControlsEnabled && event.meetingLinkMode === "hosted_webrtc" ? (
@@ -707,73 +882,102 @@ export function CalendarSection({
                       </div>
                       {session.guests.length ? (
                         <div className="calendar-guest-link-list">
-                          {session.guests.map((guest) => (
-                            <div className="calendar-attendee-row" key={guest.id}>
-                              <span>
-                                <strong>Guest access</strong>
-                                <small>
-                                  {guest.status.replace("_", " ")} · expires{" "}
-                                  {compactDate(guest.expiresAt)}
-                                </small>
-                              </span>
-                              <div className="row-actions">
-                                <button
-                                  className="secondary-button compact-button row-button"
-                                  disabled={
-                                    session.status !== "open" ||
-                                    guest.status === "admitted" ||
-                                    guest.status === "revoked" ||
-                                    updatingCalendarGuestSessionKey === `${guest.id}:admit`
-                                  }
-                                  onClick={() =>
-                                    void onUpdateCalendarGuestLink(
-                                      event,
-                                      session,
-                                      guest.id,
-                                      "admit",
-                                    )
-                                  }
-                                  type="button"
-                                >
-                                  Admit
-                                </button>
-                                <button
-                                  className="secondary-button compact-button row-button"
-                                  disabled={
-                                    guest.status === "denied" ||
-                                    guest.status === "revoked" ||
-                                    updatingCalendarGuestSessionKey === `${guest.id}:deny`
-                                  }
-                                  onClick={() =>
-                                    void onUpdateCalendarGuestLink(event, session, guest.id, "deny")
-                                  }
-                                  type="button"
-                                >
-                                  Deny
-                                </button>
-                                <button
-                                  aria-label={`Revoke guest access ${guest.id}`}
-                                  className="icon-button"
-                                  disabled={
-                                    guest.status === "revoked" ||
-                                    updatingCalendarGuestSessionKey === `${guest.id}:revoke`
-                                  }
-                                  onClick={() =>
-                                    void onUpdateCalendarGuestLink(
-                                      event,
-                                      session,
-                                      guest.id,
-                                      "revoke",
-                                    )
-                                  }
-                                  title="Revoke guest access"
-                                  type="button"
-                                >
-                                  <X size={16} />
-                                </button>
+                          {sortCalendarGuestSessionGuests(session.guests).map((guest) => {
+                            const disabledReason = describeCalendarGuestActionDisabledReason(
+                              session,
+                              guest,
+                            );
+                            const admitDisabledReason =
+                              disabledReason ??
+                              (guest.status !== "waiting"
+                                ? "Guest must check in before admission."
+                                : undefined);
+                            const guestActionsDisabled = Boolean(disabledReason);
+                            return (
+                              <div className="calendar-attendee-row" key={guest.id}>
+                                <span>
+                                  <strong>Guest access</strong>
+                                  <small>
+                                    {guest.status.replace("_", " ")} ·{" "}
+                                    {guestTimestampSummary(guest)}
+                                  </small>
+                                  {disabledReason ? (
+                                    <small>Actions disabled: {disabledReason}</small>
+                                  ) : null}
+                                </span>
+                                <div className="row-actions">
+                                  <button
+                                    aria-label={`Admit guest access${
+                                      admitDisabledReason
+                                        ? ` unavailable: ${admitDisabledReason}`
+                                        : ""
+                                    }`}
+                                    className="secondary-button compact-button row-button"
+                                    disabled={
+                                      Boolean(admitDisabledReason) ||
+                                      updatingCalendarGuestSessionKey === `${guest.id}:admit`
+                                    }
+                                    onClick={() =>
+                                      void onUpdateCalendarGuestLink(
+                                        event,
+                                        session,
+                                        guest.id,
+                                        "admit",
+                                      )
+                                    }
+                                    title={admitDisabledReason ?? "Admit guest access"}
+                                    type="button"
+                                  >
+                                    Admit
+                                  </button>
+                                  <button
+                                    aria-label={`Deny guest access${
+                                      disabledReason ? ` unavailable: ${disabledReason}` : ""
+                                    }`}
+                                    className="secondary-button compact-button row-button"
+                                    disabled={
+                                      guestActionsDisabled ||
+                                      updatingCalendarGuestSessionKey === `${guest.id}:deny`
+                                    }
+                                    onClick={() =>
+                                      void onUpdateCalendarGuestLink(
+                                        event,
+                                        session,
+                                        guest.id,
+                                        "deny",
+                                      )
+                                    }
+                                    title={disabledReason ?? "Deny guest access"}
+                                    type="button"
+                                  >
+                                    Deny
+                                  </button>
+                                  <button
+                                    aria-label={`Revoke guest access${
+                                      disabledReason ? ` unavailable: ${disabledReason}` : ""
+                                    }`}
+                                    className="icon-button"
+                                    disabled={
+                                      guestActionsDisabled ||
+                                      updatingCalendarGuestSessionKey === `${guest.id}:revoke`
+                                    }
+                                    onClick={() =>
+                                      void onUpdateCalendarGuestLink(
+                                        event,
+                                        session,
+                                        guest.id,
+                                        "revoke",
+                                      )
+                                    }
+                                    title={disabledReason ?? "Revoke guest access"}
+                                    type="button"
+                                  >
+                                    <X size={16} />
+                                  </button>
+                                </div>
                               </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       ) : null}
                     </div>
@@ -831,9 +1035,17 @@ export function CalendarSection({
                     <div className="row-actions">
                       <button
                         className="secondary-button compact-button row-button"
-                        disabled={updatingCalendarReminderId === reminder.id}
+                        disabled={
+                          !matterCalendarControlsEnabled ||
+                          updatingCalendarReminderId === reminder.id
+                        }
                         onClick={() =>
                           void onUpdateCalendarReminder(event.id, reminder.id, "acknowledged")
+                        }
+                        title={
+                          matterCalendarControlsEnabled
+                            ? "Acknowledge reminder"
+                            : "Matter required before changing reminders."
                         }
                         type="button"
                       >
@@ -842,9 +1054,16 @@ export function CalendarSection({
                       <button
                         aria-label={`Remove reminder ${reminder.id}`}
                         className="icon-button"
-                        disabled={removingCalendarReminderId === reminder.id}
+                        disabled={
+                          !matterCalendarControlsEnabled ||
+                          removingCalendarReminderId === reminder.id
+                        }
                         onClick={() => void onRemoveCalendarReminder(event.id, reminder.id)}
-                        title="Remove reminder"
+                        title={
+                          matterCalendarControlsEnabled
+                            ? "Remove reminder"
+                            : "Matter required before changing reminders."
+                        }
                         type="button"
                       >
                         <X size={16} />
@@ -908,6 +1127,7 @@ export function CalendarSection({
           <label className="search-field">
             <span>Event</span>
             <select
+              disabled={!matterCalendarControlsEnabled}
               onChange={(event) => onSetCalendarReminderEventId(event.target.value)}
               value={selectedCalendarReminderEvent?.id ?? ""}
             >
@@ -921,6 +1141,7 @@ export function CalendarSection({
           <label className="search-field">
             <span>Remind at</span>
             <input
+              disabled={!matterCalendarControlsEnabled}
               onChange={(event) => onSetCalendarReminderAt(event.target.value)}
               type="datetime-local"
               value={calendarReminderAt}
@@ -929,6 +1150,7 @@ export function CalendarSection({
           <label className="search-field">
             <span>Status</span>
             <select
+              disabled={!matterCalendarControlsEnabled}
               onChange={(event) =>
                 onSetCalendarReminderStatusValue(event.target.value as CalendarReminderStatus)
               }
@@ -943,6 +1165,7 @@ export function CalendarSection({
           <label className="search-field">
             <span>Note</span>
             <input
+              disabled={!matterCalendarControlsEnabled}
               onChange={(event) => onSetCalendarReminderNote(event.target.value)}
               value={calendarReminderNote}
             />
@@ -950,16 +1173,31 @@ export function CalendarSection({
           <button
             className="secondary-button compact-button"
             disabled={
-              !selectedCalendarReminderEvent || !calendarReminderAt || addingCalendarReminder
+              !matterCalendarControlsEnabled ||
+              !selectedCalendarReminderEvent ||
+              !calendarReminderAt ||
+              addingCalendarReminder
             }
             onClick={() => void onAddCalendarReminder()}
+            title={
+              matterCalendarControlsEnabled
+                ? "Add reminder"
+                : "Matter required before changing reminders."
+            }
             type="button"
           >
             <Plus size={16} />
             {addingCalendarReminder ? "Adding..." : "Add reminder"}
           </button>
         </div>
-        <p className="inline-empty">{calendarReminderStatus}</p>
+        {!matterCalendarControlsEnabled ? (
+          <p className="inline-empty">
+            Matter required: reminder actions are disabled in matterless calendar views.
+          </p>
+        ) : null}
+        <p className="inline-empty" role="status">
+          {calendarReminderStatus}
+        </p>
       </div>
 
       {matterCalendarControlsEnabled ? (
@@ -1024,8 +1262,12 @@ export function CalendarSection({
               {addingCalendarAttendee ? "Adding..." : "Add attendee"}
             </button>
           </div>
-          <p className="inline-empty">{calendarMeetingStatus}</p>
-          <p className="inline-empty">{calendarGuestSessionStatus}</p>
+          <p className="inline-empty" role="status">
+            {calendarMeetingStatus}
+          </p>
+          <p className="inline-empty" role="status">
+            {calendarGuestSessionStatus}
+          </p>
         </div>
       ) : null}
 
