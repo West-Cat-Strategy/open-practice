@@ -231,7 +231,10 @@ describe("select-validation contract", () => {
 
   it("routes residual-watch tooling through Docker residual watch", () => {
     assert.deepEqual(
-      selectCommands(["scripts/watch-docker-residuals.mjs", "scripts/watch-docker-residuals.test.mjs"]),
+      selectCommands([
+        "scripts/watch-docker-residuals.mjs",
+        "scripts/watch-docker-residuals.test.mjs",
+      ]),
       [COMMANDS.dockerResidualWatch, COMMANDS.policyCheck, COMMANDS.test],
     );
   });

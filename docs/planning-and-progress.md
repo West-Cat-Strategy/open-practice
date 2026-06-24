@@ -8,19 +8,29 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 ## At a Glance
 
-| Snapshot              | Value                                                                 |
-| --------------------- | --------------------------------------------------------------------- |
-| Current focus         | 2026-06-24 private-pilot and video branches are being prepared for mainline.     |
+| Snapshot              | Value                                                                   |
+| --------------------- | ----------------------------------------------------------------------- |
+| Current focus         | 2026-06-24 three-lane mainline closeout validation is in progress.      |
 | Next recommended pick | Complete the mainline merge/push/prune proof and publish only if green. |
-| Ready rows            | 0                                                                     |
-| Candidate rows        | 0                                                                     |
-| In progress rows      | 0                                                                     |
-| Review rows           | 3                                                                     |
-| Blocked rows          | 0                                                                     |
-| Archive               | Historical snapshots and proof live in [Archive](archive/README.md).  |
-| Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`      |
+| Ready rows            | 0                                                                       |
+| Candidate rows        | 0                                                                       |
+| In progress rows      | 0                                                                       |
+| Review rows           | 3                                                                       |
+| Blocked rows          | 0                                                                       |
+| Archive               | Historical snapshots and proof live in [Archive](archive/README.md).    |
+| Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`        |
 
 ## Current Handoff Notes
+
+The 2026-06-24 mainline closeout is being validated on
+`merge/open-practice-mainline-20260624` before the explicitly requested direct `main` publication.
+It integrates the private-pilot readiness remediation branch, the private-pilot MinIO readiness
+blocker branch, and the video meetings control-plane branch. The additive merge keeps the Admin
+Readiness provider posture and MinIO blocker copy, private-pilot release-proof restore-drill plus
+residual-watch gating, residual-watch `readinessBlockers` metadata, private-pilot summaries, and
+calendar/video-meeting scheduling-review controls. Private-pilot readiness remains held while the
+MinIO residual-watch blocker is present. Evidence is being recorded in
+[2026-06-24 mainline merge/push/prune proof](validation/OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-24.md).
 
 The 2026-06-23 `private-pilot/readiness-remediation-20260623` branch implements the approved
 private-pilot remediation program. It adds a self-host restore drill and private-pilot release
@@ -67,7 +77,6 @@ package, build, host E2E, first-run, matterless, client-portal, and a11y validat
 skipped with reason because no Docker/container/provider-runtime path changed. Evidence is recorded
 in
 [video meetings control-plane proof](validation/OP_VIDEO_MEETINGS_CONTROL_PLANE_PROOF_2026-06-23.md).
-
 
 The 2026-06-23 active-lane mainline closeout integrated six dirty Open Practice lanes through
 `merge/open-practice-mainline-20260623`, fast-forwarded and pushed `main`, then pruned only clean
