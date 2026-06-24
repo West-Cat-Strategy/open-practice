@@ -279,6 +279,14 @@ describe("AdminReadinessSection", () => {
         detail: expect.stringContaining("outbound email degraded: provider rate limited · mailpit"),
       }),
     );
+    expect(summary.operations).toContainEqual(
+      expect.objectContaining({
+        key: "private-pilot-object-storage-blocker",
+        status: "private-pilot blocker",
+        tone: "blocked",
+        detail: expect.stringContaining("Critical/High CVEs"),
+      }),
+    );
   });
 
   it("renders bounded export and backup/restore readiness copy", () => {
@@ -292,6 +300,11 @@ describe("AdminReadinessSection", () => {
     expect(markup).toContain("read-only posture");
     expect(markup).toContain("Required provider blockers");
     expect(markup).toContain("Optional disabled boundaries");
+    expect(markup).toContain("Private-pilot object storage blocker");
+    expect(markup).toContain("external HTTPS object storage");
+    expect(markup).toContain("MinIO hardening proof");
+    expect(markup).not.toContain("private deployment");
+    expect(markup).not.toContain("synthetic-secret");
   });
 
   it("renders email settings without exposing configured secrets", () => {

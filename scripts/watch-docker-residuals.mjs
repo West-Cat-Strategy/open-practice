@@ -64,6 +64,13 @@ const SERVICE_DEFINITIONS = {
       ],
       kind: "minio",
     },
+    archiveProbe: {
+      id: "minio-source-repository-metadata",
+      command: "curl",
+      args: ["-fsSL", "https://api.github.com/repos/minio/minio"],
+      kind: "github-repository",
+      repository: "minio/minio",
+    },
   },
   mailpit: {
     dockerfilePath: "docker/mailpit/Dockerfile",
@@ -276,6 +283,13 @@ export function dockerResidualCommands(posture) {
         command(sourceProbe.id, sourceProbe.command, sourceProbe.args, { sourceProbe }),
       );
     }
+
+    const archiveProbe = SERVICE_DEFINITIONS[serviceName].archiveProbe;
+    if (archiveProbe) {
+      commands.push(
+        command(archiveProbe.id, archiveProbe.command, archiveProbe.args, { archiveProbe }),
+      );
+    }
   }
 
   return commands;
@@ -311,6 +325,7 @@ function runCommand(commandSpec, { cwd, outputDir, spawn = spawnSync }) {
     finishedAt,
     registryProbe: commandSpec.registryProbe ?? null,
     sourceProbe: commandSpec.sourceProbe ?? null,
+    archiveProbe: commandSpec.archiveProbe ?? null,
     allowFailurePatterns: commandSpec.allowFailurePatterns ?? [],
   };
 }
@@ -379,7 +394,7 @@ export function sourceTagIsNewer(latest, current, kind) {
 }
 
 function quickviewCounts(output) {
-  const match = output.match(/(\d+)C\/(\d+)H\/(\d+)M\/(\d+)L/);
+  const match = output.match(/(\d+)C(?:\/|\s+)(\d+)H(?:\/|\s+)(\d+)M(?:\/|\s+)(\d+)L/);
   if (!match) return null;
   return {
     critical: Number.parseInt(match[1], 10),
@@ -387,6 +402,21 @@ function quickviewCounts(output) {
     medium: Number.parseInt(match[3], 10),
     low: Number.parseInt(match[4], 10),
   };
+}
+
+function criticalHighCveCounts(output) {
+  const overviewMatch = output.match(/\bvulnerabilities\b[^\n]*?\b(\d+)C\s+(\d+)H\b/i);
+  if (overviewMatch) {
+    return {
+      critical: Number.parseInt(overviewMatch[1], 10),
+      high: Number.parseInt(overviewMatch[2], 10),
+    };
+  }
+
+  const critical = output.match(/(?:^|\n)\s*(?:✗\s*)?CRITICAL\s+CVE-/gi)?.length ?? 0;
+  const high = output.match(/(?:^|\n)\s*(?:✗\s*)?HIGH\s+CVE-/gi)?.length ?? 0;
+  if (critical + high === 0) return null;
+  return { critical, high };
 }
 
 function scoutRecommendationNeedsReview(output) {
@@ -398,9 +428,19 @@ function scoutRecommendationNeedsReview(output) {
   return reductionPattern.test(text);
 }
 
+function archivedRepositoryPosture(output) {
+  try {
+    const metadata = JSON.parse(output);
+    return metadata?.archived === true;
+  } catch {
+    return false;
+  }
+}
+
 export function assessWatchResults({ posture, commandResults }) {
   const candidates = [];
   const blockers = [];
+  const readinessBlockers = [];
   const scout = {};
 
   for (const result of commandResults) {
@@ -455,12 +495,51 @@ export function assessWatchResults({ posture, commandResults }) {
       }
     }
 
+    if (result.archiveProbe && result.status === 0) {
+      if (archivedRepositoryPosture(result.stdout)) {
+        readinessBlockers.push({
+          id: result.id,
+          serviceName: "minio",
+          kind: "archived-upstream-source",
+          repository: result.archiveProbe.repository,
+          detail:
+            "Bundled MinIO cannot clear private-pilot readiness while the upstream source repository is archived.",
+        });
+      }
+    }
+
     const quickviewMatch = result.id.match(/^(.+)-scout-quickview$/);
     if (quickviewMatch && result.status === 0) {
+      const counts = quickviewCounts(result.stdout);
       scout[quickviewMatch[1]] = {
         ...(scout[quickviewMatch[1]] ?? {}),
-        quickview: quickviewCounts(result.stdout),
+        quickview: counts,
       };
+      if (quickviewMatch[1] === "minio" && counts && counts.critical + counts.high > 0) {
+        readinessBlockers.push({
+          id: result.id,
+          serviceName: "minio",
+          kind: "critical-high-cves",
+          critical: counts.critical,
+          high: counts.high,
+          detail: `Bundled MinIO reports ${counts.critical} critical and ${counts.high} high findings in Docker Scout quickview.`,
+        });
+      }
+    }
+
+    const criticalHighMatch = result.id.match(/^(.+)-scout-critical-high-cves$/);
+    if (criticalHighMatch && result.status === 0) {
+      const counts = criticalHighCveCounts(result.stdout);
+      if (criticalHighMatch[1] === "minio" && counts && counts.critical + counts.high > 0) {
+        readinessBlockers.push({
+          id: result.id,
+          serviceName: "minio",
+          kind: "critical-high-cves",
+          critical: counts.critical,
+          high: counts.high,
+          detail: `Bundled MinIO reports ${counts.critical} critical and ${counts.high} high findings in Docker Scout CVE evidence.`,
+        });
+      }
     }
 
     const recommendationMatch = result.id.match(/^(.+)-scout-recommendations$/);
@@ -476,9 +555,18 @@ export function assessWatchResults({ posture, commandResults }) {
     }
   }
 
+  const status =
+    blockers.length > 0
+      ? "blocked"
+      : readinessBlockers.length > 0
+        ? "readiness-blocked"
+        : candidates.length > 0
+          ? "needs-review"
+          : "passed";
   return {
-    status: blockers.length > 0 ? "blocked" : candidates.length > 0 ? "needs-review" : "passed",
-    exitCode: blockers.length > 0 ? 1 : candidates.length > 0 ? 2 : 0,
+    status,
+    exitCode: blockers.length > 0 ? 1 : status === "passed" ? 0 : 2,
+    readinessBlockers,
     candidates,
     blockers,
     scout,
@@ -529,6 +617,14 @@ function writeReadme(metadata) {
     lines.push("");
   }
 
+  if (metadata.readinessBlockers.length > 0) {
+    lines.push("## Readiness Blockers", "");
+    for (const blocker of metadata.readinessBlockers) {
+      lines.push(`- ${blocker.id}: ${blocker.kind}; ${blocker.detail}`);
+    }
+    lines.push("");
+  }
+
   if (metadata.blockers.length > 0) {
     lines.push("## Blockers", "");
     for (const blocker of metadata.blockers) {
@@ -567,6 +663,7 @@ export function runDockerResidualWatch({
     exitCode: assessment.exitCode,
     git: gitMetadata(cwd, spawn),
     posture,
+    readinessBlockers: assessment.readinessBlockers,
     candidates: assessment.candidates,
     blockers: assessment.blockers,
     scout: assessment.scout,
@@ -591,6 +688,9 @@ if (isMainModule()) {
     console.log(`Docker residual watch ${metadata.status}: ${metadata.artifactDir}`);
     if (metadata.candidates.length > 0) {
       console.log(`Review candidates: ${metadata.candidates.length}`);
+    }
+    if (metadata.readinessBlockers.length > 0) {
+      console.error(`Readiness blockers: ${metadata.readinessBlockers.length}`);
     }
     if (metadata.blockers.length > 0) {
       console.error(`Blocked checks: ${metadata.blockers.map((blocker) => blocker.id).join(", ")}`);

@@ -76,6 +76,12 @@ export function releaseProofCommands({
       args: ["selfhost:restore-drill"],
       required: true,
     });
+    commands.push({
+      id: "docker-residual-watch",
+      command: "pnpm",
+      args: ["docker:residual-watch"],
+      required: true,
+    });
   }
 
   commands.push({
@@ -231,7 +237,7 @@ function usage() {
     "Usage:",
     "  node scripts/create-release-proof.mjs [--private-pilot]",
     "",
-    "The private-pilot mode adds the self-host restore drill to the local release proof.",
+    "Private-pilot mode adds the self-host restore drill and Docker residual watch readiness gate.",
   ].join("\n");
 }
 

@@ -284,6 +284,14 @@ export function buildAdminReadinessSummary(input: {
         tone: "review",
       },
       {
+        key: "private-pilot-object-storage-blocker",
+        title: "Private-pilot object storage blocker",
+        detail:
+          "Bundled MinIO cannot clear private-pilot readiness while local residual-watch proof reports archived upstream posture or Critical/High CVEs; clear this with external HTTPS object storage or a separate MinIO hardening proof.",
+        status: "private-pilot blocker",
+        tone: "blocked",
+      },
+      {
         key: "worker-readiness",
         title: "Worker evidence",
         detail: `${input.workerHealth.configuredQueues} configured queues; ${input.workerHealth.failed} failed and ${input.workerHealth.stalled} stalled runs in the loaded health window.`,

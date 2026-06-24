@@ -212,10 +212,27 @@ describe("select-validation contract", () => {
       selectCommands([
         "scripts/selfhost-restore-drill.mjs",
         "scripts/selfhost-restore-drill.test.mjs",
-        "scripts/create-release-proof.mjs",
-        "scripts/create-release-proof.test.mjs",
       ]),
       [COMMANDS.selfhostRestoreDrill, COMMANDS.policyCheck, COMMANDS.test],
+    );
+  });
+
+  it("routes private-pilot release-proof tooling through restore drill and residual watch", () => {
+    assert.deepEqual(
+      selectCommands(["scripts/create-release-proof.mjs", "scripts/create-release-proof.test.mjs"]),
+      [
+        COMMANDS.dockerResidualWatch,
+        COMMANDS.selfhostRestoreDrill,
+        COMMANDS.policyCheck,
+        COMMANDS.test,
+      ],
+    );
+  });
+
+  it("routes residual-watch tooling through Docker residual watch", () => {
+    assert.deepEqual(
+      selectCommands(["scripts/watch-docker-residuals.mjs", "scripts/watch-docker-residuals.test.mjs"]),
+      [COMMANDS.dockerResidualWatch, COMMANDS.policyCheck, COMMANDS.test],
     );
   });
 

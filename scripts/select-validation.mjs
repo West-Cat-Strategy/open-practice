@@ -381,6 +381,15 @@ function isSelfhostRestoreDrillTooling(path) {
   ].includes(path);
 }
 
+function isDockerResidualWatchTooling(path) {
+  return [
+    "scripts/watch-docker-residuals.mjs",
+    "scripts/watch-docker-residuals.test.mjs",
+    "scripts/create-release-proof.mjs",
+    "scripts/create-release-proof.test.mjs",
+  ].includes(path);
+}
+
 function isApiContractTooling(path) {
   return (
     path === "scripts/generate-api-contract.mjs" ||
@@ -497,6 +506,10 @@ export function classifyPath(path) {
 
   if (isSelfhostRestoreDrillTooling(path)) {
     commands.add(COMMANDS.selfhostRestoreDrill);
+  }
+
+  if (isDockerResidualWatchTooling(path)) {
+    commands.add(COMMANDS.dockerResidualWatch);
   }
 
   if (isApiContractTooling(path)) {

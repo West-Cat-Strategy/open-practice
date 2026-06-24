@@ -81,9 +81,13 @@ describe("create-release-proof contract", () => {
     );
   });
 
-  it("keeps default release commands unchanged and adds the restore drill only for private pilot", () => {
+  it("keeps default release commands unchanged and adds private-pilot gates only for private pilot", () => {
     assert.equal(
       releaseProofCommands().some((command) => command.id === "selfhost-restore-drill"),
+      false,
+    );
+    assert.equal(
+      releaseProofCommands().some((command) => command.id === "docker-residual-watch"),
       false,
     );
     assert.deepEqual(parseReleaseProofArgs(["--private-pilot"]), {
@@ -102,6 +106,17 @@ describe("create-release-proof contract", () => {
         id: "selfhost-restore-drill",
         command: "pnpm",
         args: ["selfhost:restore-drill"],
+        required: true,
+      },
+    );
+    assert.deepEqual(
+      releaseProofCommands({ privatePilot: true }).find(
+        (command) => command.id === "docker-residual-watch",
+      ),
+      {
+        id: "docker-residual-watch",
+        command: "pnpm",
+        args: ["docker:residual-watch"],
         required: true,
       },
     );
@@ -163,7 +178,7 @@ describe("create-release-proof contract", () => {
     ]);
   });
 
-  it("records the private-pilot restore drill in release proof metadata", () => {
+  it("records private-pilot restore drill and residual watch in release proof metadata", () => {
     const cwd = mkdtempSync(path.join(tmpdir(), "open-practice-private-pilot-proof-"));
     const calls = [];
     const spawn = (command, args) => {
@@ -174,7 +189,7 @@ describe("create-release-proof contract", () => {
 
     const metadata = createReleaseProof({
       cwd,
-      now: new Date("2026-06-23T12:34:56.000Z"),
+      now: new Date("2026-06-24T12:34:56.000Z"),
       privatePilot: true,
       spawn,
     });
@@ -186,11 +201,16 @@ describe("create-release-proof contract", () => {
       calls.find((call) => call[1][0] === "selfhost:restore-drill"),
       ["pnpm", ["selfhost:restore-drill"]],
     );
+    assert(metadata.commands.some((command) => command.id === "docker-residual-watch"));
+    assert.deepEqual(
+      calls.find((call) => call[1][0] === "docker:residual-watch"),
+      ["pnpm", ["docker:residual-watch"]],
+    );
 
     const proof = JSON.parse(
       readFileSync(path.join(metadata.artifactDir, "release-proof.json"), "utf8"),
     );
     assert.equal(proof.privatePilot, true);
-    assert.equal(proof.commands.length, 8);
+    assert.equal(proof.commands.length, 9);
   });
 });

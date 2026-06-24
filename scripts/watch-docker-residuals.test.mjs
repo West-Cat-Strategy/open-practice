@@ -106,11 +106,18 @@ function fakeSuccessfulSpawn(command, args) {
   }
 
   if (command === "docker" && args[0] === "scout" && args[1] === "quickview") {
+    if (args[2]?.includes("minio")) {
+      return { status: 0, stdout: "Target 0C/0H/1M/0L\n", stderr: "" };
+    }
     return { status: 0, stdout: "Target 0C/1H/1M/0L\n", stderr: "" };
   }
 
   if (command === "docker" && args[0] === "scout" && args[1] === "recommendations") {
     return { status: 0, stdout: "No recommendations\n", stderr: "" };
+  }
+
+  if (command === "curl") {
+    return { status: 0, stdout: '{"archived":false}\n', stderr: "" };
   }
 
   return { status: 0, stdout: `ok ${command} ${args.join(" ")}\n`, stderr: "" };
@@ -167,6 +174,7 @@ describe("watch-docker-residuals contract", () => {
     ]);
     assert(commandIds.includes("postgres-scout-recommendations"));
     assert(commandIds.includes("minio-dockerhub-current-source-manifest"));
+    assert(commandIds.includes("minio-source-repository-metadata"));
     assert(commandIds.includes("mailpit-source-tags"));
   });
 
@@ -226,6 +234,95 @@ describe("watch-docker-residuals contract", () => {
     );
   });
 
+  it("returns readiness-blocked for bundled MinIO critical or high findings", () => {
+    const assessment = assessWatchResults({
+      posture: {},
+      commandResults: [
+        {
+          id: "minio-scout-quickview",
+          status: 0,
+          stdout: "Target │ 2C    3H    4M    5L\n",
+          stderr: "",
+          allowFailurePatterns: [],
+        },
+      ],
+    });
+
+    assert.equal(assessment.status, "readiness-blocked");
+    assert.equal(assessment.exitCode, 2);
+    assert.deepEqual(assessment.readinessBlockers, [
+      {
+        id: "minio-scout-quickview",
+        serviceName: "minio",
+        kind: "critical-high-cves",
+        critical: 2,
+        high: 3,
+        detail: "Bundled MinIO reports 2 critical and 3 high findings in Docker Scout quickview.",
+      },
+    ]);
+  });
+
+  it("returns readiness-blocked for bundled MinIO critical or high CVE evidence", () => {
+    const assessment = assessWatchResults({
+      posture: {},
+      commandResults: [
+        {
+          id: "minio-scout-critical-high-cves",
+          status: 0,
+          stdout: "vulnerabilities │   11C    16H     0M     0L\n",
+          stderr: "",
+          allowFailurePatterns: [],
+        },
+      ],
+    });
+
+    assert.equal(assessment.status, "readiness-blocked");
+    assert.equal(assessment.exitCode, 2);
+    assert.deepEqual(assessment.readinessBlockers, [
+      {
+        id: "minio-scout-critical-high-cves",
+        serviceName: "minio",
+        kind: "critical-high-cves",
+        critical: 11,
+        high: 16,
+        detail:
+          "Bundled MinIO reports 11 critical and 16 high findings in Docker Scout CVE evidence.",
+      },
+    ]);
+  });
+
+  it("returns readiness-blocked for archived upstream MinIO source posture", () => {
+    const assessment = assessWatchResults({
+      posture: {},
+      commandResults: [
+        {
+          id: "minio-source-repository-metadata",
+          status: 0,
+          stdout: '{"archived":true}\n',
+          stderr: "",
+          archiveProbe: {
+            kind: "github-repository",
+            repository: "minio/minio",
+          },
+          allowFailurePatterns: [],
+        },
+      ],
+    });
+
+    assert.equal(assessment.status, "readiness-blocked");
+    assert.equal(assessment.exitCode, 2);
+    assert.deepEqual(assessment.readinessBlockers, [
+      {
+        id: "minio-source-repository-metadata",
+        serviceName: "minio",
+        kind: "archived-upstream-source",
+        repository: "minio/minio",
+        detail:
+          "Bundled MinIO cannot clear private-pilot readiness while the upstream source repository is archived.",
+      },
+    ]);
+  });
+
   it("records blockers only for unexpected command failures", () => {
     const assessment = assessWatchResults({
       posture: {},
@@ -271,6 +368,7 @@ describe("watch-docker-residuals contract", () => {
     assert.equal(metadata.status, "passed");
     assert.equal(metadata.exitCode, 0);
     assert.equal(metadata.git.branch, "codex/docker-watch");
+    assert.equal(metadata.readinessBlockers.length, 0);
     assert.equal(metadata.blockers.length, 0);
     assert.equal(metadata.candidates.length, 0);
 
