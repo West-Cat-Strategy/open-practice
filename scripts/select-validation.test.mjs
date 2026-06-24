@@ -198,6 +198,13 @@ describe("select-validation contract", () => {
     );
   });
 
+  it("routes residual-watch and private-pilot release-proof tooling through Docker residual watch", () => {
+    assert.deepEqual(
+      selectCommands(["scripts/watch-docker-residuals.mjs", "scripts/create-release-proof.mjs"]),
+      [COMMANDS.dockerResidualWatch, COMMANDS.policyCheck, COMMANDS.test],
+    );
+  });
+
   it("routes API contract and privacy-rule tooling through their local checks", () => {
     assert.deepEqual(
       selectCommands(["scripts/generate-api-contract.mjs", ".semgrep/open-practice.yml"]),

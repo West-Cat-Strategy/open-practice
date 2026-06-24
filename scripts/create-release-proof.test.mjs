@@ -7,6 +7,7 @@ import { describe, it } from "node:test";
 import {
   buildReleaseArtifactDir,
   createReleaseProof,
+  parseReleaseProofArgs,
   releaseProofCommands,
   releaseTimestamp,
 } from "./create-release-proof.mjs";
@@ -80,6 +81,32 @@ describe("create-release-proof contract", () => {
     );
   });
 
+  it("keeps default release commands unchanged and adds residual watch only for private pilot", () => {
+    assert.equal(
+      releaseProofCommands().some((command) => command.id === "docker-residual-watch"),
+      false,
+    );
+    assert.deepEqual(parseReleaseProofArgs(["--private-pilot"]), {
+      help: false,
+      privatePilot: true,
+    });
+    assert.deepEqual(parseReleaseProofArgs(["--", "--private-pilot"]), {
+      help: false,
+      privatePilot: true,
+    });
+    assert.deepEqual(
+      releaseProofCommands({ privatePilot: true }).find(
+        (command) => command.id === "docker-residual-watch",
+      ),
+      {
+        id: "docker-residual-watch",
+        command: "pnpm",
+        args: ["docker:residual-watch"],
+        required: true,
+      },
+    );
+  });
+
   it("writes partial proof and fails when a required command fails", () => {
     const cwd = mkdtempSync(path.join(tmpdir(), "open-practice-release-proof-"));
     const calls = [];
@@ -134,5 +161,36 @@ describe("create-release-proof contract", () => {
       "--json-output",
       path.join(metadata.artifactDir, "dependency-licenses.json"),
     ]);
+  });
+
+  it("records private-pilot residual watch in release proof metadata", () => {
+    const cwd = mkdtempSync(path.join(tmpdir(), "open-practice-private-pilot-proof-"));
+    const calls = [];
+    const spawn = (command, args) => {
+      calls.push([command, args]);
+      if (command === "git") return { status: 0, stdout: "abc123\n", stderr: "" };
+      return { status: 0, stdout: "ok\n", stderr: "" };
+    };
+
+    const metadata = createReleaseProof({
+      cwd,
+      now: new Date("2026-06-24T12:34:56.000Z"),
+      privatePilot: true,
+      spawn,
+    });
+
+    assert.equal(metadata.status, "passed");
+    assert.equal(metadata.privatePilot, true);
+    assert(metadata.commands.some((command) => command.id === "docker-residual-watch"));
+    assert.deepEqual(
+      calls.find((call) => call[1][0] === "docker:residual-watch"),
+      ["pnpm", ["docker:residual-watch"]],
+    );
+
+    const proof = JSON.parse(
+      readFileSync(path.join(metadata.artifactDir, "release-proof.json"), "utf8"),
+    );
+    assert.equal(proof.privatePilot, true);
+    assert.equal(proof.commands.length, 8);
   });
 });

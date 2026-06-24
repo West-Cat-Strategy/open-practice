@@ -168,6 +168,14 @@ describe("AdminReadinessSection", () => {
         detail: expect.stringContaining("does not claim regional hosting guarantees"),
       }),
     );
+    expect(summary.operations).toContainEqual(
+      expect.objectContaining({
+        key: "private-pilot-object-storage-blocker",
+        status: "private-pilot blocker",
+        tone: "blocked",
+        detail: expect.stringContaining("Critical/High CVEs"),
+      }),
+    );
   });
 
   it("renders bounded export and backup/restore readiness copy", () => {
@@ -177,6 +185,11 @@ describe("AdminReadinessSection", () => {
     expect(markup).toContain("bounded staff export metadata");
     expect(markup).toContain("Backup and restore evidence");
     expect(markup).toContain("no hosted backup guarantee");
+    expect(markup).toContain("Private-pilot object storage blocker");
+    expect(markup).toContain("external HTTPS object storage");
+    expect(markup).toContain("MinIO hardening proof");
+    expect(markup).not.toContain("private deployment");
+    expect(markup).not.toContain("synthetic-secret");
   });
 
   it("renders email settings without exposing configured secrets", () => {

@@ -97,6 +97,10 @@ Do not enable `OPEN_PRACTICE_ALLOW_DOCKER_BRIDGE_SETUP` or development auth help
 ## Operations
 
 - Back up PostgreSQL and object storage together, and test restores before relying on the profile.
+- Treat bundled MinIO as a private-pilot readiness blocker when `pnpm docker:residual-watch`
+  reports archived upstream posture or Critical/High CVEs. Clear that blocker with an external
+  HTTPS object-storage endpoint or a separate MinIO hardening proof before private-pilot release
+  handoff.
 - Treat Redis as execution state, not a legal record. PostgreSQL remains the durable source of truth
   for job lifecycle and legal/audit records.
 - Run `pnpm docker:residual-watch`, `pnpm docker:app-smoke`, and `pnpm e2e:docker` for image,

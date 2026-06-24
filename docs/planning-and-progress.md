@@ -1,6 +1,6 @@
 # Planning and Progress
 
-**Last Updated:** 2026-06-23
+**Last Updated:** 2026-06-24
 
 Use this file for live tracked work, immediate next moves, and the forward-looking development plan.
 Use `docs/planning.md` for the durable roadmap, `docs/improvement-opportunities.md` for candidate
@@ -10,17 +10,28 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 | Snapshot              | Value                                                                |
 | --------------------- | -------------------------------------------------------------------- |
-| Current focus         | 2026-06-23 mainline merge/push/prune closeout is complete.           |
-| Next recommended pick | Pick the next scoped row after refreshing current priorities.        |
+| Current focus         | Private-pilot MinIO readiness blocker branch is ready for review.    |
+| Next recommended pick | Review the MinIO blocker proof and final validation evidence.        |
 | Ready rows            | 0                                                                    |
 | Candidate rows        | 0                                                                    |
 | In progress rows      | 0                                                                    |
-| Review rows           | 0                                                                    |
+| Review rows           | 1                                                                    |
 | Blocked rows          | 0                                                                    |
 | Archive               | Historical snapshots and proof live in [Archive](archive/README.md). |
 | Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`     |
 
 ## Current Handoff Notes
+
+The 2026-06-24 `private-pilot/minio-readiness-blocker-20260624` branch turns the private-pilot
+bundled-MinIO watch item into a first-class readiness blocker without changing MinIO pins, Compose
+contracts, runtime APIs, schemas, dependencies, or clean-room posture. Docker residual-watch
+artifacts now expose `readinessBlockers` and return `readiness-blocked`/exit `2` when bundled MinIO
+shows archived upstream posture or Critical/High Scout findings; Docker, Scout, registry, source,
+or network failures remain exit `1` blockers. `pnpm release:local -- --private-pilot` requires that
+residual-watch gate while default `pnpm release:local` stays unchanged. Admin Readiness now shows
+owner-visible read-only blocker copy pointing to external HTTPS object storage or separate MinIO
+hardening proof before private-pilot handoff. Evidence is recorded in
+[private-pilot MinIO readiness blocker proof](validation/OP_PRIVATE_PILOT_MINIO_READINESS_BLOCKER_PROOF_2026-06-24.md).
 
 The 2026-06-23 active-lane mainline closeout integrated six dirty Open Practice lanes through
 `merge/open-practice-mainline-20260623`, fast-forwarded and pushed `main`, then pruned only clean

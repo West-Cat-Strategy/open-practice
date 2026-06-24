@@ -147,12 +147,14 @@ The helper reads `docker-compose.yml` plus `docker/postgres/Dockerfile`,
 `docker/minio/Dockerfile`, and `docker/mailpit/Dockerfile`, then writes ignored local evidence under
 `/tmp/codex-security-scans/open-practice/docker-residual-watch/<timestamp>/`. It reruns the current
 Docker Scout quickview, critical/high CVE, and recommendation checks for the three wrapped service
-images, probes same-product registry manifests, and checks upstream MinIO/Mailpit source tags.
-Exit `0` means the documented residuals still have no same-contract review candidate, exit `2`
-means a newer upstream tag, registry manifest, or Scout recommendation needs a separate hardening
-review, and exit `1` records Docker, Scout, registry, or network blockers in the artifact. Keep any
-actual image pin, base, source-tag, provenance, license, or Docker E2E change in a separate
-follow-up proof.
+images, probes same-product registry manifests, checks upstream MinIO/Mailpit source tags, and
+records MinIO upstream repository archive posture. Exit `0` means the documented residuals still
+have no same-contract review candidate, exit `2` means a newer upstream tag, registry manifest,
+Scout recommendation, or MinIO private-pilot readiness blocker needs a separate hardening review,
+and exit `1` records Docker, Scout, registry, source, or network blockers in the artifact. The
+artifact now includes `readinessBlockers` when bundled MinIO reports Critical/High Scout findings or
+archived upstream source posture. Keep any actual image pin, base, source-tag, provenance, license,
+or Docker E2E change in a separate follow-up proof.
 
 Use the app-image smoke after Dockerfile, Compose command, bind, capability, or runtime dependency
 changes:
