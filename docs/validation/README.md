@@ -24,8 +24,9 @@ It covers the three-lane closeout through `merge/open-practice-mainline-20260624
 private-pilot readiness remediation branch, the private-pilot MinIO readiness blocker branch, and
 the video meetings control-plane branch. It records validation, the direct `main` publication,
 conservative worktree/branch prune evidence, unchanged stash count `42`, and the final docs-only
-proof closeout. Private-pilot readiness remains held because Docker residual-watch still reports the
-bundled MinIO readiness blocker.
+proof closeout. That historical closeout recorded the bundled MinIO readiness blocker as still
+held at merge time; the later private-pilot MinIO hardening proof supersedes it with proof-gated
+residual acceptance.
 
 The 2026-06-23 private-pilot readiness remediation proof is recorded in
 [OP_PRIVATE_PILOT_READINESS_REMEDIATION_PROOF_2026-06-23.md](OP_PRIVATE_PILOT_READINESS_REMEDIATION_PROOF_2026-06-23.md).
@@ -55,6 +56,16 @@ archived-source or Critical/High CVE posture from an owner-visible watch item in
 readiness blocker. The branch preserves local-only self-hosting boundaries, checked-in Docker and
 MinIO pins, Compose contracts, runtime APIs, schemas, dependency manifests, synthetic proof, and
 clean-room upstream posture.
+
+The 2026-06-24 private-pilot MinIO hardening proof is recorded in
+[OP_PRIVATE_PILOT_MINIO_HARDENING_PROOF_2026-06-24.md](OP_PRIVATE_PILOT_MINIO_HARDENING_PROOF_2026-06-24.md).
+It covers the separate bundled-MinIO hardening proof path that adds read-only root filesystems and
+`/tmp` tmpfs mounts to the local and self-host MinIO services, extends self-host render validation,
+teaches Docker residual-watch to record `minioHardening` plus `acceptedResiduals`, and keeps
+bundled-MinIO-only Trivy scan findings proof-gated by that same residual-watch evidence. The final
+private-pilot release proof passed with self-host restore drill and residual-watch evidence. The
+branch preserves MinIO pins, S3 contracts, runtime APIs, schemas, dependencies, private-pilot
+release-proof command shape, synthetic proof, and clean-room upstream posture.
 
 The 2026-06-23 video meetings control-plane proof is recorded in
 [OP_VIDEO_MEETINGS_CONTROL_PLANE_PROOF_2026-06-23.md](OP_VIDEO_MEETINGS_CONTROL_PLANE_PROOF_2026-06-23.md).
@@ -728,6 +739,7 @@ use [Planning and Progress](../planning-and-progress.md) for current row status.
 | [OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-24.md](OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-24.md)                                                               | Mainline proof       | Proof for the 2026-06-24 three-lane mainline closeout, covering lane commits, integration-branch merge order, additive readiness/MinIO/video conflict reconciliation, selector-driven validation, direct `main` publication, clean merged-branch/worktree prune, and unchanged stash count.                                                                                                                                                                                                                                         |
 | [OP_PRIVATE_PILOT_READINESS_REMEDIATION_PROOF_2026-06-23.md](OP_PRIVATE_PILOT_READINESS_REMEDIATION_PROOF_2026-06-23.md)                                           | Maintenance proof    | Proof for the private-pilot remediation branch, covering the self-host restore drill, private-pilot release proof option, malware-scan/share gating, provider readiness/admin posture, local security review evidence normalization and selectors, review-only workflow/client-portal/comms/scheduling/billing/trust/document-processing depth, selector-driven validation, and preserved synthetic-data, privacy, no-live-settlement, no-automatic-trust-posting, no-provider-side-effect, and no-raw-text-retention boundaries.   |
 | [OP_PRIVATE_PILOT_MINIO_READINESS_BLOCKER_PROOF_2026-06-24.md](OP_PRIVATE_PILOT_MINIO_READINESS_BLOCKER_PROOF_2026-06-24.md)                                       | Maintenance proof    | Proof for the private-pilot MinIO readiness blocker lane, covering residual-watch `readinessBlockers`, private-pilot release-proof gating, read-only Admin Readiness blocker copy, selector-driven validation, and preserved local-only self-hosting, synthetic-proof, no-MinIO-pin-change, no-Compose-contract-change, no-runtime-API/schema/dependency-change, and clean-room boundaries.                                                                                                                                         |
+| [OP_PRIVATE_PILOT_MINIO_HARDENING_PROOF_2026-06-24.md](OP_PRIVATE_PILOT_MINIO_HARDENING_PROOF_2026-06-24.md)                                                       | Maintenance proof    | Proof for the separate bundled-MinIO hardening path, covering read-only root filesystem and `/tmp` tmpfs hardening in local and self-host Compose, self-host render validation, residual-watch `minioHardening` and `acceptedResiduals`, proof-gated bundled-MinIO Trivy scan residuals, final private-pilot release proof, selector-driven validation, and preserved MinIO pins, S3 contracts, runtime APIs, schemas, dependencies, private-pilot release-proof command shape, synthetic-proof, and clean-room boundaries.         |
 | [OP_VIDEO_MEETINGS_CONTROL_PLANE_PROOF_2026-06-23.md](OP_VIDEO_MEETINGS_CONTROL_PLANE_PROOF_2026-06-23.md)                                                         | Row-local proof note | Proof for the Calendar video meetings control-plane slice, covering staff scheduling-review controls, per-event readiness labels, public guest-session refresh/polling without reload, token-transport mismatch behavior, terminal guest-session conflict handling, CalDAV/iCalendar meeting-link preservation/non-disclosure, safe audit metadata, green package/build/browser validation, and preserved no-native-media, signaling, chat, recording, upload, public-booking, provider-sync, dependency, and migration boundaries. |
 | [OP_DOCUMENT_RETENTION_HOLD_ACTION_DESCRIPTOR_PROOF_2026-06-21.md](OP_DOCUMENT_RETENTION_HOLD_ACTION_DESCRIPTOR_PROOF_2026-06-21.md)                               | Row-local proof note | Proof for the Documents retention/hold action descriptor slice, covering domain-owned labels, busy/disabled reasons, stable action keys, accessible status semantics, focused domain/web validation, and preserved route/API, authorization, review-only metadata, legal-hold blocking, portal access, audit, database, retention, migration, dependency, and route catalog boundaries.                                                                                                                                             |
 | [OP-T160_DEPOSIT_MATCH_REVIEW_RECORDS_PROOF_2026-06-20.md](OP-T160_DEPOSIT_MATCH_REVIEW_RECORDS_PROOF_2026-06-20.md)                                               | Row-local proof note | Proof for the deposit-match review-record follow-up, covering existing manual-payment candidate cues on normalized deposit evidence, staff-only matter/candidate validation, Billing dashboard counts/copy, selector-driven validation, and preserved no-live-settlement, no-provider-command, no-raw-payload, no-invoice-balance-mutation, no-reconciliation-mutation, no-refund-or-chargeback, and no-trust-posting boundaries.                                                                                                   |

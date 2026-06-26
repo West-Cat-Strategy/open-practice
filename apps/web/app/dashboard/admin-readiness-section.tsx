@@ -285,11 +285,11 @@ export function buildAdminReadinessSummary(input: {
       },
       {
         key: "private-pilot-object-storage-blocker",
-        title: "Private-pilot object storage blocker",
+        title: "Private-pilot object storage proof",
         detail:
-          "Bundled MinIO cannot clear private-pilot readiness while local residual-watch proof reports archived upstream posture or Critical/High CVEs; clear this with external HTTPS object storage or a separate MinIO hardening proof.",
-        status: "private-pilot blocker",
-        tone: "blocked",
+          "Bundled MinIO is proof-gated by local residual-watch: hardened local and self-host Compose services, current source-only MinIO posture, and no same-contract remediation candidate. External HTTPS S3 remains the alternate object-storage handoff path.",
+        status: "proof-gated",
+        tone: "review",
       },
       {
         key: "worker-readiness",

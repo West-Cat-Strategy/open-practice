@@ -33,8 +33,18 @@ function renderedCompose(overrides = {}) {
     services: {
       postgres: { environment: {}, ports: [] },
       redis: { environment: {}, ports: [] },
-      "minio-bucket-init": { environment: {}, ports: [] },
-      minio: { environment: {}, ports: [{ host_ip: "127.0.0.1", target: 9000 }] },
+      "minio-bucket-init": {
+        environment: {},
+        ports: [],
+        read_only: true,
+        tmpfs: ["/tmp"],
+      },
+      minio: {
+        environment: {},
+        ports: [{ host_ip: "127.0.0.1", target: 9000 }],
+        read_only: true,
+        tmpfs: ["/tmp"],
+      },
       "db-migrate": { environment: {}, ports: [] },
       api: {
         environment: { ...baseEnvironment },
@@ -138,6 +148,33 @@ describe("selfhost-check", () => {
           }),
         ),
       /non-loopback/,
+    );
+    assert.throws(
+      () =>
+        inspectRenderedCompose(
+          renderedCompose({
+            minio: {
+              environment: {},
+              ports: [{ host_ip: "127.0.0.1", target: 9000 }],
+              tmpfs: ["/tmp"],
+            },
+          }),
+        ),
+      /read_only/,
+    );
+    assert.throws(
+      () =>
+        inspectRenderedCompose(
+          renderedCompose({
+            "minio-bucket-init": {
+              environment: {},
+              ports: [],
+              read_only: true,
+              tmpfs: [],
+            },
+          }),
+        ),
+      /tmpfs/,
     );
   });
 });

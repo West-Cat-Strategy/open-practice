@@ -10,13 +10,13 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 | Snapshot              | Value                                                                |
 | --------------------- | -------------------------------------------------------------------- |
-| Current focus         | 2026-06-24 three-lane mainline closeout is complete.                 |
-| Next recommended pick | Resolve the MinIO private-pilot readiness blocker before handoff.    |
+| Current focus         | Bundled-MinIO private-pilot hardening proof is release-proved.       |
+| Next recommended pick | Review and merge the MinIO hardening proof branch.                   |
 | Ready rows            | 0                                                                    |
 | Candidate rows        | 0                                                                    |
 | In progress rows      | 0                                                                    |
 | Review rows           | 0                                                                    |
-| Blocked rows          | 1                                                                    |
+| Blocked rows          | 0                                                                    |
 | Archive               | Historical snapshots and proof live in [Archive](archive/README.md). |
 | Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`     |
 
@@ -27,9 +27,10 @@ private-pilot readiness remediation branch, the private-pilot MinIO readiness bl
 the video meetings control-plane branch. The additive merge keeps the Admin Readiness provider
 posture and MinIO blocker copy, private-pilot release-proof restore-drill plus residual-watch
 gating, residual-watch `readinessBlockers` metadata, private-pilot summaries, and calendar/video
-meeting scheduling-review controls. Private-pilot readiness remains held because the MinIO
-residual-watch blocker is present. Only the root Open Practice worktree remains, and stash count is
-still `42`. Evidence is recorded in
+meeting scheduling-review controls. The follow-up MinIO hardening proof supersedes that readiness
+hold with proof-gated bundled-MinIO residual acceptance; historical mainline evidence still records
+the blocker as it existed at merge time. Only the root Open Practice worktree remains, and stash
+count is still `42`. Evidence is recorded in
 [2026-06-24 mainline merge/push/prune proof](validation/OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-24.md).
 
 The 2026-06-23 `private-pilot/readiness-remediation-20260623` branch implements the approved
@@ -63,6 +64,21 @@ residual-watch gate while default `pnpm release:local` stays unchanged. Admin Re
 owner-visible read-only blocker copy pointing to external HTTPS object storage or separate MinIO
 hardening proof before private-pilot handoff. Evidence is recorded in
 [private-pilot MinIO readiness blocker proof](validation/OP_PRIVATE_PILOT_MINIO_READINESS_BLOCKER_PROOF_2026-06-24.md).
+
+The 2026-06-24 `private-pilot/minio-hardening-proof-20260624` branch closes the bundled-MinIO
+private-pilot blocker with the documented separate hardening proof path. It adds read-only root
+filesystems and `/tmp` tmpfs mounts to the local and self-host MinIO services, extends the self-host
+render check to reject missing MinIO hardening, and updates residual-watch artifacts with
+`minioHardening` plus `acceptedResiduals`. Docker scan accepts bundled-MinIO-only Trivy residuals
+only when that same residual-watch proof is present. The final private-pilot release proof
+`artifacts/release-local/2026-06-24T21-40-35Z` passed, including self-host restore drill evidence
+`.tmp/open-practice-selfhost-restore-drill/2026-06-24T21-41-25Z` and residual-watch artifact
+`/tmp/codex-security-scans/open-practice/docker-residual-watch/2026-06-24T21-42-14Z` with no
+readiness blockers, no review candidates, no blocked probes, current source-only MinIO posture, and
+three accepted MinIO residuals. It preserves MinIO pins, S3 endpoints, buckets, ports, volumes,
+runtime APIs, schemas, dependencies, private-pilot release-proof command shape, synthetic-only proof,
+and clean-room posture. Evidence is recorded in
+[private-pilot MinIO hardening proof](validation/OP_PRIVATE_PILOT_MINIO_HARDENING_PROOF_2026-06-24.md).
 
 The merged 2026-06-23 `feat/video-meetings-control-plane-20260623` branch extends the existing video
 meeting control plane without native media delivery. It adds Calendar workspace scheduling-review

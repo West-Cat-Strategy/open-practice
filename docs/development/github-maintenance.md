@@ -150,18 +150,26 @@ image posture without changing Compose contracts:
 pnpm docker:residual-watch
 ```
 
-The helper reads `docker-compose.yml` plus `docker/postgres/Dockerfile`,
-`docker/minio/Dockerfile`, and `docker/mailpit/Dockerfile`, then writes ignored local evidence under
+The helper reads `docker-compose.yml`, `docker-compose.selfhost.yml`, and the wrapped service
+Dockerfiles, then writes ignored local evidence under
 `/tmp/codex-security-scans/open-practice/docker-residual-watch/<timestamp>/`. It reruns the current
 Docker Scout quickview, critical/high CVE, and recommendation checks for the three wrapped service
-images, probes same-product registry manifests, checks upstream MinIO/Mailpit source tags, and
-records MinIO upstream repository archive posture. Exit `0` means the documented residuals still
-have no same-contract review candidate, exit `2` means a newer upstream tag, registry manifest,
-Scout recommendation, or MinIO private-pilot readiness blocker needs a separate hardening review,
-and exit `1` records Docker, Scout, registry, source, or network blockers in the artifact. The
-artifact now includes `readinessBlockers` when bundled MinIO reports Critical/High Scout findings or
-archived upstream source posture. Keep any actual image pin, base, source-tag, provenance, license,
-or Docker E2E change in a separate follow-up proof.
+images, probes same-product registry manifests, checks upstream MinIO/Mailpit source tags, records
+MinIO upstream repository archive posture, and records bundled-MinIO hardening metadata. Exit `0`
+means the documented residuals still have no same-contract review candidate; MinIO Critical/High or
+archived-source residuals are accepted only when the artifact records hardened local and self-host
+MinIO Compose services, the current source tag, source-only container posture, no same-contract
+candidate, and completed Docker/Scout/source probes. Exit `2` means a newer upstream tag, registry
+manifest, Scout recommendation, or unaccepted readiness blocker needs another hardening review, and
+exit `1` records Docker, Scout, registry, source, or network blockers in the artifact. The artifact
+includes `minioHardening`, `acceptedResiduals`, and `readinessBlockers`; do not treat accepted
+residuals as removed findings. Keep any future image pin, base, source-tag, provenance, license, or
+Docker E2E change in its own follow-up proof.
+
+When `pnpm docker:scan` is run with Trivy installed, a bundled-MinIO-only Critical/High scan result
+may be accepted only when the wrapper reruns residual-watch and records the same eligible
+`minioHardening` plus `acceptedResiduals` proof. Non-MinIO Trivy failures and unproved MinIO scan
+failures remain failed scan artifacts.
 
 Use the app-image smoke after Dockerfile, Compose command, bind, capability, or runtime dependency
 changes:

@@ -161,6 +161,18 @@ function assertLoopbackPorts(serviceName, service) {
   }
 }
 
+function assertReadOnlyTmpfs(serviceName, service) {
+  if (service?.read_only !== true) {
+    throw new Error(`${serviceName} must use read_only=true`);
+  }
+
+  const tmpfs = service?.tmpfs ?? [];
+  const hasTmp = tmpfs.some((mount) => String(mount).split(":")[0] === "/tmp");
+  if (!hasTmp) {
+    throw new Error(`${serviceName} must mount /tmp as tmpfs`);
+  }
+}
+
 export function inspectRenderedCompose(rendered) {
   const services = rendered.services ?? {};
   const serviceNames = Object.keys(services).sort();
@@ -217,6 +229,8 @@ export function inspectRenderedCompose(rendered) {
   assertLoopbackPorts("api", services.api);
   assertLoopbackPorts("web", services.web);
   assertLoopbackPorts("minio", services.minio);
+  assertReadOnlyTmpfs("minio", services.minio);
+  assertReadOnlyTmpfs("minio-bucket-init", services["minio-bucket-init"]);
   for (const service of ["postgres", "redis", "worker"]) {
     if ((services[service].ports ?? []).length > 0) {
       throw new Error(`${service} must not publish host ports in self-host Compose`);

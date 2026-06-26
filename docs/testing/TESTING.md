@@ -40,8 +40,8 @@ API contracts, database schema changes, auth changes, or release handoff.
 | Accessibility E2E       | `pnpm e2e:a11y`                                    | Runs the dedicated Chromium rendered accessibility lane with axe against synthetic staff and public-token pages.                                                                                                                                                                                                                 |
 | Docker app image smoke  | `pnpm docker:app-smoke`                            | Pulls Redis, builds wrapped local service images plus API/Web/Worker images, starts the local Compose stack, migrates the default Compose database, checks API/web readiness, proves the web-origin setup-status rewrite, and supports app-image footprint proof.                                                                |
 | Docker static lint      | `pnpm docker:lint`                                 | Runs optional local Hadolint and Checkov checks when installed; skips with local evidence when missing.                                                                                                                                                                                                                          |
-| Docker residual watch   | `pnpm docker:residual-watch`                       | Writes local wrapped-service residual evidence. Exit `2` is review-required, including private-pilot MinIO readiness blockers; exit `1` is Docker, Scout, registry, source, or network blockage.                                                                                                                                 |
-| Docker image scan       | `pnpm docker:scan`                                 | Runs optional local Trivy image scanning when installed; pair with `pnpm docker:app-smoke` so app images exist.                                                                                                                                                                                                                  |
+| Docker residual watch   | `pnpm docker:residual-watch`                       | Writes local wrapped-service residual evidence. Exit `0` may include accepted bundled-MinIO residuals only when `minioHardening` proves the hardened/current/source-only/no-candidate rule; exit `2` is review-required; exit `1` is Docker, Scout, registry, source, or network blockage.                                       |
+| Docker image scan       | `pnpm docker:scan`                                 | Runs optional local Trivy image scanning when installed; pair with `pnpm docker:app-smoke` so app images exist. A bundled-MinIO-only Trivy Critical/High result may pass only when the wrapper records the same accepted residual-watch hardening proof; non-MinIO or unproved MinIO failures remain red.                        |
 | Self-host Compose gate  | `pnpm selfhost:check -- --env-file <path>`         | Validates self-host env values and rendered `docker-compose.selfhost.yml` posture without starting the stack.                                                                                                                                                                                                                    |
 | Self-host restore drill | `pnpm selfhost:restore-drill -- --env-file <path>` | Starts a disposable self-host Compose project, writes synthetic PostgreSQL/object markers, backs them up, restores into fresh volumes, verifies checksums plus `/health` and `/api/setup/status`, and writes redacted ignored evidence.                                                                                          |
 | Database schema check   | `pnpm --filter @open-practice/database db:check`   | Required for schema or migration changes.                                                                                                                                                                                                                                                                                        |
@@ -273,7 +273,9 @@ origins.
 - Dockerfile, Compose, or app-image runtime changes: run selector first, record the exact final path
   set, then include `pnpm docker:lint`, `pnpm docker:residual-watch`,
   `pnpm docker:app-smoke`, `pnpm e2e:docker`, app-image size evidence, and the selected static
-  checks. Add `pnpm docker:scan` when Trivy and the app images are available. When self-hosting
+  checks. Add `pnpm docker:scan` when Trivy and the app images are available; bundled-MinIO Trivy
+  residuals follow the same accepted residual-watch proof path while other scan findings remain
+  failures. When self-hosting
   changes are included, add `pnpm selfhost:check` with the synthetic env example. If implementation
   files are still pending, keep proof rows marked as pending rather than claiming final validation.
 - Documentation-only changes: run `pnpm format:check`, `pnpm docs:check`, and `pnpm policy:check`.
@@ -299,9 +301,10 @@ CycloneDX SBOM, migration replay, a high-confidence secret scan over the generat
 directory, and the `pnpm ci:local` result. Failed required commands still leave partial proof behind
 for diagnosis, and the command exits nonzero when any required release check fails.
 For a private-pilot release handoff, `pnpm release:local -- --private-pilot` also requires
-`pnpm docker:residual-watch`; a bundled MinIO archived-source or Critical/High CVE readiness blocker
-is a successful blocker detection but still prevents a green release handoff until cleared by
-external HTTPS object storage or a separate MinIO hardening proof.
+`pnpm docker:residual-watch`. Bundled MinIO archived-source or Critical/High CVE findings no longer
+block the release proof when residual-watch records `acceptedResiduals` plus eligible
+`minioHardening`; Docker/Scout/source failures, same-contract candidates, or missing hardening
+remain non-green release proof.
 
 ## Local Security Review
 

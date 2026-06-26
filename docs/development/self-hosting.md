@@ -104,10 +104,11 @@ Do not enable `OPEN_PRACTICE_ALLOW_DOCKER_BRIDGE_SETUP` or development auth help
   `pg_dump`, an object-storage archive, fresh-volume restore, checksum verification, API `/health`,
   and web `/api/setup/status`, then writes redacted local evidence under
   `.tmp/open-practice-selfhost-restore-drill/<timestamp>/`.
-- Treat bundled MinIO as a private-pilot readiness blocker when `pnpm docker:residual-watch`
-  reports archived upstream posture or Critical/High CVEs. Clear that blocker with an external
-  HTTPS object-storage endpoint or a separate MinIO hardening proof before private-pilot release
-  handoff.
+- Treat bundled MinIO as proof-gated for private-pilot handoff. `pnpm docker:residual-watch` can
+  accept the archived-source and Critical/High Scout residuals only when the artifact records
+  hardened local and self-host MinIO Compose services, current source-only MinIO posture, no
+  same-contract remediation candidate, and completed Docker/Scout/source probes. External HTTPS
+  object storage remains the separate non-bundled object-storage handoff path.
 - Treat Redis as execution state, not a legal record. PostgreSQL remains the durable source of truth
   for job lifecycle and legal/audit records.
 - Run `pnpm docker:residual-watch`, `pnpm docker:app-smoke`, and `pnpm e2e:docker` for image,

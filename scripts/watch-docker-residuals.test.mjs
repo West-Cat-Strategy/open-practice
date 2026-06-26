@@ -6,6 +6,7 @@ import { describe, it } from "node:test";
 
 import {
   assessWatchResults,
+  assessMinioComposeHardening,
   buildArtifactDir,
   collectDockerResidualPosture,
   dockerResidualCommands,
@@ -25,10 +26,20 @@ services:
     image: open-practice-postgres:18-alpine-su-exec
     build:
       context: ./docker/postgres
+  minio-bucket-init:
+    image: open-practice-minio:RELEASE.2025-10-15T17-29-55Z-go1.26.4
+    build:
+      context: ./docker/minio
+    read_only: true
+    tmpfs:
+      - /tmp
   minio:
     image: open-practice-minio:RELEASE.2025-10-15T17-29-55Z-go1.26.4
     build:
       context: ./docker/minio
+    read_only: true
+    tmpfs:
+      - /tmp
   mailpit:
     image: open-practice-mailpit:v1.30.2-go1.26.4
     build:
@@ -63,6 +74,7 @@ function writeMinimalRepo(cwd) {
   mkdirSync(path.join(cwd, "docker", "minio"), { recursive: true });
   mkdirSync(path.join(cwd, "docker", "mailpit"), { recursive: true });
   writeFileSync(path.join(cwd, "docker-compose.yml"), composeFixture);
+  writeFileSync(path.join(cwd, "docker-compose.selfhost.yml"), composeFixture);
   writeFileSync(path.join(cwd, "docker", "postgres", "Dockerfile"), postgresDockerfileFixture);
   writeFileSync(path.join(cwd, "docker", "minio", "Dockerfile"), minioDockerfileFixture);
   writeFileSync(path.join(cwd, "docker", "mailpit", "Dockerfile"), mailpitDockerfileFixture);
@@ -154,6 +166,39 @@ describe("watch-docker-residuals contract", () => {
       "RELEASE.2025-10-15T17-29-55Z",
     );
     assert.equal(parseDockerfilePosture("mailpit", mailpitDockerfileFixture).version, "v1.30.2");
+  });
+
+  it("records bundled MinIO Compose hardening across local and self-host profiles", () => {
+    assert.deepEqual(
+      assessMinioComposeHardening({
+        composeTexts: {
+          "docker-compose.yml": composeFixture,
+          "docker-compose.selfhost.yml": composeFixture,
+        },
+      }),
+      {
+        eligible: true,
+        missing: [],
+        files: [
+          {
+            path: "docker-compose.yml",
+            services: {
+              minio: { readOnlyRootFilesystem: true, tmpfsTmp: true },
+              "minio-bucket-init": { readOnlyRootFilesystem: true, tmpfsTmp: true },
+            },
+            passed: true,
+          },
+          {
+            path: "docker-compose.selfhost.yml",
+            services: {
+              minio: { readOnlyRootFilesystem: true, tmpfsTmp: true },
+              "minio-bucket-init": { readOnlyRootFilesystem: true, tmpfsTmp: true },
+            },
+            passed: true,
+          },
+        ],
+      },
+    );
   });
 
   it("derives the residual watch command lane from the current posture", () => {
@@ -323,6 +368,121 @@ describe("watch-docker-residuals contract", () => {
     ]);
   });
 
+  it("accepts bundled MinIO residuals when hardening and source-only proof are present", () => {
+    const minioHardening = assessMinioComposeHardening({
+      composeTexts: {
+        "docker-compose.yml": composeFixture,
+        "docker-compose.selfhost.yml": composeFixture,
+      },
+    });
+    const assessment = assessWatchResults({
+      posture: {
+        minio: {
+          version: "RELEASE.2025-10-15T17-29-55Z",
+        },
+      },
+      minioHardening,
+      commandResults: [
+        {
+          id: "minio-source-tags",
+          status: 0,
+          stdout: "9e49 refs/tags/RELEASE.2025-10-15T17-29-55Z\n",
+          stderr: "",
+          sourceProbe: { kind: "minio" },
+          allowFailurePatterns: [],
+        },
+        {
+          id: "minio-source-repository-metadata",
+          status: 0,
+          stdout: '{"archived":true}\n',
+          stderr: "",
+          archiveProbe: {
+            kind: "github-repository",
+            repository: "minio/minio",
+          },
+          allowFailurePatterns: [],
+        },
+        {
+          id: "minio-dockerhub-current-source-manifest",
+          status: 1,
+          stdout: "",
+          stderr: "not found\n",
+          registryProbe: {
+            image: "minio/minio:RELEASE.2025-10-15T17-29-55Z",
+            candidateWhenPresent: true,
+          },
+          allowFailurePatterns: [/not found/i],
+        },
+        {
+          id: "minio-scout-quickview",
+          status: 0,
+          stdout: "Target │ 2C    3H    4M    5L\n",
+          stderr: "",
+          allowFailurePatterns: [],
+        },
+        {
+          id: "minio-scout-critical-high-cves",
+          status: 0,
+          stdout: "vulnerabilities │   11C    16H     0M     0L\n",
+          stderr: "",
+          allowFailurePatterns: [],
+        },
+      ],
+    });
+
+    assert.equal(assessment.status, "passed");
+    assert.equal(assessment.exitCode, 0);
+    assert.equal(assessment.readinessBlockers.length, 0);
+    assert.equal(assessment.acceptedResiduals.length, 3);
+    assert.equal(assessment.minioHardening.acceptsBundledMinioResiduals, true);
+    assert.equal(assessment.minioHardening.sourceCurrent, true);
+    assert.equal(assessment.minioHardening.sourceOnly, true);
+    assert.deepEqual(assessment.minioHardening.sameContractCandidateIds, []);
+  });
+
+  it("keeps bundled MinIO blocked when a same-contract source candidate is present", () => {
+    const assessment = assessWatchResults({
+      posture: {
+        minio: {
+          version: "RELEASE.2025-10-15T17-29-55Z",
+        },
+      },
+      minioHardening: assessMinioComposeHardening({
+        composeTexts: {
+          "docker-compose.yml": composeFixture,
+          "docker-compose.selfhost.yml": composeFixture,
+        },
+      }),
+      commandResults: [
+        {
+          id: "minio-source-tags",
+          status: 0,
+          stdout:
+            "9e49 refs/tags/RELEASE.2025-10-15T17-29-55Z\nbbbb refs/tags/RELEASE.2025-11-01T00-00-00Z\n",
+          stderr: "",
+          sourceProbe: { kind: "minio" },
+          allowFailurePatterns: [],
+        },
+        {
+          id: "minio-source-repository-metadata",
+          status: 0,
+          stdout: '{"archived":true}\n',
+          stderr: "",
+          archiveProbe: {
+            kind: "github-repository",
+            repository: "minio/minio",
+          },
+          allowFailurePatterns: [],
+        },
+      ],
+    });
+
+    assert.equal(assessment.status, "readiness-blocked");
+    assert.equal(assessment.exitCode, 2);
+    assert.deepEqual(assessment.minioHardening.sameContractCandidateIds, ["minio-source-tags"]);
+    assert.equal(assessment.acceptedResiduals.length, 0);
+  });
+
   it("records blockers only for unexpected command failures", () => {
     const assessment = assessWatchResults({
       posture: {},
@@ -368,6 +528,8 @@ describe("watch-docker-residuals contract", () => {
     assert.equal(metadata.status, "passed");
     assert.equal(metadata.exitCode, 0);
     assert.equal(metadata.git.branch, "codex/docker-watch");
+    assert.equal(metadata.minioHardening.eligible, true);
+    assert.deepEqual(metadata.acceptedResiduals, []);
     assert.equal(metadata.readinessBlockers.length, 0);
     assert.equal(metadata.blockers.length, 0);
     assert.equal(metadata.candidates.length, 0);
@@ -376,6 +538,7 @@ describe("watch-docker-residuals contract", () => {
       readFileSync(path.join(metadata.artifactDir, "docker-residual-watch.json"), "utf8"),
     );
     assert.equal(written.status, "passed");
+    assert.equal(written.minioHardening.eligible, true);
     assert.match(
       readFileSync(path.join(metadata.artifactDir, "README.md"), "utf8"),
       /Docker Residual Watch/,

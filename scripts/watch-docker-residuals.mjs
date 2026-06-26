@@ -13,6 +13,7 @@ const DEFAULT_ARTIFACT_ROOT = path.join(
 );
 
 const SERVICE_ORDER = ["postgres", "minio", "mailpit"];
+const MINIO_HARDENED_SERVICES = ["minio", "minio-bucket-init"];
 const DOCUMENTED_MINIO_LATEST_DIGEST =
   "sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e";
 
@@ -137,6 +138,64 @@ export function parseComposeServiceImages(composeText, serviceNames = SERVICE_OR
       return [serviceName, image];
     }),
   );
+}
+
+function serviceHasTmpfsMount(block, mountPath) {
+  const match = block.match(/^    tmpfs:\n(?<values>(?:      - .*(?:\n|$))*)/m);
+  if (!match?.groups?.values) return false;
+  return match.groups.values
+    .split("\n")
+    .map((line) =>
+      line
+        .trim()
+        .replace(/^-\s*/, "")
+        .replace(/^["']|["']$/g, ""),
+    )
+    .some((value) => value.split(":")[0] === mountPath);
+}
+
+function parseServiceHardening(composeText, serviceName) {
+  const block = extractServiceBlock(composeText, serviceName);
+  return {
+    readOnlyRootFilesystem: /^\s+read_only:\s*true\s*$/m.test(block),
+    tmpfsTmp: serviceHasTmpfsMount(block, "/tmp"),
+  };
+}
+
+export function assessMinioComposeHardening({ composeTexts } = {}) {
+  const fileAssessments = Object.entries(composeTexts ?? {}).map(([filePath, composeText]) => {
+    const services = Object.fromEntries(
+      MINIO_HARDENED_SERVICES.map((serviceName) => [
+        serviceName,
+        parseServiceHardening(composeText, serviceName),
+      ]),
+    );
+    return {
+      path: filePath,
+      services,
+      passed: Object.values(services).every(
+        (service) => service.readOnlyRootFilesystem && service.tmpfsTmp,
+      ),
+    };
+  });
+
+  const missing = [];
+  for (const file of fileAssessments) {
+    for (const [serviceName, checks] of Object.entries(file.services)) {
+      if (!checks.readOnlyRootFilesystem) {
+        missing.push(`${file.path}:${serviceName}:read_only`);
+      }
+      if (!checks.tmpfsTmp) {
+        missing.push(`${file.path}:${serviceName}:tmpfs:/tmp`);
+      }
+    }
+  }
+
+  return {
+    eligible: missing.length === 0,
+    missing,
+    files: fileAssessments,
+  };
 }
 
 function firstMatch(text, regex, label) {
@@ -437,10 +496,77 @@ function archivedRepositoryPosture(output) {
   }
 }
 
-export function assessWatchResults({ posture, commandResults }) {
+function minioCandidateIds(candidates) {
+  return candidates
+    .filter((candidate) => candidate.id?.startsWith("minio-") || candidate.serviceName === "minio")
+    .map((candidate) => candidate.id);
+}
+
+function minioSourceStatus({ posture, commandResults }) {
+  const result = commandResults.find((commandResult) => commandResult.id === "minio-source-tags");
+  if (!result || result.status !== 0) {
+    return {
+      checked: false,
+      current: false,
+      currentVersion: posture.minio?.version ?? null,
+      latestVersion: null,
+    };
+  }
+
+  const tags = sourceTagsFromLsRemote(result.stdout);
+  const latestVersion = latestSourceTag(tags, result.sourceProbe?.kind ?? "minio") ?? null;
+  const currentVersion = posture.minio?.version ?? null;
+  return {
+    checked: true,
+    current: latestVersion === currentVersion,
+    currentVersion,
+    latestVersion,
+  };
+}
+
+function minioSourceOnlyStatus(commandResults) {
+  const currentSourceManifestIds = commandResults
+    .filter(
+      (result) => result.id.startsWith("minio-") && result.id.endsWith("current-source-manifest"),
+    )
+    .filter((result) => result.status === 0)
+    .map((result) => result.id);
+  return {
+    sourceOnly: currentSourceManifestIds.length === 0,
+    currentSourceManifestIds,
+  };
+}
+
+function minioScoutCriticalHigh(scout) {
+  const quickview = scout.minio?.quickview ?? null;
+  return {
+    quickview,
+    critical: quickview?.critical ?? null,
+    high: quickview?.high ?? null,
+  };
+}
+
+function acceptedMinioResidualBasis(minioHardening) {
+  return [
+    "local and self-host Compose MinIO services use read-only root filesystems and /tmp tmpfs",
+    "MinIO source tag is current",
+    "official current-source container manifests are unavailable",
+    "no same-contract MinIO remediation candidate was reported",
+    "Docker, Scout, registry, and source probes completed",
+  ];
+}
+
+function annotateAcceptedResidual(finding, minioHardening) {
+  return {
+    ...finding,
+    basis: acceptedMinioResidualBasis(minioHardening),
+  };
+}
+
+export function assessWatchResults({ posture, commandResults, minioHardening }) {
   const candidates = [];
   const blockers = [];
-  const readinessBlockers = [];
+  const readinessFindings = [];
   const scout = {};
 
   for (const result of commandResults) {
@@ -497,7 +623,7 @@ export function assessWatchResults({ posture, commandResults }) {
 
     if (result.archiveProbe && result.status === 0) {
       if (archivedRepositoryPosture(result.stdout)) {
-        readinessBlockers.push({
+        readinessFindings.push({
           id: result.id,
           serviceName: "minio",
           kind: "archived-upstream-source",
@@ -516,7 +642,7 @@ export function assessWatchResults({ posture, commandResults }) {
         quickview: counts,
       };
       if (quickviewMatch[1] === "minio" && counts && counts.critical + counts.high > 0) {
-        readinessBlockers.push({
+        readinessFindings.push({
           id: result.id,
           serviceName: "minio",
           kind: "critical-high-cves",
@@ -531,7 +657,7 @@ export function assessWatchResults({ posture, commandResults }) {
     if (criticalHighMatch && result.status === 0) {
       const counts = criticalHighCveCounts(result.stdout);
       if (criticalHighMatch[1] === "minio" && counts && counts.critical + counts.high > 0) {
-        readinessBlockers.push({
+        readinessFindings.push({
           id: result.id,
           serviceName: "minio",
           kind: "critical-high-cves",
@@ -555,6 +681,40 @@ export function assessWatchResults({ posture, commandResults }) {
     }
   }
 
+  const sourceStatus = minioSourceStatus({ posture, commandResults });
+  const sourceOnlyStatus = minioSourceOnlyStatus(commandResults);
+  const sameContractCandidateIds = minioCandidateIds(candidates);
+  const minioHardeningAssessment = {
+    ...(minioHardening ?? {
+      eligible: false,
+      missing: ["minio-hardening:not-evaluated"],
+      files: [],
+    }),
+    sourceChecked: sourceStatus.checked,
+    sourceCurrent: sourceStatus.current,
+    currentVersion: sourceStatus.currentVersion,
+    latestVersion: sourceStatus.latestVersion,
+    sourceOnly: sourceOnlyStatus.sourceOnly,
+    currentSourceManifestIds: sourceOnlyStatus.currentSourceManifestIds,
+    sameContractCandidateIds,
+    scoutCriticalHigh: minioScoutCriticalHigh(scout),
+  };
+  minioHardeningAssessment.acceptsBundledMinioResiduals =
+    minioHardeningAssessment.eligible &&
+    minioHardeningAssessment.sourceChecked &&
+    minioHardeningAssessment.sourceCurrent &&
+    minioHardeningAssessment.sourceOnly &&
+    sameContractCandidateIds.length === 0 &&
+    blockers.length === 0;
+
+  const acceptedResiduals = minioHardeningAssessment.acceptsBundledMinioResiduals
+    ? readinessFindings.map((finding) =>
+        annotateAcceptedResidual(finding, minioHardeningAssessment),
+      )
+    : [];
+  const readinessBlockers =
+    acceptedResiduals.length === readinessFindings.length ? [] : readinessFindings;
+
   const status =
     blockers.length > 0
       ? "blocked"
@@ -566,6 +726,8 @@ export function assessWatchResults({ posture, commandResults }) {
   return {
     status,
     exitCode: blockers.length > 0 ? 1 : status === "passed" ? 0 : 2,
+    minioHardening: minioHardeningAssessment,
+    acceptedResiduals,
     readinessBlockers,
     candidates,
     blockers,
@@ -625,6 +787,14 @@ function writeReadme(metadata) {
     lines.push("");
   }
 
+  if (metadata.acceptedResiduals.length > 0) {
+    lines.push("## Accepted Residuals", "");
+    for (const residual of metadata.acceptedResiduals) {
+      lines.push(`- ${residual.id}: ${residual.kind}; ${residual.detail}`);
+    }
+    lines.push("");
+  }
+
   if (metadata.blockers.length > 0) {
     lines.push("## Blockers", "");
     for (const blocker of metadata.blockers) {
@@ -650,12 +820,20 @@ export function runDockerResidualWatch({
   const commandsDir = path.join(artifactDir, "commands");
   mkdirSync(commandsDir, { recursive: true });
 
-  const posture = collectDockerResidualPosture({ cwd });
+  const composeTexts = {
+    "docker-compose.yml": readText(cwd, "docker-compose.yml"),
+    "docker-compose.selfhost.yml": readText(cwd, "docker-compose.selfhost.yml"),
+  };
+  const minioHardening = assessMinioComposeHardening({ composeTexts });
+  const posture = collectDockerResidualPosture({
+    cwd,
+    composeText: composeTexts["docker-compose.yml"],
+  });
   const commandSpecs = dockerResidualCommands(posture);
   const commandResults = commandSpecs.map((commandSpec) =>
     runCommand(commandSpec, { cwd, outputDir: commandsDir, spawn }),
   );
-  const assessment = assessWatchResults({ posture, commandResults });
+  const assessment = assessWatchResults({ posture, commandResults, minioHardening });
   const metadata = {
     generatedAt: now.toISOString(),
     artifactDir,
@@ -663,6 +841,8 @@ export function runDockerResidualWatch({
     exitCode: assessment.exitCode,
     git: gitMetadata(cwd, spawn),
     posture,
+    minioHardening: assessment.minioHardening,
+    acceptedResiduals: assessment.acceptedResiduals,
     readinessBlockers: assessment.readinessBlockers,
     candidates: assessment.candidates,
     blockers: assessment.blockers,
@@ -691,6 +871,9 @@ if (isMainModule()) {
     }
     if (metadata.readinessBlockers.length > 0) {
       console.error(`Readiness blockers: ${metadata.readinessBlockers.length}`);
+    }
+    if (metadata.acceptedResiduals.length > 0) {
+      console.log(`Accepted residuals: ${metadata.acceptedResiduals.length}`);
     }
     if (metadata.blockers.length > 0) {
       console.error(`Blocked checks: ${metadata.blockers.map((blocker) => blocker.id).join(", ")}`);
