@@ -1,4 +1,6 @@
+import { GetObjectCommand } from "@aws-sdk/client-s3";
 import type { FastifyInstance, FastifyRequest } from "fastify";
+import { Readable } from "node:stream";
 import { z } from "zod";
 import type {
   DocumentRecord,
@@ -137,7 +139,7 @@ function sanitizePortalDocumentAccess(access: PortalDocumentAccess) {
 
 export function registerClientPortalDocumentRoutes(
   server: FastifyInstance,
-  { repository }: Pick<ApiRouteDependencies, "repository">,
+  { repository, s3 }: Pick<ApiRouteDependencies, "repository" | "s3">,
 ): void {
   server.get("/api/client-portal/document-access", async (request) => {
     const access = requireAccess(request.auth, { resource: "client_portal", action: "read" });
@@ -365,4 +367,76 @@ export function registerClientPortalDocumentRoutes(
     });
     return { document: visible.summary };
   });
+
+  server.get("/api/client-portal/documents/:id/download", async (request, reply) => {
+    if (request.auth.user.role !== "client_external") {
+      throw new ApiHttpError(
+        403,
+        "CLIENT_PORTAL_ACCOUNT_REQUIRED",
+        "Client portal account required",
+      );
+    }
+    const params = parseRequestPart(idParamsSchema, request.params, "params");
+    const now = new Date().toISOString();
+    const visible = await getClientVisiblePortalDocument({
+      repository,
+      user: request.auth.user,
+      documentId: params.id,
+      now,
+    });
+    if (!visible) {
+      throw new ApiHttpError(404, "PORTAL_DOCUMENT_NOT_FOUND", "Document was not found");
+    }
+    if (!s3) {
+      throw new ApiHttpError(
+        503,
+        "PORTAL_DOCUMENT_DOWNLOAD_STORAGE_NOT_CONFIGURED",
+        "Document download storage is not configured",
+      );
+    }
+
+    const object = await s3.client.send(
+      new GetObjectCommand({ Bucket: s3.bucket, Key: visible.document.storageKey }),
+    );
+    await repository.createAccessLog({
+      id: crypto.randomUUID(),
+      firmId: request.auth.firmId,
+      actorId: request.auth.user.id,
+      resourceType: "document",
+      resourceId: visible.document.id,
+      action: "download",
+      occurredAt: now,
+      ipAddress: request.ip,
+      userAgent: userAgentFromRequest(request),
+      metadata: {
+        outcome: "granted",
+        matterId: visible.document.matterId,
+        portalDocumentAccessId: visible.access.id,
+        byteLength: visible.document.sizeBytes,
+      },
+    });
+
+    reply.header("Cache-Control", "no-store");
+    reply.type(object.ContentType ?? "application/octet-stream");
+    reply.header(
+      "Content-Disposition",
+      `attachment; filename="${sanitizeDownloadFilename(visible.document.title)}"`,
+    );
+    if (typeof object.ContentLength === "number") {
+      reply.header("Content-Length", String(object.ContentLength));
+    }
+    return objectBodyForReply(object.Body);
+  });
+}
+
+function sanitizeDownloadFilename(filename: string): string {
+  return filename.replace(/[^a-zA-Z0-9._ -]/g, "_").replace(/"/g, "_");
+}
+
+function objectBodyForReply(body: unknown): unknown {
+  if (!body) return Buffer.alloc(0);
+  if (body instanceof Uint8Array || Buffer.isBuffer(body)) return body;
+  if (body instanceof Readable) return body;
+  if (typeof body === "string") return body;
+  return body;
 }

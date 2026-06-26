@@ -6,6 +6,7 @@ import {
   canSubmitPublicIntakeForm,
   intakeFormAttentionItems,
   intakeLifecycleMessage,
+  requiredIncompleteItemLabels,
   visibleSections,
 } from "./runner-utils";
 import { intakeFormWidgetKinds, intakeFormWidgetRegistry } from "./widget-registry";
@@ -57,24 +58,22 @@ describe("shared intake renderer inputs", () => {
   });
 
   it("keeps public runner and staff preview on the same schema-v2 item set", () => {
-    const publicRunnerSections = visibleSections(
-      {
-        link: {
-          status: "active",
-          expiresAt: "2099-01-01T00:00:00.000Z",
-        },
-        draft: null,
-        review: null,
-        template: {
-          id: "template-001",
-          name: "Synthetic intake",
-          definitionVersion: 2,
-          definition,
-        },
-        actions: [],
+    const payload: PublicIntakeFormPayload = {
+      link: {
+        status: "active",
+        expiresAt: "2099-01-01T00:00:00.000Z",
       },
-      { client_name: "Ada M.", urgent: true },
-    );
+      draft: null,
+      review: null,
+      template: {
+        id: "template-001",
+        name: "Synthetic intake",
+        definitionVersion: 2,
+        definition,
+      },
+      actions: [],
+    };
+    const publicRunnerSections = visibleSections(payload, { client_name: "Ada M.", urgent: true });
     const staffPreviewSections = visibleSections(
       {
         link: {
@@ -98,6 +97,19 @@ describe("shared intake renderer inputs", () => {
     expect(publicRunnerSections.flatMap((section) => section.items.map((item) => item.id))).toEqual(
       ["intro", "client-name-item", "urgent-item", "supporting-upload", "client-attestation"],
     );
+    expect(
+      requiredIncompleteItemLabels(payload, [
+        "client-name-item",
+        "supporting-upload",
+        "client-attestation",
+        "unknown-required-item",
+      ]),
+    ).toEqual([
+      "Client name",
+      "Supporting upload",
+      "Client attestation",
+      "unknown-required-item",
+    ]);
   });
 
   it("keeps public runner branch visibility unchanged for staff-authored rules", () => {

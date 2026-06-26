@@ -29,6 +29,10 @@ export interface EmbeddedIntakePackageDocument {
   id: string;
   title: string;
   description?: string;
+  sourceKind?: "draft_template" | "automation";
+  sourceId?: string;
+  requiresSignature?: boolean;
+  clientFile?: boolean;
 }
 
 export interface EmbeddedIntakePackage {
@@ -105,7 +109,15 @@ export type EmbeddedIntakeTemplateDefinition =
 
 export type IntakeVariableTargetScope = "client" | "matter";
 
-export type IntakeClientVariableField = "displayName" | "notes";
+export type IntakeClientVariableField =
+  | "displayName"
+  | "email"
+  | "phone"
+  | "address"
+  | "preferredLanguage"
+  | "timezone"
+  | "communicationNotes"
+  | "notes";
 
 export type IntakeMatterVariableField = "title" | "practiceArea" | "jurisdiction";
 
@@ -568,6 +580,11 @@ export function validateEmbeddedIntakeTemplateDefinition(
       `document for package ${intakePackage.id}`,
       intakePackage.documents.map((document) => document.id),
     );
+    for (const document of intakePackage.documents) {
+      if (document.sourceKind && !document.sourceId) {
+        throw new Error(`Package document ${document.id} with a source kind requires sourceId`);
+      }
+    }
   }
 
   if (definition.schemaVersion === 2) {
@@ -1067,7 +1084,16 @@ function sampleAnswerForBranchRule(rule: EmbeddedIntakeBranchRule): unknown {
 }
 
 function assertVariableMapping(mapping: IntakeVariableMapping): void {
-  const clientFields = new Set<IntakeClientVariableField>(["displayName", "notes"]);
+  const clientFields = new Set<IntakeClientVariableField>([
+    "displayName",
+    "email",
+    "phone",
+    "address",
+    "preferredLanguage",
+    "timezone",
+    "communicationNotes",
+    "notes",
+  ]);
   const matterFields = new Set<IntakeMatterVariableField>([
     "title",
     "practiceArea",

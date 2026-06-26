@@ -635,6 +635,7 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
   registerClientPortalRoutes(server, {
     repository: options.repository,
     jwtSecret: options.jwtSecret,
+    s3: options.s3,
   });
   registerDocumentRoutes(server, { repository: options.repository, s3: options.s3 });
   registerDocumentAssemblyRoutes(server, { repository: options.repository });
@@ -747,6 +748,7 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
   registerIntakeFormRoutes(server, {
     repository: options.repository,
     s3: options.s3,
+    draftExportRenderer: options.draftExportRenderer ?? renderDraftExport,
     jwtSecret: options.jwtSecret,
     signatureProvider: options.signatureProvider ?? new EmbeddedSignatureProvider(),
     emailJobQueue: options.emailJobQueue,

@@ -1,4 +1,6 @@
+import { S3Client } from "@aws-sdk/client-s3";
 import Fastify, { type FastifyInstance } from "fastify";
+import { Buffer } from "node:buffer";
 import { afterEach, describe, expect, it } from "vitest";
 import { InMemoryOpenPracticeRepository } from "@open-practice/database";
 import type {
@@ -43,6 +45,7 @@ function testServer(input: {
   repository: InMemoryOpenPracticeRepository;
   authUser?: User;
   jwtSecret?: string;
+  s3?: Parameters<typeof registerClientPortalRoutes>[1]["s3"];
 }): FastifyInstance {
   const server = Fastify({ logger: false });
   const authUser = input.authUser ?? user("owner_admin", ["matter-001", "matter-002"]);
@@ -52,9 +55,38 @@ function testServer(input: {
   registerClientPortalRoutes(server, {
     repository: input.repository,
     jwtSecret: input.jwtSecret ?? jwtSecret,
+    s3: input.s3,
   });
   servers.push(server);
   return server;
+}
+
+function downloadS3Config(
+  body = "Synthetic client portal document",
+): NonNullable<Parameters<typeof registerClientPortalRoutes>[1]["s3"]> {
+  const payload = Buffer.from(body, "utf8");
+  const client = new S3Client({
+    endpoint: "http://127.0.0.1:9000",
+    forcePathStyle: true,
+    region: "local",
+    credentials: {
+      accessKeyId: "test-access-key",
+      secretAccessKey: "test-secret-key",
+    },
+  });
+  (
+    client as unknown as {
+      send: () => Promise<{ Body: Buffer; ContentType: string; ContentLength: number }>;
+    }
+  ).send = async () => ({
+    Body: payload,
+    ContentType: "application/pdf",
+    ContentLength: payload.byteLength,
+  });
+  return {
+    bucket: "open-practice-test-documents",
+    client,
+  };
 }
 
 class ClientPortalWorkspaceBatchRepository extends InMemoryOpenPracticeRepository {
@@ -1003,6 +1035,68 @@ describe("client portal routes", () => {
     expect(unsafeDocumentResponse.json()).toMatchObject({
       code: "PORTAL_DOCUMENT_NOT_SHAREABLE",
     });
+  });
+
+  it("lets logged-in clients download explicitly granted scan-passed documents through the API", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const staffServer = testServer({ repository });
+    await createClientShareableDocument(repository, {
+      id: "doc-download-visible-001",
+      title: "Client download disclosure.pdf",
+    });
+    const setup = await staffServer.inject({
+      method: "POST",
+      url: "/api/client-portal/accounts",
+      payload: { matterId: "matter-001", contactId: "contact-ada" },
+    });
+    const setupBody = setup.json<{ account: { email: string } }>();
+    const grantResponse = await staffServer.inject({
+      method: "POST",
+      url: "/api/client-portal/document-access",
+      payload: {
+        matterId: "matter-001",
+        contactId: "contact-ada",
+        documentId: "doc-download-visible-001",
+      },
+    });
+    expect(grantResponse.statusCode).toBe(201);
+    const clientAccount = await repository.getUserByEmail(
+      "firm-west-legal",
+      setupBody.account.email,
+    );
+    expect(clientAccount).toBeTruthy();
+    const clientServer = testServer({
+      repository,
+      authUser: clientAccount!,
+      s3: downloadS3Config("Synthetic downloaded disclosure"),
+    });
+
+    const response = await clientServer.inject({
+      method: "GET",
+      url: "/api/client-portal/documents/doc-download-visible-001/download",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toBe("Synthetic downloaded disclosure");
+    expect(response.headers["content-type"]).toContain("application/pdf");
+    expect(response.headers["content-disposition"]).toContain("Client download disclosure.pdf");
+    await expect(
+      repository.listAccessLogs("firm-west-legal", {
+        resourceType: "document",
+        resourceId: "doc-download-visible-001",
+      }),
+    ).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          action: "download",
+          actorId: clientAccount!.id,
+          metadata: expect.objectContaining({
+            outcome: "granted",
+            matterId: "matter-001",
+          }),
+        }),
+      ]),
+    );
   });
 
   it("returns a redacted logged-in workspace over existing client action records", async () => {

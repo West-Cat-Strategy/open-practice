@@ -191,14 +191,27 @@ function serializePublicTemplateDefinition(
     void variableMapping;
     return question;
   });
+  const publicPackages = definition.packages.map((intakePackage) => ({
+    ...intakePackage,
+    documents: intakePackage.documents.map(
+      ({ sourceKind, sourceId, requiresSignature, clientFile, ...document }) => {
+        void sourceKind;
+        void sourceId;
+        void requiresSignature;
+        void clientFile;
+        return document;
+      },
+    ),
+  }));
   if (definition.schemaVersion !== 2) {
-    return { ...definition, questions: publicQuestions };
+    return { ...definition, questions: publicQuestions, packages: publicPackages };
   }
   const { qaScenarios, ...publicDefinition } = definition;
   void qaScenarios;
   return {
     ...publicDefinition,
     questions: publicQuestions,
+    packages: publicPackages,
     sections: definition.sections.map((section) => ({
       ...section,
       items: section.items.map((item) => {

@@ -342,6 +342,67 @@ function applyMemoryVariableProposal(
     if (!contact) throw new Error(`Unknown intake proposal contact ${proposal.targetRecordId}`);
     if (proposal.targetField === "displayName") contact.displayName = proposal.proposedValue;
     if (proposal.targetField === "notes") contact.notes = proposal.proposedValue;
+    if (proposal.targetField === "preferredLanguage") {
+      contact.preferredLanguage = proposal.proposedValue;
+    }
+    if (proposal.targetField === "timezone") contact.timezone = proposal.proposedValue;
+    if (proposal.targetField === "communicationNotes") {
+      contact.communicationNotes = proposal.proposedValue;
+    }
+    if (proposal.targetField === "email" || proposal.targetField === "phone") {
+      const type = proposal.targetField;
+      const hasIdentifier = contact.identifiers.some(
+        (identifier) => identifier.type === type && identifier.value === proposal.proposedValue,
+      );
+      if (!hasIdentifier) {
+        contact.identifiers = [
+          ...contact.identifiers,
+          {
+            type,
+            value: proposal.proposedValue,
+            label: "intake",
+            conflictCheckIncluded: true,
+            verified: false,
+          },
+        ];
+      }
+      const existingMethods = contact.contactMethods ?? [];
+      const hasMethod = existingMethods.some(
+        (method) => method.type === type && method.value === proposal.proposedValue,
+      );
+      if (!hasMethod) {
+        contact.contactMethods = [
+          ...existingMethods,
+          {
+            id: `intake-${type}-${proposal.id}`,
+            type,
+            label: type === "email" ? "work" : "mobile",
+            value: proposal.proposedValue,
+            verificationStatus: "review_needed",
+            conflictCheckIncluded: true,
+          },
+        ];
+      }
+    }
+    if (proposal.targetField === "address") {
+      const existingMethods = contact.contactMethods ?? [];
+      const hasMethod = existingMethods.some(
+        (method) => method.type === "address" && method.value === proposal.proposedValue,
+      );
+      if (!hasMethod) {
+        contact.contactMethods = [
+          ...existingMethods,
+          {
+            id: `intake-address-${proposal.id}`,
+            type: "address",
+            label: "service",
+            value: proposal.proposedValue,
+            verificationStatus: "review_needed",
+            conflictCheckIncluded: true,
+          },
+        ];
+      }
+    }
     return;
   }
   const matter = store.matters.find(

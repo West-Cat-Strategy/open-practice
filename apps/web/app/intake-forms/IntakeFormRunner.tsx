@@ -20,6 +20,7 @@ import {
   intakeFormAttentionItems,
   intakeLifecycleMessage,
   requiredIncompleteItemIds,
+  requiredIncompleteItemLabels,
   visibleSections,
   type Answers,
   type PublicIntakeFormItemAction,
@@ -308,9 +309,10 @@ export default function IntakeFormRunner({ apiBaseUrl, token }: IntakeFormRunner
       if (!response.ok) {
         const body = await readPublicTokenError(response);
         const missing = requiredIncompleteItemIds(body);
+        const missingLabels = requiredIncompleteItemLabels(payload, missing ?? []);
         setStatus(
-          missing?.length
-            ? `Submit blocked: complete ${missing.join(", ")}.`
+          missingLabels.length
+            ? `Submit blocked: complete ${missingLabels.join(", ")}.`
             : publicTokenErrorMessage(body, `Submit failed: ${response.status}`),
         );
         return;

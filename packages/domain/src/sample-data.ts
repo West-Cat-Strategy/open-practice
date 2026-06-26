@@ -476,6 +476,10 @@ export const sampleResidentialTenancyIntakeDefinition: EmbeddedIntakeTemplateDef
         {
           id: "repair_notice_letter",
           title: "BC repair notice letter",
+          sourceKind: "draft_template",
+          sourceId: "draft-template-legal-letter",
+          requiresSignature: true,
+          clientFile: true,
         },
         {
           id: "client_instruction_summary",

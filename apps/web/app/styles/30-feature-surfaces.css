@@ -426,6 +426,13 @@
   text-align: right;
 }
 
+.client-portal-file-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
 .client-portal-signature-actions {
   display: flex;
   flex-wrap: wrap;

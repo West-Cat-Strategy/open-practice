@@ -20,6 +20,7 @@ import type {
   IntakeVariableProposal,
 } from "@open-practice/domain";
 import type {
+  DeliveryConfirmationPayload,
   IntakeFormLinkSummary,
   IntakeFormReviewResponse,
   IntakeFormsDashboardResponse,
@@ -30,11 +31,22 @@ import type {
 export interface IntakeFormLinkCreateFormState {
   intakeSessionId: string;
   expiresAtLocal: string;
+  notificationEmail?: string;
+  deliveryConfirmation?: DeliveryConfirmationPayload;
 }
 
 export type IntakePreviewAnswers = Record<string, string | boolean>;
 
-export const clientVariableFields = ["displayName", "notes"] as const;
+export const clientVariableFields = [
+  "displayName",
+  "email",
+  "phone",
+  "address",
+  "preferredLanguage",
+  "timezone",
+  "communicationNotes",
+  "notes",
+] as const;
 export const matterVariableFields = ["title", "practiceArea", "jurisdiction"] as const;
 export const questionTypes = ["text", "textarea", "select", "boolean", "date"] as const;
 export const branchRuleOperators = [
@@ -199,7 +211,16 @@ export function buildIntakeFormReviewDecisionPath(
   return `/api/intake-form-links/${encodeURIComponent(linkId)}/review/${decision}`;
 }
 
-export type SubmittedIntakeReviewAction = "load" | "accept" | "reject" | "request_more_info";
+export function buildIntakeEngagementLetterPath(linkId: string): string {
+  return `/api/intake-form-links/${encodeURIComponent(linkId)}/engagement-letter`;
+}
+
+export type SubmittedIntakeReviewAction =
+  | "load"
+  | "accept"
+  | "reject"
+  | "request_more_info"
+  | "engagement_letter";
 export type SubmittedIntakeReviewBusyAction = SubmittedIntakeReviewAction | "other";
 
 const submittedIntakeReviewActionDescriptors: Record<
@@ -230,6 +251,11 @@ const submittedIntakeReviewActionDescriptors: Record<
     label: "More info",
     busyLabel: "Creating follow-up...",
   },
+  engagement_letter: {
+    actionKey: "submitted_intake_review.engagement_letter",
+    label: "Generate letter",
+    busyLabel: "Generating...",
+  },
 };
 
 export function submittedIntakeReviewBusyAction(input: {
@@ -242,6 +268,7 @@ export function submittedIntakeReviewBusyAction(input: {
   const action = input.reviewingKey.slice(input.linkId.length + 1);
   if (action === "accept" || action === "reject") return action;
   if (action === "request-more-info") return "request_more_info";
+  if (action === "engagement-letter") return "engagement_letter";
   return "other";
 }
 
@@ -252,6 +279,8 @@ export function compactSubmittedIntakeReviewActionReason(value?: string): string
     decision_in_progress: "decision in progress",
     review_payload_required: "review payload required",
     decision_already_recorded: "decision already recorded",
+    accepted_review_required: "accepted review required",
+    portal_grant_required: "portal grant required",
     reason_required: "reason required",
   };
   return labels[value] ?? value.replaceAll("_", " ");
@@ -261,6 +290,8 @@ export function describeSubmittedIntakeReviewAction(input: {
   action: SubmittedIntakeReviewAction;
   reviewLoaded: boolean;
   reviewDecisionCount?: number;
+  acceptedReview?: boolean;
+  portalGrantId?: string;
   reason?: string;
   busyAction?: SubmittedIntakeReviewBusyAction;
 }): OperationalActionState {
@@ -268,7 +299,8 @@ export function describeSubmittedIntakeReviewAction(input: {
   const loadBusy = input.busyAction === "load";
   const decisionBusy = input.busyAction !== undefined && input.busyAction !== "load";
   const sameDecisionBusy = decisionBusy && input.busyAction === input.action;
-  const decisionAction = input.action !== "load";
+  const decisionAction = input.action !== "load" && input.action !== "engagement_letter";
+  const engagementAction = input.action === "engagement_letter";
   const decisionAlreadyRecorded = decisionAction && (input.reviewDecisionCount ?? 0) > 0;
   const reasonRequired =
     (input.action === "reject" || input.action === "request_more_info") &&
@@ -293,6 +325,13 @@ export function describeSubmittedIntakeReviewAction(input: {
       decisionBusy && disabledOperationalAction("decision_in_progress"),
       decisionAction && !input.reviewLoaded && disabledOperationalAction("review_payload_required"),
       decisionAlreadyRecorded && disabledOperationalAction("decision_already_recorded"),
+      engagementAction && !input.reviewLoaded && disabledOperationalAction("review_payload_required"),
+      engagementAction &&
+        !input.acceptedReview &&
+        disabledOperationalAction("accepted_review_required"),
+      engagementAction &&
+        !input.portalGrantId?.trim() &&
+        disabledOperationalAction("portal_grant_required"),
       reasonRequired && disabledOperationalAction("reason_required"),
     ],
   });
@@ -377,13 +416,18 @@ export function previewStatusClass(result: IntakeTemplatePreviewResponse | null)
 export function buildIntakeFormLinkCreatePayload(input: IntakeFormLinkCreateFormState): {
   intakeSessionId: string;
   expiresAt?: string;
+  notificationEmail?: string;
+  deliveryConfirmation?: DeliveryConfirmationPayload;
 } {
   const expiresAt = input.expiresAtLocal.trim()
     ? new Date(input.expiresAtLocal).toISOString()
     : undefined;
+  const notificationEmail = input.notificationEmail?.trim();
   return {
     intakeSessionId: input.intakeSessionId,
     ...(expiresAt ? { expiresAt } : {}),
+    ...(notificationEmail ? { notificationEmail } : {}),
+    ...(input.deliveryConfirmation ? { deliveryConfirmation: input.deliveryConfirmation } : {}),
   };
 }
 

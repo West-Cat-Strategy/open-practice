@@ -209,3 +209,25 @@ export function requiredIncompleteItemIds(body: ApiErrorBody | null): string[] |
     body?.details?.requiredIncompleteItemIds ?? body?.error?.details?.requiredIncompleteItemIds
   );
 }
+
+export function requiredIncompleteItemLabels(
+  payload: PublicIntakeFormPayload | null,
+  itemIds: readonly string[],
+): string[] {
+  if (!payload || payload.template.definition.schemaVersion !== 2) return [...itemIds];
+  const questionsById = new Map(
+    payload.template.definition.questions.map((question) => [question.id, question]),
+  );
+  const itemsById = new Map(
+    payload.template.definition.sections.flatMap((section) =>
+      section.items.map((item) => [item.id, item] as const),
+    ),
+  );
+
+  return itemIds.map((itemId) => {
+    const item = itemsById.get(itemId);
+    if (!item) return itemId;
+    if (item.kind === "question") return questionsById.get(item.questionId)?.label ?? item.id;
+    return item.label ?? item.id;
+  });
+}

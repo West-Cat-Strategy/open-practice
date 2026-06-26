@@ -18,6 +18,25 @@ export type PendingDeliveryConfirmation =
       summary: string;
       providerState: string;
       recipients: string[];
+    }
+  | {
+      kind: "intake-form-link";
+      key: string;
+      actionLabel: string;
+      matterLabel: string;
+      summary: string;
+      providerState: string;
+      recipients: string[];
+    }
+  | {
+      kind: "intake-engagement-letter";
+      key: string;
+      linkId: string;
+      actionLabel: string;
+      matterLabel: string;
+      summary: string;
+      providerState: string;
+      recipients: string[];
     };
 
 export function OneTimeSecretPanel({
