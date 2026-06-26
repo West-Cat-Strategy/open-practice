@@ -2416,6 +2416,238 @@ describe("worker processors", () => {
     expect(JSON.stringify(job)).not.toContain("generatedSummary");
   });
 
+  it.each([
+    { decision: "reviewed", reviewedAt: "2026-06-16T13:00:00.000Z" },
+    { decision: "rejected", reviewedAt: "2026-06-16T13:05:00.000Z" },
+  ] as const)(
+    "preserves bounded document conversion review metadata for $decision artifacts",
+    async ({ decision, reviewedAt }) => {
+      const repository = new InMemoryOpenPracticeRepository();
+      const privateOcrText = `Synthetic ${decision} conversion review text must stay private.`;
+      await repository.createDocumentTextExtraction({
+        id: `extraction-conversion-worker-${decision}`,
+        firmId: "firm-west-legal",
+        documentId: "doc-001",
+        engine: "tesseract",
+        status: "completed",
+        language: "eng",
+        confidence: 0.92,
+        extractedText: privateOcrText,
+        metadata: {
+          textLength: privateOcrText.length,
+          providerPayload: { private: true },
+          rawMarkdown: "## must not persist",
+          annotationSpans: [{ start: 0, end: 12, body: "Synthetic span must not persist" }],
+          prompt: "Synthetic prompt must not persist",
+          chunks: ["Synthetic chunk must not persist"],
+          embeddings: [[0.1, 0.2]],
+          storageKey: "matters/matter-001/private-conversion.md",
+          objectBody: "Synthetic object body must not persist",
+          privateExcerpt: "Synthetic private excerpt must not persist",
+          generatedSummary: "Synthetic generated summary must not persist",
+        },
+        createdAt: "2026-06-16T12:00:00.000Z",
+        completedAt: "2026-06-16T12:01:00.000Z",
+      });
+      await repository.createLegalResearchArtifact({
+        id: `artifact-conversion-review-worker-${decision}`,
+        firmId: "firm-west-legal",
+        matterId: "matter-001",
+        kind: "document_analysis_status",
+        status: decision,
+        title: "Document conversion review posture",
+        sourceReferences: [],
+        contextLinks: [
+          { resourceType: "document", resourceId: "doc-001", label: "Source document" },
+        ],
+        documentAnalysis: {
+          documentId: "doc-001",
+          status: "ready_for_review",
+          extractionStatus: "completed",
+          artifactStatus: "metadata_only",
+          sourceTextLength: 1,
+        },
+        reviewDecision: decision,
+        reviewedByUserId: "user-admin",
+        reviewedAt,
+        createdByUserId: "user-admin",
+        createdAt: "2026-06-16T12:02:00.000Z",
+        updatedAt: reviewedAt,
+        reviewOnly: true,
+        metadata: {
+          reviewState: "Synthetic untrusted review state must not persist",
+          rawOcrText: privateOcrText,
+          rawMarkdown: "## must not persist",
+          providerEvidence: { private: "Synthetic provider evidence" },
+          providerPayload: { private: true },
+          annotationSpans: [{ start: 0, end: 12, body: "Synthetic span must not persist" }],
+          prompt: "Synthetic prompt must not persist",
+          chunks: ["Synthetic chunk must not persist"],
+          embeddings: [[0.1, 0.2]],
+          storageKey: "matters/matter-001/private-conversion.md",
+          objectBody: "Synthetic object body must not persist",
+          privateExcerpt: "Synthetic private excerpt must not persist",
+          generatedSummary: "Synthetic generated summary must not persist",
+        },
+      });
+      await repository.createJobLifecycleRecord({
+        id: `job-conversion-review-worker-${decision}`,
+        firmId: "firm-west-legal",
+        queueName: "ocr",
+        jobName: "document_conversion_review",
+        status: "queued",
+        targetResourceType: "document",
+        targetResourceId: "doc-001",
+        attemptsMade: 0,
+        maxAttempts: 2,
+        queuedAt: "2026-06-16T12:03:00.000Z",
+        metadata: {
+          matterId: "matter-001",
+          documentId: "doc-001",
+          extractionId: `extraction-conversion-worker-${decision}`,
+          requestedByUserId: "user-admin",
+          rawMarkdown: "## must not persist",
+          extractedText: privateOcrText,
+          providerEvidence: { private: "Synthetic provider evidence" },
+          providerPayload: { private: true },
+          annotationSpans: [{ start: 0, end: 12, body: "Synthetic span must not persist" }],
+          prompt: "Synthetic prompt must not persist",
+          chunks: ["Synthetic chunk must not persist"],
+          embeddings: [[0.1, 0.2]],
+          storageKey: "matters/matter-001/private-conversion.md",
+          objectBody: "Synthetic object body must not persist",
+          privateExcerpt: "Synthetic private excerpt must not persist",
+          generatedSummary: "Synthetic generated summary must not persist",
+        },
+      });
+
+      const result = await processOpenPracticeJob({
+        queueName: "ocr",
+        jobName: "document_conversion_review",
+        data: {
+          firmId: "firm-west-legal",
+          resourceType: "document",
+          resourceId: "doc-001",
+          metadata: {
+            matterId: "matter-001",
+            documentId: "doc-001",
+            extractionId: `extraction-conversion-worker-${decision}`,
+            jobId: `job-conversion-review-worker-${decision}`,
+            requestedByUserId: "user-admin",
+            rawMarkdown: "## must not persist",
+            extractedText: privateOcrText,
+            providerEvidence: { private: "Synthetic provider evidence" },
+            providerPayload: { private: true },
+            annotationSpans: [{ start: 0, end: 12, body: "Synthetic span must not persist" }],
+            prompt: "Synthetic prompt must not persist",
+            chunks: ["Synthetic chunk must not persist"],
+            embeddings: [[0.1, 0.2]],
+            storageKey: "matters/matter-001/private-conversion.md",
+            objectBody: "Synthetic object body must not persist",
+            privateExcerpt: "Synthetic private excerpt must not persist",
+            generatedSummary: "Synthetic generated summary must not persist",
+          },
+        },
+        jobLifecycleId: `job-conversion-review-worker-${decision}`,
+        attemptsMade: 0,
+        maxAttempts: 2,
+        repository,
+        s3: {
+          bucket: "open-practice-documents",
+          client: {} as S3Client,
+        },
+        ocrProvider: {} as never,
+        mailSender: {} as never,
+        inboundEmailParser: {} as never,
+      });
+
+      expect(result).toMatchObject({
+        status: "completed",
+        metadata: {
+          artifactId: `artifact-conversion-review-worker-${decision}`,
+          artifactKind: "document_analysis_status",
+          artifactStatus: "metadata_only",
+          reviewState: decision,
+          staffReviewRequired: true,
+          terminalReview: true,
+          downstreamMutation: false,
+          providerEvidenceStored: false,
+          rawOcrTextReturned: false,
+          metadataOnly: true,
+          reviewOnly: true,
+        },
+      });
+      const [artifact] = await repository.listLegalResearchArtifacts("firm-west-legal", {
+        matterId: "matter-001",
+        kind: "document_analysis_status",
+      });
+      expect(artifact).toMatchObject({
+        id: `artifact-conversion-review-worker-${decision}`,
+        status: decision,
+        reviewDecision: decision,
+        reviewedByUserId: "user-admin",
+        reviewedAt,
+        documentAnalysis: {
+          documentId: "doc-001",
+          status: "ready_for_review",
+          extractionStatus: "completed",
+          artifactStatus: "metadata_only",
+          sourceTextLength: privateOcrText.length,
+        },
+        metadata: expect.objectContaining({
+          artifactStatus: "metadata_only",
+          reviewState: decision,
+          staffReviewRequired: true,
+          terminalReview: true,
+          downstreamMutation: false,
+          providerEvidenceStored: false,
+          rawOcrTextReturned: false,
+          metadataOnly: true,
+          reviewOnly: true,
+        }),
+      });
+      const [job] = await repository.listJobLifecycleRecords("firm-west-legal", {
+        queueName: "ocr",
+      });
+      expect(job).toMatchObject({
+        id: `job-conversion-review-worker-${decision}`,
+        status: "completed",
+        metadata: expect.objectContaining({
+          reviewState: decision,
+          downstreamMutation: false,
+          providerEvidenceStored: false,
+        }),
+      });
+      expect(JSON.stringify(artifact)).not.toContain(privateOcrText);
+      expect(JSON.stringify(artifact)).not.toContain("Synthetic untrusted review state");
+      expect(JSON.stringify(artifact)).not.toContain('"providerEvidence":');
+      expect(JSON.stringify(artifact)).not.toContain("Synthetic provider evidence");
+      expect(JSON.stringify(artifact)).not.toContain('"providerPayload":');
+      expect(JSON.stringify(artifact)).not.toContain("## must not persist");
+      expect(JSON.stringify(artifact)).not.toContain("Synthetic span must not persist");
+      expect(JSON.stringify(artifact)).not.toContain("Synthetic prompt must not persist");
+      expect(JSON.stringify(artifact)).not.toContain("Synthetic chunk must not persist");
+      expect(JSON.stringify(artifact)).not.toContain("Synthetic object body must not persist");
+      expect(JSON.stringify(artifact)).not.toContain("Synthetic private excerpt must not persist");
+      expect(JSON.stringify(artifact)).not.toContain(
+        "Synthetic generated summary must not persist",
+      );
+      expect(JSON.stringify(job)).not.toContain(privateOcrText);
+      expect(JSON.stringify(job)).not.toContain('"providerEvidence":');
+      expect(JSON.stringify(job)).not.toContain("Synthetic provider evidence");
+      expect(JSON.stringify(job)).not.toContain('"providerPayload":');
+      expect(JSON.stringify(job)).not.toContain("rawMarkdown");
+      expect(JSON.stringify(job)).not.toContain("annotationSpans");
+      expect(JSON.stringify(job)).not.toContain("prompt");
+      expect(JSON.stringify(job)).not.toContain("chunks");
+      expect(JSON.stringify(job)).not.toContain("embeddings");
+      expect(JSON.stringify(job)).not.toContain("storageKey");
+      expect(JSON.stringify(job)).not.toContain("objectBody");
+      expect(JSON.stringify(job)).not.toContain("privateExcerpt");
+      expect(JSON.stringify(job)).not.toContain("generatedSummary");
+    },
+  );
+
   it("skips OCR jobs before reading storage when document scanning has not passed", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     await repository.createDocumentUploadIntent({

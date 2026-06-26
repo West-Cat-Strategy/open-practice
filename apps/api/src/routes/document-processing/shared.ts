@@ -152,7 +152,34 @@ export type DocumentConversionReviewPosture =
   | "not_requested"
   | "queued"
   | "ready_for_review"
+  | "reviewed"
+  | "rejected"
   | "failed";
+
+export type DocumentConversionReviewReadinessStatus =
+  | DocumentConversionReviewPosture
+  | "reviewed"
+  | "rejected";
+
+type DocumentConversionReviewArtifactStatus =
+  | Exclude<
+      NonNullable<LegalResearchArtifactRecord["documentAnalysis"]>["artifactStatus"],
+      undefined
+    >
+  | "not_created";
+
+export interface DocumentConversionReviewReadiness {
+  status: DocumentConversionReviewReadinessStatus;
+  artifactStatus: DocumentConversionReviewArtifactStatus;
+  reviewedAt?: string;
+  staffReviewRequired: true;
+  terminalReview: boolean;
+  reviewOnly: true;
+  metadataOnly: true;
+  downstreamMutation: false;
+  providerEvidenceStored: false;
+  rawOcrTextReturned: false;
+}
 
 export interface DocumentConversionReviewCounts {
   sourceTextLength: number;
@@ -171,6 +198,7 @@ export interface DocumentConversionReviewSummary {
   provider?: string;
   providerStatus?: string;
   counts?: DocumentConversionReviewCounts;
+  reviewReadiness: DocumentConversionReviewReadiness;
   policy: typeof documentConversionReviewPolicy;
 }
 
@@ -629,6 +657,41 @@ function metadataString(
   return typeof value === "string" && value.trim() ? value : undefined;
 }
 
+function conversionReviewReadinessStatusFromArtifact(
+  artifact: LegalResearchArtifactRecord | undefined,
+): DocumentConversionReviewReadinessStatus | undefined {
+  if (!artifact) return undefined;
+  if (artifact.status === "reviewed" || artifact.status === "rejected") {
+    return artifact.status;
+  }
+  return "ready_for_review";
+}
+
+function buildDocumentConversionReviewReadiness(input: {
+  status: DocumentConversionReviewReadinessStatus;
+  artifact?: LegalResearchArtifactRecord;
+}): DocumentConversionReviewReadiness {
+  const artifactStatus = input.artifact
+    ? (input.artifact.documentAnalysis?.artifactStatus ?? "metadata_only")
+    : "not_created";
+  const status = conversionReviewReadinessStatusFromArtifact(input.artifact) ?? input.status;
+  const terminalReview = status === "reviewed" || status === "rejected";
+  return {
+    status,
+    artifactStatus,
+    ...(terminalReview && input.artifact?.reviewedAt
+      ? { reviewedAt: input.artifact.reviewedAt }
+      : {}),
+    staffReviewRequired: true,
+    terminalReview,
+    reviewOnly: true,
+    metadataOnly: true,
+    downstreamMutation: false,
+    providerEvidenceStored: false,
+    rawOcrTextReturned: false,
+  };
+}
+
 export function conversionReviewArtifactForDocument(
   document: DocumentRecord,
   artifacts: LegalResearchArtifactRecord[],
@@ -651,9 +714,13 @@ export function buildDocumentConversionReviewSummary(input: {
   artifact?: LegalResearchArtifactRecord;
 }): DocumentConversionReviewSummary {
   const artifactCounts = conversionReviewCountsFromMetadata(input.artifact?.metadata);
-  if (input.artifact && input.artifact.status !== "rejected") {
+  if (input.artifact) {
+    const reviewReadiness = buildDocumentConversionReviewReadiness({
+      status: "ready_for_review",
+      artifact: input.artifact,
+    });
     return {
-      posture: "ready_for_review",
+      posture: reviewReadiness.status,
       summaryPosture: documentConversionReviewSummaryPosture,
       jobId:
         typeof input.artifact.metadata.jobId === "string"
@@ -663,6 +730,7 @@ export function buildDocumentConversionReviewSummary(input: {
       provider: metadataString(input.artifact.metadata, "provider"),
       providerStatus: metadataString(input.artifact.metadata, "providerStatus"),
       counts: artifactCounts,
+      reviewReadiness,
       policy: documentConversionReviewPolicy,
     };
   }
@@ -675,6 +743,7 @@ export function buildDocumentConversionReviewSummary(input: {
       provider: metadataString(input.latestJob.metadata, "provider"),
       providerStatus: metadataString(input.latestJob.metadata, "providerStatus"),
       counts: conversionReviewCountsFromJob(input.latestJob),
+      reviewReadiness: buildDocumentConversionReviewReadiness({ status: "queued" }),
       policy: documentConversionReviewPolicy,
     };
   }
@@ -686,6 +755,7 @@ export function buildDocumentConversionReviewSummary(input: {
       provider: metadataString(input.latestJob.metadata, "provider"),
       providerStatus: metadataString(input.latestJob.metadata, "providerStatus"),
       counts: conversionReviewCountsFromJob(input.latestJob),
+      reviewReadiness: buildDocumentConversionReviewReadiness({ status: "failed" }),
       policy: documentConversionReviewPolicy,
     };
   }
@@ -697,6 +767,7 @@ export function buildDocumentConversionReviewSummary(input: {
       provider: metadataString(input.latestJob.metadata, "provider"),
       providerStatus: metadataString(input.latestJob.metadata, "providerStatus"),
       counts: conversionReviewCountsFromJob(input.latestJob),
+      reviewReadiness: buildDocumentConversionReviewReadiness({ status: "ready_for_review" }),
       policy: documentConversionReviewPolicy,
     };
   }
@@ -711,6 +782,7 @@ export function buildDocumentConversionReviewSummary(input: {
     return {
       posture: "blocked",
       summaryPosture: documentConversionReviewSummaryPosture,
+      reviewReadiness: buildDocumentConversionReviewReadiness({ status: "blocked" }),
       policy: documentConversionReviewPolicy,
     };
   }
@@ -721,6 +793,7 @@ export function buildDocumentConversionReviewSummary(input: {
     counts: {
       sourceTextLength: documentExtractionTextLength(input.latestExtraction),
     },
+    reviewReadiness: buildDocumentConversionReviewReadiness({ status: "not_requested" }),
     policy: documentConversionReviewPolicy,
   };
 }

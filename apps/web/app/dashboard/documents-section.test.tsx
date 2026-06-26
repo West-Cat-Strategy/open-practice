@@ -6,6 +6,7 @@ import type { DocumentAssemblyWorkbenchResponse } from "../_features/document-as
 import type { DocumentProcessingWorkbenchResponse } from "../_features/document-processing/models";
 import {
   documentMetadataSearchFilterCount,
+  describeDocumentConversionReview,
   summarizeDocumentMetadataSearch,
   summarizeDocumentProcessingWorkbench,
   summarizeDocumentReviewSuggestions,
@@ -117,7 +118,7 @@ function buildSyntheticDocumentProcessingWorkbench(): DocumentProcessingWorkbenc
           confidence: 0.91,
         },
         conversionReview: {
-          posture: "ready_for_review",
+          posture: "reviewed",
           summaryPosture: "op_authored_metadata_only",
           jobId: "job_conversion_review_synthetic",
           artifactId: "artifact_conversion_review_synthetic",
@@ -138,6 +139,18 @@ function buildSyntheticDocumentProcessingWorkbench(): DocumentProcessingWorkbenc
             chunksStored: false,
             embeddingsStored: false,
             providerPayloadsStored: false,
+          },
+          reviewReadiness: {
+            status: "reviewed",
+            artifactStatus: "metadata_only",
+            reviewedAt: "2026-06-26T18:30:00.000Z",
+            staffReviewRequired: true,
+            terminalReview: true,
+            reviewOnly: true,
+            metadataOnly: true,
+            downstreamMutation: false,
+            providerEvidenceStored: false,
+            rawOcrTextReturned: false,
           },
         },
         reviewSuggestions: {
@@ -330,7 +343,7 @@ describe("DocumentsSection", () => {
     expect(html).toContain("Revoke portal");
     expect(html).toContain("Ready to process");
     expect(html).toContain(
-      "Conversion review ready for review · 1800 chars · 260 words · 1 estimated pages · artifact ready · OP-authored metadata only · metadata only",
+      "Conversion review reviewed · 1800 chars · 260 words · 1 estimated pages · artifact metadata only · OP-authored metadata only · metadata only · readiness reviewed · reviewed 2026-06-26T18:30:00.000Z · staff review required · terminal review · review only · no downstream mutation · no provider evidence · no raw OCR returned",
     );
     expect(html).toContain("Reviewer suggestions");
     expect(html).toContain("Extraction suggests financial");
@@ -389,5 +402,41 @@ describe("DocumentsSection", () => {
     expect(html).toContain("Retention/hold needs review");
     expect(html).toContain("no deletion");
     expect(html).toContain("Grant portal");
+  });
+
+  it("describes rejected conversion review readiness without exposing provider evidence", () => {
+    expect(
+      describeDocumentConversionReview({
+        posture: "rejected",
+        summaryPosture: "op_authored_metadata_only",
+        artifactId: "artifact_conversion_review_rejected",
+        policy: {
+          metadataOnly: true,
+          reviewOnly: true,
+          internalExtractedTextStored: true,
+          rawOcrTextStored: false,
+          rawOcrTextStoredInMetadata: false,
+          rawOcrTextReturned: false,
+          rawMarkdownStored: false,
+          annotationBodiesStored: false,
+          chunksStored: false,
+          embeddingsStored: false,
+          providerPayloadsStored: false,
+        },
+        reviewReadiness: {
+          status: "rejected",
+          artifactStatus: "metadata_only",
+          staffReviewRequired: true,
+          terminalReview: true,
+          reviewOnly: true,
+          metadataOnly: true,
+          downstreamMutation: false,
+          providerEvidenceStored: false,
+          rawOcrTextReturned: false,
+        },
+      }),
+    ).toBe(
+      "rejected · artifact metadata only · OP-authored metadata only · metadata only · readiness rejected · staff review required · terminal review · review only · no downstream mutation · no provider evidence · no raw OCR returned",
+    );
   });
 });
