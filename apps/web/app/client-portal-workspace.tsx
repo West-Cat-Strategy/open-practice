@@ -51,11 +51,9 @@ function signatureActionStateLabel(state: ClientPortalSignatureActionState): str
   return labels[state];
 }
 
-function signatureEventStatusLabel(status: "viewed" | "completed" | "declined"): string {
+function signatureEventStatusLabel(status: "viewed"): string {
   const labels: Record<typeof status, string> = {
     viewed: "Signature marked viewed.",
-    completed: "Signature completion recorded.",
-    declined: "Signature decline recorded.",
   };
   return labels[status];
 }
@@ -81,10 +79,7 @@ export default function ClientPortalWorkspace({
   const matterActionCount = matterActionGroups.reduce((sum, group) => sum + group.actionCount, 0);
   const sharedFileCount = signatures.length + (renderWorkspace.documents?.length ?? 0);
 
-  async function recordSignatureEvent(
-    signatureId: string,
-    status: "viewed" | "completed" | "declined",
-  ): Promise<void> {
+  async function recordSignatureEvent(signatureId: string, status: "viewed"): Promise<void> {
     setSignatureBusyId(`${signatureId}:${status}`);
     setSignatureStatus("Recording signature event...");
     try {
@@ -94,13 +89,7 @@ export default function ClientPortalWorkspace({
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            status,
-            consentText:
-              status === "completed"
-                ? "Client confirmed signature completion in the portal workspace."
-                : undefined,
-          }),
+          body: JSON.stringify({ status }),
         },
       );
       const payload = (await response.json().catch(() => undefined)) as
@@ -302,30 +291,6 @@ export default function ClientPortalWorkspace({
                                 ? "Recording..."
                                 : "Mark viewed"}
                             </button>
-                          ) : null}
-                          {!terminal ? (
-                            <>
-                              <button
-                                className="secondary-button compact-button"
-                                disabled={signatureBusyId.length > 0}
-                                onClick={() => void recordSignatureEvent(signature.id, "completed")}
-                                type="button"
-                              >
-                                {signatureBusyId === `${signature.id}:completed`
-                                  ? "Confirming..."
-                                  : "Confirm signed"}
-                              </button>
-                              <button
-                                className="secondary-button compact-button"
-                                disabled={signatureBusyId.length > 0}
-                                onClick={() => void recordSignatureEvent(signature.id, "declined")}
-                                type="button"
-                              >
-                                {signatureBusyId === `${signature.id}:declined`
-                                  ? "Declining..."
-                                  : "Decline signing"}
-                              </button>
-                            </>
                           ) : (
                             <em>{signatureActionStateLabel(signature.actionState)}</em>
                           )}

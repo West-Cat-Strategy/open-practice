@@ -38,9 +38,13 @@ test.describe("host Playwright suite", () => {
     await expectPageHealthy(page);
     await expect(page.getByRole("heading", { name: "Residential tenancy intake" })).toBeVisible();
     await page.getByLabel("Preferred client name").fill("Ada Morgan");
-    await page.getByLabel("Short matter title").fill("Synthetic repair request");
-    await page.getByLabel("Issue type").selectOption("repair");
-    await page.getByLabel("Repair details").fill("Synthetic repair timeline for browser proof.");
+    await page.getByLabel("Short BC tenancy matter title").fill("Synthetic repair request");
+    await page.getByLabel("Rental address in BC").fill("123 Synthetic Street, Vancouver, BC");
+    await page.getByLabel("Client role").selectOption("tenant");
+    await page.getByLabel("BC tenancy issue type").selectOption("repair");
+    await page
+      .getByLabel("Repair or maintenance details")
+      .fill("Synthetic repair timeline for browser proof.");
     await page.getByRole("button", { name: /Save draft/i }).click();
 
     await expect(page.getByText(/Draft saved/)).toBeVisible();
@@ -116,29 +120,22 @@ test.describe("host Playwright suite", () => {
     ).toBeVisible();
     await expect(viewedRow.locator("span").filter({ hasText: "Viewed" })).toBeVisible();
     await expect(viewedRow.getByRole("button", { name: "Mark viewed" })).toHaveCount(0);
-    await expect(viewedRow.getByRole("button", { name: "Confirm signed" })).toBeVisible();
-    await expect(viewedRow.getByRole("button", { name: "Decline signing" })).toBeVisible();
+    await expect(viewedRow.getByRole("button", { name: "Confirm signed" })).toHaveCount(0);
+    await expect(viewedRow.getByRole("button", { name: "Decline signing" })).toHaveCount(0);
 
     const declinedRow = page
       .locator(".client-portal-file")
       .filter({ hasText: "Client portal E2E decline option" });
-    await declinedRow.getByRole("button", { name: "Decline signing" }).click();
-    await expect(
-      page.getByRole("status").filter({ hasText: "Signature decline recorded." }),
-    ).toBeVisible();
-    await expect(declinedRow.locator("em").filter({ hasText: "Declined" })).toBeVisible();
+    await expect(declinedRow.getByRole("button", { name: "Mark viewed" })).toBeVisible();
     await expect(declinedRow.getByRole("button", { name: "Decline signing" })).toHaveCount(0);
     await expect(declinedRow.getByRole("button", { name: "Confirm signed" })).toHaveCount(0);
 
     const signatureRow = page
       .locator(".client-portal-file")
       .filter({ hasText: "Client portal E2E signature" });
-    await signatureRow.getByRole("button", { name: "Confirm signed" }).click();
-    await expect(
-      page.getByRole("status").filter({ hasText: "Signature completion recorded." }),
-    ).toBeVisible();
-    await expect(signatureRow.locator("em").filter({ hasText: "Completed" })).toBeVisible();
+    await expect(signatureRow.getByRole("button", { name: "Mark viewed" })).toBeVisible();
     await expect(signatureRow.getByRole("button", { name: "Confirm signed" })).toHaveCount(0);
+    await expect(signatureRow.getByRole("button", { name: "Decline signing" })).toHaveCount(0);
 
     await expect(page.locator("body")).not.toContainText(/tokenHash|storageKey|checkoutUrl/i);
     await expect(page.locator("body")).not.toContainText(/externalSessionId|private-checkout/i);

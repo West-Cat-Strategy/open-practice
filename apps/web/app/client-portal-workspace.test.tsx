@@ -197,8 +197,8 @@ describe("ClientPortalWorkspace", () => {
     expect(html).toContain("Disclosure acknowledgment");
     expect(html).toContain("Ready to sign");
     expect(html).toContain("Mark viewed");
-    expect(html).toContain("Confirm signed");
-    expect(html).toContain("Decline signing");
+    expect(html).not.toContain("Confirm signed");
+    expect(html).not.toContain("Decline signing");
     expect(html).toContain("Billing");
     expect(html).toContain("2026-0001");
     expect(html).toContain("INV-2026-0001");

@@ -25,6 +25,7 @@ import {
 
 const syntheticEnv = {
   OPEN_PRACTICE_SELFHOST_PUBLIC_WEB_ORIGIN: "https://practice.example.test",
+  OPEN_PRACTICE_SELFHOST_PUBLIC_API_ORIGIN: "https://practice.example.test",
   OPEN_PRACTICE_SELFHOST_WEBAUTHN_RP_ID: "practice.example.test",
   OPEN_PRACTICE_SELFHOST_POSTGRES_PASSWORD: "synthetic-selfhost-postgres-password-change-me",
   OPEN_PRACTICE_SELFHOST_AUTH_JWT_SECRET: "synthetic-selfhost-jwt-secret-change-me-32",

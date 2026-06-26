@@ -27,6 +27,8 @@ such as `.env.selfhost.local`, copy the variable names, and replace every secret
 Required operator values:
 
 - `OPEN_PRACTICE_SELFHOST_PUBLIC_WEB_ORIGIN`: external HTTPS web origin served by the reverse proxy.
+- `OPEN_PRACTICE_SELFHOST_PUBLIC_API_ORIGIN`: trusted HTTPS API origin used when generating
+  calendar/feed links. For same-origin self-host deployments, set this to the public web origin.
 - `OPEN_PRACTICE_SELFHOST_WEBAUTHN_RP_ID`: hostname from the public web origin.
 - `OPEN_PRACTICE_SELFHOST_AUTH_JWT_SECRET`: unique session secret, at least 32 characters.
 - `OPEN_PRACTICE_SELFHOST_CONFIG_ENCRYPTION_KEY`: unique 32-byte base64, base64url, or hex key.

@@ -169,7 +169,7 @@ export async function assertLocalCliOcrReadiness(
     throw providerConfigurationError("ocrmypdf", error);
   }
 
-  let languageOutput = "";
+  let languageOutput: string;
   try {
     const result = await runCommand(tesseractPath, ["--list-langs"], { timeoutMs });
     languageOutput = [normalizeCommandOutput(result.stdout), normalizeCommandOutput(result.stderr)]

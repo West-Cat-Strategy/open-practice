@@ -9,6 +9,7 @@ const SYNTHETIC_CONFIG_KEY = "base64:AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8
 const DEV_EXAMPLE_JWT_SECRET = "dev-only-change-me-at-least-16-chars";
 const REQUIRED_ENV_KEYS = [
   "OPEN_PRACTICE_SELFHOST_PUBLIC_WEB_ORIGIN",
+  "OPEN_PRACTICE_SELFHOST_PUBLIC_API_ORIGIN",
   "OPEN_PRACTICE_SELFHOST_WEBAUTHN_RP_ID",
   "OPEN_PRACTICE_SELFHOST_POSTGRES_PASSWORD",
   "OPEN_PRACTICE_SELFHOST_AUTH_JWT_SECRET",
@@ -88,6 +89,11 @@ export function validateSelfhostEnv(env, { allowSyntheticExample = false } = {})
   const publicWebOrigin = requireHttpsUrl(
     "OPEN_PRACTICE_SELFHOST_PUBLIC_WEB_ORIGIN",
     env.OPEN_PRACTICE_SELFHOST_PUBLIC_WEB_ORIGIN,
+    { allowSyntheticExample },
+  );
+  requireHttpsUrl(
+    "OPEN_PRACTICE_SELFHOST_PUBLIC_API_ORIGIN",
+    env.OPEN_PRACTICE_SELFHOST_PUBLIC_API_ORIGIN,
     { allowSyntheticExample },
   );
   if (env.OPEN_PRACTICE_SELFHOST_WEBAUTHN_RP_ID !== publicWebOrigin.hostname) {
@@ -220,6 +226,11 @@ export function inspectRenderedCompose(rendered) {
     if (!env.OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY) {
       throw new Error(`${service} must set OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY`);
     }
+  }
+
+  const apiEnv = serviceEnv(services.api);
+  if (!apiEnv.OPEN_PRACTICE_PUBLIC_API_ORIGIN) {
+    throw new Error("api must set OPEN_PRACTICE_PUBLIC_API_ORIGIN");
   }
 
   const webEnv = serviceEnv(services.web);

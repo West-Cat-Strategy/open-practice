@@ -158,7 +158,7 @@ describe("document assembly repository records", () => {
       envelopeCount: 1,
       validEnvelopeCount: 1,
     });
-    expect(workspace.packages[0]?.package.title).toBe("Retainer signature package");
+    expect(workspace.packages[0]?.package.title).toBe("BC tenancy retainer signature package");
     expect(workspace.packages[0]?.readiness).toMatchObject({
       documentCount: 1,
       generatedDocumentCount: 1,

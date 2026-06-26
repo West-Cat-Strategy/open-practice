@@ -49,7 +49,7 @@ const sectionSentinels: Record<OpenPracticeRouteId, RegExp[]> = {
   externalUploads: [/Uploaded document review/i],
   drafting: [/Templates/i, /Matter drafts/i],
   calendar: [/Deadline radar/i],
-  signatures: [/Retainer agreement|No signature requests are linked/i],
+  signatures: [/BC tenancy retainer and review plan|Retainer agreement|No signature requests/i],
   intake: [/Intake pipeline/i],
   audit: [/Audit taxonomy projection/i],
   reports: [/Saved report definitions/i],
@@ -464,9 +464,13 @@ test.describe("UI/UX screenshot QA", () => {
     await page.goto(app.publicTokenUrl("intake-forms", intakeToken));
     await expectPageHealthy(page);
     await page.getByLabel("Preferred client name").fill("Ada Morgan");
-    await page.getByLabel("Short matter title").fill("Synthetic repair request");
-    await page.getByLabel("Issue type").selectOption("repair");
-    await page.getByLabel("Repair details").fill("Synthetic repair timeline for UI proof.");
+    await page.getByLabel("Short BC tenancy matter title").fill("Synthetic repair request");
+    await page.getByLabel("Rental address in BC").fill("123 Synthetic Street, Vancouver, BC");
+    await page.getByLabel("Client role").selectOption("tenant");
+    await page.getByLabel("BC tenancy issue type").selectOption("repair");
+    await page
+      .getByLabel("Repair or maintenance details")
+      .fill("Synthetic repair timeline for UI proof.");
     await page.getByRole("button", { name: /Save draft/i }).click();
     await expect(page.getByText(/Draft saved/)).toBeVisible();
     await page.getByRole("button", { name: /Submit intake/i }).click();

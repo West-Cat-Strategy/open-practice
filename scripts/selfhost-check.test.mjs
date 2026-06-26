@@ -5,6 +5,7 @@ import { inspectRenderedCompose, parseEnvFile, validateSelfhostEnv } from "./sel
 
 const syntheticEnv = {
   OPEN_PRACTICE_SELFHOST_PUBLIC_WEB_ORIGIN: "https://practice.example.test",
+  OPEN_PRACTICE_SELFHOST_PUBLIC_API_ORIGIN: "https://practice.example.test",
   OPEN_PRACTICE_SELFHOST_WEBAUTHN_RP_ID: "practice.example.test",
   OPEN_PRACTICE_SELFHOST_POSTGRES_PASSWORD: "synthetic-selfhost-postgres-password-change-me",
   OPEN_PRACTICE_SELFHOST_AUTH_JWT_SECRET: "synthetic-selfhost-jwt-secret-change-me-32",
@@ -27,6 +28,7 @@ function renderedCompose(overrides = {}) {
   const baseEnvironment = {
     NODE_ENV: "production",
     OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY: syntheticEnv.OPEN_PRACTICE_SELFHOST_CONFIG_ENCRYPTION_KEY,
+    OPEN_PRACTICE_PUBLIC_API_ORIGIN: syntheticEnv.OPEN_PRACTICE_SELFHOST_PUBLIC_API_ORIGIN,
     S3_SERVER_SIDE_ENCRYPTION: "AES256",
   };
   return {
@@ -170,6 +172,8 @@ describe("selfhost-check", () => {
                 OPEN_PRACTICE_DEV_SEED: "true",
                 OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY:
                   syntheticEnv.OPEN_PRACTICE_SELFHOST_CONFIG_ENCRYPTION_KEY,
+                OPEN_PRACTICE_PUBLIC_API_ORIGIN:
+                  syntheticEnv.OPEN_PRACTICE_SELFHOST_PUBLIC_API_ORIGIN,
                 S3_SERVER_SIDE_ENCRYPTION: "AES256",
               },
               ports: [{ host_ip: "127.0.0.1", target: 4000 }],

@@ -196,8 +196,8 @@ describe("repository first-run setup", () => {
     ).resolves.toMatchObject([
       {
         templateId: "intake-template-preset-general-canada",
-        version: 1,
-        definitionVersion: 1,
+        version: 2,
+        definitionVersion: 2,
         publishedByUserId: input.owner.id,
         metadata: { source: "open-practice-preset", presetId: "general-canada" },
       },
