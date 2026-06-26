@@ -87,9 +87,10 @@ hardening proof before private-pilot handoff. Evidence is recorded in
 The 2026-06-24 `private-pilot/external-s3-restore-drill-20260624` branch extends the self-host
 restore drill so an ignored operator env using external HTTPS S3-compatible object storage can
 produce synthetic marker backup, deliberate-overwrite, restore, and checksum evidence alongside the
-existing PostgreSQL drill. The code path and checked-in bundled MinIO restore-drill proof are
-locally validated, but the ignored `.env.selfhost.local` file currently contains only placeholders,
-so real external HTTPS S3 operator proof remains blocked pending replacement values. The checked-in
+existing PostgreSQL drill. The 2026-06-26 `private-pilot/external-s3-env-bootstrap-20260626`
+follow-up adds the ignored `.env.selfhost.local` bootstrap and preflight path, so operators can
+create the local template, replace every placeholder, verify the ignored external HTTPS S3 env
+without Docker or S3 actions, and only then run real external restore evidence. The checked-in
 bundled MinIO restore-drill path, default private-pilot release proof, residual-watch exit behavior,
 runtime APIs, schemas, Compose contracts, dependencies, and local-only/self-host boundaries remain
 unchanged. Admin Readiness and self-host/readiness docs distinguish external HTTPS S3 restore-drill

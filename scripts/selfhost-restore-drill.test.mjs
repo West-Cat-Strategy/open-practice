@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
@@ -9,15 +9,18 @@ import {
   assertDisposableProjectName,
   assertSetupStatusShape,
   backupExternalS3Marker,
+  bootstrapOperatorEnvFile,
   buildMarkerSql,
   buildRestoreEvidenceDir,
   createRedactor,
   externalS3MarkerKey,
   inspectRestoreDrillComposeBoundaries,
   parseRestoreDrillArgs,
+  preflightRestoreDrillEnv,
   restoreDrillObjectStorageMode,
   restoreExternalS3Marker,
   restoreDrillTimestamp,
+  runRestoreDrill,
   validateRestoreDrillEnv,
   verifyExternalS3Marker,
   writeExternalS3Marker,
@@ -59,6 +62,12 @@ function renderedCompose(serviceEnvironment = {}) {
 
 function sha256(value) {
   return createHash("sha256").update(value).digest("hex");
+}
+
+function envText(env) {
+  return `${Object.entries(env)
+    .map(([key, value]) => `${key}=${value}`)
+    .join("\n")}\n`;
 }
 
 class PutObjectCommand {
@@ -107,10 +116,41 @@ describe("selfhost restore drill contracts", () => {
     );
     assert.deepEqual(parseRestoreDrillArgs([], { cwd: "/repo", pid: 42 }), {
       envFile: "docker/selfhost.example.env",
+      bootstrapEnvFile: null,
       evidenceRoot: ".tmp/open-practice-selfhost-restore-drill",
       projectName: "open-practice-selfhost-restore-drill-42",
       allowSyntheticExample: true,
+      preflightOnly: false,
     });
+    assert.deepEqual(
+      parseRestoreDrillArgs(["--bootstrap-env-file", ".env.selfhost.local"], {
+        cwd: "/repo",
+        pid: 42,
+      }),
+      {
+        envFile: "docker/selfhost.example.env",
+        bootstrapEnvFile: ".env.selfhost.local",
+        evidenceRoot: ".tmp/open-practice-selfhost-restore-drill",
+        projectName: "open-practice-selfhost-restore-drill-42",
+        allowSyntheticExample: true,
+        preflightOnly: false,
+      },
+    );
+    assert.equal(
+      parseRestoreDrillArgs(["--env-file", ".env.selfhost.local", "--preflight-only"], {
+        cwd: "/repo",
+        pid: 42,
+      }).preflightOnly,
+      true,
+    );
+    assert.throws(
+      () =>
+        parseRestoreDrillArgs(["--bootstrap-env-file", ".env.selfhost.local", "--preflight-only"], {
+          cwd: "/repo",
+          pid: 42,
+        }),
+      /cannot be combined/,
+    );
   });
 
   it("accepts only explicitly disposable Compose project names", () => {
@@ -145,6 +185,154 @@ describe("selfhost restore drill contracts", () => {
         ),
       /https/,
     );
+  });
+
+  it("bootstraps only an ignored external S3 operator env template and never overwrites", () => {
+    const cwd = mkdtempSync(path.join(tmpdir(), "open-practice-operator-env-"));
+    const result = bootstrapOperatorEnvFile(".env.selfhost.local", {
+      cwd,
+      checkIgnored: () => true,
+    });
+    const envPath = path.join(cwd, ".env.selfhost.local");
+
+    assert.deepEqual(result, {
+      file: ".env.selfhost.local",
+      mode: "external_https_s3_template",
+      valuesRedacted: true,
+    });
+    assert.equal(statSync(envPath).mode & 0o777, 0o600);
+    const template = readFileSync(envPath, "utf8");
+    assert.match(template, /OPEN_PRACTICE_SELFHOST_S3_ENDPOINT=https:\/\/change-me-s3/);
+    assert.match(template, /OPEN_PRACTICE_SELFHOST_S3_SECRET_KEY=change-me-secret-key/);
+    assert.throws(
+      () =>
+        bootstrapOperatorEnvFile(".env.selfhost.local", {
+          cwd,
+          checkIgnored: () => true,
+        }),
+      /already exists/,
+    );
+  });
+
+  it("refuses to bootstrap operator secrets into tracked paths", () => {
+    const cwd = mkdtempSync(path.join(tmpdir(), "open-practice-tracked-env-"));
+    assert.throws(
+      () =>
+        bootstrapOperatorEnvFile("tracked.env", {
+          cwd,
+          checkIgnored: () => false,
+        }),
+      /must be ignored/,
+    );
+  });
+
+  it("preflights only ignored external HTTPS S3 operator env files", () => {
+    const cwd = mkdtempSync(path.join(tmpdir(), "open-practice-preflight-env-"));
+    writeFileSync(path.join(cwd, ".env.selfhost.local"), envText(externalS3Env));
+
+    assert.deepEqual(
+      preflightRestoreDrillEnv(".env.selfhost.local", {
+        cwd,
+        checkIgnored: () => true,
+      }),
+      {
+        env: {
+          file: ".env.selfhost.local",
+          valuesRedacted: true,
+          ignored: true,
+        },
+        objectStorage: {
+          mode: "external_https_s3",
+          endpointRedacted: true,
+          bucketRedacted: true,
+        },
+        status: "passed",
+      },
+    );
+  });
+
+  it("rejects placeholder and bundled-MinIO operator preflight envs", () => {
+    const cwd = mkdtempSync(path.join(tmpdir(), "open-practice-preflight-blocked-"));
+    writeFileSync(
+      path.join(cwd, ".env.selfhost.local"),
+      envText({
+        ...externalS3Env,
+        OPEN_PRACTICE_SELFHOST_S3_SECRET_KEY: "change-me-secret",
+      }),
+    );
+    assert.throws(
+      () =>
+        preflightRestoreDrillEnv(".env.selfhost.local", {
+          cwd,
+          checkIgnored: () => true,
+        }),
+      /placeholder value/,
+    );
+
+    writeFileSync(
+      path.join(cwd, ".env.selfhost.local"),
+      envText({
+        ...externalS3Env,
+        OPEN_PRACTICE_SELFHOST_S3_ENDPOINT: "http://minio:9000",
+      }),
+    );
+    assert.throws(
+      () =>
+        preflightRestoreDrillEnv(".env.selfhost.local", {
+          cwd,
+          checkIgnored: () => true,
+        }),
+      /external HTTPS S3-compatible endpoint/,
+    );
+  });
+
+  it("rejects inherited live/provider flags during operator preflight", () => {
+    const cwd = mkdtempSync(path.join(tmpdir(), "open-practice-preflight-inherited-"));
+    writeFileSync(path.join(cwd, ".env.selfhost.local"), envText(externalS3Env));
+    const previous = process.env.OPEN_PRACTICE_ENABLE_LIVE_SETTLEMENT;
+    process.env.OPEN_PRACTICE_ENABLE_LIVE_SETTLEMENT = "true";
+    try {
+      assert.throws(
+        () =>
+          preflightRestoreDrillEnv(".env.selfhost.local", {
+            cwd,
+            checkIgnored: () => true,
+          }),
+        /OPEN_PRACTICE_ENABLE_LIVE_SETTLEMENT/,
+      );
+    } finally {
+      if (previous === undefined) {
+        delete process.env.OPEN_PRACTICE_ENABLE_LIVE_SETTLEMENT;
+      } else {
+        process.env.OPEN_PRACTICE_ENABLE_LIVE_SETTLEMENT = previous;
+      }
+    }
+  });
+
+  it("returns from preflight before allocating ports or touching Docker and S3", async () => {
+    const cwd = mkdtempSync(path.join(tmpdir(), "open-practice-run-preflight-"));
+    writeFileSync(path.join(cwd, ".env.selfhost.local"), envText(externalS3Env));
+
+    const result = await runRestoreDrill(
+      ["--env-file", ".env.selfhost.local", "--preflight-only"],
+      {
+        cwd,
+        checkIgnored: () => true,
+        allocatePorts: async () => {
+          throw new Error("preflight must not allocate ports");
+        },
+        s3Module: {
+          S3Client: class {
+            constructor() {
+              throw new Error("preflight must not create an S3 client");
+            }
+          },
+        },
+      },
+    );
+
+    assert.equal(result.status, "preflight-passed");
+    assert.equal(result.objectStorage.mode, "external_https_s3");
   });
 
   it("rejects live/provider flags for bundled and external restore drills", () => {
