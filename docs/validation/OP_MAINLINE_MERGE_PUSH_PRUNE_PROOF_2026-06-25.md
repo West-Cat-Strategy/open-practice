@@ -15,7 +15,7 @@ are intentionally preserved throughout this closeout.
 | `codex/reliable-local-pdf-ocr-20260624`            | `f2891c7`  | Local OCRmyPDF/Tesseract provider and OCR worker profile.            |
 | `security/deep-scan-main-20260624`                 | `af5ab9b9` | Deep security remediation proof after two runtime hardening commits. |
 | `private-pilot/external-s3-restore-drill-20260624` | `00d5af0`  | External HTTPS S3 restore-drill code path and manual handoff proof.  |
-| `private-pilot/minio-hardening-proof-20260624`     | `143b001`  | Bundled-MinIO hardening and accepted residual-watch proof path.      |
+| `private-pilot/minio-hardening-proof-20260624`     | `338c5d0`  | Bundled-MinIO hardening and refreshed accepted residual-watch proof. |
 
 ## Merge Reconciliation
 
@@ -34,6 +34,9 @@ are intentionally preserved throughout this closeout.
   preserve both paths: bundled MinIO residuals are accepted only through the hardening proof gate,
   while external HTTPS S3 restore-drill evidence remains manual handoff evidence for the alternate
   object-storage path.
+- After the first `main` push, the MinIO lane still held a clean-room docs-only refresh for its
+  private-pilot proof artifacts. That refresh was committed as `338c5d0` and merged into `main` as
+  `1c964b68` before branch/worktree pruning.
 
 The merge preserves local-only self-hosting boundaries, synthetic proof, no client or matter data,
 no credential/payment/private deployment details, no runtime API/schema migrations beyond the
@@ -138,16 +141,101 @@ pnpm build
 | `pnpm migrations:replay`                                                                                                                           | Pass after service start | Initial release attempt found no local Postgres on `localhost:35432`. After `docker compose up -d postgres`, 71 migrations replayed into a disposable database and cleaned up.                                              |
 | `pnpm release:local -- --private-pilot`                                                                                                            | Pass after retry         | First artifact `artifacts/release-local/2026-06-26T06-07-35Z` failed on local CI fixture and missing local Postgres. Final artifact `artifacts/release-local/2026-06-26T06-12-46Z` passed with no recorded check omissions. |
 | `pnpm proof:reconcile -- --proof docs/validation/OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-25.md --base-plus-dirty origin/main`                   | Pass                     | Reconciled 105 final paths and the selected command set.                                                                                                                                                                    |
+| `pnpm proof:reconcile -- --proof docs/validation/OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-25.md --base 79e35ece076bf0e6d2ed37c565fee24304cdc7c5` | Pass                     | Reconciled the post-prune proof update against the original closeout base.                                                                                                                                                  |
+| `pnpm format:check`                                                                                                                                | Pass                     | Rerun after merging the refreshed MinIO proof evidence.                                                                                                                                                                     |
+| `pnpm docs:check`                                                                                                                                  | Pass                     | Rerun after merging the refreshed MinIO proof evidence.                                                                                                                                                                     |
+| `pnpm policy:check`                                                                                                                                | Pass                     | Rerun after merging the refreshed MinIO proof evidence.                                                                                                                                                                     |
 | `git diff --check`                                                                                                                                 | Pass                     | Whitespace check passed after proof formatting.                                                                                                                                                                             |
 
 ## Publish And Prune
 
-Publication and prune evidence will be recorded after the validated integration branch is
-fast-forwarded into `main`, pushed to `origin/main`, and clean merged worktrees/branches are pruned.
+`main` was fast-forwarded to the validated integration branch and pushed once at `8c031c72`. After
+the docs-only MinIO proof refresh merge, `main` was pushed again to `1c964b68`.
+
+```text
+To https://github.com/West-Cat-Strategy/open-practice.git
+   8c031c72..1c964b68  main -> main
+```
+
+Post-push parity before pruning:
+
+```text
+git rev-list --left-right --count main...origin/main
+0 0
+
+git rev-parse main
+1c964b682e0b0093475acfd0d335a73b7774c933
+
+git rev-parse origin/main
+1c964b682e0b0093475acfd0d335a73b7774c933
+
+git ls-remote --heads origin main
+1c964b682e0b0093475acfd0d335a73b7774c933	refs/heads/main
+
+git stash list | wc -l
+42
+
+git status --short --branch
+## main...origin/main
+```
+
+The clean merged sibling worktrees were removed:
+
+```text
+/Users/bryan/projects/open-practice-canadian-templates-20260624
+/Users/bryan/projects/open-practice-ocr-cli-20260624
+/Users/bryan/projects/open-practice-security-deep-main-20260624
+/Users/bryan/projects/open-practice-minio-hardening-proof-20260624
+```
+
+The merged local branches were deleted:
+
+```text
+Deleted branch codex/canadian-templates-samples-20260624 (was c944c078).
+Deleted branch codex/reliable-local-pdf-ocr-20260624 (was f2891c75).
+Deleted branch private-pilot/external-s3-restore-drill-20260624 (was 00d5af00).
+Deleted branch private-pilot/minio-hardening-proof-20260624 (was 338c5d0c).
+Deleted branch security/deep-scan-main-20260624 (was af5ab9b9).
+Deleted branch merge/open-practice-mainline-20260625 (was 8c031c72).
+```
+
+`git worktree prune --verbose` and `git remote prune origin` both completed with no additional
+output.
+
+Post-prune evidence:
+
+```text
+git worktree list --porcelain
+worktree /Users/bryan/projects/open-practice
+HEAD 1c964b682e0b0093475acfd0d335a73b7774c933
+branch refs/heads/main
+
+git branch --format='%(refname:short)' | rg '^(codex/canadian-templates-samples-20260624|codex/reliable-local-pdf-ocr-20260624|private-pilot/external-s3-restore-drill-20260624|private-pilot/minio-hardening-proof-20260624|security/deep-scan-main-20260624|merge/open-practice-mainline-20260625)$' || true
+<no output>
+
+git rev-list --left-right --count main...origin/main
+0 0
+
+git rev-parse main
+1c964b682e0b0093475acfd0d335a73b7774c933
+
+git rev-parse origin/main
+1c964b682e0b0093475acfd0d335a73b7774c933
+
+git ls-remote --heads origin main
+1c964b682e0b0093475acfd0d335a73b7774c933	refs/heads/main
+
+git stash list | wc -l
+42
+
+git status --short --branch
+## main...origin/main
+```
 
 Required final invariants:
 
-- `main`, `origin/main`, and the GitHub remote head match.
+- `main`, `origin/main`, and the GitHub remote head match at
+  `1c964b682e0b0093475acfd0d335a73b7774c933` before this docs-only evidence commit.
 - `git rev-list --left-right --count main...origin/main` reports `0 0`.
 - Only `/Users/bryan/projects/open-practice` remains as an Open Practice worktree.
 - Merged lane branches and `merge/open-practice-mainline-20260625` are deleted locally.
