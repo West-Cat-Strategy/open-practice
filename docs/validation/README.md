@@ -18,6 +18,13 @@ skipped-check context. The live workboard remains
 
 ## Current Handoff Notes
 
+The 2026-06-26 OP-T161 calendar tickler review bridge proof is recorded in
+[OP-T161_CALENDAR_TICKLER_REVIEW_BRIDGE_PROOF_2026-06-26.md](OP-T161_CALENDAR_TICKLER_REVIEW_BRIDGE_PROOF_2026-06-26.md).
+It covers the review-only tickler bridge over existing `calendar_scheduling_requests`, including
+duplicate-open-request rejection, typed web payload defaults, Tasks and Calendar dashboard request
+actions, task-workbench refresh, and preserved no-new-table/no-migration/no-dependency/
+no-provider-sync/no-public-booking/no-court-rule-automation/no-automatic-mutation boundaries.
+
 The 2026-06-25 mainline merge/push/prune proof is recorded in
 [OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-25.md](OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-25.md).
 It covers the all-active-lane closeout through `merge/open-practice-mainline-20260625`, including

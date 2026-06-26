@@ -119,6 +119,71 @@ export interface CalendarSchedulingReviewNextStep {
   linkEventDisabledReason?: string;
 }
 
+export interface CalendarSchedulingRequestPayload {
+  matterId: string;
+  kind: CalendarSchedulingRequestSummary["kind"];
+  title: string;
+  taskId?: string;
+  calendarEventId?: string;
+  calendarReminderId?: string;
+  ownerUserId?: string;
+  sourceType: CalendarSchedulingRequestSummary["source"]["type"];
+  sourceId?: string;
+  sourceLabel?: string;
+  requestedDueAt?: string;
+  requestedStartsAt?: string;
+  requestedEndsAt?: string;
+  reminderPosture?: CalendarSchedulingRequestSummary["reminderSummary"]["posture"];
+  privacy?: CalendarSchedulingRequestSummary["privacy"]["visibility"];
+  timeCaptureCue?: CalendarSchedulingRequestSummary["timeCaptureCue"];
+}
+
+type CalendarSchedulingRequestPayloadInput =
+  | {
+      type: "task_deadline";
+      matterId: string;
+      taskId: string;
+      title: string;
+      dueAt?: string;
+      sourceLabel?: string;
+      ownerUserId?: string;
+      privacy?: CalendarSchedulingRequestPayload["privacy"];
+    }
+  | {
+      type: "calendar_event";
+      matterId: string;
+      calendarEventId: string;
+      title: string;
+      startsAt?: string;
+      endsAt?: string;
+      sourceLabel?: string;
+      ownerUserId?: string;
+      privacy?: CalendarSchedulingRequestPayload["privacy"];
+    }
+  | {
+      type: "calendar_reminder";
+      matterId: string;
+      calendarEventId: string;
+      calendarReminderId: string;
+      title: string;
+      remindAt: string;
+      sourceLabel?: string;
+      ownerUserId?: string;
+      privacy?: CalendarSchedulingRequestPayload["privacy"];
+    }
+  | {
+      type: "manual";
+      matterId: string;
+      title: string;
+      requestedDueAt?: string;
+      requestedStartsAt?: string;
+      requestedEndsAt?: string;
+      sourceId?: string;
+      sourceLabel?: string;
+      ownerUserId?: string;
+      privacy?: CalendarSchedulingRequestPayload["privacy"];
+    };
+
 const disabledCalendarAutomation = {
   publicBookingEnabled: false,
   providerSyncEnabled: false,
@@ -541,6 +606,88 @@ export function buildCalendarSchedulingReviewPayload(input: {
     ...(input.status === "scheduled" && input.calendarEventId
       ? { calendarEventId: input.calendarEventId }
       : {}),
+  };
+}
+
+function compactSchedulingRequestText(value: string): string {
+  const trimmed = value.trim();
+  return trimmed.length <= 160 ? trimmed : `${trimmed.slice(0, 157)}...`;
+}
+
+function schedulingRequestSourceLabel(input: { sourceLabel?: string; title: string }): string {
+  return compactSchedulingRequestText(input.sourceLabel ?? input.title);
+}
+
+export function buildCalendarSchedulingRequestPayload(
+  input: CalendarSchedulingRequestPayloadInput,
+): CalendarSchedulingRequestPayload {
+  const title = compactSchedulingRequestText(input.title);
+  const base = {
+    matterId: input.matterId,
+    title,
+    privacy: input.privacy ?? "staff_only",
+    ...(input.ownerUserId ? { ownerUserId: input.ownerUserId } : {}),
+  };
+
+  if (input.type === "task_deadline") {
+    return {
+      ...base,
+      kind: "deadline_review",
+      taskId: input.taskId,
+      sourceType: "task_deadline",
+      sourceId: input.taskId,
+      sourceLabel: schedulingRequestSourceLabel(input),
+      ...(input.dueAt ? { requestedDueAt: input.dueAt } : {}),
+      reminderPosture: "none",
+    };
+  }
+
+  if (input.type === "calendar_event") {
+    return {
+      ...base,
+      kind: "event_scheduling",
+      calendarEventId: input.calendarEventId,
+      sourceType: "calendar_event",
+      sourceId: input.calendarEventId,
+      sourceLabel: schedulingRequestSourceLabel(input),
+      ...(input.startsAt && input.endsAt
+        ? {
+            requestedStartsAt: input.startsAt,
+            requestedEndsAt: input.endsAt,
+          }
+        : {}),
+      reminderPosture: "none",
+    };
+  }
+
+  if (input.type === "calendar_reminder") {
+    return {
+      ...base,
+      kind: "reminder_review",
+      calendarEventId: input.calendarEventId,
+      calendarReminderId: input.calendarReminderId,
+      sourceType: "calendar_reminder",
+      sourceId: input.calendarReminderId,
+      sourceLabel: schedulingRequestSourceLabel(input),
+      requestedDueAt: input.remindAt,
+      reminderPosture: "dashboard_pending",
+    };
+  }
+
+  return {
+    ...base,
+    kind: "event_scheduling",
+    sourceType: "manual",
+    ...(input.sourceId ? { sourceId: input.sourceId } : {}),
+    sourceLabel: schedulingRequestSourceLabel(input),
+    ...(input.requestedDueAt ? { requestedDueAt: input.requestedDueAt } : {}),
+    ...(input.requestedStartsAt && input.requestedEndsAt
+      ? {
+          requestedStartsAt: input.requestedStartsAt,
+          requestedEndsAt: input.requestedEndsAt,
+        }
+      : {}),
+    reminderPosture: "none",
   };
 }
 
