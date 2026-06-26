@@ -527,6 +527,8 @@ describe("intake form builder routes", () => {
           urgent: true,
           client_display_name: "Ada M.",
           matter_title: "Ada tenancy repairs",
+          rental_address: "123 Synthetic Street, Vancouver, BC",
+          client_role: "tenant",
         },
       },
     });
@@ -609,6 +611,8 @@ describe("intake form builder routes", () => {
         urgent: true,
         client_display_name: "Ada M.",
         matter_title: "Ada tenancy repairs",
+        rental_address: "123 Synthetic Street, Vancouver, BC",
+        client_role: "tenant",
       },
     };
     const submitted = await server.inject({
@@ -642,7 +646,7 @@ describe("intake form builder routes", () => {
       link: expect.objectContaining({ status: "submitted" }),
       submission: {
         capturedAt: expect.any(String),
-        answerCount: 4,
+        answerCount: 6,
       },
       proposalCount: 2,
     });
@@ -702,7 +706,7 @@ describe("intake form builder routes", () => {
       link: expect.objectContaining({ status: "submitted" }),
       submission: {
         capturedAt: expect.any(String),
-        answerCount: 4,
+        answerCount: 6,
       },
       proposalCount: proposalsAfterSubmit.length,
     });
@@ -1531,6 +1535,8 @@ describe("intake form builder routes", () => {
           urgent: true,
           client_display_name: "Ada M.",
           matter_title: "Ada tenancy repairs",
+          rental_address: "123 Synthetic Street, Vancouver, BC",
+          client_role: "tenant",
         },
       },
     });
@@ -1543,6 +1549,8 @@ describe("intake form builder routes", () => {
           urgent: true,
           client_display_name: "Ada M.",
           matter_title: "Ada tenancy repairs",
+          rental_address: "123 Synthetic Street, Vancouver, BC",
+          client_role: "tenant",
         },
       },
     });

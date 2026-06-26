@@ -787,7 +787,7 @@ describe("contact routes", () => {
     expect(serializedExport).not.toContain("Synthetic expert association.");
     expect(serializedExport).not.toContain("Synthetic private association note");
     expect(serializedExport).not.toContain("Synthetic private relationship note");
-    expect(serializedExport).not.toContain("Retainer agreement.pdf");
+    expect(serializedExport).not.toContain("BC tenancy retainer and review plan.pdf");
     expect(serializedExport).not.toContain("matters/matter-001/retainer-v1.pdf");
     expect(serializedExport).not.toContain("Review tenant evidence package");
     expect(serializedExport).not.toContain("Review filing deadline schedule");
@@ -1136,7 +1136,7 @@ describe("contact routes", () => {
       payload.export.categories.timelineCues.every((entry) => entry.matterId === "matter-001"),
     ).toBe(true);
     expect(JSON.stringify(payload)).not.toContain("North Star");
-    expect(JSON.stringify(payload)).not.toContain("Retainer agreement.pdf");
+    expect(JSON.stringify(payload)).not.toContain("BC tenancy retainer and review plan.pdf");
 
     const unlinked = await server.inject({
       method: "POST",

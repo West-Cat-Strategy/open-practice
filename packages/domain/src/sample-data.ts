@@ -286,7 +286,7 @@ export const sampleDocuments: DocumentRecord[] = [
     id: "doc-001",
     firmId: sampleFirm.id,
     matterId: "matter-001",
-    title: "Retainer agreement.pdf",
+    title: "BC tenancy retainer and review plan.pdf",
     storageKey: "matters/matter-001/retainer-v1.pdf",
     checksumSha256: "c8a1d42f0a2d4a4ef5ac21ad1f3b1d85e422bbf721e783f611bce97c7a0f4f4c",
     sizeBytes: 4096,
@@ -297,7 +297,12 @@ export const sampleDocuments: DocumentRecord[] = [
     checksumStatus: "verified",
     scanStatus: "passed",
     reviewStatus: "not_required",
-    reviewMetadata: { source: "seed" },
+    reviewMetadata: {
+      source: "seed",
+      jurisdiction: "BC",
+      sampleContext: "canadian_residential_tenancy",
+      documentPurpose: "retainer_and_review_plan",
+    },
     uploadedAt: "2026-04-01T20:15:00.000Z",
     verifiedAt: "2026-04-01T20:16:00.000Z",
   },
@@ -309,13 +314,14 @@ export const sampleSignatureRequests: SignatureRequestRecord[] = [
     firmId: sampleFirm.id,
     matterId: "matter-001",
     documentId: "doc-001",
-    title: "Retainer agreement",
+    title: "BC tenancy retainer and review plan",
     requestedByUserId: "user-licensee",
     provider: "embedded",
     externalId: "embedded:matter-001:doc-001",
     status: "sent",
-    consentText: "I consent to electronic signature.",
-    evidence: { mode: "seed" },
+    consentText:
+      "I consent to use the embedded electronic signature for this synthetic Canadian retainer package.",
+    evidence: { mode: "seed", jurisdiction: "BC", sampleContext: "canadian_residential_tenancy" },
     signerOrder: [{ role: "client", order: 1, required: true }],
     fieldPlacements: [
       {
@@ -376,29 +382,57 @@ export const sampleResidentialTenancyIntakeDefinition: EmbeddedIntakeTemplateDef
   questions: [
     {
       id: "issue_type",
-      label: "Issue type",
+      label: "BC tenancy issue type",
       type: "select",
       required: true,
       options: [
         { value: "repair", label: "Repair or maintenance" },
-        { value: "deposit", label: "Security deposit" },
+        { value: "deposit", label: "Security or pet damage deposit" },
         { value: "notice", label: "Notice to end tenancy" },
       ],
     },
     {
       id: "urgent",
-      label: "Urgent deadline",
+      label: "Urgent Residential Tenancy Branch or response deadline",
       type: "boolean",
     },
     {
       id: "repair_details",
-      label: "Repair details",
+      label: "Repair or maintenance details",
       type: "textarea",
+    },
+    {
+      id: "rental_address",
+      label: "Rental address in BC",
+      type: "text",
+      required: true,
+    },
+    {
+      id: "client_role",
+      label: "Client role",
+      type: "select",
+      required: true,
+      options: [
+        { value: "tenant", label: "Tenant" },
+        { value: "landlord", label: "Landlord" },
+        { value: "other", label: "Other" },
+      ],
+    },
+    {
+      id: "evidence_status",
+      label: "Evidence status",
+      type: "select",
+      options: [
+        { value: "ready", label: "Ready to upload" },
+        { value: "partial", label: "Partly available" },
+        { value: "needs_follow_up", label: "Needs follow-up" },
+      ],
     },
     {
       id: "client_display_name",
       label: "Preferred client name",
       type: "text",
+      required: true,
       variableMapping: {
         targetScope: "client",
         targetField: "displayName",
@@ -406,8 +440,9 @@ export const sampleResidentialTenancyIntakeDefinition: EmbeddedIntakeTemplateDef
     },
     {
       id: "matter_title",
-      label: "Short matter title",
+      label: "Short BC tenancy matter title",
       type: "text",
+      required: true,
       variableMapping: {
         targetScope: "matter",
         targetField: "title",
@@ -434,12 +469,13 @@ export const sampleResidentialTenancyIntakeDefinition: EmbeddedIntakeTemplateDef
   packages: [
     {
       id: "repair_notice_package",
-      title: "Repair notice package",
+      title: "BC repair notice review package",
+      description: "Synthetic package for staff review of repair or maintenance issues.",
       default: true,
       documents: [
         {
           id: "repair_notice_letter",
-          title: "Repair notice letter",
+          title: "BC repair notice letter",
         },
         {
           id: "client_instruction_summary",
@@ -449,11 +485,12 @@ export const sampleResidentialTenancyIntakeDefinition: EmbeddedIntakeTemplateDef
     },
     {
       id: "urgent_review_package",
-      title: "Urgent review package",
+      title: "Urgent BC tenancy review package",
+      description: "Synthetic package for staff review of urgent BC tenancy dates.",
       documents: [
         {
           id: "urgent_review_memo",
-          title: "Urgent review memo",
+          title: "Urgent BC tenancy review memo",
         },
       ],
     },
@@ -461,12 +498,12 @@ export const sampleResidentialTenancyIntakeDefinition: EmbeddedIntakeTemplateDef
   sections: [
     {
       id: "client-basics",
-      title: "Client basics",
+      title: "Client and tenancy basics",
       items: [
         {
           id: "intro",
           kind: "display",
-          body: "Synthetic intake form instructions for the client.",
+          body: "Synthetic BC residential tenancy intake for staff triage and document review.",
         },
         {
           id: "client-name-item",
@@ -478,11 +515,21 @@ export const sampleResidentialTenancyIntakeDefinition: EmbeddedIntakeTemplateDef
           kind: "question",
           questionId: "matter_title",
         },
+        {
+          id: "rental-address-item",
+          kind: "question",
+          questionId: "rental_address",
+        },
+        {
+          id: "client-role-item",
+          kind: "question",
+          questionId: "client_role",
+        },
       ],
     },
     {
       id: "issue-details",
-      title: "Issue details",
+      title: "Issue, evidence, and review dates",
       items: [
         {
           id: "issue-type-item",
@@ -500,9 +547,14 @@ export const sampleResidentialTenancyIntakeDefinition: EmbeddedIntakeTemplateDef
           questionId: "repair_details",
         },
         {
+          id: "evidence-status-item",
+          kind: "question",
+          questionId: "evidence_status",
+        },
+        {
           id: "evidence-upload",
           kind: "upload",
-          label: "Upload supporting evidence",
+          label: "Upload tenancy agreement, notice, photos, or correspondence",
           required: true,
           acceptedFileTypes: ["application/pdf", "image/png", "image/jpeg"],
           classification: "privileged",
@@ -513,7 +565,8 @@ export const sampleResidentialTenancyIntakeDefinition: EmbeddedIntakeTemplateDef
           kind: "signature",
           label: "Client attestation",
           required: true,
-          consentText: "I confirm these synthetic intake answers are accurate.",
+          consentText:
+            "I confirm these synthetic BC tenancy intake answers are accurate for staff review.",
         },
       ],
     },
@@ -526,7 +579,7 @@ export const sampleIntakeTemplates: IntakeTemplateRecord[] = [
     firmId: sampleFirm.id,
     name: "Residential tenancy intake",
     category: "residential-tenancy",
-    description: "Synthetic embedded intake for a sample residential tenancy matter.",
+    description: "Synthetic embedded intake for a sample BC residential tenancy matter.",
     provider: "embedded",
     externalTemplateId: "residential-tenancy-intake",
     active: true,
@@ -575,7 +628,7 @@ export const sampleGeneratedDocuments: GeneratedDocumentRecord[] = [
     matterId: "matter-001",
     provider: "embedded",
     externalId: "draft-export:draft-sample-retainer:doc-001",
-    title: "Retainer agreement",
+    title: "BC tenancy retainer and review plan",
     documentId: "doc-001",
     storageKey: "matters/matter-001/draft-exports/generated-doc-001-retainer.pdf",
     checksumSha256: "c8a1d42f0a2d4a4ef5ac21ad1f3b1d85e422bbf721e783f611bce97c7a0f4f4c",
@@ -584,6 +637,8 @@ export const sampleGeneratedDocuments: GeneratedDocumentRecord[] = [
       draftId: "draft-sample-retainer",
       draftVersion: 1,
       format: "pdf",
+      jurisdiction: "BC",
+      sampleContext: "canadian_residential_tenancy",
     },
     createdAt: "2026-04-03T18:20:00.000Z",
   },
@@ -593,13 +648,13 @@ export const sampleDocumentAssemblySetDefinitions: DocumentAssemblySetDefinition
   {
     id: "assembly-set-retainer",
     firmId: sampleFirm.id,
-    name: "Retainer signature package",
-    description: "Synthetic reusable retainer package metadata.",
-    practiceArea: "housing",
+    name: "BC tenancy retainer signature package",
+    description: "Synthetic reusable BC tenancy retainer and review package metadata.",
+    practiceArea: "Residential tenancy",
     documentRefs: [
       {
         id: "retainer-agreement",
-        title: "Retainer agreement",
+        title: "BC tenancy retainer and review plan",
         sourceKind: "draft_template",
         sourceId: "template-general-retainer",
         required: true,
@@ -610,7 +665,7 @@ export const sampleDocumentAssemblySetDefinitions: DocumentAssemblySetDefinition
     active: true,
     createdAt: "2026-04-03T18:00:00.000Z",
     updatedAt: "2026-04-03T18:00:00.000Z",
-    metadata: { source: "seed" },
+    metadata: { source: "seed", jurisdiction: "BC", sampleContext: "canadian_residential_tenancy" },
   },
 ];
 
@@ -620,7 +675,7 @@ export const sampleDocumentAssemblyPackages: DocumentAssemblyPackageRecord[] = [
     firmId: sampleFirm.id,
     matterId: "matter-001",
     definitionId: "assembly-set-retainer",
-    title: "Retainer signature package",
+    title: "BC tenancy retainer signature package",
     status: "assembled",
     populationStatus: "populated",
     documentIds: ["doc-001"],
@@ -629,7 +684,7 @@ export const sampleDocumentAssemblyPackages: DocumentAssemblyPackageRecord[] = [
     createdByUserId: "user-licensee",
     createdAt: "2026-04-03T18:25:00.000Z",
     updatedAt: "2026-04-03T18:30:00.000Z",
-    metadata: { source: "seed" },
+    metadata: { source: "seed", jurisdiction: "BC", sampleContext: "canadian_residential_tenancy" },
   },
 ];
 
@@ -640,7 +695,7 @@ export const sampleSignatureEnvelopes: SignatureEnvelopeRecord[] = [
     matterId: "matter-001",
     assemblyPackageId: "assembly-package-retainer-001",
     signatureRequestId: "sig-001",
-    title: "Retainer client signature envelope",
+    title: "BC tenancy client signature envelope",
     status: "sent",
     signerOrder: [{ role: "client", order: 1, required: true }],
     fieldPlacements: [
@@ -669,7 +724,7 @@ export const sampleSignatureEnvelopes: SignatureEnvelopeRecord[] = [
     createdByUserId: "user-licensee",
     createdAt: "2026-04-03T18:28:00.000Z",
     updatedAt: "2026-04-03T18:30:00.000Z",
-    metadata: { source: "seed" },
+    metadata: { source: "seed", jurisdiction: "BC", sampleContext: "canadian_residential_tenancy" },
   },
 ];
 
@@ -688,7 +743,7 @@ export const sampleAiOperationalProposals: AiOperationalProposalRecord[] = [
     source: {
       sourceType: "document",
       documentId: "doc-001",
-      sourceLabel: "Retainer agreement",
+      sourceLabel: "BC tenancy retainer and review plan",
       sourceTextLength: 360,
       confidence: "medium",
     },
@@ -714,7 +769,7 @@ export const sampleAiOperationalProposals: AiOperationalProposalRecord[] = [
     source: {
       sourceType: "document",
       documentId: "doc-001",
-      sourceLabel: "Retainer agreement",
+      sourceLabel: "BC tenancy retainer and review plan",
       sourceTextLength: 360,
       confidence: "low",
     },
@@ -755,7 +810,11 @@ export const sampleLegalResearchArtifacts: LegalResearchArtifactRecord[] = [
     ],
     contextLinks: [
       { resourceType: "matter", resourceId: "matter-001", label: "Matter context" },
-      { resourceType: "document", resourceId: "doc-001", label: "Retainer agreement" },
+      {
+        resourceType: "document",
+        resourceId: "doc-001",
+        label: "BC tenancy retainer and review plan",
+      },
     ],
     createdByUserId: "user-licensee",
     createdAt: "2026-06-01T18:00:00.000Z",
@@ -773,7 +832,11 @@ export const sampleLegalResearchArtifacts: LegalResearchArtifactRecord[] = [
     note: "Synthetic metadata-only review note for document analysis status.",
     sourceReferences: [],
     contextLinks: [
-      { resourceType: "document", resourceId: "doc-001", label: "Retainer agreement" },
+      {
+        resourceType: "document",
+        resourceId: "doc-001",
+        label: "BC tenancy retainer and review plan",
+      },
     ],
     documentAnalysis: {
       documentId: "doc-001",

@@ -9,7 +9,14 @@ import {
   validateEmbeddedIntakeTemplateDefinition,
   type EmbeddedIntakeTemplateDefinition,
 } from "./intake.js";
-import { sampleResidentialTenancyIntakeDefinition } from "./sample-data.js";
+import {
+  sampleDocumentAssemblyPackages,
+  sampleDocumentAssemblySetDefinitions,
+  sampleDocuments,
+  sampleGeneratedDocuments,
+  sampleResidentialTenancyIntakeDefinition,
+  sampleSignatureRequests,
+} from "./sample-data.js";
 
 describe("embedded intake templates", () => {
   it("exposes registry adapters for the current V2 form item kinds", () => {
@@ -32,6 +39,38 @@ describe("embedded intake templates", () => {
     expect(validateEmbeddedIntakeTemplateDefinition(sampleResidentialTenancyIntakeDefinition)).toBe(
       sampleResidentialTenancyIntakeDefinition,
     );
+    const serialized = JSON.stringify(sampleResidentialTenancyIntakeDefinition);
+    expect(serialized).toContain("BC residential tenancy");
+    expect(serialized).toContain("Residential Tenancy Branch");
+    expect(serialized).not.toMatch(/\bstate\b|\bcounty\b|\battorney\b|zip code/i);
+  });
+
+  it("keeps seeded Canadian document samples synthetic and BC-scoped", () => {
+    expect(sampleDocuments[0]).toMatchObject({
+      id: "doc-001",
+      title: "BC tenancy retainer and review plan.pdf",
+      reviewMetadata: {
+        source: "seed",
+        jurisdiction: "BC",
+        sampleContext: "canadian_residential_tenancy",
+      },
+    });
+    expect(sampleSignatureRequests[0]).toMatchObject({
+      title: "BC tenancy retainer and review plan",
+      consentText: expect.stringContaining("synthetic Canadian retainer package"),
+    });
+    expect(sampleGeneratedDocuments[0]).toMatchObject({
+      title: "BC tenancy retainer and review plan",
+      evidence: { jurisdiction: "BC", sampleContext: "canadian_residential_tenancy" },
+    });
+    expect(sampleDocumentAssemblySetDefinitions[0]).toMatchObject({
+      name: "BC tenancy retainer signature package",
+      practiceArea: "Residential tenancy",
+    });
+    expect(sampleDocumentAssemblyPackages[0]).toMatchObject({
+      title: "BC tenancy retainer signature package",
+      metadata: { jurisdiction: "BC", sampleContext: "canadian_residential_tenancy" },
+    });
   });
 
   it("rejects duplicate IDs and unknown branch references", () => {
@@ -91,7 +130,14 @@ describe("embedded intake templates", () => {
       templateId: "intake-template-001",
       templateVersion: 2,
       definition: sampleResidentialTenancyIntakeDefinition,
-      answers: { issue_type: "repair", urgent: true },
+      answers: {
+        issue_type: "repair",
+        urgent: true,
+        client_display_name: "Ada Morgan",
+        matter_title: "Morgan tenancy dispute",
+        rental_address: "123 Synthetic Street, Vancouver, BC",
+        client_role: "tenant",
+      },
       completedItemIds: ["evidence-upload", "client-attestation"],
     });
 
@@ -118,24 +164,24 @@ describe("embedded intake templates", () => {
         {
           packageId: "repair_notice_package",
           packageDocumentId: "repair_notice_letter",
-          title: "Repair notice letter",
+          title: "BC repair notice letter",
         },
         {
           packageId: "urgent_review_package",
           packageDocumentId: "urgent_review_memo",
-          title: "Urgent review memo",
+          title: "Urgent BC tenancy review memo",
         },
       ]),
       packageSummaries: expect.arrayContaining([
         expect.objectContaining({
           packageId: "repair_notice_package",
-          title: "Repair notice package",
+          title: "BC repair notice review package",
           documentCount: 2,
           documentIds: ["repair_notice_letter", "client_instruction_summary"],
         }),
         expect.objectContaining({
           packageId: "urgent_review_package",
-          title: "Urgent review package",
+          title: "Urgent BC tenancy review package",
           documentCount: 1,
           documentIds: ["urgent_review_memo"],
         }),
@@ -154,6 +200,9 @@ describe("embedded intake templates", () => {
     expect(resolution.visibleQuestionIds).toEqual([
       "issue_type",
       "urgent",
+      "rental_address",
+      "client_role",
+      "evidence_status",
       "client_display_name",
       "matter_title",
     ]);
@@ -166,13 +215,27 @@ describe("embedded intake templates", () => {
       templateId: "intake-template-001",
       templateVersion: 2,
       definition: sampleResidentialTenancyIntakeDefinition,
-      answers: { issue_type: "repair", urgent: true },
+      answers: {
+        issue_type: "repair",
+        urgent: true,
+        client_display_name: "Ada Morgan",
+        matter_title: "Morgan tenancy dispute",
+        rental_address: "123 Synthetic Street, Vancouver, BC",
+        client_role: "tenant",
+      },
     });
     const complete = resolveEmbeddedIntakeAnswers({
       templateId: "intake-template-001",
       templateVersion: 2,
       definition: sampleResidentialTenancyIntakeDefinition,
-      answers: { issue_type: "repair", urgent: true },
+      answers: {
+        issue_type: "repair",
+        urgent: true,
+        client_display_name: "Ada Morgan",
+        matter_title: "Morgan tenancy dispute",
+        rental_address: "123 Synthetic Street, Vancouver, BC",
+        client_role: "tenant",
+      },
       completedItemIds: ["evidence-upload", "client-attestation"],
     });
 

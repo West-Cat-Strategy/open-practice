@@ -287,12 +287,12 @@ describe("document assembly routes", () => {
     });
     expect(payload.packages[0]).toMatchObject({
       package: {
-        title: "Retainer signature package",
+        title: "BC tenancy retainer signature package",
         status: "assembled",
         populationStatus: "populated",
       },
       definition: {
-        name: "Retainer signature package",
+        name: "BC tenancy retainer signature package",
         documentCount: 1,
         signerRoles: ["client"],
       },
