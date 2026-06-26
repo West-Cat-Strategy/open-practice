@@ -93,7 +93,12 @@ import {
   type RecoveryCodeRecord,
   type SavedOperationalViewDefinition,
   type ShareLinkRecord,
+  type TaskChecklistItemRecord,
+  type TaskCommentRecord,
+  type TaskDependencyRecord,
   type TaskDeadlineRecord,
+  type TaskTemplateItemRecord,
+  type TaskTemplateRecord,
   type TimeEntry,
   type TrustTransferRequestRecord,
   type User,
@@ -479,6 +484,101 @@ export function mapTaskDeadlineRow(row: typeof schema.tasks.$inferSelect): TaskD
     updatedAt: dateToIso(row.updatedAt)!,
     updatedByUserId: row.updatedByUserId ?? undefined,
     version: row.version,
+  };
+}
+
+export function mapTaskChecklistItemRow(
+  row: typeof schema.taskChecklistItems.$inferSelect,
+): TaskChecklistItemRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    matterId: row.matterId,
+    taskId: row.taskId,
+    title: row.title,
+    status: row.status as TaskChecklistItemRecord["status"],
+    assignedToUserId: row.assignedToUserId ?? undefined,
+    dueAt: dateToIso(row.dueAt),
+    sortOrder: row.sortOrder,
+    completedAt: dateToIso(row.completedAt),
+    completedByUserId: row.completedByUserId ?? undefined,
+    archivedAt: dateToIso(row.archivedAt),
+    archivedByUserId: row.archivedByUserId ?? undefined,
+    createdAt: dateToIso(row.createdAt)!,
+    createdByUserId: row.createdByUserId ?? undefined,
+    updatedAt: dateToIso(row.updatedAt)!,
+    updatedByUserId: row.updatedByUserId ?? undefined,
+    version: row.version,
+  };
+}
+
+export function mapTaskCommentRow(row: typeof schema.taskComments.$inferSelect): TaskCommentRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    matterId: row.matterId,
+    taskId: row.taskId,
+    body: row.body,
+    archivedAt: dateToIso(row.archivedAt),
+    archivedByUserId: row.archivedByUserId ?? undefined,
+    createdAt: dateToIso(row.createdAt)!,
+    createdByUserId: row.createdByUserId,
+  };
+}
+
+export function mapTaskDependencyRow(
+  row: typeof schema.taskDependencies.$inferSelect,
+): TaskDependencyRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    matterId: row.matterId,
+    taskId: row.taskId,
+    dependsOnTaskId: row.dependsOnTaskId,
+    dependencyType: row.dependencyType as TaskDependencyRecord["dependencyType"],
+    archivedAt: dateToIso(row.archivedAt),
+    archivedByUserId: row.archivedByUserId ?? undefined,
+    createdAt: dateToIso(row.createdAt)!,
+    createdByUserId: row.createdByUserId ?? undefined,
+  };
+}
+
+export function mapTaskTemplateRow(
+  row: typeof schema.taskTemplates.$inferSelect,
+): TaskTemplateRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    name: row.name,
+    description: row.description ?? undefined,
+    defaultTitle: row.defaultTitle ?? undefined,
+    defaultPriority: row.defaultPriority as TaskTemplateRecord["defaultPriority"],
+    status: row.status as TaskTemplateRecord["status"],
+    createdAt: dateToIso(row.createdAt)!,
+    createdByUserId: row.createdByUserId ?? undefined,
+    updatedAt: dateToIso(row.updatedAt)!,
+    updatedByUserId: row.updatedByUserId ?? undefined,
+    archivedAt: dateToIso(row.archivedAt),
+    archivedByUserId: row.archivedByUserId ?? undefined,
+    version: row.version,
+  };
+}
+
+export function mapTaskTemplateItemRow(
+  row: typeof schema.taskTemplateItems.$inferSelect,
+): TaskTemplateItemRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    templateId: row.templateId,
+    title: row.title,
+    sortOrder: row.sortOrder,
+    defaultAssigneeUserId: row.defaultAssigneeUserId ?? undefined,
+    dueOffsetDays: row.dueOffsetDays ?? undefined,
+    createdAt: dateToIso(row.createdAt)!,
+    createdByUserId: row.createdByUserId ?? undefined,
+    updatedAt: dateToIso(row.updatedAt)!,
+    updatedByUserId: row.updatedByUserId ?? undefined,
   };
 }
 

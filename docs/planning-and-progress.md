@@ -8,19 +8,28 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 ## At a Glance
 
-| Snapshot              | Value                                                                |
-| --------------------- | -------------------------------------------------------------------- |
-| Current focus         | Active 2026-06-25 mainline closeout is in final validation.          |
-| Next recommended pick | Push and prune after the final validation/proof update.              |
-| Ready rows            | 0                                                                    |
-| Candidate rows        | 0                                                                    |
-| In progress rows      | 0                                                                    |
-| Review rows           | 0                                                                    |
-| Blocked rows          | 0                                                                    |
-| Archive               | Historical snapshots and proof live in [Archive](archive/README.md). |
-| Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`     |
+| Snapshot              | Value                                                                   |
+| --------------------- | ----------------------------------------------------------------------- |
+| Current focus         | Structured task management V3 is in final validation.                   |
+| Next recommended pick | Review and merge the structured task branch after proof reconciliation. |
+| Ready rows            | 0                                                                       |
+| Candidate rows        | 0                                                                       |
+| In progress rows      | 0                                                                       |
+| Review rows           | 0                                                                       |
+| Blocked rows          | 0                                                                       |
+| Archive               | Historical snapshots and proof live in [Archive](archive/README.md).    |
+| Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`        |
 
 ## Current Handoff Notes
+
+The 2026-06-26 `feat/structured-task-management-v3-20260626` branch implements structured task
+management V3 in a clean sibling worktree while preserving the dirty
+`audit/features-capabilities-parity-20260626` checkout. It adds task checklist items, staff-only
+comments, dependency blockers, firm-scoped reusable templates, structured task detail projections,
+staff-only API routes, route authorization manifest coverage, and Tasks dashboard controls. It
+preserves existing task CRUD, source-pair, workbench, archive, permission, audit, client-visibility,
+provider, recurrence, and email boundaries. Evidence is recorded in
+[structured task management V3 proof](validation/OP_STRUCTURED_TASK_MANAGEMENT_V3_PROOF_2026-06-26.md).
 
 The 2026-06-25 active-lane mainline closeout integrates the Canadian template/sample enhancements,
 reliable local PDF/image OCR, deep security remediation, external HTTPS S3 restore drill, and

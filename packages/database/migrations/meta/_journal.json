@@ -498,6 +498,13 @@
       "when": 1781568014000,
       "tag": "0070_deposit_match_review_records",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1782515627167,
+      "tag": "0071_structured_task_management",
+      "breakpoints": true
     }
   ]
 }

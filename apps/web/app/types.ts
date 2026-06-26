@@ -68,6 +68,9 @@ import type {
   StaffReportingWorkspace,
   SignatureRequestRecord,
   TaskDeadlineWorkbench,
+  TaskStructuredDetail,
+  TaskTemplateItemRecord,
+  TaskTemplateRecord,
   TimeEntry,
   User,
 } from "@open-practice/domain";
@@ -911,6 +914,11 @@ export interface ProvidersStatusResponse {
 }
 
 export type TaskDeadlineWorkbenchResponse = TaskDeadlineWorkbench;
+export type TaskStructuredDetailResponse = TaskStructuredDetail;
+export type TaskTemplatesResponse = {
+  templates: TaskTemplateRecord[];
+  templateItems: TaskTemplateItemRecord[];
+};
 
 export type {
   CreateShareLinkResponse,

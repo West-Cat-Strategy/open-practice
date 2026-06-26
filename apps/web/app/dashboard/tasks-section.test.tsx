@@ -2,7 +2,13 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import type { MatterSummary, PracticeOverview, TaskDeadlineWorkbenchResponse } from "../types";
+import type {
+  MatterSummary,
+  PracticeOverview,
+  TaskDeadlineWorkbenchResponse,
+  TaskStructuredDetailResponse,
+  TaskTemplatesResponse,
+} from "../types";
 import { TasksSection } from "./tasks-section";
 
 const syntheticMatter = {
@@ -181,6 +187,106 @@ const taskWorkbench: TaskDeadlineWorkbenchResponse = {
   ],
 };
 
+const taskStructure: TaskStructuredDetailResponse = {
+  task: taskWorkbench.tasks[0]!,
+  checklistItems: [
+    {
+      id: "checklist_synthetic",
+      firmId: "firm_synthetic",
+      matterId: "matter_synthetic",
+      taskId: "task_open",
+      title: "Confirm synthetic exhibit list",
+      status: "open",
+      assignedToUserId: "user_synthetic",
+      dueAt: "2026-06-19T17:00:00.000Z",
+      sortOrder: 0,
+      createdAt: "2026-06-10T10:00:00.000Z",
+      createdByUserId: "user_synthetic",
+      updatedAt: "2026-06-10T10:00:00.000Z",
+      updatedByUserId: "user_synthetic",
+      version: 1,
+    },
+  ],
+  comments: [
+    {
+      id: "comment_synthetic",
+      firmId: "firm_synthetic",
+      matterId: "matter_synthetic",
+      taskId: "task_open",
+      body: "Synthetic staff-only note.",
+      createdAt: "2026-06-10T12:00:00.000Z",
+      createdByUserId: "user_synthetic",
+    },
+  ],
+  dependencies: [
+    {
+      id: "dependency_synthetic",
+      firmId: "firm_synthetic",
+      matterId: "matter_synthetic",
+      taskId: "task_open",
+      dependsOnTaskId: "task_dependency",
+      dependencyType: "blocks",
+      createdAt: "2026-06-10T12:30:00.000Z",
+      createdByUserId: "user_synthetic",
+    },
+  ],
+  templates: [
+    {
+      id: "template_synthetic",
+      firmId: "firm_synthetic",
+      name: "Synthetic evidence review",
+      defaultPriority: "medium",
+      status: "active",
+      createdAt: "2026-06-10T09:00:00.000Z",
+      createdByUserId: "user_synthetic",
+      updatedAt: "2026-06-10T09:00:00.000Z",
+      updatedByUserId: "user_synthetic",
+      version: 1,
+    },
+  ],
+  templateItems: [
+    {
+      id: "template_item_synthetic",
+      firmId: "firm_synthetic",
+      templateId: "template_synthetic",
+      title: "Review synthetic source bundle",
+      sortOrder: 0,
+      createdAt: "2026-06-10T09:00:00.000Z",
+      createdByUserId: "user_synthetic",
+      updatedAt: "2026-06-10T09:00:00.000Z",
+      updatedByUserId: "user_synthetic",
+    },
+  ],
+  checklistProgress: {
+    total: 1,
+    open: 1,
+    completed: 0,
+    blocked: 0,
+    percentComplete: 0,
+  },
+  dependencySummary: {
+    blocks: 1,
+    relatesTo: 0,
+    blockingTaskIds: ["task_dependency"],
+    blockedByOpenTaskIds: ["task_dependency"],
+  },
+  commentSummary: {
+    count: 1,
+    latestCreatedAt: "2026-06-10T12:00:00.000Z",
+  },
+  structureBoundary: {
+    staffOnlyComments: true,
+    clientVisible: false,
+    automaticDeadlineMutation: false,
+    automaticTaskCreation: false,
+    providerSync: false,
+    emailDelivery: false,
+  },
+};
+
+const taskTemplates: TaskTemplatesResponse["templates"] = taskStructure.templates;
+const taskTemplateItems: TaskTemplatesResponse["templateItems"] = taskStructure.templateItems;
+
 describe("TasksSection", () => {
   it("renders task lifecycle controls and review-first suggestions", () => {
     const html = renderToStaticMarkup(
@@ -192,13 +298,26 @@ describe("TasksSection", () => {
         includeArchived: false,
         matters: [syntheticMatter],
         onArchiveTask: () => {},
+        onArchiveTaskChecklistItem: () => {},
+        onArchiveTaskComment: () => {},
+        onArchiveTaskDependency: () => {},
+        onApplyTaskTemplate: () => {},
         onCompleteTask: () => {},
+        onCompleteTaskChecklistItem: () => {},
+        onCreateTaskChecklistItem: () => {},
+        onCreateTaskComment: () => {},
+        onCreateTaskDependency: () => {},
         onCreateTask: () => {},
         onIncludeArchivedChange: () => {},
         onReopenTask: () => {},
+        onReopenTaskChecklistItem: () => {},
         onSelectMatter: () => {},
+        onSelectTaskStructure: () => {},
         onUpdateTask: () => {},
         status: "Task workspace ready.",
+        taskStructure,
+        taskTemplateItems,
+        taskTemplates,
         taskWorkbench,
         tasks: taskWorkbench.tasks,
         users: syntheticUsers,
@@ -211,6 +330,10 @@ describe("TasksSection", () => {
     expect(html).toContain("Hide archived");
     expect(html).toContain("Complete");
     expect(html).toContain("Archive");
+    expect(html).toContain("Structured detail");
+    expect(html).toContain("Confirm synthetic exhibit list");
+    expect(html).toContain("Synthetic staff-only note.");
+    expect(html).toContain("Synthetic evidence review");
     expect(html).toContain("Suggested follow-ups");
     expect(html).toContain("Follow up on synthetic scheduling request");
     expect(html).toContain("Review legal clinic cadence");
