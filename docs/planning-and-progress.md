@@ -10,8 +10,8 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 | Snapshot              | Value                                                                |
 | --------------------- | -------------------------------------------------------------------- |
-| Current focus         | Active 2026-06-25 mainline closeout is integrating validated lanes.  |
-| Next recommended pick | Finish final validation, push, and prune proof for the closeout.     |
+| Current focus         | Active 2026-06-25 mainline closeout is in final validation.          |
+| Next recommended pick | Push and prune after the final validation/proof update.              |
 | Ready rows            | 0                                                                    |
 | Candidate rows        | 0                                                                    |
 | In progress rows      | 0                                                                    |
@@ -21,6 +21,15 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 | Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`     |
 
 ## Current Handoff Notes
+
+The 2026-06-25 active-lane mainline closeout integrates the Canadian template/sample enhancements,
+reliable local PDF/image OCR, deep security remediation, external HTTPS S3 restore drill, and
+bundled-MinIO hardening proof lanes through `merge/open-practice-mainline-20260625`. The integration
+preserves Canadian sample IDs/preset IDs, `OCR_PROVIDER=local_cli` plus the optional `worker-ocr`
+profile, granular portal/public-token/security hardening, manual external HTTPS S3 operator
+restore-drill evidence, and proof-gated bundled-MinIO residual acceptance. Final validation,
+publication, and prune evidence are being recorded in
+[2026-06-25 mainline merge/push/prune proof](validation/OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-25.md).
 
 The 2026-06-24 `codex/reliable-local-pdf-ocr-20260624` branch implements local OCRmyPDF/Tesseract
 OCR for PDFs and supported images in a clean sibling worktree while preserving the dirty root
