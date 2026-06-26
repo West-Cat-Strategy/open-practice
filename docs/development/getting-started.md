@@ -110,9 +110,11 @@ DATABASE_URL=postgres://open_practice:open_practice@127.0.0.1:35432/open_practic
   or owner-admin settings enable SMTP, IMAP inbound email, Mailgun inbound email, AI, OCR,
   transcription, or media processing. Transactional SMTP and IMAP polling are configured in first-run
   setup or Admin email settings and stored as encrypted provider settings; local SMTP capture should
-  point at Mailpit host `localhost` and port `31025`. OCR uses the local Tesseract provider;
-  owner/admin users can enable or disable that provider from the Queues provider posture panel, and
-  OCR queue buttons stay disabled until both the provider and Redis-backed OCR queue are ready.
+  point at Mailpit host `localhost` and port `31025`. OCR uses the local CLI provider on a dedicated
+  `ocr` worker when OCRmyPDF, Tesseract, and `eng` language data are installed; owner/admin users can
+  enable or disable that provider from the Queues provider posture panel, and OCR queue buttons stay
+  disabled until the provider, Redis-backed OCR queue, object storage, and supported file type are
+  ready.
 - Production rejects memory persistence, dev seed data, development auth helpers, deprecated external-provider env, and unsafe local S3 endpoints.
 - Self-hosted browser API mode is explicit: `OPEN_PRACTICE_BROWSER_API_MODE=same-origin` makes the
   web app send browser requests to same-origin `/api` paths, and the Next.js server rewrites those

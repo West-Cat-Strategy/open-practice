@@ -6,6 +6,13 @@ export {
 export { DisabledDraftAssistProvider } from "./draft-assist.js";
 export { renderDraftExport } from "./draft-exports.js";
 export { ProviderConfigurationError } from "./errors.js";
+export {
+  LocalCliOcrProvider,
+  UnsupportedOcrInputError,
+  assertLocalCliOcrReadiness,
+  isUnsupportedOcrInputError,
+  sniffOcrInputKind,
+} from "./ocr/local-cli.js";
 export { TesseractOcrProvider } from "./ocr/tesseract.js";
 export {
   DisabledAiTriageProvider,

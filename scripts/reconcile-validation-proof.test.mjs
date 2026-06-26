@@ -56,10 +56,18 @@ describe("reconcile-validation-proof contract", () => {
   });
 
   it("extracts final changed paths from a proof section", () => {
-    assert.deepEqual(extractPathList(proof()), [
-      "docs/testing/TESTING.md",
-      "scripts/select-validation.mjs",
-    ]);
+    assert.deepEqual(
+      extractPathList(
+        proof({
+          paths: [
+            "docker-compose.selfhost.yml",
+            "docs/testing/TESTING.md",
+            "scripts/select-validation.mjs",
+          ],
+        }),
+      ),
+      ["docker-compose.selfhost.yml", "docs/testing/TESTING.md", "scripts/select-validation.mjs"],
+    );
   });
 
   it("passes when proof paths and selected commands match the actual path set", () => {

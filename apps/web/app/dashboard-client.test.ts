@@ -4661,7 +4661,7 @@ describe("dashboard client behavior", () => {
       "3 reviewer suggestion cues. 0 duplicate or supersession. 0 missing metadata. 1 retention review.",
     );
     expect(summarizeDocumentMetadataSearch(workbench.metadataSearch)).toBe(
-      "1 documents indexed by OP-authored metadata. 3 tag cues. Raw OCR text is not searched or returned.",
+      "1 documents indexed by OP-authored metadata. 3 tag cues. Internal OCR text is retained server-side, but raw OCR text is not searched or returned here.",
     );
     expect(
       summarizeDocumentMetadataSearch({
@@ -4670,7 +4670,7 @@ describe("dashboard client behavior", () => {
         matchedCount: 1,
       }),
     ).toBe(
-      "1/1 document metadata matches across 2 filters. Raw OCR text is not searched or returned.",
+      "1/1 document metadata matches across 2 filters. Internal OCR text is retained server-side, but raw OCR text is not searched or returned here.",
     );
     expect(
       documentMetadataSearchFilterCount({
@@ -4735,8 +4735,11 @@ describe("dashboard client behavior", () => {
             reason: "provider_disabled",
             reviewOnly: true,
             metadataOnly: true,
+            internalExtractedTextStored: true,
             rawPrivateTextStored: false,
+            rawPrivateTextStoredInMetadata: false,
             rawOcrTextStored: false,
+            rawOcrTextStoredInMetadata: false,
             rawOcrTextReturned: false,
             providerPayloadsStored: false,
             providerPayloadsReturned: false,

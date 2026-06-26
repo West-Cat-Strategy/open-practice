@@ -287,6 +287,7 @@ const safeJobMetadataKeys = new Set([
   "maxAttempts",
   "messageCount",
   "nextRetryAt",
+  "ocrInputStatus",
   "ownerReviewRequired",
   "provider",
   "providerConfigured",

@@ -221,7 +221,7 @@ async function enableOcrProvider(repository: InMemoryOpenPracticeRepository): Pr
     id: "provider-ocr-enabled",
     firmId,
     kind: "ocr",
-    key: "local-tesseract",
+    key: "local-cli-ocr",
     enabled: true,
     encryptedConfig: "synthetic-ocr-config-not-returned",
     createdAt: now,

@@ -376,7 +376,7 @@ async function startDockerRuntime() {
     S3_SECRET_KEY: "open_practice_secret",
     OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY: syntheticConfigEncryptionKey,
     OPEN_PRACTICE_DEV_SEED: "true",
-    WORKER_QUEUES: "email,inbound_email,ai_triage,ocr,transcription,media",
+    WORKER_QUEUES: "email,inbound_email,ai_triage,transcription,media",
   };
 
   await run("docker", "docker", [

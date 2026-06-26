@@ -48,7 +48,13 @@ function renderedCompose(overrides = {}) {
         },
         ports: [{ host_ip: "127.0.0.1", target: 3000 }],
       },
-      worker: { environment: { ...baseEnvironment }, ports: [] },
+      worker: {
+        environment: {
+          ...baseEnvironment,
+          WORKER_QUEUES: "email,inbound_email,ai_triage,transcription,media",
+        },
+        ports: [],
+      },
       ...overrides,
     },
   };
@@ -98,6 +104,45 @@ describe("selfhost-check", () => {
 
   it("accepts the rendered self-host compose posture", () => {
     assert.doesNotThrow(() => inspectRenderedCompose(renderedCompose()));
+  });
+
+  it("validates the optional dedicated OCR worker profile", () => {
+    assert.doesNotThrow(() =>
+      inspectRenderedCompose(
+        renderedCompose({
+          "worker-ocr": {
+            environment: {
+              NODE_ENV: "production",
+              OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY:
+                syntheticEnv.OPEN_PRACTICE_SELFHOST_CONFIG_ENCRYPTION_KEY,
+              S3_SERVER_SIDE_ENCRYPTION: "AES256",
+              WORKER_QUEUES: "ocr",
+              OCR_PROVIDER: "local_cli",
+            },
+            ports: [],
+          },
+        }),
+      ),
+    );
+
+    assert.throws(
+      () =>
+        inspectRenderedCompose(
+          renderedCompose({
+            worker: {
+              environment: {
+                NODE_ENV: "production",
+                OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY:
+                  syntheticEnv.OPEN_PRACTICE_SELFHOST_CONFIG_ENCRYPTION_KEY,
+                S3_SERVER_SIDE_ENCRYPTION: "AES256",
+                WORKER_QUEUES: "email,ocr",
+              },
+              ports: [],
+            },
+          }),
+        ),
+      /worker must not consume the OCR queue/,
+    );
   });
 
   it("rejects dev-only services, flags, and public infra ports", () => {

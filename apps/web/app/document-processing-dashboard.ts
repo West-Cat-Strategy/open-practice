@@ -101,8 +101,11 @@ function emptyDocumentProcessingEvidencePacket(
     ...(reason ? { reason } : {}),
     reviewOnly: true,
     metadataOnly: true,
+    internalExtractedTextStored: true,
     rawPrivateTextStored: false,
+    rawPrivateTextStoredInMetadata: false,
     rawOcrTextStored: false,
+    rawOcrTextStoredInMetadata: false,
     rawOcrTextReturned: false,
     providerPayloadsStored: false,
     providerPayloadsReturned: false,
@@ -351,7 +354,7 @@ export function summarizeDocumentMetadataSearch(
   const filterCount = documentMetadataSearchFilterCount(search.filters);
   const rawTextPosture = search.ocrPosture.rawTextSearch
     ? "Raw OCR search enabled."
-    : "Raw OCR text is not searched or returned.";
+    : "Internal OCR text is retained server-side, but raw OCR text is not searched or returned here.";
   if (filterCount === 0) {
     return `${search.totalCount} documents indexed by OP-authored metadata. ${search.tags.length} tag cues. ${rawTextPosture}`;
   }

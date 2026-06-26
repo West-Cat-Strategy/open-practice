@@ -47,7 +47,7 @@ async function enableOcrProvider(
     id: "provider-ocr-enabled",
     firmId,
     kind: "ocr",
-    key: "local-tesseract",
+    key: "local-cli-ocr",
     enabled,
     encryptedConfig: "synthetic-config-not-returned",
     createdAt: "2026-05-02T12:00:00.000Z",
@@ -129,7 +129,10 @@ describe("document processing routes", () => {
             packet: "document_processing_provider_readiness",
             posture: "op_authored_metadata_only",
             metadataOnly: true,
+            internalExtractedTextStored: true,
             rawPrivateTextStored: false,
+            rawPrivateTextStoredInMetadata: false,
+            rawOcrTextStoredInMetadata: false,
             providerPayloadsStored: false,
             realProviderActivation: false,
             jobCounts: { total: 0, queued: 0, active: 0, failed: 0, terminal: 0 },
@@ -157,8 +160,11 @@ describe("document processing routes", () => {
         reason: "not_configured",
         reviewOnly: true,
         metadataOnly: true,
+        internalExtractedTextStored: true,
         rawPrivateTextStored: false,
+        rawPrivateTextStoredInMetadata: false,
         rawOcrTextStored: false,
+        rawOcrTextStoredInMetadata: false,
         rawOcrTextReturned: false,
         providerPayloadsStored: false,
         providerPayloadsReturned: false,
@@ -221,12 +227,12 @@ describe("document processing routes", () => {
     expect(enabled.statusCode).toBe(200);
     expect(enabled.json()).toMatchObject({
       status: "configured",
-      providers: [{ kind: "ocr", key: "local-tesseract" }],
+      providers: [{ kind: "ocr", key: "local-cli-ocr" }],
       providerStatus: expect.arrayContaining([
         expect.objectContaining({
           kind: "ocr",
           status: "configured",
-          providers: [expect.objectContaining({ key: "local-tesseract", enabled: true })],
+          providers: [expect.objectContaining({ key: "local-cli-ocr", enabled: true })],
         }),
       ]),
       workerQueues: expect.arrayContaining([{ queueName: "ocr", status: "configured" }]),
@@ -242,9 +248,9 @@ describe("document processing routes", () => {
     });
     await expect(repository.listProviderSettings(firmId, { kind: "ocr" })).resolves.toEqual([
       expect.objectContaining({
-        key: "local-tesseract",
+        key: "local-cli-ocr",
         enabled: false,
-        encryptedConfig: "local-tesseract:no-secret",
+        encryptedConfig: "local-cli-ocr:no-secret",
       }),
     ]);
     const audit = await repository.listAuditEvents(firmId);
@@ -253,12 +259,12 @@ describe("document processing routes", () => {
         expect.objectContaining({
           action: "document_processing.ocr_provider.updated",
           resourceType: "provider_setting",
-          metadata: { providerKind: "ocr", providerKey: "local-tesseract", enabled: true },
+          metadata: { providerKind: "ocr", providerKey: "local-cli-ocr", enabled: true },
         }),
         expect.objectContaining({
           action: "document_processing.ocr_provider.updated",
           resourceType: "provider_setting",
-          metadata: { providerKind: "ocr", providerKey: "local-tesseract", enabled: false },
+          metadata: { providerKind: "ocr", providerKey: "local-cli-ocr", enabled: false },
         }),
       ]),
     );
@@ -270,7 +276,7 @@ describe("document processing routes", () => {
       id: "provider-ocr-disabled",
       firmId,
       kind: "ocr",
-      key: "local-tesseract",
+      key: "local-cli-ocr",
       enabled: false,
       encryptedConfig: "synthetic-disabled-config",
       createdAt: "2026-05-02T09:00:00.000Z",
@@ -363,7 +369,7 @@ describe("document processing routes", () => {
           reason: "provider_disabled",
           providers: [
             {
-              key: "local-tesseract",
+              key: "local-cli-ocr",
               enabled: false,
               disabledReason: "provider_disabled",
               updatedAt: "2026-05-02T09:00:00.000Z",
@@ -401,8 +407,11 @@ describe("document processing routes", () => {
         status: "disabled",
         reason: "provider_disabled",
         metadataOnly: true,
+        internalExtractedTextStored: true,
         rawPrivateTextStored: false,
+        rawPrivateTextStoredInMetadata: false,
         rawOcrTextStored: false,
+        rawOcrTextStoredInMetadata: false,
         rawOcrTextReturned: false,
         providerPayloadsStored: false,
         providerPayloadsReturned: false,
@@ -621,6 +630,9 @@ describe("document processing routes", () => {
           metadataOnly: true,
           reviewOnly: true,
           rawOcrTextStored: false,
+          internalExtractedTextStored: true,
+          rawOcrTextStoredInMetadata: false,
+          rawOcrTextReturned: false,
           rawMarkdownStored: false,
           annotationBodiesStored: false,
           chunksStored: false,
@@ -803,7 +815,7 @@ describe("document processing routes", () => {
       id: "provider-ocr-enabled",
       firmId,
       kind: "ocr",
-      key: "local-tesseract",
+      key: "local-cli-ocr",
       enabled: true,
       encryptedConfig: "synthetic-config-not-returned",
       createdAt: "2026-05-02T12:00:00.000Z",
@@ -918,7 +930,7 @@ describe("document processing routes", () => {
           status: "configured",
           providers: [
             {
-              key: "local-tesseract",
+              key: "local-cli-ocr",
               enabled: true,
               updatedAt: "2026-05-02T12:00:00.000Z",
             },
@@ -942,8 +954,11 @@ describe("document processing routes", () => {
             packet: "document_processing_provider_readiness",
             posture: "op_authored_metadata_only",
             metadataOnly: true,
+            internalExtractedTextStored: true,
             rawPrivateTextStored: false,
+            rawPrivateTextStoredInMetadata: false,
             rawOcrTextStored: false,
+            rawOcrTextStoredInMetadata: false,
             rawOcrTextReturned: false,
             providerPayloadsStored: false,
             providerPayloadsReturned: false,
@@ -971,8 +986,11 @@ describe("document processing routes", () => {
         posture: "op_authored_metadata_only",
         status: "configured",
         metadataOnly: true,
+        internalExtractedTextStored: true,
         rawPrivateTextStored: false,
+        rawPrivateTextStoredInMetadata: false,
         rawOcrTextStored: false,
+        rawOcrTextStoredInMetadata: false,
         rawOcrTextReturned: false,
         providerPayloadsStored: false,
         providerPayloadsReturned: false,
@@ -1551,6 +1569,56 @@ describe("document processing routes", () => {
         }),
       ]),
     });
+  });
+
+  it("marks unsupported document types as ineligible for OCR before enqueue", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await enableOcrProvider(repository);
+    const { queue, jobs } = fakeOcrQueue();
+    await repository.createDocumentUploadIntent({
+      id: "doc-unsupported-ocr",
+      firmId,
+      matterId: "matter-001",
+      title: "Plain text notes.txt",
+      storageKey: "matters/matter-001/plain-text-notes.txt",
+      checksumSha256: "9".repeat(64),
+      classification: "general",
+      legalHold: false,
+    });
+    await repository.completeDocumentUpload({
+      firmId,
+      documentId: "doc-unsupported-ocr",
+      checksumSha256: "9".repeat(64),
+      scanStatus: "passed",
+    });
+
+    const response = await testServer({ repository, ocrJobQueue: queue }).inject({
+      method: "POST",
+      url: "/api/document-processing/documents/doc-unsupported-ocr/queue",
+      payload: { language: "eng" },
+    });
+    const workbench = await testServer({ repository, ocrJobQueue: queue }).inject({
+      method: "GET",
+      url: "/api/document-processing/workbench?matterId=matter-001",
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({
+      message: "Document file type is not supported for OCR",
+    });
+    expect(jobs).toEqual([]);
+    await expect(repository.listJobLifecycleRecords(firmId, { queueName: "ocr" })).resolves.toEqual(
+      [],
+    );
+    expect(workbench.statusCode).toBe(200);
+    expect(workbench.json().documents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          document: expect.objectContaining({ id: "doc-unsupported-ocr" }),
+          queueEligibility: { eligible: false, reason: "unsupported_file_type" },
+        }),
+      ]),
+    );
   });
 
   it("allows duplicate-checksum verified documents to queue OCR", async () => {

@@ -6,6 +6,7 @@ import type {
   DocumentAutomationProvider,
   DraftAssistProvider,
   MailSender,
+  OcrProvider,
   OpenPracticeQueueName,
 } from "@open-practice/domain";
 import {
@@ -21,6 +22,11 @@ import { createDatabaseRuntime } from "@open-practice/database/runtime";
 import { EmbeddedAutomationProvider } from "@open-practice/providers/automation";
 import { ImapMailboxPoller } from "@open-practice/providers/email/imap";
 import { MailParserProvider } from "@open-practice/providers/email/parser";
+import {
+  LocalCliOcrProvider,
+  assertLocalCliOcrReadiness,
+  type LocalCliOcrProviderOptions,
+} from "@open-practice/providers/ocr/local-cli";
 import { TesseractOcrProvider } from "@open-practice/providers/ocr/tesseract";
 import { createOpenPracticeQueue, openPracticeQueues, redisConnectionFromUrl } from "./queues.js";
 import { ProviderConfiguredSmtpMailSender } from "./provider-mail-sender.js";
@@ -68,6 +74,11 @@ const booleanFromEnv = z.preprocess((value) => {
   return value;
 }, z.boolean().default(false));
 
+const workerOcrProviderSchema = z.preprocess(
+  (value) => (value === "" ? undefined : value),
+  z.enum(["local_cli", "tesseract_js"]).default("local_cli"),
+);
+
 export const workerEnvSchema = z.object({
   NODE_ENV: z.string().default("development"),
   REDIS_URL: z.string().url().default("redis://localhost:6379/0"),
@@ -85,13 +96,18 @@ export const workerEnvSchema = z.object({
   S3_ACCESS_KEY: optionalString,
   S3_SECRET_KEY: optionalString,
   S3_SERVER_SIDE_ENCRYPTION: optionalS3ServerSideEncryption,
+  OCR_PROVIDER: workerOcrProviderSchema,
+  OCR_CLI_TIMEOUT_SECONDS: z.coerce.number().int().positive().default(120),
+  OCR_TEMP_DIR: optionalString,
   CONNECTOR_WEBHOOK_SECRETS: optionalString,
 });
 
 export type WorkerEnv = z.infer<typeof workerEnvSchema>;
 
+const defaultWorkerQueues = openPracticeQueues.filter((queue) => queue !== "ocr");
+
 function selectedQueues(value: string | undefined): OpenPracticeQueueName[] {
-  if (!value) return [...openPracticeQueues];
+  if (!value) return [...defaultWorkerQueues];
   const requested = value
     .split(",")
     .map((item) => item.trim())
@@ -154,6 +170,29 @@ export function validateWorkerReadiness(env: WorkerEnv): void {
   }
 }
 
+export function createOcrProviderFromEnv(env: WorkerEnv): OcrProvider {
+  if (env.OCR_PROVIDER === "tesseract_js") return new TesseractOcrProvider();
+  return new LocalCliOcrProvider({
+    timeoutSeconds: env.OCR_CLI_TIMEOUT_SECONDS,
+    tempDir: env.OCR_TEMP_DIR,
+  });
+}
+
+export async function validateSelectedWorkerQueueReadiness(
+  env: WorkerEnv,
+  queues: OpenPracticeQueueName[],
+  assertLocalCliReadiness: (
+    options?: LocalCliOcrProviderOptions,
+  ) => Promise<void> = assertLocalCliOcrReadiness,
+): Promise<void> {
+  if (!queues.includes("ocr")) return;
+  if (env.OCR_PROVIDER !== "local_cli") return;
+  await assertLocalCliReadiness({
+    timeoutSeconds: env.OCR_CLI_TIMEOUT_SECONDS,
+    tempDir: env.OCR_TEMP_DIR,
+  });
+}
+
 export function createWorkerRepositoryFromEnv(env: WorkerEnv): {
   repository: OpenPracticeRepository;
   close?: () => Promise<void>;
@@ -184,7 +223,7 @@ export function createWorkers(input: {
   concurrency: number;
   repository: OpenPracticeRepository;
   s3: { client: S3Client; bucket: string; serverSideEncryption?: "AES256" };
-  ocrProvider: TesseractOcrProvider;
+  ocrProvider: OcrProvider;
   automationProvider?: DocumentAutomationProvider;
   aiOperationalProposalProvider?: AiOperationalProposalProvider;
   draftAssistProvider?: DraftAssistProvider;
@@ -229,8 +268,10 @@ export function createWorkers(input: {
   );
 }
 
-if (process.env.NODE_ENV !== "test") {
+async function startWorkerRuntime(): Promise<void> {
   const env = workerEnvSchema.parse(process.env);
+  const queues = selectedQueues(env.WORKER_QUEUES);
+  await validateSelectedWorkerQueueReadiness(env, queues);
   const { repository, close } = createWorkerRepositoryFromEnv(env);
 
   const s3Client = new S3Client({
@@ -243,7 +284,7 @@ if (process.env.NODE_ENV !== "test") {
     forcePathStyle: true,
   });
 
-  const ocrProvider = new TesseractOcrProvider();
+  const ocrProvider = createOcrProviderFromEnv(env);
 
   const mailSender = new ProviderConfiguredSmtpMailSender(repository);
 
@@ -251,7 +292,6 @@ if (process.env.NODE_ENV !== "test") {
     ? (JSON.parse(env.CONNECTOR_WEBHOOK_SECRETS) as Record<string, string>)
     : {};
 
-  const queues = selectedQueues(env.WORKER_QUEUES);
   const connectorJobQueue = queues.includes("connectors")
     ? createOpenPracticeQueue("connectors", env.REDIS_URL)
     : undefined;
@@ -302,5 +342,12 @@ if (process.env.NODE_ENV !== "test") {
       inboundEmailJobQueue?.close(),
       close?.(),
     ]).then(() => process.exit(0));
+  });
+}
+
+if (process.env.NODE_ENV !== "test") {
+  void startWorkerRuntime().catch((error) => {
+    console.error("Worker startup failed", error);
+    process.exit(1);
   });
 }

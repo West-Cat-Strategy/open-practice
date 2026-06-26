@@ -11,6 +11,7 @@ import type { ApiRouteDependencies } from "../types.js";
 import { parseRequestPart } from "../../http/validation.js";
 import {
   assertDocumentProcessable,
+  assertDocumentOcrSupported,
   assertDocumentProcessingAccess,
   assertOcrProviderConfigured,
   buildDocumentConversionReviewSummary,
@@ -38,6 +39,7 @@ async function queueDocumentOcr(input: QueueDocumentOcrInput): Promise<QueueDocu
   }
   await assertOcrProviderConfigured({ repository, firmId: auth.firmId });
   assertDocumentProcessable(document);
+  assertDocumentOcrSupported(document);
 
   const language = normalizeDocumentOcrLanguage(input.language);
   const now = new Date().toISOString();

@@ -130,8 +130,11 @@ export interface DocumentProcessingProviderEvidencePacket {
   posture: "op_authored_metadata_only" | string;
   reviewOnly: true;
   metadataOnly: true;
+  internalExtractedTextStored: true;
   rawPrivateTextStored: false;
+  rawPrivateTextStoredInMetadata: false;
   rawOcrTextStored: false;
+  rawOcrTextStoredInMetadata: false;
   rawOcrTextReturned: false;
   providerPayloadsStored: false;
   providerPayloadsReturned: false;
@@ -165,8 +168,11 @@ export interface DocumentProcessingEvidencePacket {
   reason?: string;
   reviewOnly: true;
   metadataOnly: true;
+  internalExtractedTextStored: true;
   rawPrivateTextStored: false;
+  rawPrivateTextStoredInMetadata: false;
   rawOcrTextStored: false;
+  rawOcrTextStoredInMetadata: false;
   rawOcrTextReturned: false;
   providerPayloadsStored: false;
   providerPayloadsReturned: false;
@@ -222,7 +228,10 @@ export interface DocumentConversionReviewCounts {
 export interface DocumentConversionReviewPolicy {
   metadataOnly: true;
   reviewOnly: true;
+  internalExtractedTextStored: true;
   rawOcrTextStored: false;
+  rawOcrTextStoredInMetadata: false;
+  rawOcrTextReturned: false;
   rawMarkdownStored: false;
   annotationBodiesStored: false;
   chunksStored: false;

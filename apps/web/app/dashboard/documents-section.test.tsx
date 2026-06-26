@@ -129,7 +129,10 @@ function buildSyntheticDocumentProcessingWorkbench(): DocumentProcessingWorkbenc
           policy: {
             metadataOnly: true,
             reviewOnly: true,
+            internalExtractedTextStored: true,
             rawOcrTextStored: false,
+            rawOcrTextStoredInMetadata: false,
+            rawOcrTextReturned: false,
             rawMarkdownStored: false,
             annotationBodiesStored: false,
             chunksStored: false,

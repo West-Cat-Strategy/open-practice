@@ -70,11 +70,11 @@ export const conversionReviewJobBodySchema = z.object({
 
 export const ocrProviderBodySchema = z.object({ enabled: z.boolean() });
 
-const localOcrProviderKey = "local-tesseract";
-const localOcrProviderEncryptedConfig = "local-tesseract:no-secret";
+const localOcrProviderKey = "local-cli-ocr";
+const localOcrProviderEncryptedConfig = "local-cli-ocr:no-secret";
 
 function localOcrProviderId(firmId: string): string {
-  return `provider-ocr-local-tesseract-${firmId}`;
+  return `provider-ocr-local-cli-${firmId}`;
 }
 
 export type DocumentWorkbenchGroup =
@@ -96,7 +96,8 @@ export type QueueEligibility =
         | "review_required"
         | "upload_not_verified"
         | "checksum_not_verified"
-        | "scan_required";
+        | "scan_required"
+        | "unsupported_file_type";
     };
 
 export interface QueueDocumentOcrInput {
@@ -133,7 +134,10 @@ export const documentConversionReviewJobName = "document_conversion_review" as c
 const documentConversionReviewPolicy = {
   metadataOnly: true,
   reviewOnly: true,
+  internalExtractedTextStored: true,
   rawOcrTextStored: false,
+  rawOcrTextStoredInMetadata: false,
+  rawOcrTextReturned: false,
   rawMarkdownStored: false,
   annotationBodiesStored: false,
   chunksStored: false,
@@ -194,8 +198,11 @@ export interface DocumentProcessingProviderEvidencePacket {
   posture: typeof documentConversionReviewSummaryPosture;
   reviewOnly: true;
   metadataOnly: true;
+  internalExtractedTextStored: true;
   rawPrivateTextStored: false;
+  rawPrivateTextStoredInMetadata: false;
   rawOcrTextStored: false;
+  rawOcrTextStoredInMetadata: false;
   rawOcrTextReturned: false;
   providerPayloadsStored: false;
   providerPayloadsReturned: false;
@@ -229,8 +236,11 @@ export interface DocumentProcessingEvidencePacket {
   reason?: string;
   reviewOnly: true;
   metadataOnly: true;
+  internalExtractedTextStored: true;
   rawPrivateTextStored: false;
+  rawPrivateTextStoredInMetadata: false;
   rawOcrTextStored: false;
+  rawOcrTextStoredInMetadata: false;
   rawOcrTextReturned: false;
   providerPayloadsStored: false;
   providerPayloadsReturned: false;
@@ -278,6 +288,7 @@ const retainedEvidenceFields = [
   "task_status",
   "job_counts",
   "policy_flags",
+  "internal_extracted_text_scope",
 ];
 
 function isDocumentProcessingProviderReadinessKind(
@@ -382,8 +393,11 @@ export function buildDocumentProcessingProviderReadiness(input: {
           posture: documentConversionReviewSummaryPosture,
           reviewOnly: true,
           metadataOnly: true,
+          internalExtractedTextStored: true,
           rawPrivateTextStored: false,
+          rawPrivateTextStoredInMetadata: false,
           rawOcrTextStored: false,
+          rawOcrTextStoredInMetadata: false,
           rawOcrTextReturned: false,
           providerPayloadsStored: false,
           providerPayloadsReturned: false,
@@ -408,8 +422,11 @@ export function buildDocumentProcessingEvidencePacket(input: {
     ...(input.reason ? { reason: input.reason } : {}),
     reviewOnly: true,
     metadataOnly: true,
+    internalExtractedTextStored: true,
     rawPrivateTextStored: false,
+    rawPrivateTextStoredInMetadata: false,
     rawOcrTextStored: false,
+    rawOcrTextStoredInMetadata: false,
     rawOcrTextReturned: false,
     providerPayloadsStored: false,
     providerPayloadsReturned: false,
@@ -440,6 +457,16 @@ function documentScanSafeForOcr(document: DocumentRecord): boolean {
   return document.scanStatus === "passed" || document.scanStatus === "not_required";
 }
 
+function supportedOcrFileName(value: string | undefined): boolean {
+  if (!value) return false;
+  const withoutQuery = value.split(/[?#]/, 1)[0]?.trim().toLowerCase();
+  return Boolean(withoutQuery?.match(/\.(pdf|png|jpe?g|tiff?)$/));
+}
+
+export function documentOcrFileTypeSupported(document: DocumentRecord): boolean {
+  return supportedOcrFileName(document.title) || supportedOcrFileName(document.storageKey);
+}
+
 export function assertDocumentProcessable(document: DocumentRecord): void {
   if (document.uploadStatus !== "verified") {
     throw Object.assign(new Error("Document is not verified for processing"), { statusCode: 409 });
@@ -454,6 +481,13 @@ export function assertDocumentProcessable(document: DocumentRecord): void {
       statusCode: 409,
     });
   }
+}
+
+export function assertDocumentOcrSupported(document: DocumentRecord): void {
+  if (documentOcrFileTypeSupported(document)) return;
+  throw Object.assign(new Error("Document file type is not supported for OCR"), {
+    statusCode: 409,
+  });
 }
 
 export function sanitizeDocument(document: DocumentRecord) {
@@ -725,6 +759,9 @@ export function queueEligibility(input: {
     return { eligible: false, reason: "checksum_not_verified" };
   }
   if (!documentScanSafeForOcr(input.document)) return { eligible: false, reason: "scan_required" };
+  if (!documentOcrFileTypeSupported(input.document)) {
+    return { eligible: false, reason: "unsupported_file_type" };
+  }
   return { eligible: true };
 }
 
