@@ -83,6 +83,10 @@ describe("create-release-proof contract", () => {
 
   it("keeps default release commands unchanged and adds private-pilot gates only for private pilot", () => {
     assert.equal(
+      releaseProofCommands().some((command) => command.id === "docker-storage-preflight"),
+      false,
+    );
+    assert.equal(
       releaseProofCommands().some((command) => command.id === "selfhost-restore-drill"),
       false,
     );
@@ -98,6 +102,23 @@ describe("create-release-proof contract", () => {
       help: false,
       privatePilot: true,
     });
+    assert.deepEqual(
+      releaseProofCommands({ privatePilot: true }).find(
+        (command) => command.id === "docker-storage-preflight",
+      ),
+      {
+        id: "docker-storage-preflight",
+        command: "node",
+        args: ["scripts/docker-storage-preflight.mjs"],
+        required: true,
+      },
+    );
+    assert.deepEqual(
+      releaseProofCommands({ privatePilot: true })
+        .slice(0, 3)
+        .map((command) => command.id),
+      ["changed-path-selector", "docker-storage-preflight", "dependency-audit"],
+    );
     assert.deepEqual(
       releaseProofCommands({ privatePilot: true }).find(
         (command) => command.id === "selfhost-restore-drill",
@@ -197,6 +218,11 @@ describe("create-release-proof contract", () => {
     assert.equal(metadata.status, "passed");
     assert.equal(metadata.privatePilot, true);
     assert(metadata.commands.some((command) => command.id === "selfhost-restore-drill"));
+    assert(metadata.commands.some((command) => command.id === "docker-storage-preflight"));
+    assert.deepEqual(
+      calls.find((call) => call[0] === "node"),
+      ["node", ["scripts/docker-storage-preflight.mjs"]],
+    );
     assert.deepEqual(
       calls.find((call) => call[1][0] === "selfhost:restore-drill"),
       ["pnpm", ["selfhost:restore-drill"]],
@@ -211,6 +237,6 @@ describe("create-release-proof contract", () => {
       readFileSync(path.join(metadata.artifactDir, "release-proof.json"), "utf8"),
     );
     assert.equal(proof.privatePilot, true);
-    assert.equal(proof.commands.length, 9);
+    assert.equal(proof.commands.length, 10);
   });
 });

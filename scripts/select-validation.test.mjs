@@ -239,6 +239,22 @@ describe("select-validation contract", () => {
     );
   });
 
+  it("routes Docker storage preflight tooling through Docker proof lanes", () => {
+    assert.deepEqual(
+      selectCommands([
+        "scripts/docker-storage-preflight.mjs",
+        "scripts/docker-storage-preflight.test.mjs",
+      ]),
+      [
+        COMMANDS.dockerAppSmoke,
+        COMMANDS.selfhostRestoreDrill,
+        COMMANDS.e2eDocker,
+        COMMANDS.policyCheck,
+        COMMANDS.test,
+      ],
+    );
+  });
+
   it("keeps release attestation outside the security review selector lane", () => {
     assert.deepEqual(selectCommands(["scripts/attest-release-artifacts.mjs"]), [
       COMMANDS.policyCheck,

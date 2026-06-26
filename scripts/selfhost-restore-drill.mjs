@@ -9,6 +9,11 @@ import { spawn } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+import {
+  DockerStoragePreflightError,
+  runDockerStoragePreflight,
+  summarizeDockerStoragePreflight,
+} from "./docker-storage-preflight.mjs";
 import { inspectRenderedCompose, parseEnvFile, validateSelfhostEnv } from "./selfhost-check.mjs";
 
 const DEFAULT_ENV_FILE = path.join("docker", "selfhost.example.env");
@@ -310,6 +315,23 @@ export function createRedactor(env) {
 
 function writeJson(file, value) {
   writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+function recordDockerStoragePreflight(evidence, result) {
+  evidence.dockerStoragePreflight.push(summarizeDockerStoragePreflight(result));
+}
+
+function runRestoreDrillDockerStoragePreflight(evidence, options) {
+  try {
+    const result = runDockerStoragePreflight(options);
+    recordDockerStoragePreflight(evidence, result);
+    return result;
+  } catch (error) {
+    if (error instanceof DockerStoragePreflightError && error.result) {
+      recordDockerStoragePreflight(evidence, error.result);
+    }
+    throw error;
+  }
 }
 
 async function reserveLoopbackPort() {
@@ -759,6 +781,7 @@ export async function runRestoreDrill(rawArgs = process.argv.slice(2), dependenc
     artifacts: {},
     checks: [],
     commands: [],
+    dockerStoragePreflight: [],
     privacy:
       "Synthetic restore-drill evidence only. Environment values, credentials, client data, matter data, private deployment details, payment data, trust postings, provider payloads, and raw audit exports are not recorded.",
   };
@@ -805,6 +828,11 @@ export async function runRestoreDrill(rawArgs = process.argv.slice(2), dependenc
     inspectRenderedCompose(rendered);
     inspectRestoreDrillComposeBoundaries(rendered);
     evidence.checks.push({ id: "selfhost-env-and-compose", status: "passed" });
+    runRestoreDrillDockerStoragePreflight(evidence, {
+      phase: "selfhost:restore-drill pre-build",
+      soft: true,
+      cwd,
+    });
     writeJson(evidenceJsonPath, evidence);
 
     await runner.compose(
@@ -812,6 +840,11 @@ export async function runRestoreDrill(rawArgs = process.argv.slice(2), dependenc
       ["build", "postgres", "minio", "db-migrate", "api", "web", "worker"],
       { env: { DOCKER_BUILDKIT: "1" } },
     );
+    runRestoreDrillDockerStoragePreflight(evidence, {
+      phase: "selfhost:restore-drill post-build",
+      cwd,
+    });
+    writeJson(evidenceJsonPath, evidence);
     await runner.compose("selfhost-up-data-services", [
       "up",
       "-d",

@@ -6,6 +6,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
+import { runDockerStoragePreflight } from "./docker-storage-preflight.mjs";
+
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const mode = process.argv[2] ?? "host";
 const passthroughArgs = process.argv[3] === "--" ? process.argv.slice(4) : process.argv.slice(3);
@@ -356,6 +358,7 @@ async function ensureMinioBucket(env) {
 }
 
 async function startDockerRuntime() {
+  runDockerStoragePreflight({ phase: "e2e:docker pre-compose", soft: true, cwd: root });
   const apiPort = Number(process.env.E2E_DOCKER_API_PORT ?? 34120);
   const webPort = Number(process.env.E2E_DOCKER_WEB_PORT ?? 33120);
   const postgresPort = dockerHostPort("OPEN_PRACTICE_DOCKER_POSTGRES_HOST_PORT", 35432);
@@ -389,6 +392,7 @@ async function startDockerRuntime() {
     "mailpit",
   ]);
   dockerStarted = true;
+  runDockerStoragePreflight({ phase: "e2e:docker pre-migration", cwd: root });
   await waitForRun("docker-postgres", "docker", [
     ...dockerComposeBaseArgs,
     "exec",

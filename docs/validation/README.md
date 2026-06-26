@@ -18,6 +18,14 @@ skipped-check context. The live workboard remains
 
 ## Current Handoff Notes
 
+The 2026-06-26 Docker storage preflight proof is recorded in
+[OP_DOCKER_STORAGE_PREFLIGHT_PROOF_2026-06-26.md](OP_DOCKER_STORAGE_PREFLIGHT_PROOF_2026-06-26.md).
+It covers the branch-first local tooling guard that makes `pnpm docker:app-smoke`,
+`pnpm e2e:docker`, `pnpm selfhost:restore-drill`, and private-pilot release proof fail early on
+avoidable Docker free-space exhaustion while preserving runtime behavior and using synthetic-only
+proof. Selector-chosen validation passed; private-pilot release proof is locally blocked until
+Docker storage is reclaimed and replay Postgres is available.
+
 The 2026-06-25 mainline merge/push/prune proof is recorded in
 [OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-25.md](OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-25.md).
 It covers the all-active-lane closeout through `merge/open-practice-mainline-20260625`, including

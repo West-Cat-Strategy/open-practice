@@ -4,6 +4,8 @@ import { spawn } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
 
+import { runDockerStoragePreflight } from "./docker-storage-preflight.mjs";
+
 const args = process.argv.slice(2).filter((arg) => arg !== "--");
 const keepUp = args.includes("--keep-up");
 const refresh = args.includes("--refresh");
@@ -151,6 +153,7 @@ async function cleanup() {
 }
 
 async function main() {
+  runDockerStoragePreflight({ phase: "docker:app-smoke pre-build", soft: true });
   if (refresh) {
     await runCompose("docker-pull", ["pull", "redis"]);
   }
@@ -171,6 +174,7 @@ async function main() {
       env: { DOCKER_BUILDKIT: "1" },
     },
   );
+  runDockerStoragePreflight({ phase: "docker:app-smoke post-build" });
 
   await runCompose("docker-up-infra", [
     "up",

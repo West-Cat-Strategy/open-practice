@@ -8,19 +8,28 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 ## At a Glance
 
-| Snapshot              | Value                                                                |
-| --------------------- | -------------------------------------------------------------------- |
-| Current focus         | Active 2026-06-25 mainline closeout is in final validation.          |
-| Next recommended pick | Push and prune after the final validation/proof update.              |
-| Ready rows            | 0                                                                    |
-| Candidate rows        | 0                                                                    |
-| In progress rows      | 0                                                                    |
-| Review rows           | 0                                                                    |
-| Blocked rows          | 0                                                                    |
-| Archive               | Historical snapshots and proof live in [Archive](archive/README.md). |
-| Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`     |
+| Snapshot              | Value                                                                  |
+| --------------------- | ---------------------------------------------------------------------- |
+| Current focus         | Docker storage preflight guard selector validation is recorded.        |
+| Next recommended pick | Reclaim Docker storage and start replay Postgres before release proof. |
+| Ready rows            | 0                                                                      |
+| Candidate rows        | 0                                                                      |
+| In progress rows      | 0                                                                      |
+| Review rows           | 0                                                                      |
+| Blocked rows          | 0                                                                      |
+| Archive               | Historical snapshots and proof live in [Archive](archive/README.md).   |
+| Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`       |
 
 ## Current Handoff Notes
+
+The 2026-06-26 `chore/docker-storage-preflight-20260626` branch adds a narrow local Docker storage
+preflight for Docker-heavy validation and private-pilot release proof. It fails early when Docker's
+container filesystem has less than 8 GiB free, records Docker `system df` context, uses only a
+pull-free local-image `df -Pk /` probe, and never prunes Docker data automatically. It preserves
+runtime APIs, schemas, Compose contracts, Docker pins, dependencies, synthetic-only proof, and
+clean-room posture. Selector-chosen validation passed; the explicit private-pilot release proof is
+blocked locally until Docker storage is reclaimed and replay Postgres is available. Evidence is recorded in
+[Docker storage preflight proof](validation/OP_DOCKER_STORAGE_PREFLIGHT_PROOF_2026-06-26.md).
 
 The 2026-06-25 active-lane mainline closeout integrates the Canadian template/sample enhancements,
 reliable local PDF/image OCR, deep security remediation, external HTTPS S3 restore drill, and
