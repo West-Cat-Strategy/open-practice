@@ -7,6 +7,7 @@ import type {
 import { isAllowedOcrLanguage } from "@open-practice/domain";
 import type { OpenPracticeRepository } from "@open-practice/database";
 import { LocalDocumentConversionReviewProvider } from "@open-practice/providers";
+import { isUnsupportedOcrInputError } from "@open-practice/providers/ocr/local-cli";
 import { metadataString } from "./metadata.js";
 import type { WorkerJobEnvelope, WorkerJobResult, WorkerS3Storage } from "./types.js";
 
@@ -23,6 +24,58 @@ function metadataNumber(
 ): number | undefined {
   const value = metadata?.[key];
   return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : undefined;
+}
+
+function normalizeProviderConfidence(value: number | undefined): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
+  const normalized = value > 1 ? value / 100 : value;
+  return Number(Math.min(1, Math.max(0, normalized)).toFixed(4));
+}
+
+function extractionEngineFromMetadata(
+  metadata: Record<string, unknown> | undefined,
+): DocumentTextExtractionRecord["engine"] {
+  const engine = metadataString(metadata ?? {}, "engine");
+  if (engine === "ocrmypdf" || engine === "vision_llm" || engine === "manual") return engine;
+  return "tesseract";
+}
+
+const safeOcrExtractionMetadataKeys = new Set([
+  "confidenceAvailable",
+  "confidenceScale",
+  "engine",
+  "engineVersion",
+  "inputKind",
+  "jobs",
+  "jobId",
+  "language",
+  "ocrEngine",
+  "outputType",
+  "provider",
+  "shellInterpolation",
+  "skipText",
+  "tesseractTimeoutSeconds",
+  "textLength",
+  "version",
+]);
+
+function safeOcrExtractionMetadataValue(value: unknown): string | number | boolean | undefined {
+  if (typeof value === "string") return value.slice(0, 256);
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "boolean") return value;
+  return undefined;
+}
+
+function sanitizeOcrExtractionMetadata(
+  metadata: Record<string, unknown> | undefined,
+): Record<string, unknown> {
+  const sanitized: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(metadata ?? {})) {
+    if (!safeOcrExtractionMetadataKeys.has(key)) continue;
+    const safeValue = safeOcrExtractionMetadataValue(value);
+    if (safeValue !== undefined) sanitized[key] = safeValue;
+  }
+  return sanitized;
 }
 
 function latestCompletedExtraction(input: {
@@ -270,23 +323,45 @@ export async function processOcrJob(input: {
 
   const rawLanguage = typeof data.metadata?.language === "string" ? data.metadata.language : "";
   const language = isAllowedOcrLanguage(rawLanguage.trim()) ? rawLanguage.trim() : "eng";
-  const result = await ocrProvider.extractText({
-    firmId,
-    documentId,
-    content,
-    language,
-  });
+  let result: Awaited<ReturnType<OcrProvider["extractText"]>>;
+  try {
+    result = await ocrProvider.extractText({
+      firmId,
+      documentId,
+      content,
+      language,
+    });
+  } catch (error) {
+    if (isUnsupportedOcrInputError(error)) {
+      return {
+        status: "skipped",
+        reason: "Unsupported OCR input file type",
+        metadata: {
+          firmId,
+          documentId,
+          matterId: document.matterId,
+          ocrInputStatus: "unsupported_file_type",
+        },
+      };
+    }
+    throw error;
+  }
+
+  const providerMetadata = result.metadata as Record<string, unknown> | undefined;
+  const engine = extractionEngineFromMetadata(providerMetadata);
+  const confidence = normalizeProviderConfidence(result.confidence);
+  const extractionMetadata = sanitizeOcrExtractionMetadata(providerMetadata);
 
   const extraction: DocumentTextExtractionRecord = {
     id: crypto.randomUUID(),
     firmId,
     documentId,
-    engine: "tesseract",
+    engine,
     status: "completed",
     language,
-    confidence: result.confidence,
+    ...(confidence !== undefined ? { confidence } : {}),
     extractedText: result.extractedText,
-    metadata: result.metadata as Record<string, unknown>,
+    metadata: extractionMetadata,
     createdAt: new Date().toISOString(),
     completedAt: new Date().toISOString(),
   };
@@ -298,7 +373,8 @@ export async function processOcrJob(input: {
     metadata: {
       firmId,
       documentId,
-      confidence: result.confidence,
+      extractionEngine: engine,
+      ...(confidence !== undefined ? { confidence } : {}),
       textLength: result.extractedText?.length ?? 0,
     },
   };

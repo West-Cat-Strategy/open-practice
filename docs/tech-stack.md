@@ -25,7 +25,7 @@ documentation; dependency admission and service reuse still follow
 | Production email      | [Postal](https://docs.postalserver.io/)                                                                            | Deferred self-host option for outbound mail. Requires TLS, SPF/DKIM/DMARC, bounce webhooks, abuse monitoring, backups, and a runbook before enablement.                                                  |
 | Inbound email polling | [ImapFlow](https://github.com/postalsys/imapflow)                                                                  | MIT-licensed optional IMAP mailbox polling for raw MIME ingestion. Stores raw messages first, then queues the existing parser job path.                                                                  |
 | Inbound email parsing | [mailparser](https://nodemailer.com/extras/mailparser/)                                                            | Parse raw messages already stored in object storage. Parsed attachments remain inbound-email records until staff explicitly promote them to document records.                                            |
-| OCR                   | [Tesseract](https://tesseract-ocr.github.io/tessdoc/)                                                              | Optional local document worker for OCR text. Keep OCR output reviewed and tied to document version/checksum.                                                                                             |
+| OCR                   | [OCRmyPDF](https://ocrmypdf.readthedocs.io/) with [Tesseract](https://tesseract-ocr.github.io/tessdoc/)            | Optional dedicated local OCR worker for PDF/image text extraction. Keep OCR output reviewed, tied to document version/checksum, and internal to authorized server-side flows.                            |
 | Transcription         | [FFmpeg](https://www.ffmpeg.org/documentation.html) plus [Whisper](https://github.com/openai/whisper)              | Optional local media worker. FFmpeg normalizes media; Whisper produces draft transcripts that require provenance and review.                                                                             |
 | Local LLM             | [Ollama](https://docs.ollama.com/)                                                                                 | Optional local assistive provider for summarization, classification, and drafting aids. Disabled by default; never system of record.                                                                     |
 | Passkeys              | [SimpleWebAuthn](https://simplewebauthn.dev/docs/)                                                                 | Live embedded-auth passkey routes for first-run setup, registration, login, credentials, and MFA, bound to configured RP ID and origin.                                                                  |
@@ -45,6 +45,9 @@ documentation; dependency admission and service reuse still follow
 - Defer Whisper transcription and live Ollama/LM Studio adapters until their worker, provider, and
   deployment profiles are implemented. The first drafting assist slice is a disabled synchronous
   scaffold with fake-provider tests only.
+- Defer cloud OCR, vision/LLM OCR, searchable-PDF artifact storage, table/form/layout extraction,
+  and staff-visible raw OCR text until separate privacy, provider, and retention reviews are
+  recorded.
 - Defer native WebRTC meeting rooms until self-hostable/private signaling, STUN/TURN configuration,
   meeting-scoped access tokens, meeting chat, temporary document upload, and room-session audit
   persistence are implemented. The current calendar slice only stores configured links and
@@ -71,25 +74,26 @@ browser-facing local origin `http://localhost:33000`, and local S3-compatible st
 
 Worker/provider defaults:
 
-| Variable                              | Default                                                 | Purpose                                                                                                                                                                    |
-| ------------------------------------- | ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `REDIS_URL`                           | API: empty; worker: `redis://localhost:36379/0`         | Queue broker for BullMQ email enqueueing and workers.                                                                                                                      |
-| `WORKER_QUEUES`                       | `email,inbound_email,ai_triage,ocr,transcription,media` | Queue allow-list for the worker runtime.                                                                                                                                   |
-| `WORKER_CONCURRENCY`                  | `2`                                                     | Per-queue BullMQ worker concurrency.                                                                                                                                       |
-| SMTP provider settings                | setup/Admin managed                                     | Optional transactional SMTP settings live in encrypted `provider_settings` under `smtp/default`; local Mailpit capture uses host `localhost`, port `31025`, and no auth.   |
-| IMAP provider settings                | setup/Admin managed                                     | Optional inbound polling settings live in encrypted `provider_settings` under `inbound_email/imap`; raw messages enter the existing inbound-email parser queue.            |
-| `INBOUND_EMAIL_WEBHOOK_SECRET`        | empty                                                   | When set, bootstraps the enabled Mailgun `inbound_email` provider setting as `webhookSigningKey` for signed raw-MIME receiving. Empty keeps inbound webhooks unconfigured. |
-| `INBOUND_EMAIL_DOMAIN`                | empty                                                   | Optional Mailgun inbound-address domain metadata stored with the bootstrapped provider setting when `INBOUND_EMAIL_WEBHOOK_SECRET` is set.                                 |
-| `AI_PROVIDER`                         | `disabled`                                              | Keeps AI triage and draft assist disabled until setup opts in.                                                                                                             |
-| `AI_ENDPOINT`                         | `http://localhost:11434/v1`                             | OpenAI-compatible local endpoint for Ollama or LM Studio.                                                                                                                  |
-| `AI_MODEL`                            | empty                                                   | Empty model keeps assistive AI inactive.                                                                                                                                   |
-| `OCR_DEFAULT_LANGUAGE`                | `eng`                                                   | Tesseract language baseline for OCR jobs.                                                                                                                                  |
-| `OCR_CONFIDENCE_THRESHOLD`            | `70`                                                    | Confidence threshold for review/escalation decisions.                                                                                                                      |
-| `WHISPER_MODEL`                       | empty                                                   | Empty model keeps transcription providers inactive.                                                                                                                        |
-| `MEDIA_TEMP_DIR`                      | `.tmp/open-practice-media`                              | Local scratch path for future FFmpeg/Whisper processing.                                                                                                                   |
-| `S3_SERVER_SIDE_ENCRYPTION`           | empty                                                   | Optional locally; required as `AES256` in production when S3 is configured so server-owned writes and staff/public upload intents request SSE-S3 encryption.               |
-| `OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY` | empty                                                   | Required for PostgreSQL-backed API and worker runtimes before provider configuration secrets are written or read; accepts a 32-byte base64, base64url, or hex key.         |
-| `OPEN_PRACTICE_BROWSER_API_MODE`      | `external`                                              | Set to `same-origin` for self-hosted web images that should send browser requests to `/api` on the web origin and let Next.js rewrite to private `API_BASE_URL`.           |
+| Variable                              | Default                                             | Purpose                                                                                                                                                                    |
+| ------------------------------------- | --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `REDIS_URL`                           | API: empty; worker: `redis://localhost:36379/0`     | Queue broker for BullMQ email enqueueing and workers.                                                                                                                      |
+| `WORKER_QUEUES`                       | `email,inbound_email,ai_triage,transcription,media` | Queue allow-list for the non-OCR worker runtime. Run a dedicated OCR worker with `WORKER_QUEUES=ocr` when local OCR CLI tooling is installed.                              |
+| `WORKER_CONCURRENCY`                  | `2`                                                 | Per-queue BullMQ worker concurrency.                                                                                                                                       |
+| SMTP provider settings                | setup/Admin managed                                 | Optional transactional SMTP settings live in encrypted `provider_settings` under `smtp/default`; local Mailpit capture uses host `localhost`, port `31025`, and no auth.   |
+| IMAP provider settings                | setup/Admin managed                                 | Optional inbound polling settings live in encrypted `provider_settings` under `inbound_email/imap`; raw messages enter the existing inbound-email parser queue.            |
+| `INBOUND_EMAIL_WEBHOOK_SECRET`        | empty                                               | When set, bootstraps the enabled Mailgun `inbound_email` provider setting as `webhookSigningKey` for signed raw-MIME receiving. Empty keeps inbound webhooks unconfigured. |
+| `INBOUND_EMAIL_DOMAIN`                | empty                                               | Optional Mailgun inbound-address domain metadata stored with the bootstrapped provider setting when `INBOUND_EMAIL_WEBHOOK_SECRET` is set.                                 |
+| `AI_PROVIDER`                         | `disabled`                                          | Keeps AI triage and draft assist disabled until setup opts in.                                                                                                             |
+| `AI_ENDPOINT`                         | `http://localhost:11434/v1`                         | OpenAI-compatible local endpoint for Ollama or LM Studio.                                                                                                                  |
+| `AI_MODEL`                            | empty                                               | Empty model keeps assistive AI inactive.                                                                                                                                   |
+| `OCR_PROVIDER`                        | `local_cli`                                         | OCR worker provider. `local_cli` wraps OCRmyPDF/Tesseract through CLI binaries; `tesseract_js` remains an explicit fallback only.                                          |
+| `OCR_CLI_TIMEOUT_SECONDS`             | `120`                                               | Per-page Tesseract timeout passed to OCRmyPDF for the local CLI provider.                                                                                                  |
+| `OCR_TEMP_DIR`                        | empty                                               | Optional scratch directory for local OCR temp files. Empty uses the OS temp directory.                                                                                     |
+| `WHISPER_MODEL`                       | empty                                               | Empty model keeps transcription providers inactive.                                                                                                                        |
+| `MEDIA_TEMP_DIR`                      | `.tmp/open-practice-media`                          | Local scratch path for future FFmpeg/Whisper processing.                                                                                                                   |
+| `S3_SERVER_SIDE_ENCRYPTION`           | empty                                               | Optional locally; required as `AES256` in production when S3 is configured so server-owned writes and staff/public upload intents request SSE-S3 encryption.               |
+| `OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY` | empty                                               | Required for PostgreSQL-backed API and worker runtimes before provider configuration secrets are written or read; accepts a 32-byte base64, base64url, or hex key.         |
+| `OPEN_PRACTICE_BROWSER_API_MODE`      | `external`                                          | Set to `same-origin` for self-hosted web images that should send browser requests to `/api` on the web origin and let Next.js rewrite to private `API_BASE_URL`.           |
 
 ## Privacy Posture
 
@@ -99,9 +103,30 @@ object storage. Server-owned draft-export/inbound-email writes and staff/public 
 request SSE-S3 encryption when configured. Workers fetch sensitive content through matter-scoped service authorization; queue messages
 must contain only identifiers, small control metadata, and idempotency keys. Optional
 AI/OCR/transcription outputs are drafts with provenance, review state, and retention controls.
-Draft assist records are non-authoritative suggestions; raw source text, prompts, instructions, and
-generated text are excluded from audit/job metadata.
+OCR extracted text is retained internally in `document_text_extractions.extracted_text` for
+authorized server-side review/assist flows. Raw OCR text is not returned in workbench/job/audit/API
+responses and is not stored in job metadata, audit metadata, conversion-review artifact metadata, or
+provider-readiness evidence packets. Draft assist records are non-authoritative suggestions; raw
+source text, prompts, instructions, and generated text are excluded from audit/job metadata.
 OCR enablement is firm-scoped provider posture, not an environment-only switch: owner/admin users can
-enable the local Tesseract provider through the Queues provider posture panel, while queueing still
-requires the Redis-backed OCR queue and S3-backed document content. AI triage, transcription, and
-media queues remain reserved/deferred until their provider governance and enqueue surfaces are added.
+enable the local CLI OCR provider through the Queues provider posture panel, while queueing still
+requires the Redis-backed OCR queue, S3-backed document content, and supported PDF/JPEG/PNG/TIFF
+inputs. The worker rechecks file magic bytes before invoking OCRmyPDF and fails closed on unsupported
+content. AI triage, transcription, and media queues remain reserved/deferred until their provider
+governance and enqueue surfaces are added.
+
+## Local OCR CLI Wrap Record
+
+- **Source projects:** [OCRmyPDF](https://ocrmypdf.readthedocs.io/) and
+  [Tesseract OCR](https://tesseract-ocr.github.io/tessdoc/); the self-host OCR image installs
+  Alpine-packaged runtime dependencies such as Ghostscript and Poppler beside them.
+- **Reuse class:** Wrap. Open Practice shells out with `execFile`-style argument arrays and does not
+  vendor or copy upstream OCR source into `apps/*`, `packages/*`, tests, migrations, or shared
+  scripts.
+- **License posture:** OCRmyPDF is MPL-2.0, Tesseract is Apache-2.0, and the packaged CLI/runtime
+  tools keep their own upstream licenses and operator obligations. They are optional runtime tooling
+  in the dedicated OCR worker image/profile, not required for API, web, database, or non-OCR worker
+  startup.
+- **Touched boundary:** `packages/providers` owns the original CLI adapter, `apps/worker` owns queue
+  selection and startup readiness, and `docker-compose.selfhost.yml` exposes the OCR worker through
+  an explicit `ocr` profile.

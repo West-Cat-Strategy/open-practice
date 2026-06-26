@@ -253,7 +253,7 @@ describe("provider status route", () => {
     await upsertProvider(repository, { kind: "smtp", key: "mailpit", enabled: true });
     await upsertProvider(repository, { kind: "inbound_email", key: "maildrop", enabled: false });
     await upsertProvider(repository, { kind: "ai", key: "local-draft-assist", enabled: true });
-    await upsertProvider(repository, { kind: "ocr", key: "local-tesseract", enabled: true });
+    await upsertProvider(repository, { kind: "ocr", key: "local-cli-ocr", enabled: true });
     await upsertProvider(repository, { kind: "storage", key: "s3-compatible", enabled: true });
     await repository.setAuthPassword({
       firmId,
@@ -345,7 +345,7 @@ describe("provider status route", () => {
       documentProcessing: {
         status: "configured",
         workers: [{ queueName: "ocr", status: "configured" }],
-        providers: [{ kind: "ocr", key: "local-tesseract" }],
+        providers: [{ kind: "ocr", key: "local-cli-ocr" }],
       },
       objectStorage: { status: "configured", provider: "s3" },
       bullmq: {

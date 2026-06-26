@@ -182,7 +182,9 @@ export function inspectRenderedCompose(rendered) {
     throw new Error("Self-host Compose must not include Mailpit");
   }
 
-  for (const service of ["api", "web", "worker"]) {
+  const runtimeServices = ["api", "web", "worker"];
+  if (services["worker-ocr"]) runtimeServices.push("worker-ocr");
+  for (const service of runtimeServices) {
     const env = serviceEnv(services[service]);
     if (env.NODE_ENV !== "production") {
       throw new Error(`${service} must run with NODE_ENV=production`);
@@ -196,7 +198,9 @@ export function inspectRenderedCompose(rendered) {
     ]);
   }
 
-  for (const service of ["api", "worker"]) {
+  const storageServices = ["api", "worker"];
+  if (services["worker-ocr"]) storageServices.push("worker-ocr");
+  for (const service of storageServices) {
     const env = serviceEnv(services[service]);
     if (env.S3_SERVER_SIDE_ENCRYPTION !== "AES256") {
       throw new Error(`${service} must set S3_SERVER_SIDE_ENCRYPTION=AES256`);
@@ -217,9 +221,29 @@ export function inspectRenderedCompose(rendered) {
   assertLoopbackPorts("api", services.api);
   assertLoopbackPorts("web", services.web);
   assertLoopbackPorts("minio", services.minio);
-  for (const service of ["postgres", "redis", "worker"]) {
+  const privateServices = ["postgres", "redis", "worker"];
+  if (services["worker-ocr"]) privateServices.push("worker-ocr");
+  for (const service of privateServices) {
     if ((services[service].ports ?? []).length > 0) {
       throw new Error(`${service} must not publish host ports in self-host Compose`);
+    }
+  }
+
+  const workerEnv = serviceEnv(services.worker);
+  if (
+    String(workerEnv.WORKER_QUEUES ?? "")
+      .split(",")
+      .includes("ocr")
+  ) {
+    throw new Error("worker must not consume the OCR queue; use worker-ocr");
+  }
+  if (services["worker-ocr"]) {
+    const workerOcrEnv = serviceEnv(services["worker-ocr"]);
+    if (workerOcrEnv.WORKER_QUEUES !== "ocr") {
+      throw new Error("worker-ocr must run with WORKER_QUEUES=ocr");
+    }
+    if (workerOcrEnv.OCR_PROVIDER !== "local_cli") {
+      throw new Error("worker-ocr must run with OCR_PROVIDER=local_cli");
     }
   }
 }

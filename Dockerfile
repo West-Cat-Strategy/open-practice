@@ -82,6 +82,12 @@ CMD ["node", "dist/server.js"]
 FROM app-runner AS worker
 CMD ["node", "dist/worker.js"]
 
+FROM app-runner AS worker-ocr
+USER root
+RUN apk add --no-cache ghostscript ocrmypdf poppler-utils tesseract-ocr tesseract-ocr-data-eng
+USER nextjs
+CMD ["node", "dist/worker.js"]
+
 FROM runtime-base AS web
 WORKDIR /app
 ENV NODE_ENV=production

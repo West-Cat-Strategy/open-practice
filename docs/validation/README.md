@@ -18,6 +18,15 @@ skipped-check context. The live workboard remains
 
 ## Current Handoff Notes
 
+The 2026-06-24 reliable local PDF/image OCR proof is recorded in
+[OP_RELIABLE_LOCAL_PDF_OCR_PROOF_2026-06-24.md](OP_RELIABLE_LOCAL_PDF_OCR_PROOF_2026-06-24.md).
+It covers the `codex/reliable-local-pdf-ocr-20260624` branch, including the local OCRmyPDF/Tesseract
+provider, byte-sniffed PDF/JPEG/PNG/TIFF eligibility, unsupported-file queue reason, normalized
+legacy Tesseract.js confidence, internal-only extracted text retention, metadata redaction, optional
+wrapped-runtime reuse record, dedicated `worker-ocr` self-host profile, and Docker worker image
+toolchain validation. The proof was refreshed with 2026-06-26 selector-driven package, docs,
+self-host, Docker, API contract, workspace build, and proof-reconciliation evidence.
+
 The 2026-06-24 mainline merge/push/prune proof is recorded in
 [OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-24.md](OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-24.md).
 It covers the three-lane closeout through `merge/open-practice-mainline-20260624`, including the

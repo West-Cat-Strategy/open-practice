@@ -13,7 +13,7 @@ import {
 } from "./select-validation.mjs";
 
 const PATH_PATTERN =
-  /(?:^|[\s`])((?:[A-Za-z0-9_.-]+\/)+[A-Za-z0-9_.-]+|(?:README|CONTRIBUTING)\.md|Dockerfile|\.gitignore|\.dockerignore|\.env\.example|package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|turbo\.json)(?=$|[\s`,])/g;
+  /(?:^|[\s`])((?:[A-Za-z0-9_.-]+\/)+[A-Za-z0-9_.-]+|(?:README|CONTRIBUTING)\.md|Dockerfile|docker-compose(?:\.[A-Za-z0-9_.-]+)?\.ya?ml|\.gitignore|\.dockerignore|\.env\.example|package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|turbo\.json)(?=$|[\s`,])/g;
 
 export function usage() {
   return [

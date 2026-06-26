@@ -212,8 +212,47 @@ services:
       - S3_ACCESS_KEY=${OPEN_PRACTICE_SELFHOST_S3_ACCESS_KEY:-open_practice}
       - S3_SECRET_KEY=${OPEN_PRACTICE_SELFHOST_S3_SECRET_KEY:?Set OPEN_PRACTICE_SELFHOST_S3_SECRET_KEY}
       - S3_SERVER_SIDE_ENCRYPTION=AES256
-      - WORKER_QUEUES=${OPEN_PRACTICE_SELFHOST_WORKER_QUEUES:-email,inbound_email,ai_triage,ocr,transcription,media}
+      - WORKER_QUEUES=${OPEN_PRACTICE_SELFHOST_WORKER_QUEUES:-email,inbound_email,ai_triage,transcription,media}
       - WORKER_CONCURRENCY=${OPEN_PRACTICE_SELFHOST_WORKER_CONCURRENCY:-2}
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+      minio:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker-ocr:
+    profiles: ["ocr"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: worker-ocr
+      args:
+        APP_NAME: "@open-practice/worker"
+    command: ["node", "dist/worker.js"]
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://${OPEN_PRACTICE_SELFHOST_POSTGRES_USER:-open_practice}:${OPEN_PRACTICE_SELFHOST_POSTGRES_PASSWORD:?Set OPEN_PRACTICE_SELFHOST_POSTGRES_PASSWORD}@postgres:5432/${OPEN_PRACTICE_SELFHOST_POSTGRES_DB:-open_practice}
+      - REDIS_URL=redis://redis:6379/0
+      - OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY=${OPEN_PRACTICE_SELFHOST_CONFIG_ENCRYPTION_KEY:?Set OPEN_PRACTICE_SELFHOST_CONFIG_ENCRYPTION_KEY}
+      - S3_ENDPOINT=${OPEN_PRACTICE_SELFHOST_S3_ENDPOINT:-http://minio:9000}
+      - S3_REGION=${OPEN_PRACTICE_SELFHOST_S3_REGION:-local}
+      - S3_BUCKET=${OPEN_PRACTICE_SELFHOST_S3_BUCKET:-open-practice-documents}
+      - S3_ACCESS_KEY=${OPEN_PRACTICE_SELFHOST_S3_ACCESS_KEY:-open_practice}
+      - S3_SECRET_KEY=${OPEN_PRACTICE_SELFHOST_S3_SECRET_KEY:?Set OPEN_PRACTICE_SELFHOST_S3_SECRET_KEY}
+      - S3_SERVER_SIDE_ENCRYPTION=AES256
+      - WORKER_QUEUES=${OPEN_PRACTICE_SELFHOST_OCR_WORKER_QUEUES:-ocr}
+      - WORKER_CONCURRENCY=${OPEN_PRACTICE_SELFHOST_OCR_WORKER_CONCURRENCY:-1}
+      - OCR_PROVIDER=${OPEN_PRACTICE_SELFHOST_OCR_PROVIDER:-local_cli}
+      - OCR_CLI_TIMEOUT_SECONDS=${OPEN_PRACTICE_SELFHOST_OCR_CLI_TIMEOUT_SECONDS:-120}
+      - OCR_TEMP_DIR=${OPEN_PRACTICE_SELFHOST_OCR_TEMP_DIR:-}
     depends_on:
       db-migrate:
         condition: service_completed_successfully

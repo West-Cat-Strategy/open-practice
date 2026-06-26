@@ -4,6 +4,7 @@ import type { S3Client } from "@aws-sdk/client-s3";
 import { InMemoryOpenPracticeRepository } from "@open-practice/database";
 import type { MailSender, OcrProvider } from "@open-practice/domain";
 import { EmbeddedAutomationProvider } from "@open-practice/providers/automation";
+import { LocalCliOcrProvider } from "@open-practice/providers/ocr/local-cli";
 import { FakeDraftAssistProvider } from "@open-practice/providers/testing";
 import { processOpenPracticeJob, type ConnectorDeliveryRequest } from "./processors.js";
 
@@ -2119,7 +2120,11 @@ describe("worker processors", () => {
         return {
           confidence: 94,
           extractedText: "Synthetic extracted retainer text.",
-          metadata: { engineVersion: "test", rawText: "Synthetic provider text should stay out" },
+          metadata: {
+            engine: "ocrmypdf",
+            engineVersion: "test",
+            rawText: "Synthetic provider text should stay out",
+          },
         };
       },
     };
@@ -2171,7 +2176,8 @@ describe("worker processors", () => {
       metadata: {
         firmId: "firm-west-legal",
         documentId: "doc-001",
-        confidence: 94,
+        extractionEngine: "ocrmypdf",
+        confidence: 0.94,
         textLength: "Synthetic extracted retainer text.".length,
       },
     });
@@ -2181,12 +2187,12 @@ describe("worker processors", () => {
     ).resolves.toEqual([
       expect.objectContaining({
         documentId: "doc-001",
-        engine: "tesseract",
+        engine: "ocrmypdf",
         status: "completed",
         language: "eng",
-        confidence: 94,
+        confidence: 0.94,
         extractedText: "Synthetic extracted retainer text.",
-        metadata: { engineVersion: "test", rawText: "Synthetic provider text should stay out" },
+        metadata: { engine: "ocrmypdf", engineVersion: "test" },
       }),
     ]);
     await expect(
@@ -2200,7 +2206,8 @@ describe("worker processors", () => {
           finishedAt: expect.any(String),
           metadata: expect.objectContaining({
             documentId: "doc-001",
-            confidence: 94,
+            extractionEngine: "ocrmypdf",
+            confidence: 0.94,
             textLength: "Synthetic extracted retainer text.".length,
           }),
         }),
@@ -2492,6 +2499,104 @@ describe("worker processors", () => {
           metadata: expect.objectContaining({
             documentId: "doc-ocr-scan-gated",
             scanStatus: "queued",
+          }),
+        }),
+      ]),
+    );
+  });
+
+  it("skips unsupported OCR bytes after storage read without writing an extraction", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createDocumentUploadIntent({
+      id: "doc-ocr-unsupported",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      title: "Unsupported OCR.pdf",
+      storageKey: "matters/matter-001/unsupported-ocr.pdf",
+      checksumSha256: "a".repeat(64),
+      classification: "general",
+      legalHold: false,
+    });
+    await repository.completeDocumentUpload({
+      firmId: "firm-west-legal",
+      documentId: "doc-ocr-unsupported",
+      checksumSha256: "a".repeat(64),
+      scanStatus: "passed",
+    });
+    await repository.createJobLifecycleRecord({
+      id: "job-ocr-unsupported",
+      firmId: "firm-west-legal",
+      queueName: "ocr",
+      jobName: "extract_document_text",
+      status: "queued",
+      targetResourceType: "document",
+      targetResourceId: "doc-ocr-unsupported",
+      attemptsMade: 0,
+      maxAttempts: 3,
+      queuedAt: "2026-05-01T00:00:00.000Z",
+      metadata: { documentId: "doc-ocr-unsupported", language: "eng" },
+    });
+    const runnerCalls: unknown[] = [];
+
+    const result = await processOpenPracticeJob({
+      queueName: "ocr",
+      jobName: "extract_document_text",
+      data: {
+        firmId: "firm-west-legal",
+        resourceType: "document",
+        resourceId: "doc-ocr-unsupported",
+        metadata: { documentId: "doc-ocr-unsupported", language: "eng" },
+      },
+      jobLifecycleId: "job-ocr-unsupported",
+      attemptsMade: 0,
+      maxAttempts: 3,
+      repository,
+      s3: {
+        bucket: "open-practice-documents",
+        client: {
+          async send() {
+            return {
+              Body: {
+                async transformToByteArray() {
+                  return new TextEncoder().encode("plain text with a misleading pdf key");
+                },
+              },
+            };
+          },
+        } as unknown as S3Client,
+      },
+      ocrProvider: new LocalCliOcrProvider({
+        runCommand: async () => {
+          runnerCalls.push("called");
+          return {};
+        },
+      }),
+      mailSender: {} as never,
+      inboundEmailParser: {} as never,
+    });
+
+    expect(result).toMatchObject({
+      status: "skipped",
+      reason: "Unsupported OCR input file type",
+      metadata: {
+        documentId: "doc-ocr-unsupported",
+        ocrInputStatus: "unsupported_file_type",
+      },
+    });
+    expect(runnerCalls).toEqual([]);
+    await expect(
+      repository.getDocumentTextExtractions("firm-west-legal", "doc-ocr-unsupported"),
+    ).resolves.toEqual([]);
+    await expect(
+      repository.listJobLifecycleRecords("firm-west-legal", { queueName: "ocr" }),
+    ).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "job-ocr-unsupported",
+          status: "skipped",
+          metadata: expect.objectContaining({
+            documentId: "doc-ocr-unsupported",
+            ocrInputStatus: "unsupported_file_type",
           }),
         }),
       ]),

@@ -14,6 +14,8 @@ production safety gates in [Deployment Hardening](../deployment-hardening.md).
 - Do not enable Mailpit, development seed data, memory persistence, Docker bridge setup, relaxed
   CSP, live Stripe, bank feeds, automatic trust posting, or production email delivery through this
   profile.
+- Keep OCR isolated to the `worker-ocr` service and `ocr` Compose profile. The default worker does
+  not consume the OCR queue.
 - Use synthetic values only in examples and validation proof. Store real secrets in an ignored env
   file or deployment secret manager.
 
@@ -75,6 +77,17 @@ operator reverse proxy. The API setup port publishes on
 `127.0.0.1:${OPEN_PRACTICE_SELFHOST_API_SETUP_HOST_PORT:-34080}` only for operator-local bootstrap
 and health checks. PostgreSQL, Redis, and Worker publish no host ports.
 
+Start the optional local OCR worker only after accepting the OCRmyPDF/Tesseract CLI toolchain and
+operator obligations:
+
+```bash
+docker compose --env-file .env.selfhost.local -f docker-compose.selfhost.yml --profile ocr up -d --build worker-ocr
+```
+
+The OCR worker runs with `WORKER_QUEUES=ocr`, `OCR_PROVIDER=local_cli`, and `eng` only. It fails at
+startup when `ocrmypdf`, `tesseract`, or Tesseract `eng` language data is missing. API, web,
+database, and non-OCR worker startup do not require the OCR toolchain.
+
 ## First-Run Setup
 
 Production first-run setup intentionally remains operator-local at the API. Public or proxied setup
@@ -113,5 +126,6 @@ Do not enable `OPEN_PRACTICE_ALLOW_DOCKER_BRIDGE_SETUP` or development auth help
 - Run `pnpm docker:residual-watch`, `pnpm docker:app-smoke`, and `pnpm e2e:docker` for image,
   Compose, or release-browser proof when Docker is available.
 - Run dependency, secret, policy, and license checks before deployment handoff.
-- Keep production email delivery, OCR/transcription/AI providers, live payments, bank feeds, and
-  trust/funds automation disabled until their separate runbooks and validation evidence exist.
+- Keep production email delivery, transcription/AI providers, live payments, bank feeds, and
+  trust/funds automation disabled until their separate runbooks and validation evidence exist. Keep
+  OCR enabled only through the dedicated `ocr` profile and local provider posture.

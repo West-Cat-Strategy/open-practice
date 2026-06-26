@@ -5,6 +5,12 @@ import {
   type OcrProvider,
 } from "@open-practice/domain";
 
+function normalizeProviderConfidence(value: number | undefined): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
+  const normalized = value > 1 ? value / 100 : value;
+  return Number(Math.min(1, Math.max(0, normalized)).toFixed(4));
+}
+
 export class TesseractOcrProvider implements OcrProvider {
   async extractText(input: {
     firmId: string;
@@ -21,11 +27,12 @@ export class TesseractOcrProvider implements OcrProvider {
 
       return {
         extractedText: data.text,
-        confidence: Math.round(data.confidence),
+        confidence: normalizeProviderConfidence(data.confidence),
         metadata: {
           engine: "tesseract",
           version: "5.0", // tesseract.js version/core version
           jobId: input.documentId,
+          confidenceScale: "0..1",
         },
       };
     } finally {

@@ -1,6 +1,6 @@
 # Planning and Progress
 
-**Last Updated:** 2026-06-24
+**Last Updated:** 2026-06-26
 
 Use this file for live tracked work, immediate next moves, and the forward-looking development plan.
 Use `docs/planning.md` for the durable roadmap, `docs/improvement-opportunities.md` for candidate
@@ -8,19 +8,29 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 ## At a Glance
 
-| Snapshot              | Value                                                                |
-| --------------------- | -------------------------------------------------------------------- |
-| Current focus         | 2026-06-24 three-lane mainline closeout is complete.                 |
-| Next recommended pick | Resolve the MinIO private-pilot readiness blocker before handoff.    |
-| Ready rows            | 0                                                                    |
-| Candidate rows        | 0                                                                    |
-| In progress rows      | 0                                                                    |
-| Review rows           | 0                                                                    |
-| Blocked rows          | 1                                                                    |
-| Archive               | Historical snapshots and proof live in [Archive](archive/README.md). |
-| Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`     |
+| Snapshot              | Value                                                                   |
+| --------------------- | ----------------------------------------------------------------------- |
+| Current focus         | Reliable local PDF/image OCR branch is validated with 2026-06-26 proof. |
+| Next recommended pick | Resolve the MinIO private-pilot readiness blocker before handoff.       |
+| Ready rows            | 0                                                                       |
+| Candidate rows        | 0                                                                       |
+| In progress rows      | 0                                                                       |
+| Review rows           | 0                                                                       |
+| Blocked rows          | 1                                                                       |
+| Archive               | Historical snapshots and proof live in [Archive](archive/README.md).    |
+| Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`        |
 
 ## Current Handoff Notes
+
+The 2026-06-24 `codex/reliable-local-pdf-ocr-20260624` branch implements local OCRmyPDF/Tesseract
+OCR for PDFs and supported images in a clean sibling worktree while preserving the dirty root
+restore-drill worktree. The branch adds the `local_cli` OCR provider, byte-sniffed worker
+eligibility, `unsupported_file_type` queue copy, normalized legacy Tesseract.js confidence,
+internal-only extracted text retention in `document_text_extractions`, metadata redaction for
+workbench/job/audit/API/artifact surfaces, optional wrapped runtime tooling documentation, and a
+dedicated self-host `worker-ocr` profile whose startup fails fast without OCRmyPDF, Tesseract, or
+`eng` language data. Final closeout validation was rerun on 2026-06-26, and evidence is recorded in
+[reliable local PDF OCR proof](validation/OP_RELIABLE_LOCAL_PDF_OCR_PROOF_2026-06-24.md).
 
 The 2026-06-24 mainline closeout is validated, pushed to `main`, and pruned after integrating the
 private-pilot readiness remediation branch, the private-pilot MinIO readiness blocker branch, and
