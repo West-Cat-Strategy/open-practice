@@ -157,6 +157,69 @@ describe("audit event taxonomy", () => {
     );
   });
 
+  it("classifies appointment booking hold audit metadata without tokens or requester contact", () => {
+    const createdClassification = classifyAuditEvent(
+      auditEvent({
+        action: "appointment_booking.hold.created",
+        resourceType: "appointment_booking_request",
+        resourceId: "appointment-booking-request-001",
+        metadata: {
+          requestId: "appointment-booking-request-001",
+          profileId: "appointment-booking-profile-001",
+          linkId: "appointment-booking-link-001",
+          eventId: "calendar-event-001",
+          source: "direct_link",
+          status: "tentative_hold",
+          matterLinked: true,
+          attendeeAdded: true,
+        },
+      }),
+    );
+    const reviewedClassification = classifyAuditEvent(
+      auditEvent({
+        action: "appointment_booking.hold.reviewed",
+        resourceType: "appointment_booking_request",
+        resourceId: "appointment-booking-request-001",
+        metadata: {
+          requestId: "appointment-booking-request-001",
+          profileId: "appointment-booking-profile-001",
+          eventId: "calendar-event-001",
+          reviewStatus: "confirmed",
+          eventStatus: "confirmed",
+          source: "direct_link",
+          matterLinked: true,
+        },
+      }),
+    );
+
+    expect(createdClassification).toMatchObject({
+      category: "calendar",
+      known: true,
+      matterScope: "optional_matter",
+      resourceTypeMatches: true,
+    });
+    expect(reviewedClassification).toMatchObject({
+      category: "calendar",
+      known: true,
+      matterScope: "optional_matter",
+      resourceTypeMatches: true,
+    });
+    expect(createdClassification.metadataHints.resource).toEqual(
+      expect.arrayContaining(["requestId", "profileId", "linkId", "eventId", "source", "status"]),
+    );
+    expect(createdClassification.metadataHints.resource).not.toEqual(
+      expect.arrayContaining([
+        "token",
+        "tokenHash",
+        "requesterEmail",
+        "requesterTelephone",
+        "requesterNotes",
+        "meetingUrl",
+        "eventTitle",
+      ]),
+    );
+  });
+
   it("classifies conflict checks without raw prospective-party metadata", () => {
     const classification = classifyAuditEvent(
       auditEvent({

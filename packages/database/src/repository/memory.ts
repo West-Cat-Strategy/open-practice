@@ -19,6 +19,9 @@ import {
   defaultBillingExpenseCategoriesForFirm,
   type AccessLogRecord,
   type AiOperationalProposalRecord,
+  type AppointmentBookingLinkRecord,
+  type AppointmentBookingProfileRecord,
+  type AppointmentBookingRequestRecord,
   type AuditEvent,
   type BillingExpenseCategoryRecord,
   type CalendarCredentialRecord,
@@ -161,6 +164,18 @@ import type { EmailJobsRepository } from "./jobs-email-contracts.js";
 import type { FirmSettingsRepository } from "./firm-settings-contracts.js";
 import type { ProviderSettingsRepository } from "./provider-settings-contracts.js";
 import { clone } from "./contracts.js";
+import {
+  createMemoryAppointmentBookingLink,
+  createMemoryAppointmentBookingTentativeHold,
+  getMemoryAppointmentBookingLinkByTokenHash,
+  getMemoryAppointmentBookingProfile,
+  getMemoryAppointmentBookingRequest,
+  listMemoryAppointmentBookingProfiles,
+  listMemoryAppointmentBookingRequests,
+  reviewMemoryAppointmentBookingRequest,
+  upsertMemoryAppointmentBookingProfile,
+  type MemoryAppointmentBookingStore,
+} from "./appointment-booking/memory.js";
 import { createMemoryAuthRepository, type MemoryAuthStore } from "./auth/memory.js";
 import {
   appendMemoryAuditEvent,
@@ -698,6 +713,9 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private authAccounts: AuthAccountRecord[] = [];
   private authSessions: AuthSessionRecord[] = [];
   private calendarCredentials: CalendarCredentialRecord[] = [];
+  private appointmentBookingProfiles: AppointmentBookingProfileRecord[] = [];
+  private appointmentBookingLinks: AppointmentBookingLinkRecord[] = [];
+  private appointmentBookingRequests: AppointmentBookingRequestRecord[] = [];
   private passwordSetupTokens: AuthPasswordSetupTokenRecord[] = [];
   private authChallenges: WebAuthnChallengeRecord[] = [];
   private webAuthnCredentials: WebAuthnCredentialRecord[] = [];
@@ -1081,6 +1099,30 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
       },
       set publicConsultationIntakes(value: PublicConsultationIntakeRecord[]) {
         repository.publicConsultationIntakes = value;
+      },
+    };
+  }
+
+  private get appointmentBookingStore(): MemoryAppointmentBookingStore {
+    const repository = this;
+    return {
+      get appointmentBookingProfiles() {
+        return repository.appointmentBookingProfiles;
+      },
+      set appointmentBookingProfiles(value: AppointmentBookingProfileRecord[]) {
+        repository.appointmentBookingProfiles = value;
+      },
+      get appointmentBookingLinks() {
+        return repository.appointmentBookingLinks;
+      },
+      set appointmentBookingLinks(value: AppointmentBookingLinkRecord[]) {
+        repository.appointmentBookingLinks = value;
+      },
+      get appointmentBookingRequests() {
+        return repository.appointmentBookingRequests;
+      },
+      set appointmentBookingRequests(value: AppointmentBookingRequestRecord[]) {
+        repository.appointmentBookingRequests = value;
       },
     };
   }
@@ -2072,6 +2114,89 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   ): ReturnType<OpenPracticeRepository["listCalendarSchedulingRequests"]> {
     return Promise.resolve(
       listMemoryCalendarSchedulingRequests(this.calendarEventStore, firmId, options),
+    );
+  }
+
+  async listAppointmentBookingProfiles(
+    firmId: string,
+    options: Parameters<OpenPracticeRepository["listAppointmentBookingProfiles"]>[1] = {},
+  ): ReturnType<OpenPracticeRepository["listAppointmentBookingProfiles"]> {
+    return Promise.resolve(
+      listMemoryAppointmentBookingProfiles(this.appointmentBookingStore, firmId, options),
+    );
+  }
+
+  async getAppointmentBookingProfile(
+    firmId: string,
+    profileId: string,
+  ): ReturnType<OpenPracticeRepository["getAppointmentBookingProfile"]> {
+    return Promise.resolve(
+      getMemoryAppointmentBookingProfile(this.appointmentBookingStore, firmId, profileId),
+    );
+  }
+
+  async upsertAppointmentBookingProfile(
+    profile: Parameters<OpenPracticeRepository["upsertAppointmentBookingProfile"]>[0],
+  ): ReturnType<OpenPracticeRepository["upsertAppointmentBookingProfile"]> {
+    return Promise.resolve(
+      upsertMemoryAppointmentBookingProfile(this.appointmentBookingStore, profile),
+    );
+  }
+
+  async createAppointmentBookingLink(
+    link: Parameters<OpenPracticeRepository["createAppointmentBookingLink"]>[0],
+  ): ReturnType<OpenPracticeRepository["createAppointmentBookingLink"]> {
+    return Promise.resolve(createMemoryAppointmentBookingLink(this.appointmentBookingStore, link));
+  }
+
+  async getAppointmentBookingLinkByTokenHash(
+    tokenHash: string,
+  ): ReturnType<OpenPracticeRepository["getAppointmentBookingLinkByTokenHash"]> {
+    return Promise.resolve(
+      getMemoryAppointmentBookingLinkByTokenHash(this.appointmentBookingStore, tokenHash),
+    );
+  }
+
+  async listAppointmentBookingRequests(
+    firmId: string,
+    options: Parameters<OpenPracticeRepository["listAppointmentBookingRequests"]>[1] = {},
+  ): ReturnType<OpenPracticeRepository["listAppointmentBookingRequests"]> {
+    return Promise.resolve(
+      listMemoryAppointmentBookingRequests(this.appointmentBookingStore, firmId, options),
+    );
+  }
+
+  async getAppointmentBookingRequest(
+    firmId: string,
+    requestId: string,
+  ): ReturnType<OpenPracticeRepository["getAppointmentBookingRequest"]> {
+    return Promise.resolve(
+      getMemoryAppointmentBookingRequest(this.appointmentBookingStore, firmId, requestId),
+    );
+  }
+
+  async createAppointmentBookingTentativeHold(
+    input: Parameters<OpenPracticeRepository["createAppointmentBookingTentativeHold"]>[0],
+  ): ReturnType<OpenPracticeRepository["createAppointmentBookingTentativeHold"]> {
+    return Promise.resolve(
+      createMemoryAppointmentBookingTentativeHold(
+        this.appointmentBookingStore,
+        this.calendarEventStore,
+        this.publicConsultationIntakeStore,
+        input,
+      ),
+    );
+  }
+
+  async reviewAppointmentBookingRequest(
+    input: Parameters<OpenPracticeRepository["reviewAppointmentBookingRequest"]>[0],
+  ): ReturnType<OpenPracticeRepository["reviewAppointmentBookingRequest"]> {
+    return Promise.resolve(
+      reviewMemoryAppointmentBookingRequest(
+        this.appointmentBookingStore,
+        this.calendarEventStore,
+        input,
+      ),
     );
   }
 

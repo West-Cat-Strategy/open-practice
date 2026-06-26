@@ -2,6 +2,7 @@ import type { CalendarEventRecord } from "./models.js";
 import type { PublicConsultationIntakeRecord } from "./operations.js";
 import type { IntakeFormLinkRecord, IntakeFormReviewRecord } from "./intake.js";
 import type { IntakeSessionRecord } from "./signatures.js";
+import type { AppointmentBookingRequestRecord } from "./appointment-booking.js";
 
 export type IntakePipelineSourceType = "public_consultation" | "intake_session";
 
@@ -94,7 +95,7 @@ export interface IntakePipelineRequestLink {
 
 export interface IntakePipelineAppointmentLink {
   eventId: string;
-  matterId: string;
+  matterId?: string;
   startsAt: string;
   status: CalendarEventRecord["status"];
 }
@@ -203,6 +204,7 @@ export interface BuildIntakePipelineSnapshotInput {
   intakeFormLinks: IntakeFormLinkRecord[];
   intakeFormReviews: IntakeFormReviewRecord[];
   calendarEvents: CalendarEventRecord[];
+  appointmentBookingRequests?: AppointmentBookingRequestRecord[];
   publicConsultationReviewOwnerUserId?: string;
   assignedMatterIds?: string[];
 }
@@ -524,7 +526,19 @@ function intakeFollowUpReview(input: {
   });
 }
 
-function publicConsultationLead(intake: PublicConsultationIntakeRecord): IntakePipelineLeadRecord {
+function appointmentStatusFromBookingRequest(
+  request: AppointmentBookingRequestRecord,
+): CalendarEventRecord["status"] {
+  if (request.status === "confirmed") return "confirmed";
+  if (request.status === "dismissed") return "cancelled";
+  return "tentative";
+}
+
+function publicConsultationLead(input: {
+  intake: PublicConsultationIntakeRecord;
+  appointmentBookingRequests: AppointmentBookingRequestRecord[];
+}): IntakePipelineLeadRecord {
+  const { intake } = input;
   const sourceAttribution = safeSourceAttribution({
     metadata: intake.metadata,
     key: "source",
@@ -533,6 +547,12 @@ function publicConsultationLead(intake: PublicConsultationIntakeRecord): IntakeP
     channel: "website",
     sourceUrlPresent: Boolean(intake.sourceUrl),
   });
+  const appointmentLinks = input.appointmentBookingRequests.map((request) => ({
+    eventId: request.calendarEventId,
+    matterId: request.matterId,
+    startsAt: request.requestedStartsAt,
+    status: appointmentStatusFromBookingRequest(request),
+  }));
   return {
     id: `public-consultation:${intake.id}`,
     firmId: intake.firmId,
@@ -545,7 +565,17 @@ function publicConsultationLead(intake: PublicConsultationIntakeRecord): IntakeP
       posture: publicConflictPosture(intake),
       opposingPartyCount: intake.opposingPartyNames.length,
     },
-    followUpReview: publicFollowUpReview(intake, sourceAttribution),
+    followUpReview:
+      appointmentLinks.length > 0
+        ? buildFollowUpReview({
+            action: "schedule_consultation",
+            posture: "staff_review",
+            priority: "normal",
+            reason: "Appointment booking hold is waiting for staff review",
+            lastActivityAt: appointmentLinks[0]?.startsAt ?? intake.submittedAt,
+            sourceAttribution,
+          })
+        : publicFollowUpReview(intake, sourceAttribution),
     requestLinks: [
       {
         kind: "public_consultation",
@@ -555,7 +585,7 @@ function publicConsultationLead(intake: PublicConsultationIntakeRecord): IntakeP
         urlPresent: Boolean(intake.sourceUrl),
       },
     ],
-    appointmentLinks: [],
+    appointmentLinks,
     convertedMatterId: intake.convertedMatterId,
     conversionCount: intake.convertedMatterId ? 1 : 0,
     createdAt: intake.submittedAt,
@@ -864,8 +894,22 @@ export function buildIntakePipelineSnapshot(
     eventsByMatterId.set(event.matterId, existing);
   }
 
+  const appointmentBookingRequestsByIntakeId = new Map<string, AppointmentBookingRequestRecord[]>();
+  for (const request of input.appointmentBookingRequests ?? []) {
+    if (!request.publicConsultationIntakeId) continue;
+    const existing =
+      appointmentBookingRequestsByIntakeId.get(request.publicConsultationIntakeId) ?? [];
+    existing.push(request);
+    appointmentBookingRequestsByIntakeId.set(request.publicConsultationIntakeId, existing);
+  }
+
   const leads = [
-    ...input.publicConsultationIntakes.map(publicConsultationLead),
+    ...input.publicConsultationIntakes.map((intake) =>
+      publicConsultationLead({
+        intake,
+        appointmentBookingRequests: appointmentBookingRequestsByIntakeId.get(intake.id) ?? [],
+      }),
+    ),
     ...input.intakeSessions.map((session) =>
       intakeSessionLead({
         session,

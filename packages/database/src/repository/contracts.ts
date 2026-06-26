@@ -1,5 +1,6 @@
 import type { AuditRepository } from "./audit-contracts.js";
 import type { AiOperationalProposalRepository } from "./ai-operational-proposals-contracts.js";
+import type { AppointmentBookingRepository } from "./appointment-booking-contracts.js";
 import type { AuthRepository } from "./auth-contracts.js";
 import type { BillingEntriesRepository } from "./billing-entries-contracts.js";
 import type { BillingInvoicePaymentRepository } from "./billing-invoices-payments-contracts.js";
@@ -40,6 +41,7 @@ import type { TrustTransferRequestRepository } from "./trust-transfer-requests-c
 
 export * from "./audit-contracts.js";
 export * from "./ai-operational-proposals-contracts.js";
+export * from "./appointment-booking-contracts.js";
 export * from "./auth-contracts.js";
 export * from "./billing-entries-contracts.js";
 export * from "./billing-invoices-payments-contracts.js";
@@ -237,6 +239,7 @@ export interface OpenPracticeRepository
     ProviderSettingsRepository,
     AuditRepository,
     AiOperationalProposalRepository,
+    AppointmentBookingRepository,
     CalendarCredentialRepository,
     CalendarEventsRepository,
     ClientPortalWorkspaceRepository,

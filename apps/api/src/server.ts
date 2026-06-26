@@ -34,6 +34,7 @@ import { EmbeddedSignatureProvider } from "@open-practice/providers/signatures";
 import { registerAuditRoutes } from "./routes/audit.js";
 import { registerAuthRoutes } from "./routes/auth.js";
 import { registerAuthExtensionRoutes } from "./routes/auth-extensions.js";
+import { registerAppointmentBookingRoutes } from "./routes/appointment-booking.js";
 import { registerBillingRoutes } from "./routes/billing.js";
 import { registerCalDavRoutes } from "./routes/caldav.js";
 import { registerCalendarRoutes } from "./routes/calendar.js";
@@ -631,6 +632,13 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
     publicWebBaseUrl: options.publicWebBaseUrl,
     publicApiBaseUrl: options.publicApiBaseUrl,
     meetingLinks: options.meetingLinks,
+  });
+  registerAppointmentBookingRoutes(server, {
+    repository: options.repository,
+    publicWebBaseUrl: options.publicWebBaseUrl,
+    publicFirmId: options.publicConsultationIntake?.firmId ?? options.devFirmId,
+    publicActorUserId: options.publicConsultationIntake?.actorUserId ?? options.devUserId,
+    jwtSecret: options.jwtSecret,
   });
   registerClientPortalRoutes(server, {
     repository: options.repository,

@@ -36,6 +36,7 @@ export interface CalendarEventListOptions {
   clientContactIds?: string[];
   startsAfter?: string;
   startsBefore?: string;
+  includeAllScopes?: boolean;
 }
 
 export interface CalendarEventAttendeeDeleteInput {

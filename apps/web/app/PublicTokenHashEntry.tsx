@@ -2,6 +2,7 @@
 
 import { ShieldCheck } from "lucide-react";
 import { useEffect, useState } from "react";
+import AppointmentBookingRunner from "./appointment-booking/AppointmentBookingRunner";
 import ExternalUploadRunner from "./external-uploads/ExternalUploadRunner";
 import GuestSessionRunner from "./guest-sessions/GuestSessionRunner";
 import IntakeFormRunner from "./intake-forms/IntakeFormRunner";
@@ -9,7 +10,12 @@ import { publicTokenFromLocationHash } from "./publicTokenClient";
 import { PublicStatusMessage, PublicTokenShell } from "./publicTokenUi";
 import ShareLinkRunner from "./share-links/ShareLinkRunner";
 
-type PublicTokenHashKind = "share-links" | "external-uploads" | "intake-forms" | "guest-sessions";
+type PublicTokenHashKind =
+  | "share-links"
+  | "external-uploads"
+  | "intake-forms"
+  | "guest-sessions"
+  | "appointment-booking";
 
 interface PublicTokenHashEntryProps {
   apiBaseUrl: string;
@@ -54,5 +60,8 @@ export default function PublicTokenHashEntry({ apiBaseUrl, kind }: PublicTokenHa
     return <ExternalUploadRunner apiBaseUrl={apiBaseUrl} token={token} />;
   }
   if (kind === "intake-forms") return <IntakeFormRunner apiBaseUrl={apiBaseUrl} token={token} />;
+  if (kind === "appointment-booking") {
+    return <AppointmentBookingRunner apiBaseUrl={apiBaseUrl} token={token} />;
+  }
   return <GuestSessionRunner apiBaseUrl={apiBaseUrl} token={token} />;
 }
