@@ -314,6 +314,10 @@ function isTopLevelMaintenance(path) {
   return path === "README.md" || path === "CONTRIBUTING.md" || path === ".gitignore";
 }
 
+function isSecurityScannerConfig(path) {
+  return path === ".gitleaksignore";
+}
+
 function isMigration(path) {
   return path === "migrations" || path.startsWith("migrations/") || path.includes("/migrations/");
 }
@@ -354,22 +358,26 @@ function isE2EPath(path) {
 }
 
 function isSecurityReviewTooling(path) {
-  return [
-    "scripts/create-security-review.mjs",
-    "scripts/create-security-review.test.mjs",
-    "scripts/lint-docker-config.mjs",
-    "scripts/optional-tooling.mjs",
-    "scripts/run-gitleaks-history-scan.mjs",
-    "scripts/run-license-source-scan.mjs",
-    "scripts/run-license-source-scan.test.mjs",
-    "scripts/run-osv-scanner.mjs",
-    "scripts/run-semgrep-privacy-rules.mjs",
-    "scripts/scan-docker-images.mjs",
-    "scripts/scan-tracked-secrets.mjs",
-    "scripts/scan-tracked-secrets.test.mjs",
-    "scripts/security-hot-path-rescan.mjs",
-    "scripts/security-hot-path-rescan.test.mjs",
-  ].includes(path);
+  return (
+    isSecurityScannerConfig(path) ||
+    [
+      "scripts/create-security-review.mjs",
+      "scripts/create-security-review.test.mjs",
+      "scripts/lint-docker-config.mjs",
+      "scripts/optional-tooling.mjs",
+      "scripts/run-gitleaks-history-scan.mjs",
+      "scripts/run-gitleaks-history-scan.test.mjs",
+      "scripts/run-license-source-scan.mjs",
+      "scripts/run-license-source-scan.test.mjs",
+      "scripts/run-osv-scanner.mjs",
+      "scripts/run-semgrep-privacy-rules.mjs",
+      "scripts/scan-docker-images.mjs",
+      "scripts/scan-tracked-secrets.mjs",
+      "scripts/scan-tracked-secrets.test.mjs",
+      "scripts/security-hot-path-rescan.mjs",
+      "scripts/security-hot-path-rescan.test.mjs",
+    ].includes(path)
+  );
 }
 
 function isSelfhostRestoreDrillTooling(path) {
@@ -502,6 +510,8 @@ export function classifyPath(path) {
   if (isSecurityReviewTooling(path)) {
     commands.add(COMMANDS.securityReview);
     commands.add(COMMANDS.securitySecretsHistory);
+    commands.add(COMMANDS.policyCheck);
+    commands.add(COMMANDS.test);
   }
 
   if (isSelfhostRestoreDrillTooling(path)) {

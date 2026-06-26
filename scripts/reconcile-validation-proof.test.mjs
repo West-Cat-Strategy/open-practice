@@ -60,13 +60,19 @@ describe("reconcile-validation-proof contract", () => {
       extractPathList(
         proof({
           paths: [
+            ".gitleaksignore",
             "docker-compose.selfhost.yml",
             "docs/testing/TESTING.md",
             "scripts/select-validation.mjs",
           ],
         }),
       ),
-      ["docker-compose.selfhost.yml", "docs/testing/TESTING.md", "scripts/select-validation.mjs"],
+      [
+        ".gitleaksignore",
+        "docker-compose.selfhost.yml",
+        "docs/testing/TESTING.md",
+        "scripts/select-validation.mjs",
+      ],
     );
   });
 

@@ -193,9 +193,11 @@ describe("select-validation contract", () => {
 
   it("routes local security tooling changes through the security review packet", () => {
     const commands = selectCommands([
+      ".gitleaksignore",
       "scripts/create-security-review.mjs",
       "scripts/scan-tracked-secrets.mjs",
       "scripts/security-hot-path-rescan.mjs",
+      "scripts/run-gitleaks-history-scan.test.mjs",
       "scripts/run-license-source-scan.mjs",
     ]);
     assert.deepEqual(commands, [

@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { runOptionalTool } from "./optional-tooling.mjs";
 
 const DEFAULT_ARTIFACT_ROOT = ".tmp/security/gitleaks";
+export const DEFAULT_GITLEAKS_IGNORE_PATH = ".gitleaksignore";
 
 export function parseArgs(rawArgs = process.argv.slice(2)) {
   const args = rawArgs[0] === "--" ? rawArgs.slice(1) : rawArgs;
@@ -26,25 +27,34 @@ export function parseArgs(rawArgs = process.argv.slice(2)) {
   return { artifactRoot };
 }
 
+export function gitleaksHistoryScanArgs({
+  artifactDir,
+  ignorePath = DEFAULT_GITLEAKS_IGNORE_PATH,
+  reportPath = "gitleaks-report.json",
+} = {}) {
+  return [
+    "detect",
+    "--source",
+    ".",
+    "--redact",
+    "--no-banner",
+    "--gitleaks-ignore-path",
+    ignorePath,
+    "--report-format",
+    "json",
+    "--report-path",
+    path.join(artifactDir, reportPath),
+  ];
+}
+
 export function runGitleaksHistoryScan({
   artifactRoot = DEFAULT_ARTIFACT_ROOT,
   cwd = process.cwd(),
 } = {}) {
-  const reportPath = "gitleaks-report.json";
   const result = runOptionalTool({
     artifactRoot,
     command: "gitleaks",
-    args: ({ artifactDir }) => [
-      "detect",
-      "--source",
-      ".",
-      "--redact",
-      "--no-banner",
-      "--report-format",
-      "json",
-      "--report-path",
-      path.join(artifactDir, reportPath),
-    ],
+    args: ({ artifactDir }) => gitleaksHistoryScanArgs({ artifactDir }),
     cwd,
     missingMessage:
       "gitleaks is not installed locally; install it to run the optional Git history/diff secret scan.",
