@@ -239,13 +239,43 @@ export interface DocumentConversionReviewPolicy {
   providerPayloadsStored: false;
 }
 
+export interface DocumentConversionReviewReadiness {
+  status:
+    | "blocked"
+    | "not_requested"
+    | "queued"
+    | "ready_for_review"
+    | "reviewed"
+    | "rejected"
+    | "failed"
+    | string;
+  artifactStatus: string;
+  reviewedAt?: string;
+  staffReviewRequired: true;
+  terminalReview: boolean;
+  reviewOnly: true;
+  metadataOnly: true;
+  downstreamMutation: false;
+  providerEvidenceStored: false;
+  rawOcrTextReturned: false;
+}
+
 export interface DocumentConversionReviewSummary {
-  posture: "blocked" | "not_requested" | "queued" | "ready_for_review" | "failed" | string;
+  posture:
+    | "blocked"
+    | "not_requested"
+    | "queued"
+    | "ready_for_review"
+    | "reviewed"
+    | "rejected"
+    | "failed"
+    | string;
   summaryPosture: "op_authored_metadata_only" | string;
   jobId?: string;
   artifactId?: string;
   counts?: DocumentConversionReviewCounts;
   policy: DocumentConversionReviewPolicy;
+  reviewReadiness?: DocumentConversionReviewReadiness;
 }
 
 export type DocumentReviewSuggestionGroup =

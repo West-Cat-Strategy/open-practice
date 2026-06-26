@@ -197,7 +197,12 @@ export function registerDocumentProcessingQueueRoutes(
         latestJob,
         artifact: existingArtifact,
       });
-      if (existingSummary.posture === "queued" || existingSummary.posture === "ready_for_review") {
+      if (
+        existingSummary.posture === "queued" ||
+        existingSummary.posture === "ready_for_review" ||
+        existingSummary.posture === "reviewed" ||
+        existingSummary.posture === "rejected"
+      ) {
         return reply.code(existingSummary.posture === "queued" ? 202 : 200).send({
           status: existingSummary.posture === "queued" ? "queued" : "completed",
           task: "document_conversion_review",

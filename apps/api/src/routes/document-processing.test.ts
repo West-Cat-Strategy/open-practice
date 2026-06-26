@@ -796,6 +796,17 @@ describe("document processing routes", () => {
         jobId: "job-conversion-review-completed",
         artifactId: "artifact-conversion-review-doc-001",
         counts: { sourceTextLength: 42, wordCount: 5, lineCount: 1 },
+        reviewReadiness: {
+          status: "ready_for_review",
+          artifactStatus: "metadata_only",
+          staffReviewRequired: true,
+          terminalReview: false,
+          reviewOnly: true,
+          metadataOnly: true,
+          downstreamMutation: false,
+          providerEvidenceStored: false,
+          rawOcrTextReturned: false,
+        },
       },
     });
     expect(JSON.stringify(response.json())).not.toContain("Synthetic completed OCR text");
@@ -808,6 +819,105 @@ describe("document processing routes", () => {
     expect(JSON.stringify(response.json())).not.toContain("Synthetic private excerpt");
     expect(JSON.stringify(response.json())).not.toContain("Synthetic generated summary");
   });
+
+  it.each([
+    { decision: "reviewed", reviewedAt: "2026-06-16T13:00:00.000Z" },
+    { decision: "rejected", reviewedAt: "2026-06-16T13:05:00.000Z" },
+  ] as const)(
+    "returns metadata-only document conversion review readiness for $decision artifacts",
+    async ({ decision, reviewedAt }) => {
+      const repository = new InMemoryOpenPracticeRepository();
+      await repository.createLegalResearchArtifact({
+        id: `artifact-conversion-review-doc-001-${decision}`,
+        firmId,
+        matterId: "matter-001",
+        kind: "document_analysis_status",
+        status: decision,
+        title: "Document conversion review posture",
+        sourceReferences: [],
+        contextLinks: [
+          { resourceType: "document", resourceId: "doc-001", label: "Source document" },
+        ],
+        documentAnalysis: {
+          documentId: "doc-001",
+          status: "ready_for_review",
+          extractionStatus: "completed",
+          artifactStatus: "metadata_only",
+          sourceTextLength: 47,
+        },
+        reviewDecision: decision,
+        reviewedByUserId: "user-owner_admin",
+        reviewedAt,
+        createdByUserId: "user-owner_admin",
+        createdAt: "2026-06-16T12:02:00.000Z",
+        updatedAt: reviewedAt,
+        reviewOnly: true,
+        metadata: {
+          jobId: `job-conversion-review-${decision}`,
+          provider: "local-document-conversion-metadata",
+          providerStatus: "metadata_only",
+          counts: { sourceTextLength: 47, wordCount: 6, lineCount: 2 },
+          rawOcrText: "Synthetic reviewed OCR text must stay private.",
+          rawMarkdown: "# must not survive",
+          providerEvidence: { private: "Synthetic provider evidence" },
+          providerPayload: { private: true },
+          annotationSpans: [{ start: 0, end: 12, body: "Synthetic span" }],
+          prompt: "Synthetic prompt",
+          chunks: ["Synthetic chunk"],
+          embeddings: [[0.1, 0.2]],
+          storageKey: "matters/matter-001/private-conversion.md",
+          objectBody: "Synthetic object body",
+          privateExcerpt: "Synthetic private excerpt",
+          generatedSummary: "Synthetic generated summary",
+        },
+      });
+
+      const response = await testServer({ repository, ocrJobQueue: undefined }).inject({
+        method: "GET",
+        url: "/api/document-processing/workbench?matterId=matter-001",
+      });
+
+      expect(response.statusCode).toBe(200);
+      const payload = response.json();
+      const entry = payload.documents.find(
+        (item: { document: { id: string } }) => item.document.id === "doc-001",
+      );
+      expect(entry).toMatchObject({
+        conversionReview: {
+          summaryPosture: "op_authored_metadata_only",
+          provider: "local-document-conversion-metadata",
+          providerStatus: "metadata_only",
+          artifactId: `artifact-conversion-review-doc-001-${decision}`,
+          counts: { sourceTextLength: 47, wordCount: 6, lineCount: 2 },
+          reviewReadiness: {
+            status: decision,
+            artifactStatus: "metadata_only",
+            reviewedAt,
+            staffReviewRequired: true,
+            terminalReview: true,
+            reviewOnly: true,
+            metadataOnly: true,
+            downstreamMutation: false,
+            providerEvidenceStored: false,
+            rawOcrTextReturned: false,
+          },
+        },
+      });
+      expect(JSON.stringify(entry?.conversionReview)).not.toContain(
+        "Synthetic reviewed OCR text must stay private.",
+      );
+      expect(JSON.stringify(entry?.conversionReview)).not.toContain("# must not survive");
+      expect(JSON.stringify(entry?.conversionReview)).not.toContain('"providerEvidence":');
+      expect(JSON.stringify(entry?.conversionReview)).not.toContain("Synthetic provider evidence");
+      expect(JSON.stringify(entry?.conversionReview)).not.toContain('"private":true');
+      expect(JSON.stringify(entry?.conversionReview)).not.toContain("Synthetic span");
+      expect(JSON.stringify(entry?.conversionReview)).not.toContain("Synthetic prompt");
+      expect(JSON.stringify(entry?.conversionReview)).not.toContain("Synthetic chunk");
+      expect(JSON.stringify(entry?.conversionReview)).not.toContain("Synthetic object body");
+      expect(JSON.stringify(entry?.conversionReview)).not.toContain("Synthetic private excerpt");
+      expect(JSON.stringify(entry?.conversionReview)).not.toContain("Synthetic generated summary");
+    },
+  );
 
   it("returns a matter-scoped sanitized document processing workbench", async () => {
     const repository = new InMemoryOpenPracticeRepository();

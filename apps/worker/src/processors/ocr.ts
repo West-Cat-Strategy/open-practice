@@ -104,6 +104,27 @@ function findDocumentAnalysisArtifact(
     .at(0);
 }
 
+function conversionReviewArtifactStatus(
+  artifact: LegalResearchArtifactRecord | undefined,
+): LegalResearchArtifactRecord["status"] {
+  return artifact?.status === "reviewed" || artifact?.status === "rejected"
+    ? artifact.status
+    : "ready_for_review";
+}
+
+function terminalConversionReview(status: LegalResearchArtifactRecord["status"]): boolean {
+  return status === "reviewed" || status === "rejected";
+}
+
+function conversionReviewMetadataArtifactStatus(
+  artifact: LegalResearchArtifactRecord | undefined,
+): Exclude<
+  NonNullable<LegalResearchArtifactRecord["documentAnalysis"]>["artifactStatus"],
+  undefined
+> {
+  return artifact?.documentAnalysis?.artifactStatus ?? "metadata_only";
+}
+
 export async function processDocumentConversionReviewJob(input: {
   data: WorkerJobEnvelope;
   repository: OpenPracticeRepository;
@@ -197,15 +218,15 @@ export async function processDocumentConversionReviewJob(input: {
       },
     };
   }
+  const artifactStatus = conversionReviewArtifactStatus(existing);
+  const metadataArtifactStatus = conversionReviewMetadataArtifactStatus(existing);
+  const terminalReview = terminalConversionReview(artifactStatus);
   const baseArtifact: LegalResearchArtifactRecord = {
     id: existing?.id ?? `document-conversion-review-${documentId}`,
     firmId,
     matterId: document.matterId,
     kind: "document_analysis_status",
-    status:
-      existing?.status === "reviewed" || existing?.status === "rejected"
-        ? existing.status
-        : "ready_for_review",
+    status: artifactStatus,
     title: "Document conversion review posture",
     sourceReferences: [],
     contextLinks: [
@@ -219,7 +240,7 @@ export async function processDocumentConversionReviewJob(input: {
       documentId: document.id,
       status: "ready_for_review",
       extractionStatus: "completed",
-      artifactStatus: "metadata_only",
+      artifactStatus: metadataArtifactStatus,
       sourceTextLength: counts.sourceTextLength,
     },
     reviewDecision: existing?.reviewDecision,
@@ -241,7 +262,13 @@ export async function processDocumentConversionReviewJob(input: {
       policy: providerMetadata.policy,
       metadataOnly: providerMetadata.metadataOnly,
       reviewOnly: providerMetadata.reviewOnly,
-      reviewState: existing?.reviewDecision ?? "ready_for_review",
+      reviewState: artifactStatus,
+      artifactStatus: metadataArtifactStatus,
+      staffReviewRequired: true,
+      terminalReview,
+      downstreamMutation: false,
+      providerEvidenceStored: false,
+      rawOcrTextReturned: false,
       conversionReviewPosture: providerMetadata.conversionReviewPosture,
       summaryPosture: providerMetadata.summaryPosture,
     },
@@ -270,7 +297,13 @@ export async function processDocumentConversionReviewJob(input: {
       paragraphCount: counts.paragraphCount,
       pageBreakCount: counts.pageBreakCount,
       estimatedPageCount: counts.estimatedPageCount,
-      reviewState: artifact.reviewDecision ?? artifact.status,
+      reviewState: artifact.status,
+      artifactStatus: conversionReviewMetadataArtifactStatus(artifact),
+      staffReviewRequired: true,
+      terminalReview: terminalConversionReview(artifact.status),
+      downstreamMutation: false,
+      providerEvidenceStored: false,
+      rawOcrTextReturned: false,
       conversionReviewPosture: providerMetadata.conversionReviewPosture,
       summaryPosture: providerMetadata.summaryPosture,
       metadataOnly: providerMetadata.metadataOnly,

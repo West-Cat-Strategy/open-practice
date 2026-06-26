@@ -406,6 +406,7 @@ export function describeDocumentConversionReview(
 ): string {
   if (!conversionReview) return "not available";
   const counts = conversionReview.counts;
+  const readiness = conversionReview.reviewReadiness;
   const countParts = [
     typeof counts?.sourceTextLength === "number" ? `${counts.sourceTextLength} chars` : undefined,
     typeof counts?.wordCount === "number" ? `${counts.wordCount} words` : undefined,
@@ -413,17 +414,36 @@ export function describeDocumentConversionReview(
       ? `${counts.estimatedPageCount} estimated pages`
       : undefined,
   ].filter(Boolean);
-  const artifact = conversionReview.artifactId ? "artifact ready" : "no artifact";
+  const artifact = readiness?.artifactStatus
+    ? `artifact ${compactDocumentProcessingReason(readiness.artifactStatus)}`
+    : conversionReview.artifactId
+      ? "artifact ready"
+      : "no artifact";
   const summaryPosture =
     conversionReview.summaryPosture === "op_authored_metadata_only"
       ? "OP-authored metadata only"
       : compactDocumentProcessingReason(conversionReview.summaryPosture);
+  const staffReview =
+    readiness && readiness.staffReviewRequired ? "staff review required" : undefined;
+  const readinessParts = readiness
+    ? [
+        `readiness ${compactDocumentProcessingReason(readiness.status)}`,
+        readiness.reviewedAt ? `reviewed ${readiness.reviewedAt}` : undefined,
+        staffReview,
+        readiness.terminalReview ? "terminal review" : "review open",
+        readiness.reviewOnly ? "review only" : undefined,
+        readiness.downstreamMutation === false ? "no downstream mutation" : undefined,
+        readiness.providerEvidenceStored === false ? "no provider evidence" : undefined,
+        readiness.rawOcrTextReturned === false ? "no raw OCR returned" : undefined,
+      ]
+    : [];
   return [
     compactDocumentProcessingReason(conversionReview.posture),
     ...countParts,
     artifact,
     summaryPosture,
     conversionReview.policy.metadataOnly ? "metadata only" : undefined,
+    ...readinessParts,
   ]
     .filter(Boolean)
     .join(" · ");
