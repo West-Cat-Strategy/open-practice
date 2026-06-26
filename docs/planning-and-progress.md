@@ -103,9 +103,9 @@ filesystems and `/tmp` tmpfs mounts to the local and self-host MinIO services, e
 render check to reject missing MinIO hardening, and updates residual-watch artifacts with
 `minioHardening` plus `acceptedResiduals`. Docker scan accepts bundled-MinIO-only Trivy residuals
 only when that same residual-watch proof is present. The final private-pilot release proof
-`artifacts/release-local/2026-06-24T21-40-35Z` passed, including self-host restore drill evidence
-`.tmp/open-practice-selfhost-restore-drill/2026-06-24T21-41-25Z` and residual-watch artifact
-`/tmp/codex-security-scans/open-practice/docker-residual-watch/2026-06-24T21-42-14Z` with no
+`artifacts/release-local/2026-06-26T05-00-06Z` passed, including self-host restore drill evidence
+`.tmp/open-practice-selfhost-restore-drill/2026-06-26T05-00-25Z` and residual-watch artifact
+`/tmp/codex-security-scans/open-practice/docker-residual-watch/2026-06-26T05-00-56Z` with no
 readiness blockers, no review candidates, no blocked probes, current source-only MinIO posture, and
 three accepted MinIO residuals. It preserves MinIO pins, S3 endpoints, buckets, ports, volumes,
 runtime APIs, schemas, dependencies, private-pilot release-proof command shape, synthetic-only proof,
