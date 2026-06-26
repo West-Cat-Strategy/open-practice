@@ -121,11 +121,12 @@ Do not enable `OPEN_PRACTICE_ALLOW_DOCKER_BRIDGE_SETUP` or development auth help
   deliberate overwrite, restore, and checksum verification without requiring list or delete
   permissions. Both modes write redacted local evidence under
   `.tmp/open-practice-selfhost-restore-drill/<timestamp>/`.
-- Treat bundled MinIO as a private-pilot readiness blocker when `pnpm docker:residual-watch`
-  reports archived upstream posture or Critical/High CVEs. Successful external HTTPS S3
-  restore-drill evidence is manual release-handoff evidence for an external object-storage path; it
-  does not make `pnpm release:local -- --private-pilot` green while bundled MinIO residual-watch
-  blockers remain. Use separate MinIO hardening proof when bundled MinIO remains the release path.
+- Treat bundled MinIO as proof-gated for private-pilot handoff. `pnpm docker:residual-watch` can
+  accept the archived-source and Critical/High Scout residuals only when the artifact records
+  hardened local and self-host MinIO Compose services, current source-only MinIO posture, no
+  same-contract remediation candidate, and completed Docker/Scout/source probes. External HTTPS
+  S3 restore-drill evidence remains manual release-handoff evidence for the separate non-bundled
+  object-storage path.
 - Treat Redis as execution state, not a legal record. PostgreSQL remains the durable source of truth
   for job lifecycle and legal/audit records.
 - Run `pnpm docker:residual-watch`, `pnpm docker:app-smoke`, and `pnpm e2e:docker` for image,

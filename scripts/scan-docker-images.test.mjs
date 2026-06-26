@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
@@ -63,6 +63,89 @@ describe("Docker image scanner wrapper", () => {
         .outputPath,
       "open-practice-dev-api.json",
     );
+  });
+
+  it("accepts MinIO-only Trivy findings when residual-watch proves bundled MinIO eligibility", () => {
+    const cwd = mkdtempSync(path.join(tmpdir(), "open-practice-docker-scan-minio-"));
+    const spawn = (command, args) => {
+      if (args[0] === "--version") {
+        return { status: 0, signal: null, stdout: "Version: 0.68.1\n", stderr: "" };
+      }
+      const outputPath = args[args.indexOf("--output") + 1];
+      writeFileSync(
+        outputPath,
+        JSON.stringify({
+          Results: [
+            {
+              Vulnerabilities: [
+                { VulnerabilityID: "CVE-1", Severity: "CRITICAL" },
+                { VulnerabilityID: "CVE-2", Severity: "HIGH" },
+              ],
+            },
+          ],
+        }),
+      );
+      return { status: 1, signal: null, stdout: "", stderr: "" };
+    };
+
+    const report = scanDockerImages({
+      cwd,
+      images: ["open-practice-minio:RELEASE.2025-10-15T17-29-55Z-go1.26.4"],
+      now: new Date("2026-06-23T12:34:56Z"),
+      residualWatchRunner: () => ({
+        artifactDir: "/tmp/open-practice-residual-watch",
+        status: "passed",
+        minioHardening: { acceptsBundledMinioResiduals: true },
+        acceptedResiduals: [
+          {
+            id: "minio-scout-quickview",
+            serviceName: "minio",
+            kind: "critical-high-cves",
+            basis: ["hardening proof"],
+          },
+        ],
+      }),
+      spawn,
+    });
+
+    assert.equal(report.status, "passed");
+    assert.equal(report.acceptedResiduals.length, 1);
+    assert.equal(report.acceptedResiduals[0].kind, "trivy-critical-high-vulnerabilities");
+    assert.equal(report.residualWatch.status, "passed");
+  });
+
+  it("keeps non-MinIO Trivy findings red", () => {
+    const cwd = mkdtempSync(path.join(tmpdir(), "open-practice-docker-scan-api-"));
+    const spawn = (command, args) => {
+      if (args[0] === "--version") {
+        return { status: 0, signal: null, stdout: "Version: 0.68.1\n", stderr: "" };
+      }
+      const outputPath = args[args.indexOf("--output") + 1];
+      writeFileSync(
+        outputPath,
+        JSON.stringify({
+          Results: [
+            {
+              Vulnerabilities: [{ VulnerabilityID: "CVE-1", Severity: "HIGH" }],
+            },
+          ],
+        }),
+      );
+      return { status: 1, signal: null, stdout: "", stderr: "" };
+    };
+
+    const report = scanDockerImages({
+      cwd,
+      images: ["open-practice-dev-api"],
+      now: new Date("2026-06-23T12:34:56Z"),
+      residualWatchRunner: () => {
+        throw new Error("residual-watch should not run for non-MinIO scan failures");
+      },
+      spawn,
+    });
+
+    assert.equal(report.status, "failed");
+    assert.deepEqual(report.acceptedResiduals, []);
   });
 
   it("preserves the skipped report when Trivy is unavailable", () => {

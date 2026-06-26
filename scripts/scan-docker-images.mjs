@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { commandAvailable, toolingTimestamp, writeJsonReport } from "./optional-tooling.mjs";
+import { runDockerResidualWatch } from "./watch-docker-residuals.mjs";
 
 const DEFAULT_ARTIFACT_ROOT = ".tmp/docker/trivy";
 export const DEFAULT_IMAGES = [
@@ -39,6 +40,81 @@ export function trivyImageArgs(image, outputPath) {
     outputPath,
     image,
   ];
+}
+
+function trivyCriticalHighCounts(artifactDir, scan) {
+  let report;
+  try {
+    report = JSON.parse(readFileSync(path.join(artifactDir, scan.outputPath), "utf8"));
+  } catch {
+    return null;
+  }
+
+  const counts = { critical: 0, high: 0 };
+  for (const result of report.Results ?? []) {
+    for (const vulnerability of result.Vulnerabilities ?? []) {
+      if (vulnerability.Severity === "CRITICAL") counts.critical += 1;
+      if (vulnerability.Severity === "HIGH") counts.high += 1;
+    }
+  }
+  return counts.critical + counts.high > 0 ? counts : null;
+}
+
+function isMinioScan(scan) {
+  return scan.image.startsWith("open-practice-minio:");
+}
+
+function acceptsBundledMinioScanResiduals(residualWatch) {
+  return (
+    residualWatch?.status === "passed" &&
+    residualWatch.minioHardening?.acceptsBundledMinioResiduals === true &&
+    (residualWatch.acceptedResiduals ?? []).some(
+      (residual) => residual.serviceName === "minio" && residual.kind === "critical-high-cves",
+    )
+  );
+}
+
+function assessAcceptedScanResiduals({
+  artifactDir,
+  cwd,
+  failedScans,
+  now,
+  residualWatchRunner,
+  spawn,
+}) {
+  if (failedScans.length === 0) return { acceptedResiduals: [], residualWatch: null };
+  if (!failedScans.every(isMinioScan)) return { acceptedResiduals: [], residualWatch: null };
+
+  const minioScans = failedScans
+    .map((scan) => ({ scan, counts: trivyCriticalHighCounts(artifactDir, scan) }))
+    .filter(({ counts }) => counts !== null);
+  if (minioScans.length !== failedScans.length) {
+    return { acceptedResiduals: [], residualWatch: null };
+  }
+
+  const residualWatch = residualWatchRunner({ cwd, now, spawn });
+  if (!acceptsBundledMinioScanResiduals(residualWatch)) {
+    return { acceptedResiduals: [], residualWatch };
+  }
+
+  const basis = residualWatch.acceptedResiduals.find(
+    (residual) => residual.serviceName === "minio",
+  )?.basis;
+  return {
+    acceptedResiduals: minioScans.map(({ scan, counts }) => ({
+      id: scan.id,
+      serviceName: "minio",
+      kind: "trivy-critical-high-vulnerabilities",
+      detail: `Trivy reported ${counts.critical} critical and ${counts.high} high findings for the bundled MinIO image.`,
+      basis: basis ?? [],
+    })),
+    residualWatch: {
+      artifactDir: residualWatch.artifactDir,
+      status: residualWatch.status,
+      acceptedResiduals: residualWatch.acceptedResiduals,
+      minioHardening: residualWatch.minioHardening,
+    },
+  };
 }
 
 function runImageScan({ artifactDir, cwd, image, spawn }) {
@@ -78,6 +154,7 @@ export function scanDockerImages({
   cwd = process.cwd(),
   images = DEFAULT_IMAGES,
   now = new Date(),
+  residualWatchRunner = runDockerResidualWatch,
   spawn = spawnSync,
 } = {}) {
   const artifactDir = path.resolve(cwd, artifactRoot, toolingTimestamp(now));
@@ -100,13 +177,27 @@ export function scanDockerImages({
   }
 
   const scans = images.map((image) => runImageScan({ artifactDir, cwd, image, spawn }));
+  const failedScans = scans.filter((scan) => scan.status !== 0);
+  const scanResiduals = assessAcceptedScanResiduals({
+    artifactDir,
+    cwd,
+    failedScans,
+    now,
+    residualWatchRunner,
+    spawn,
+  });
+  const unacceptedFailedScans = failedScans.filter(
+    (scan) => !scanResiduals.acceptedResiduals.some((residual) => residual.id === scan.id),
+  );
   const report = {
     generatedAt: now.toISOString(),
     artifactDir,
     scope: "local_docker_image_vulnerability_scan",
-    status: scans.some((scan) => scan.status !== 0) ? "failed" : "passed",
+    status: unacceptedFailedScans.length > 0 ? "failed" : "passed",
     command: "trivy",
     images: scans,
+    acceptedResiduals: scanResiduals.acceptedResiduals,
+    residualWatch: scanResiduals.residualWatch,
   };
   writeJsonReport(path.join(artifactDir, "docker-scan.json"), report);
   return report;
