@@ -1642,10 +1642,18 @@ export async function applyVariableProposalWithTx(
   proposal: typeof schema.intakeVariableProposals.$inferSelect,
 ): Promise<void> {
   if (proposal.targetScope === "client") {
+    const [contact] = await tx
+      .select()
+      .from(schema.contacts)
+      .where(
+        and(eq(schema.contacts.firmId, proposal.firmId), eq(schema.contacts.id, proposal.targetRecordId)),
+      );
+    if (!contact) throw new Error(`Unknown intake proposal contact ${proposal.targetRecordId}`);
+
     if (proposal.targetField === "displayName") {
       await tx
         .update(schema.contacts)
-        .set({ displayName: proposal.proposedValue })
+        .set({ displayName: proposal.proposedValue, updatedAt: new Date() })
         .where(
           and(
             eq(schema.contacts.firmId, proposal.firmId),
@@ -1657,7 +1665,110 @@ export async function applyVariableProposalWithTx(
     if (proposal.targetField === "notes") {
       await tx
         .update(schema.contacts)
-        .set({ notes: proposal.proposedValue })
+        .set({ notes: proposal.proposedValue, updatedAt: new Date() })
+        .where(
+          and(
+            eq(schema.contacts.firmId, proposal.firmId),
+            eq(schema.contacts.id, proposal.targetRecordId),
+          ),
+        );
+      return;
+    }
+    if (proposal.targetField === "preferredLanguage") {
+      await tx
+        .update(schema.contacts)
+        .set({ preferredLanguage: proposal.proposedValue, updatedAt: new Date() })
+        .where(
+          and(
+            eq(schema.contacts.firmId, proposal.firmId),
+            eq(schema.contacts.id, proposal.targetRecordId),
+          ),
+        );
+      return;
+    }
+    if (proposal.targetField === "timezone") {
+      await tx
+        .update(schema.contacts)
+        .set({ timezone: proposal.proposedValue, updatedAt: new Date() })
+        .where(
+          and(
+            eq(schema.contacts.firmId, proposal.firmId),
+            eq(schema.contacts.id, proposal.targetRecordId),
+          ),
+        );
+      return;
+    }
+    if (proposal.targetField === "communicationNotes") {
+      await tx
+        .update(schema.contacts)
+        .set({ communicationNotes: proposal.proposedValue, updatedAt: new Date() })
+        .where(
+          and(
+            eq(schema.contacts.firmId, proposal.firmId),
+            eq(schema.contacts.id, proposal.targetRecordId),
+          ),
+        );
+      return;
+    }
+    if (proposal.targetField === "email" || proposal.targetField === "phone") {
+      const type = proposal.targetField;
+      const identifiers = (contact.identifiers as Contact["identifiers"]).some(
+        (identifier) => identifier.type === type && identifier.value === proposal.proposedValue,
+      )
+        ? (contact.identifiers as Contact["identifiers"])
+        : [
+            ...(contact.identifiers as Contact["identifiers"]),
+            {
+              type,
+              value: proposal.proposedValue,
+              label: "intake",
+              conflictCheckIncluded: true,
+              verified: false,
+            },
+          ];
+      const contactMethods = contact.contactMethods as NonNullable<Contact["contactMethods"]>;
+      const proposedContactMethod: NonNullable<Contact["contactMethods"]>[number] = {
+        id: `intake-${type}-${proposal.id}`,
+        type,
+        label: type === "email" ? "work" : "mobile",
+        value: proposal.proposedValue,
+        verificationStatus: "review_needed",
+        conflictCheckIncluded: true,
+      };
+      const nextContactMethods = contactMethods.some(
+        (method) => method.type === type && method.value === proposal.proposedValue,
+      )
+        ? contactMethods
+        : [...contactMethods, proposedContactMethod];
+      await tx
+        .update(schema.contacts)
+        .set({ identifiers, contactMethods: nextContactMethods, updatedAt: new Date() })
+        .where(
+          and(
+            eq(schema.contacts.firmId, proposal.firmId),
+            eq(schema.contacts.id, proposal.targetRecordId),
+          ),
+        );
+      return;
+    }
+    if (proposal.targetField === "address") {
+      const contactMethods = contact.contactMethods as NonNullable<Contact["contactMethods"]>;
+      const proposedContactMethod: NonNullable<Contact["contactMethods"]>[number] = {
+        id: `intake-address-${proposal.id}`,
+        type: "address",
+        label: "service",
+        value: proposal.proposedValue,
+        verificationStatus: "review_needed",
+        conflictCheckIncluded: true,
+      };
+      const nextContactMethods = contactMethods.some(
+        (method) => method.type === "address" && method.value === proposal.proposedValue,
+      )
+        ? contactMethods
+        : [...contactMethods, proposedContactMethod];
+      await tx
+        .update(schema.contacts)
+        .set({ contactMethods: nextContactMethods, updatedAt: new Date() })
         .where(
           and(
             eq(schema.contacts.firmId, proposal.firmId),

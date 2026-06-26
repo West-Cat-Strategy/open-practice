@@ -6,6 +6,7 @@ import {
   type OpenPracticeRepository,
 } from "@open-practice/database";
 import type { MatterSummary } from "@open-practice/database";
+import { resolveEmbeddedIntakeAnswers } from "@open-practice/domain";
 import { hashToken } from "../http/auth-helpers.js";
 import { createApiServer } from "../server.js";
 import { PUBLIC_TOKEN_UPLOAD_INTENT_RATE_LIMIT } from "./public-token-rate-limits.js";
@@ -143,6 +144,114 @@ async function addSyntheticQaScenarios(repository: OpenPracticeRepository): Prom
   ];
   await repository.updateIntakeTemplate({ ...template, definition });
 }
+
+async function enableSmtp(repository: OpenPracticeRepository): Promise<void> {
+  await repository.upsertProviderSetting({
+    id: "provider-smtp-mailpit",
+    firmId: "firm-west-legal",
+    kind: "smtp",
+    key: "mailpit",
+    enabled: true,
+    encryptedConfig: "local-mailpit-profile",
+    createdAt: "2026-05-01T00:00:00.000Z",
+    updatedAt: "2026-05-01T00:00:00.000Z",
+  });
+}
+
+function deliveryConfirmation(recipientCount = 1) {
+  return { confirmed: true, channel: "email", recipientCount };
+}
+
+async function createSubmittedIntakeLink(
+  repository: OpenPracticeRepository,
+  input: { id: string; accepted?: boolean },
+): Promise<{ linkId: string; snapshotId: string }> {
+  const template = (await repository.listIntakeTemplates("firm-west-legal")).find(
+    (candidate) => candidate.id === "intake-template-001",
+  );
+  if (!template) throw new Error("Seeded intake template is required for this test");
+  const answers = {
+    issue_type: "repair",
+    urgent: true,
+    client_display_name: "Ada M.",
+    matter_title: "Ada tenancy repairs",
+    rental_address: "123 Synthetic Street, Vancouver, BC",
+    client_role: "tenant",
+  };
+  const resolution = resolveEmbeddedIntakeAnswers({
+    templateId: template.id,
+    templateVersion: template.definitionVersion,
+    definition: template.definition,
+    answers,
+    selectedPackageIds: ["repair_notice_package"],
+    completedItemIds: ["evidence-upload", "client-attestation"],
+  });
+  const snapshotId = `${input.id}-snapshot`;
+  await repository.createAnswerSnapshot({
+    id: snapshotId,
+    firmId: "firm-west-legal",
+    intakeSessionId: "intake-session-001",
+    capturedAt: "2026-05-02T12:00:00.000Z",
+    answers,
+    resolution,
+  });
+  await repository.createIntakeFormLink({
+    id: input.id,
+    firmId: "firm-west-legal",
+    matterId: "matter-001",
+    intakeSessionId: "intake-session-001",
+    tokenHash: hashToken(`${input.id}-token`, jwtSecret),
+    requestedByUserId: "user-admin",
+    clientContactId: "contact-ada",
+    answerSnapshotId: snapshotId,
+    submittedAt: "2026-05-02T12:01:00.000Z",
+    expiresAt: "2099-06-01T00:00:00.000Z",
+    createdAt: "2026-05-02T11:00:00.000Z",
+  });
+  if (input.accepted) {
+    await repository.createIntakeFormReview({
+      id: `${input.id}-review`,
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      intakeSessionId: "intake-session-001",
+      formLinkId: input.id,
+      answerSnapshotId: snapshotId,
+      decision: "accepted",
+      decidedByUserId: "user-admin",
+      decidedAt: "2026-05-02T12:05:00.000Z",
+    });
+  }
+  return { linkId: input.id, snapshotId };
+}
+
+async function enableAdaPortalAccountGrant(repository: OpenPracticeRepository): Promise<void> {
+  const grant = (await repository.listPortalGrants("firm-west-legal")).find(
+    (candidate) => candidate.id === "grant-001",
+  );
+  if (!grant) throw new Error("Seeded portal grant is required for this test");
+  await repository.updatePortalGrant({
+    firmId: "firm-west-legal",
+    id: grant.id,
+    updates: {
+      accountUserId: "client-ada",
+      status: "active",
+      permissions: Array.from(new Set([...grant.permissions, "view_documents", "sign"])),
+    },
+  });
+}
+
+const engagementDraftExportRenderer: CreateServerOptions["draftExportRenderer"] = async (input) => ({
+  buffer: Buffer.from(`Synthetic rendered ${input.document.title}`, "utf8"),
+  contentType:
+    input.format === "pdf"
+      ? "application/pdf"
+      : "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  extension: input.format,
+});
+
+const emailJobQueue: CreateServerOptions["emailJobQueue"] = {
+  add: async () => ({ id: "email-job-synthetic" }),
+};
 
 afterEach(async () => {
   await Promise.all(servers.splice(0).map((server) => server.close()));
@@ -972,6 +1081,183 @@ describe("intake form builder routes", () => {
     }
   });
 
+  it("requires accepted submitted intake review before generating an engagement letter", async () => {
+    const { repository, server } = testServer({
+      s3: s3Config(),
+      draftExportRenderer: engagementDraftExportRenderer,
+      emailJobQueue,
+    });
+    const { linkId } = await createSubmittedIntakeLink(repository, {
+      id: "intake-form-link-engagement-unaccepted",
+    });
+
+    const response = await server.inject({
+      method: "POST",
+      url: `/api/intake-form-links/${encodeURIComponent(linkId)}/engagement-letter`,
+      payload: {
+        packageId: "repair_notice_package",
+        packageDocumentId: "repair_notice_letter",
+        portalGrantId: "grant-001",
+        deliveryConfirmation: deliveryConfirmation(),
+      },
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({
+      code: "INTAKE_ENGAGEMENT_REVIEW_REQUIRED",
+    });
+    await expect(repository.listGeneratedDocuments("firm-west-legal")).resolves.not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          externalId: expect.stringContaining("intake-engagement"),
+        }),
+      ]),
+    );
+  });
+
+  it("generates, signs, grants portal access, and sends a redacted engagement letter notice", async () => {
+    const { repository, server } = testServer({
+      s3: s3Config(),
+      draftExportRenderer: engagementDraftExportRenderer,
+      emailJobQueue,
+    });
+    await enableSmtp(repository);
+    await enableAdaPortalAccountGrant(repository);
+    const { linkId, snapshotId } = await createSubmittedIntakeLink(repository, {
+      id: "intake-form-link-engagement-accepted",
+      accepted: true,
+    });
+
+    const response = await server.inject({
+      method: "POST",
+      url: `/api/intake-form-links/${encodeURIComponent(linkId)}/engagement-letter`,
+      payload: {
+        packageId: "repair_notice_package",
+        packageDocumentId: "repair_notice_letter",
+        portalGrantId: "grant-001",
+        format: "pdf",
+        deliveryConfirmation: deliveryConfirmation(),
+      },
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(response.json()).toMatchObject({
+      engagementLetter: {
+        formLinkId: linkId,
+        answerSnapshotId: snapshotId,
+        packageId: "repair_notice_package",
+        packageDocumentId: "repair_notice_letter",
+        documentId: expect.any(String),
+        generatedDocumentId: expect.any(String),
+        portalDocumentAccessId: expect.any(String),
+        signatureRequestId: expect.any(String),
+        documentStatus: "verified",
+        scanStatus: "passed",
+        emailQueued: true,
+        queuedEmail: expect.objectContaining({
+          templateKey: "intake.engagement_letter.sent",
+          status: "queued",
+        }),
+      },
+    });
+    const responseText = response.body;
+    expect(responseText).not.toContain("storageKey");
+    expect(responseText).not.toContain("checksum");
+    expect(responseText).not.toContain("signingUrl");
+    expect(responseText).not.toContain("Ada M.");
+    expect(responseText).not.toContain("Ada tenancy repairs");
+
+    const engagement = response.json<{
+      engagementLetter: {
+        documentId: string;
+        generatedDocumentId: string;
+        portalDocumentAccessId: string;
+        signatureRequestId: string;
+      };
+    }>().engagementLetter;
+    const document = await repository.getDocument("firm-west-legal", engagement.documentId);
+    expect(document).toMatchObject({
+      classification: "general",
+      legalHold: false,
+      uploadStatus: "verified",
+      checksumStatus: "verified",
+      scanStatus: "passed",
+    });
+    const generated = (await repository.listGeneratedDocuments("firm-west-legal")).find(
+      (candidate) => candidate.id === engagement.generatedDocumentId,
+    );
+    expect(generated).toMatchObject({
+      matterId: "matter-001",
+      intakeSessionId: "intake-session-001",
+      documentId: engagement.documentId,
+      packageId: "repair_notice_package",
+      packageDocumentId: "repair_notice_letter",
+      evidence: expect.objectContaining({
+        source: "intake_engagement_letter",
+        formLinkId: linkId,
+        answerSnapshotId: snapshotId,
+        draftTemplateId: "draft-template-legal-letter",
+        requiresSignature: true,
+      }),
+    });
+    expect(JSON.stringify(generated?.evidence)).not.toContain("Ada M.");
+    expect(JSON.stringify(generated?.evidence)).not.toContain("Ada tenancy repairs");
+
+    await expect(
+      repository.listPortalDocumentAccess("firm-west-legal", {
+        documentId: engagement.documentId,
+        portalGrantId: "grant-001",
+      }),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        id: engagement.portalDocumentAccessId,
+        permission: "view_document",
+      }),
+    ]);
+    await expect(
+      repository.listSignatureRequests("firm-west-legal", { matterId: "matter-001" }),
+    ).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: engagement.signatureRequestId,
+          documentId: engagement.documentId,
+          status: "sent",
+        }),
+      ]),
+    );
+    await expect(
+      repository.listEmailOutbox("firm-west-legal", { matterId: "matter-001" }),
+    ).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          templateKey: "intake.engagement_letter.sent",
+          relatedResourceType: "signature_request",
+          relatedResourceId: engagement.signatureRequestId,
+        }),
+      ]),
+    );
+    const audit = await repository.listAuditEvents("firm-west-legal");
+    const event = audit.events.find(
+      (candidate) => candidate.action === "intake.engagement_letter.sent",
+    );
+    expect(event).toMatchObject({
+      resourceType: "generated_document",
+      resourceId: engagement.generatedDocumentId,
+      metadata: expect.objectContaining({
+        formLinkId: linkId,
+        answerSnapshotId: snapshotId,
+        documentId: engagement.documentId,
+        generatedDocumentId: engagement.generatedDocumentId,
+        portalDocumentAccessId: engagement.portalDocumentAccessId,
+        signatureRequestId: engagement.signatureRequestId,
+        recipientCount: 1,
+      }),
+    });
+    expect(JSON.stringify(event?.metadata)).not.toContain("Ada M.");
+    expect(JSON.stringify(event?.metadata)).not.toContain("Ada tenancy repairs");
+    expect(JSON.stringify(event?.metadata)).not.toContain("storageKey");
+  });
+
   it("rejects public intake upload completion when storage size differs from the intent", async () => {
     const { repository, server } = testServer({ s3: s3Config(checksum, fileSizeBytes + 1) });
     await restrictEvidenceUpload(repository);
@@ -1423,6 +1709,11 @@ describe("intake form builder routes", () => {
     expect(loadedBody).not.toContain("classification");
     expect(loadedBody).not.toContain("legalHold");
     expect(loadedBody).not.toContain("documentId");
+    expect(loadedBody).not.toContain("sourceKind");
+    expect(loadedBody).not.toContain("sourceId");
+    expect(loadedBody).not.toContain("requiresSignature");
+    expect(loadedBody).not.toContain("clientFile");
+    expect(loadedBody).not.toContain("draft-template-legal-letter");
     expect(loadedBody).not.toContain("qaScenarios");
     expect(loadedBody).not.toContain("Urgent repair staff QA");
     expect(loadedBody).not.toContain("Synthetic staff QA urgent answer");

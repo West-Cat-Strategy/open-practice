@@ -266,6 +266,10 @@
     text-align: left;
   }
 
+  .client-portal-file-actions {
+    align-items: flex-start;
+  }
+
   .client-portal-payment-requests,
   .client-portal-signature-actions {
     justify-content: flex-start;

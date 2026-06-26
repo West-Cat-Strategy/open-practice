@@ -300,6 +300,14 @@ export interface IntakeFormLinkCreateResponse {
   link: IntakeFormLinkSummary;
   token?: string;
   portalUrl?: string;
+  queuedEmail?: {
+    id: string;
+    templateKey: string;
+    status: string;
+    queuedAt: string;
+    jobId: string;
+    idempotencyKeyPresent: boolean;
+  };
 }
 
 export interface IntakeFormReviewResponse {
@@ -313,6 +321,33 @@ export interface IntakeFormReviewResponse {
 
 export interface IntakeFormLinkRevokeResponse {
   link: IntakeFormLinkSummary | null;
+}
+
+export interface IntakeEngagementLetterResponse {
+  engagementLetter: {
+    formLinkId: string;
+    intakeSessionId: string;
+    answerSnapshotId: string;
+    packageId: string;
+    packageDocumentId: string;
+    documentId: string;
+    generatedDocumentId: string;
+    portalDocumentAccessId: string;
+    signatureRequestId?: string;
+    status: "sent";
+    documentStatus: string;
+    scanStatus: string;
+    signatureStatus?: string;
+    emailQueued: boolean;
+    queuedEmail?: {
+      id: string;
+      templateKey: string;
+      status: string;
+      queuedAt: string;
+      jobId: string;
+      idempotencyKeyPresent: boolean;
+    };
+  };
 }
 
 export interface IntakeVariableProposalsResponse {
@@ -1066,6 +1101,7 @@ export interface ClientPortalDocumentSummary {
   accessId: string;
   accessStatus: "active";
   expiresAt?: string;
+  downloadUrl?: string;
 }
 
 export type ClientPortalSignatureActionState =

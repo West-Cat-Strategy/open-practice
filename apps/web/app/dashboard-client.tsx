@@ -83,6 +83,7 @@ import {
   requestExternalUploadLinkRevocation,
 } from "./_features/external-uploads/client-resources";
 import {
+  buildIntakeEngagementLetterPath,
   buildIntakeTemplatePreviewPayload,
   buildIntakeFormReviewDecisionPath,
   buildIntakeFormReviewPath,
@@ -417,6 +418,7 @@ import type {
   IntakeSessionCreateResponse,
   ImapSettings,
   IntakeFormsDashboardResponse,
+  IntakeEngagementLetterResponse,
   IntakePipelineDashboardResponse,
   IntakeFormLinkCreateResponse,
   IntakeFormLinkRevokeResponse,
@@ -1432,6 +1434,7 @@ export default function DashboardClient({
     intakeForms.proposalsByMatterId,
   );
   const [intakeFormExpiresAt, setIntakeFormExpiresAt] = useState("");
+  const [intakeFormNotificationEmail, setIntakeFormNotificationEmail] = useState("");
   const [intakeFormToken, setIntakeFormToken] = useState("");
   const [intakeFormPortalUrl, setIntakeFormPortalUrl] = useState("");
   const [intakeFormStatus, setIntakeFormStatus] = useState("No form link created.");
@@ -1442,6 +1445,8 @@ export default function DashboardClient({
   >({});
   const [loadingIntakeReviewLinkId, setLoadingIntakeReviewLinkId] = useState("");
   const [reviewingIntakeFormLinkId, setReviewingIntakeFormLinkId] = useState("");
+  const [creatingEngagementLetterLinkId, setCreatingEngagementLetterLinkId] = useState("");
+  const [intakeEngagementPortalGrantId, setIntakeEngagementPortalGrantId] = useState("");
   const [intakeReviewReasons, setIntakeReviewReasons] = useState<Record<string, string>>({});
   const [reviewingIntakeProposalId, setReviewingIntakeProposalId] = useState("");
   const [proposalRejectionReasons, setProposalRejectionReasons] = useState<Record<string, string>>(
@@ -5009,6 +5014,24 @@ export default function DashboardClient({
     });
   }
 
+  function openIntakeFormLinkConfirmation(): void {
+    if (!activeMatter) return;
+    const email = intakeFormNotificationEmail.trim();
+    if (!email) {
+      void createIntakeFormLink();
+      return;
+    }
+    setPendingDeliveryConfirmation({
+      kind: "intake-form-link",
+      key: `${activeMatter.id}:${email}`,
+      actionLabel: "Send intake form link",
+      matterLabel: activeMatter.number,
+      summary: "Client form link notice",
+      providerState: "SMTP availability is checked by the API before queueing the client notice.",
+      recipients: [email],
+    });
+  }
+
   function confirmPendingDelivery(): void {
     if (!pendingDeliveryConfirmation) return;
     if (pendingDeliveryConfirmation.kind === "calendar-invitations") {
@@ -5017,6 +5040,19 @@ export default function DashboardClient({
         pendingDeliveryConfirmation.recipients.length,
         pendingDeliveryConfirmation.includeMeetingLink === true,
       );
+      return;
+    }
+    if (pendingDeliveryConfirmation.kind === "intake-form-link") {
+      void createIntakeFormLink(pendingDeliveryConfirmation.recipients.length);
+      setPendingDeliveryConfirmation(null);
+      return;
+    }
+    if (pendingDeliveryConfirmation.kind === "intake-engagement-letter") {
+      void generateEngagementLetter(
+        pendingDeliveryConfirmation.linkId,
+        pendingDeliveryConfirmation.recipients.length,
+      );
+      setPendingDeliveryConfirmation(null);
       return;
     }
     void startIntakeSession(pendingDeliveryConfirmation.recipients.length);
@@ -5284,7 +5320,7 @@ export default function DashboardClient({
     setSavingIntakeTemplate(false);
   }
 
-  async function createIntakeFormLink(): Promise<void> {
+  async function createIntakeFormLink(recipientCount = 0): Promise<void> {
     if (!activeMatter) return;
     const sessionRecord = activeIntakeSessions[0];
     if (!sessionRecord) {
@@ -5296,6 +5332,7 @@ export default function DashboardClient({
     setIntakeFormToken("");
     setIntakeFormPortalUrl("");
     setIntakeFormStatus("Creating form link...");
+    const notificationEmail = intakeFormNotificationEmail.trim();
     const response = await fetch(`${apiBaseUrl}/api/intake-form-links`, {
       method: "POST",
       credentials: "include",
@@ -5307,6 +5344,11 @@ export default function DashboardClient({
         buildIntakeFormLinkCreatePayload({
           intakeSessionId: sessionRecord.id,
           expiresAtLocal: intakeFormExpiresAt,
+          notificationEmail,
+          deliveryConfirmation:
+            notificationEmail && recipientCount > 0
+              ? buildEmailDeliveryConfirmation(recipientCount)
+              : undefined,
         }),
       ),
     });
@@ -5322,7 +5364,11 @@ export default function DashboardClient({
     setIntakeFormToken(payload.token ?? "");
     setIntakeFormPortalUrl(payload.portalUrl ?? "");
     setIntakeFormStatus(
-      payload.portalUrl ? "Form link created." : "Form link created; URL unavailable.",
+      payload.queuedEmail
+        ? "Form link created and email notice queued."
+        : payload.portalUrl
+          ? "Form link created."
+          : "Form link created; URL unavailable.",
     );
     setCreatingIntakeFormLink(false);
   }
@@ -5473,6 +5519,72 @@ export default function DashboardClient({
       setIntakeFormStatus(`Review decision failed: ${dashboardApiStatus(error)}`);
     } finally {
       setReviewingIntakeFormLinkId("");
+    }
+  }
+
+  function primaryClientMatterEmail(): string {
+    return (
+      activeMatter?.parties
+        .find((party) => !party.adverse)
+        ?.contact.identifiers.find((identifier) => identifier.type === "email")?.value ||
+      intakeFormNotificationEmail.trim() ||
+      "client recipient"
+    );
+  }
+
+  function openEngagementLetterConfirmation(linkId: string): void {
+    if (!activeMatter) return;
+    setPendingDeliveryConfirmation({
+      kind: "intake-engagement-letter",
+      key: `${activeMatter.id}:${linkId}`,
+      linkId,
+      actionLabel: "Send engagement letter",
+      matterLabel: activeMatter.number,
+      summary: "Generate the accepted intake package document and notify the client",
+      providerState: "SMTP availability is checked by the API before queueing the client notice.",
+      recipients: [primaryClientMatterEmail()],
+    });
+  }
+
+  async function generateEngagementLetter(linkId: string, recipientCount = 1): Promise<void> {
+    const reviewPayload = intakeReviewDetailsByLinkId[linkId];
+    const packageDocument = reviewPayload?.snapshot.resolution.packageDocuments[0];
+    if (!reviewPayload || !packageDocument) {
+      setIntakeFormStatus("Engagement letter failed: load an accepted package review first.");
+      return;
+    }
+    const portalGrantId = intakeEngagementPortalGrantId.trim();
+    if (!portalGrantId) {
+      setIntakeFormStatus("Engagement letter failed: add the portal grant ID.");
+      return;
+    }
+    setCreatingEngagementLetterLinkId(linkId);
+    setIntakeFormStatus("Generating engagement letter...");
+    try {
+      const payload = await requestDashboardJson<IntakeEngagementLetterResponse>(
+        apiBaseUrl,
+        buildIntakeEngagementLetterPath(linkId),
+        {
+          method: "POST",
+          headers: devHeaders,
+          payload: {
+            packageId: packageDocument.packageId,
+            packageDocumentId: packageDocument.packageDocumentId,
+            portalGrantId,
+            format: "pdf",
+            deliveryConfirmation: buildEmailDeliveryConfirmation(recipientCount),
+          },
+        },
+      );
+      setIntakeFormStatus(
+        payload.engagementLetter.signatureRequestId
+          ? "Engagement letter generated, shared, and signature request queued."
+          : "Engagement letter generated and shared.",
+      );
+    } catch (error) {
+      setIntakeFormStatus(`Engagement letter failed: ${dashboardApiStatus(error)}`);
+    } finally {
+      setCreatingEngagementLetterLinkId("");
     }
   }
 
@@ -7409,11 +7521,14 @@ export default function DashboardClient({
                   confirmPendingDelivery={confirmPendingDelivery}
                   convertPublicConsultationIntake={convertPublicConsultationIntake}
                   createIntakeFormLink={createIntakeFormLink}
+                  creatingEngagementLetterLinkId={creatingEngagementLetterLinkId}
                   creatingIntakeFormLink={creatingIntakeFormLink}
                   decideSubmittedIntakeReview={decideSubmittedIntakeReview}
                   dismissPublicConsultationIntake={dismissPublicConsultationIntake}
                   intakeFormActionsByLinkId={intakeFormActionsByLinkId}
+                  intakeEngagementPortalGrantId={intakeEngagementPortalGrantId}
                   intakeFormExpiresAt={intakeFormExpiresAt}
+                  intakeFormNotificationEmail={intakeFormNotificationEmail}
                   intakeFormPortalUrl={intakeFormPortalUrl}
                   intakeFormStatus={intakeFormStatus}
                   intakeFormToken={intakeFormToken}
@@ -7429,6 +7544,8 @@ export default function DashboardClient({
                   intakeTemplates={intakeTemplates}
                   loadSubmittedIntakeReview={loadSubmittedIntakeReview}
                   loadingIntakeReviewLinkId={loadingIntakeReviewLinkId}
+                  openEngagementLetterConfirmation={openEngagementLetterConfirmation}
+                  openIntakeFormLinkConfirmation={openIntakeFormLinkConfirmation}
                   openIntakeSessionConfirmation={openIntakeSessionConfirmation}
                   pendingDeliveryConfirmation={pendingDeliveryConfirmation}
                   pendingPublicConsultationIntakes={pendingPublicConsultationIntakes}
@@ -7463,7 +7580,9 @@ export default function DashboardClient({
                   selectedIntakeTemplate={selectedIntakeTemplate}
                   selectedIntakeTemplateId={selectedIntakeTemplateId}
                   session={session}
+                  setIntakeEngagementPortalGrantId={setIntakeEngagementPortalGrantId}
                   setIntakeFormExpiresAt={setIntakeFormExpiresAt}
+                  setIntakeFormNotificationEmail={setIntakeFormNotificationEmail}
                   setIntakeReviewReasons={setIntakeReviewReasons}
                   setIntakeTemplateDefinition={setIntakeTemplateDefinition}
                   setIntakeTemplateName={setIntakeTemplateName}

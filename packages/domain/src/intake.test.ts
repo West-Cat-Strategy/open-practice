@@ -39,6 +39,15 @@ describe("embedded intake templates", () => {
     expect(validateEmbeddedIntakeTemplateDefinition(sampleResidentialTenancyIntakeDefinition)).toBe(
       sampleResidentialTenancyIntakeDefinition,
     );
+    const repairNoticeDocument = sampleResidentialTenancyIntakeDefinition.packages
+      .find((intakePackage) => intakePackage.id === "repair_notice_package")
+      ?.documents.find((document) => document.id === "repair_notice_letter");
+    expect(repairNoticeDocument).toMatchObject({
+      sourceKind: "draft_template",
+      sourceId: "draft-template-legal-letter",
+      requiresSignature: true,
+      clientFile: true,
+    });
     const serialized = JSON.stringify(sampleResidentialTenancyIntakeDefinition);
     expect(serialized).toContain("BC residential tenancy");
     expect(serialized).toContain("Residential Tenancy Branch");
@@ -102,6 +111,28 @@ describe("embedded intake templates", () => {
     );
     expect(() => validateEmbeddedIntakeTemplateDefinition(unknownPackage)).toThrow(
       "Branch rule unknown-package references unknown package missing",
+    );
+  });
+
+  it("requires sourced package documents to name their staff-only source", () => {
+    const missingDocumentSourceId: EmbeddedIntakeTemplateDefinition = {
+      schemaVersion: 2,
+      questions: [],
+      branchRules: [],
+      packages: [
+        {
+          id: "base",
+          title: "Base",
+          documents: [
+            { id: "engagement-letter", title: "Engagement letter", sourceKind: "draft_template" },
+          ],
+        },
+      ],
+      sections: [{ id: "basics", title: "Basics", items: [] }],
+    };
+
+    expect(() => validateEmbeddedIntakeTemplateDefinition(missingDocumentSourceId)).toThrow(
+      "Package document engagement-letter with a source kind requires sourceId",
     );
   });
 

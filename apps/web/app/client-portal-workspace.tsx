@@ -207,11 +207,19 @@ export default function ClientPortalWorkspace({
                           verified {compactDate(document.verifiedAt)}
                         </p>
                       </div>
-                      <em>
-                        {document.expiresAt
-                          ? `Expires ${compactDate(document.expiresAt)}`
-                          : "Active access"}
-                      </em>
+                      <div className="client-portal-file-actions">
+                        <em>
+                          {document.expiresAt
+                            ? `Expires ${compactDate(document.expiresAt)}`
+                            : "Active access"}
+                        </em>
+                        <a
+                          className="secondary-button compact-button row-button"
+                          href={`${apiBaseUrl ?? ""}/api/client-portal/documents/${encodeURIComponent(document.id)}/download`}
+                        >
+                          Download
+                        </a>
+                      </div>
                     </article>
                   ))}
                 </div>

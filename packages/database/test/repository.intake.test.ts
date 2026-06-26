@@ -287,4 +287,82 @@ describe("repository intake persistence", () => {
       }),
     ]);
   });
+
+  it("applies expanded client variable proposals to reviewed contact fields", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const proposals = [
+      {
+        id: "proposal-client-email",
+        targetField: "email" as const,
+        proposedValue: "ada.synthetic@example.test",
+      },
+      {
+        id: "proposal-client-phone",
+        targetField: "phone" as const,
+        proposedValue: "604-555-0199",
+      },
+      {
+        id: "proposal-client-address",
+        targetField: "address" as const,
+        proposedValue: "123 Synthetic Street, Vancouver, BC",
+      },
+      {
+        id: "proposal-client-language",
+        targetField: "preferredLanguage" as const,
+        proposedValue: "English",
+      },
+      {
+        id: "proposal-client-timezone",
+        targetField: "timezone" as const,
+        proposedValue: "America/Vancouver",
+      },
+      {
+        id: "proposal-client-communication",
+        targetField: "communicationNotes" as const,
+        proposedValue: "Use plain-language email updates.",
+      },
+    ].map((proposal) => ({
+      ...proposal,
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      intakeSessionId: "intake-session-001",
+      answerSnapshotId: "answer-snapshot-001",
+      sourceQuestionId: `question-${proposal.targetField}`,
+      targetScope: "client" as const,
+      targetRecordId: "contact-ada",
+      status: "pending" as const,
+      createdAt: now,
+    }));
+    await repository.createIntakeVariableProposals(proposals);
+
+    for (const proposal of proposals) {
+      await expect(
+        repository.reviewIntakeVariableProposal({
+          firmId: proposal.firmId,
+          id: proposal.id,
+          status: "approved",
+          reviewedByUserId: "user-admin",
+          reviewedAt: now,
+        }),
+      ).resolves.toMatchObject({ id: proposal.id, status: "approved", appliedAt: now });
+    }
+
+    await expect(repository.getContact("firm-west-legal", "contact-ada")).resolves.toMatchObject({
+      identifiers: expect.arrayContaining([
+        expect.objectContaining({ type: "email", value: "ada.synthetic@example.test" }),
+        expect.objectContaining({ type: "phone", value: "604-555-0199" }),
+      ]),
+      contactMethods: expect.arrayContaining([
+        expect.objectContaining({ type: "email", value: "ada.synthetic@example.test" }),
+        expect.objectContaining({ type: "phone", value: "604-555-0199" }),
+        expect.objectContaining({
+          type: "address",
+          value: "123 Synthetic Street, Vancouver, BC",
+        }),
+      ]),
+      preferredLanguage: "English",
+      timezone: "America/Vancouver",
+      communicationNotes: "Use plain-language email updates.",
+    });
+  });
 });

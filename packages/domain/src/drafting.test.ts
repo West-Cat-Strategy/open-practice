@@ -136,6 +136,11 @@ describe("drafting domain", () => {
         displayName: "Ada Morgan",
         email: "ada@example.test",
         phone: "604-555-0101",
+        address: "123 Synthetic Street, Vancouver, BC",
+        preferredLanguage: "English",
+        timezone: "America/Vancouver",
+        communicationNotes: "Use plain-language email updates.",
+        notes: "Synthetic client note.",
       },
     };
 
@@ -157,10 +162,13 @@ describe("drafting domain", () => {
                 { type: "text", text: "Dear " },
                 {
                   type: "text",
-                  text: "{{ client.displayName }}",
+                  text: "{{ client.displayName }} at {{ client.address }}",
                   marks: [{ type: "bold" }],
                 },
-                { type: "text", text: ", regarding {{ matter.title }}." },
+                {
+                  type: "text",
+                  text: ", regarding {{ matter.title }}. Language: {{ client.preferredLanguage }}.",
+                },
               ],
             },
             {
@@ -192,8 +200,11 @@ describe("drafting domain", () => {
           type: "paragraph",
           runs: [
             { text: "Dear ", marks: [] },
-            { text: "Ada Morgan", marks: ["bold"] },
-            { text: ", regarding Morgan tenancy dispute.", marks: [] },
+            {
+              text: "Ada Morgan at 123 Synthetic Street, Vancouver, BC",
+              marks: ["bold"],
+            },
+            { text: ", regarding Morgan tenancy dispute. Language: English.", marks: [] },
           ],
         },
         {

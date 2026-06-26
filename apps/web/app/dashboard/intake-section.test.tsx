@@ -333,12 +333,15 @@ function baseProps(overrides: Partial<IntakeSectionProps> = {}): IntakeSectionPr
     confirmPendingDelivery: noop,
     convertPublicConsultationIntake: noop,
     createIntakeFormLink: noop,
+    creatingEngagementLetterLinkId: "",
     creatingIntakeFormLink: false,
     decideSubmittedIntakeReview: noop,
     dismissPublicConsultationIntake: noop,
     intakeFormActionsByLinkId: { form_link_active: [syntheticItemAction] },
     intakeFormExpiresAt: "2035-06-06T09:00",
     intakeFormPortalUrl: "https://example.test/intake-forms#synthetic",
+    intakeEngagementPortalGrantId: "",
+    intakeFormNotificationEmail: "",
     intakeFormStatus: "Synthetic form link ready.",
     intakeFormToken: "synthetic-intake-token",
     intakePipeline: {
@@ -358,6 +361,8 @@ function baseProps(overrides: Partial<IntakeSectionProps> = {}): IntakeSectionPr
     intakeTemplates: [syntheticTemplate],
     loadSubmittedIntakeReview: noop,
     loadingIntakeReviewLinkId: "",
+    openEngagementLetterConfirmation: noop,
+    openIntakeFormLinkConfirmation: noop,
     openIntakeSessionConfirmation: noop,
     pendingDeliveryConfirmation: null,
     pendingPublicConsultationIntakes: [syntheticPublicConsultationIntake],
@@ -397,6 +402,8 @@ function baseProps(overrides: Partial<IntakeSectionProps> = {}): IntakeSectionPr
     selectedIntakeTemplateId: syntheticTemplate.id,
     session: syntheticSession,
     setIntakeFormExpiresAt: noop,
+    setIntakeEngagementPortalGrantId: noop,
+    setIntakeFormNotificationEmail: noop,
     setIntakeReviewReasons: noop,
     setIntakeTemplateDefinition: noop,
     setIntakeTemplateName: noop,
@@ -489,7 +496,7 @@ describe("IntakeSection", () => {
     expect(html).toContain("Submissions operations are unavailable for this role.");
     expect(html).toContain("No public consultation requests are pending review.");
     expect(html).toContain("No form links are linked to this matter.");
-    expect(html).toContain("No submitted intake forms are pending review.");
+    expect(html).toContain("No submitted intake forms are linked to this matter.");
     expect(html).toContain("No variable proposals are waiting for review.");
     expect(html).toContain("No intake sessions are linked to this matter.");
   });

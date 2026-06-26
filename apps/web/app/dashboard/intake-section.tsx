@@ -80,8 +80,11 @@ interface IntakeSectionProps {
   activePendingIntakeReviewLinks: DashboardIntakeFormLink[];
   activePendingIntakeVariableProposals: DashboardIntakeVariableProposal[];
   creatingIntakeFormLink: boolean;
+  creatingEngagementLetterLinkId: string;
   intakeFormActionsByLinkId: IntakeFormsDashboardResponse["actionsByLinkId"];
   intakeFormExpiresAt: string;
+  intakeFormNotificationEmail: string;
+  intakeEngagementPortalGrantId: string;
   intakeFormPortalUrl: string;
   intakeFormStatus: string;
   intakeFormToken: string;
@@ -131,6 +134,8 @@ interface IntakeSectionProps {
   ) => void | Promise<void>;
   dismissPublicConsultationIntake: (intakeRecord: PublicConsultationIntake) => void | Promise<void>;
   loadSubmittedIntakeReview: (linkId: string) => void | Promise<void>;
+  openEngagementLetterConfirmation: (linkId: string) => void;
+  openIntakeFormLinkConfirmation: () => void;
   openIntakeSessionConfirmation: () => void;
   previewIntakeTemplate: () => void | Promise<void>;
   refreshPublicConsultationIntakes: () => void | Promise<void>;
@@ -146,6 +151,8 @@ interface IntakeSectionProps {
   savePublicConsultationSettings: (rotateSubmissionToken?: boolean) => void | Promise<void>;
   selectIntakeTemplate: (templateId: string) => void;
   setIntakeFormExpiresAt: (value: string) => void;
+  setIntakeFormNotificationEmail: (value: string) => void;
+  setIntakeEngagementPortalGrantId: (value: string) => void;
   setIntakeReviewReasons: Dispatch<SetStateAction<Record<string, string>>>;
   setIntakeTemplateDefinition: (definition: EmbeddedIntakeTemplateDefinitionV2) => void;
   setIntakeTemplateName: (value: string) => void;
@@ -173,8 +180,11 @@ export function IntakeSection({
   activePendingIntakeReviewLinks,
   activePendingIntakeVariableProposals,
   creatingIntakeFormLink,
+  creatingEngagementLetterLinkId,
   intakeFormActionsByLinkId,
   intakeFormExpiresAt,
+  intakeFormNotificationEmail,
+  intakeEngagementPortalGrantId,
   intakeFormPortalUrl,
   intakeFormStatus,
   intakeFormToken,
@@ -221,6 +231,8 @@ export function IntakeSection({
   decideSubmittedIntakeReview,
   dismissPublicConsultationIntake,
   loadSubmittedIntakeReview,
+  openEngagementLetterConfirmation,
+  openIntakeFormLinkConfirmation,
   openIntakeSessionConfirmation,
   previewIntakeTemplate,
   refreshPublicConsultationIntakes,
@@ -231,6 +243,8 @@ export function IntakeSection({
   savePublicConsultationSettings,
   selectIntakeTemplate,
   setIntakeFormExpiresAt,
+  setIntakeFormNotificationEmail,
+  setIntakeEngagementPortalGrantId,
   setIntakeReviewReasons,
   setIntakeTemplateDefinition,
   setIntakeTemplateName,
@@ -245,6 +259,21 @@ export function IntakeSection({
   startNewIntakeTemplate,
   updateIntakePreviewAnswer,
 }: IntakeSectionProps) {
+  const intakeLinkRecipientEmails = Array.from(
+    new Set(
+      activeMatter.parties
+        .filter((party) => !party.adverse)
+        .flatMap((party) =>
+          party.contact.identifiers
+            .filter((identifier) => identifier.type === "email")
+            .map((identifier) => identifier.value),
+        )
+        .filter(Boolean),
+    ),
+  );
+  const submittedReviewLinks = activeIntakeFormLinks.filter(
+    (link) => link.submittedAt || link.status === "submitted",
+  );
   return (
     <>
       <div className="detail-grid">
@@ -842,6 +871,29 @@ export function IntakeSection({
             value={intakeFormExpiresAt}
           />
         </label>
+        <label className="search-field compact">
+          <span>Recipient</span>
+          <select
+            onChange={(event) => setIntakeFormNotificationEmail(event.target.value)}
+            value={intakeFormNotificationEmail}
+          >
+            <option value="">No email notice</option>
+            {intakeLinkRecipientEmails.map((email) => (
+              <option key={email} value={email}>
+                {email}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="search-field compact">
+          <span>Notification email</span>
+          <input
+            onChange={(event) => setIntakeFormNotificationEmail(event.target.value)}
+            placeholder="client@example.test"
+            type="email"
+            value={intakeFormNotificationEmail}
+          />
+        </label>
         <button
           className="secondary-button compact-button"
           disabled={startingIntakeSession || !selectedIntakeTemplate}
@@ -854,15 +906,27 @@ export function IntakeSection({
         <button
           className="primary-button"
           disabled={creatingIntakeFormLink || activeIntakeSessions.length === 0}
-          onClick={() => void createIntakeFormLink()}
+          onClick={() => openIntakeFormLinkConfirmation()}
           type="button"
         >
-          {creatingIntakeFormLink ? "Creating..." : "Create link"}
+          {creatingIntakeFormLink
+            ? "Creating..."
+            : intakeFormNotificationEmail.trim()
+              ? "Create and send"
+              : "Create link"}
         </button>
       </div>
       {pendingDeliveryConfirmation?.kind === "intake-session-start" ? (
         <DeliveryConfirmationPanel
           busy={startingIntakeSession}
+          confirmation={pendingDeliveryConfirmation}
+          onCancel={() => setPendingDeliveryConfirmation(null)}
+          onConfirm={confirmPendingDelivery}
+        />
+      ) : null}
+      {pendingDeliveryConfirmation?.kind === "intake-form-link" ? (
+        <DeliveryConfirmationPanel
+          busy={creatingIntakeFormLink}
           confirmation={pendingDeliveryConfirmation}
           onCancel={() => setPendingDeliveryConfirmation(null)}
           onConfirm={confirmPendingDelivery}
@@ -918,17 +982,33 @@ export function IntakeSection({
         <h3>Submitted review</h3>
         <span>{activePendingIntakeReviewLinks.length} pending</span>
       </div>
+      <div className="upload-create-grid">
+        <label className="search-field compact">
+          <span>Portal grant ID</span>
+          <input
+            onChange={(event) => setIntakeEngagementPortalGrantId(event.target.value)}
+            placeholder="grant-..."
+            value={intakeEngagementPortalGrantId}
+          />
+        </label>
+      </div>
       <div className="party-list">
-        {activePendingIntakeReviewLinks.map((link) => {
+        {submittedReviewLinks.map((link) => {
           const reviewPayload = intakeReviewDetailsByLinkId[link.id];
           const reason = intakeReviewReasons[link.id] ?? "";
           const busyAction = submittedIntakeReviewBusyAction({
             linkId: link.id,
             loadingLinkId: loadingIntakeReviewLinkId,
-            reviewingKey: reviewingIntakeFormLinkId,
+            reviewingKey:
+              creatingEngagementLetterLinkId === link.id
+                ? `${link.id}:engagement-letter`
+                : reviewingIntakeFormLinkId,
           });
           const reviewLoaded = Boolean(reviewPayload);
           const reviewDecisionCount = reviewPayload?.reviews.length ?? 0;
+          const acceptedReview = Boolean(
+            reviewPayload?.reviews.some((review) => review.decision === "accepted"),
+          );
           const loadAction = describeSubmittedIntakeReviewAction({
             action: "load",
             reviewLoaded,
@@ -957,6 +1037,14 @@ export function IntakeSection({
             reason,
             busyAction,
           });
+          const engagementAction = describeSubmittedIntakeReviewAction({
+            action: "engagement_letter",
+            reviewLoaded,
+            reviewDecisionCount,
+            acceptedReview,
+            portalGrantId: intakeEngagementPortalGrantId,
+            busyAction,
+          });
           const loadActionReason = compactSubmittedIntakeReviewActionReason(
             loadAction.disabledReason,
           );
@@ -968,6 +1056,9 @@ export function IntakeSection({
           );
           const moreInfoActionReason = compactSubmittedIntakeReviewActionReason(
             moreInfoAction.disabledReason,
+          );
+          const engagementActionReason = compactSubmittedIntakeReviewActionReason(
+            engagementAction.disabledReason,
           );
           const answers = reviewPayload ? Object.entries(reviewPayload.snapshot.answers) : [];
           return (
@@ -1103,14 +1194,43 @@ export function IntakeSection({
                     </button>
                   </>
                 ) : null}
+                {reviewPayload && reviewPayload.reviews.length > 0 ? (
+                  <button
+                    aria-label={
+                      engagementAction.disabledReason
+                        ? `${engagementAction.label}: ${engagementActionReason}`
+                        : engagementAction.label
+                    }
+                    className="primary-button compact-button row-button"
+                    data-action-key={engagementAction.actionKey}
+                    disabled={!engagementAction.available}
+                    onClick={() => openEngagementLetterConfirmation(link.id)}
+                    title={
+                      engagementAction.disabledReason
+                        ? `${engagementAction.label}: ${engagementActionReason}`
+                        : engagementAction.label
+                    }
+                    type="button"
+                  >
+                    {engagementAction.label}
+                  </button>
+                ) : null}
               </div>
             </div>
           );
         })}
-        {activePendingIntakeReviewLinks.length === 0 ? (
-          <p className="inline-empty">No submitted intake forms are pending review.</p>
+        {submittedReviewLinks.length === 0 ? (
+          <p className="inline-empty">No submitted intake forms are linked to this matter.</p>
         ) : null}
       </div>
+      {pendingDeliveryConfirmation?.kind === "intake-engagement-letter" ? (
+        <DeliveryConfirmationPanel
+          busy={Boolean(creatingEngagementLetterLinkId)}
+          confirmation={pendingDeliveryConfirmation}
+          onCancel={() => setPendingDeliveryConfirmation(null)}
+          onConfirm={confirmPendingDelivery}
+        />
+      ) : null}
 
       <div className="section-title">
         <h3>Variable proposals</h3>

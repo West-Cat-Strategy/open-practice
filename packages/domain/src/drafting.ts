@@ -175,6 +175,11 @@ export interface DraftMergeContext {
     displayName: string;
     email?: string;
     phone?: string;
+    address?: string;
+    preferredLanguage?: string;
+    timezone?: string;
+    communicationNotes?: string;
+    notes?: string;
   };
 }
 
@@ -191,6 +196,11 @@ export const draftMergeFieldCatalog = [
   "client.displayName",
   "client.email",
   "client.phone",
+  "client.address",
+  "client.preferredLanguage",
+  "client.timezone",
+  "client.communicationNotes",
+  "client.notes",
 ] as const;
 
 export type DraftMergeField = (typeof draftMergeFieldCatalog)[number];
@@ -251,6 +261,16 @@ function mergeFieldValue(field: string, context: DraftMergeContext): string {
       return context.client?.email ?? "";
     case "client.phone":
       return context.client?.phone ?? "";
+    case "client.address":
+      return context.client?.address ?? "";
+    case "client.preferredLanguage":
+      return context.client?.preferredLanguage ?? "";
+    case "client.timezone":
+      return context.client?.timezone ?? "";
+    case "client.communicationNotes":
+      return context.client?.communicationNotes ?? "";
+    case "client.notes":
+      return context.client?.notes ?? "";
     default:
       return "";
   }
