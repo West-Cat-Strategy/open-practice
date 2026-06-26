@@ -8,17 +8,17 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 ## At a Glance
 
-| Snapshot              | Value                                                                   |
-| --------------------- | ----------------------------------------------------------------------- |
-| Current focus         | Reliable local PDF/image OCR branch is validated with 2026-06-26 proof. |
-| Next recommended pick | Resolve the MinIO private-pilot readiness blocker before handoff.       |
-| Ready rows            | 0                                                                       |
-| Candidate rows        | 0                                                                       |
-| In progress rows      | 0                                                                       |
-| Review rows           | 0                                                                       |
-| Blocked rows          | 1                                                                       |
-| Archive               | Historical snapshots and proof live in [Archive](archive/README.md).    |
-| Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`        |
+| Snapshot              | Value                                                                 |
+| --------------------- | --------------------------------------------------------------------- |
+| Current focus         | Active 2026-06-25 mainline closeout is integrating validated lanes.   |
+| Next recommended pick | Complete MinIO hardening merge proof and final push/prune closeout.   |
+| Ready rows            | 0                                                                     |
+| Candidate rows        | 0                                                                     |
+| In progress rows      | 0                                                                     |
+| Review rows           | 0                                                                     |
+| Blocked rows          | 1                                                                     |
+| Archive               | Historical snapshots and proof live in [Archive](archive/README.md).  |
+| Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`      |
 
 ## Current Handoff Notes
 
@@ -73,6 +73,19 @@ residual-watch gate while default `pnpm release:local` stays unchanged. Admin Re
 owner-visible read-only blocker copy pointing to external HTTPS object storage or separate MinIO
 hardening proof before private-pilot handoff. Evidence is recorded in
 [private-pilot MinIO readiness blocker proof](validation/OP_PRIVATE_PILOT_MINIO_READINESS_BLOCKER_PROOF_2026-06-24.md).
+
+The 2026-06-24 `private-pilot/external-s3-restore-drill-20260624` branch extends the self-host
+restore drill so an ignored operator env using external HTTPS S3-compatible object storage can
+produce synthetic marker backup, deliberate-overwrite, restore, and checksum evidence alongside the
+existing PostgreSQL drill. The code path and checked-in bundled MinIO restore-drill proof are
+locally validated, but the ignored `.env.selfhost.local` file currently contains only placeholders,
+so real external HTTPS S3 operator proof remains blocked pending replacement values. The checked-in
+bundled MinIO restore-drill path, default private-pilot release proof, residual-watch exit behavior,
+runtime APIs, schemas, Compose contracts, dependencies, and local-only/self-host boundaries remain
+unchanged. Admin Readiness and self-host/readiness docs distinguish external HTTPS S3 restore-drill
+evidence as manual handoff evidence from the bundled MinIO residual-watch gate that still blocks
+automated green `pnpm release:local -- --private-pilot` proof. Evidence is recorded in
+[private-pilot external S3 restore-drill proof](validation/OP_PRIVATE_PILOT_EXTERNAL_S3_RESTORE_DRILL_PROOF_2026-06-24.md).
 
 The merged 2026-06-23 `feat/video-meetings-control-plane-20260623` branch extends the existing video
 meeting control plane without native media delivery. It adds Calendar workspace scheduling-review
