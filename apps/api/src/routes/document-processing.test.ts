@@ -1014,7 +1014,7 @@ describe("document processing routes", () => {
           document: {
             id: "doc-001",
             matterId: "matter-001",
-            title: "Retainer agreement.pdf",
+            title: "BC tenancy retainer and review plan.pdf",
             version: 1,
             classification: "privileged",
             legalHold: true,
@@ -1228,7 +1228,7 @@ describe("document processing routes", () => {
         results: [
           expect.objectContaining({
             documentId: "doc-001",
-            title: "Retainer agreement.pdf",
+            title: "BC tenancy retainer and review plan.pdf",
             classification: "privileged",
             ocrStatus: "completed",
             tagKeys: expect.arrayContaining([

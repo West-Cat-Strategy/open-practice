@@ -334,7 +334,7 @@ describe("intake routes", () => {
         status: "queued",
         queue: { queueName: "document_assembly", status: "queued" },
         packageId: "repair_notice_package",
-        packageTitle: "Repair notice package",
+        packageTitle: "BC repair notice review package",
         answerSnapshotId: expect.any(String),
         documentCount: 2,
         pollUrl: expect.stringContaining(

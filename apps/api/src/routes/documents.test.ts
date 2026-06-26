@@ -312,7 +312,7 @@ describe("document routes", () => {
         }),
       ]),
     );
-    expect(JSON.stringify(audit.events)).not.toContain("Retainer agreement.pdf");
+    expect(JSON.stringify(audit.events)).not.toContain("BC tenancy retainer and review plan.pdf");
     expect(JSON.stringify(audit.events)).not.toContain("storageKey");
   });
 

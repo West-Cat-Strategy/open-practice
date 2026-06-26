@@ -21,6 +21,7 @@ import {
   PRACTICE_PRESET_CATALOG,
   PRACTICE_PRESET_IDS,
 } from "./practice-presets.js";
+import { validateEmbeddedIntakeTemplateDefinition } from "./intake.js";
 
 describe("drafting domain", () => {
   describe("tipTapDocumentSchema", () => {
@@ -91,6 +92,7 @@ describe("drafting domain", () => {
       expect(templates).toMatchObject([
         {
           id: "draft-template-legal-letter",
+          name: "Canadian Matter Correspondence",
           firmId: "firm-example",
           category: "correspondence",
           active: true,
@@ -98,6 +100,7 @@ describe("drafting domain", () => {
         },
         {
           id: "draft-template-meeting-notes",
+          name: "Canadian Matter Meeting Notes",
           firmId: "firm-example",
           category: "internal",
           active: true,
@@ -108,6 +111,11 @@ describe("drafting domain", () => {
         "2026-04-28T12:00:00.000Z",
         "2026-04-28T12:00:00.000Z",
       ]);
+      const serialized = JSON.stringify(templates);
+      expect(serialized).toContain("Canadian");
+      expect(serialized).toContain("{{ matter.jurisdiction }}");
+      expect(serialized).toContain("{{ firm.name }}");
+      expect(serialized).not.toMatch(/\bstate\b|\bcounty\b|\battorney\b|zip code/i);
     });
   });
 
@@ -301,6 +309,16 @@ describe("drafting domain", () => {
           ...preset.intakeTemplates.map((template) => template.metadata.source),
         ]),
       ).toEqual(expect.arrayContaining(["open-practice-preset"]));
+      for (const template of PRACTICE_PRESET_CATALOG.flatMap((preset) => preset.intakeTemplates)) {
+        expect(template.definition.schemaVersion).toBe(2);
+        expect(validateEmbeddedIntakeTemplateDefinition(template.definition)).toBe(
+          template.definition,
+        );
+      }
+      const serialized = JSON.stringify(PRACTICE_PRESET_CATALOG);
+      expect(serialized).toContain("Canadian");
+      expect(serialized).toContain("BC Residential Tenancy");
+      expect(serialized).not.toMatch(/\bstate\b|\bcounty\b|\battorney\b|zip code/i);
     });
 
     it("deduplicates selected presets in catalog order", () => {
@@ -325,6 +343,7 @@ describe("drafting domain", () => {
       expect(built.draftTemplates).toMatchObject([
         {
           id: "draft-template-preset-general-canada-matter-summary",
+          name: "Canadian Matter Summary Note",
           firmId: "firm-example",
           category: "general-practice",
           active: true,
@@ -338,6 +357,7 @@ describe("drafting domain", () => {
         },
         {
           id: "draft-template-preset-bc-tenancy-chronology",
+          name: "Tenancy Issue Chronology",
           category: "residential-tenancy",
           metadata: { presetId: "bc-residential-tenancy", jurisdictions: ["BC"] },
         },
@@ -347,13 +367,41 @@ describe("drafting domain", () => {
           id: "intake-template-preset-general-canada",
           category: "general-practice",
           provider: "embedded",
+          definitionVersion: 2,
+          definition: {
+            schemaVersion: 2,
+            questions: expect.arrayContaining([
+              expect.objectContaining({ id: "jurisdiction", label: "Canadian jurisdiction" }),
+            ]),
+          },
           metadata: { presetId: "general-canada" },
         },
         {
           id: "intake-template-preset-bc-tenancy",
           category: "residential-tenancy",
           provider: "embedded",
+          definitionVersion: 2,
+          definition: {
+            schemaVersion: 2,
+            packages: expect.arrayContaining([
+              expect.objectContaining({ title: "BC repair notice review package" }),
+            ]),
+          },
           metadata: { presetId: "bc-residential-tenancy" },
+        },
+      ]);
+      expect(built.intakeTemplateVersions).toMatchObject([
+        {
+          id: "intake-template-preset-general-canada:v2",
+          version: 2,
+          definitionVersion: 2,
+          metadata: { source: "open-practice-preset", presetId: "general-canada" },
+        },
+        {
+          id: "intake-template-preset-bc-tenancy:v2",
+          version: 2,
+          definitionVersion: 2,
+          metadata: { source: "open-practice-preset", presetId: "bc-residential-tenancy" },
         },
       ]);
     });

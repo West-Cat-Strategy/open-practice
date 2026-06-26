@@ -445,9 +445,10 @@ type BasicDraftTemplate = Omit<DraftTemplateRecord, "firmId" | "createdAt" | "up
 export const BASIC_DRAFT_TEMPLATES: BasicDraftTemplate[] = [
   {
     id: "draft-template-legal-letter",
-    name: "Generic Legal Letter",
+    name: "Canadian Matter Correspondence",
     category: "correspondence",
-    description: "A standard letterhead template for external correspondence.",
+    description:
+      "A Canadian matter correspondence template for staff-reviewed client or third-party updates.",
     active: true,
     editorJson: {
       type: "doc",
@@ -455,27 +456,91 @@ export const BASIC_DRAFT_TEMPLATES: BasicDraftTemplate[] = [
         {
           type: "heading",
           attrs: { level: 1 },
-          content: [{ type: "text", text: "Legal Correspondence" }],
+          content: [{ type: "text", text: "{{ firm.name }}" }],
         },
         {
           type: "paragraph",
-          content: [{ type: "text", text: "Date: [Current Date]" }],
+          content: [{ type: "text", text: "Date: [Date]" }],
         },
         {
           type: "paragraph",
-          content: [{ type: "text", text: "Recipient: [Recipient Name]" }],
+          content: [
+            {
+              type: "text",
+              text: "Matter: {{ matter.number }} - {{ matter.title }}",
+            },
+          ],
         },
         {
           type: "paragraph",
-          content: [{ type: "text", text: "Subject: [Subject Matter]" }],
+          content: [
+            {
+              type: "text",
+              text: "Jurisdiction: {{ matter.jurisdiction }} | Practice area: {{ matter.practiceArea }}",
+            },
+          ],
         },
         {
           type: "paragraph",
-          content: [{ type: "text", text: "Dear [Name]," }],
+          content: [{ type: "text", text: "Recipient: {{ client.displayName }}" }],
         },
         {
           type: "paragraph",
-          content: [{ type: "text", text: "[Body of letter...]" }],
+          content: [{ type: "text", text: "Subject: [Canadian matter update or request]" }],
+        },
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Dear {{ client.displayName }}," }],
+        },
+        {
+          type: "paragraph",
+          content: [
+            {
+              type: "text",
+              text: "[Summarize the staff-reviewed purpose of this correspondence in plain language.]",
+            },
+          ],
+        },
+        {
+          type: "heading",
+          attrs: { level: 2 },
+          content: [{ type: "text", text: "Next Steps" }],
+        },
+        {
+          type: "bulletList",
+          content: [
+            {
+              type: "listItem",
+              content: [
+                {
+                  type: "paragraph",
+                  content: [{ type: "text", text: "[Firm action to complete]" }],
+                },
+              ],
+            },
+            {
+              type: "listItem",
+              content: [
+                {
+                  type: "paragraph",
+                  content: [{ type: "text", text: "[Client or recipient action to confirm]" }],
+                },
+              ],
+            },
+            {
+              type: "listItem",
+              content: [
+                {
+                  type: "paragraph",
+                  content: [{ type: "text", text: "[Canadian deadline or review date]" }],
+                },
+              ],
+            },
+          ],
+        },
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "This draft is for staff review before sending." }],
         },
         {
           type: "paragraph",
@@ -483,7 +548,7 @@ export const BASIC_DRAFT_TEMPLATES: BasicDraftTemplate[] = [
         },
         {
           type: "paragraph",
-          content: [{ type: "text", text: "[Firm Name]" }],
+          content: [{ type: "text", text: "{{ firm.name }}" }],
         },
       ],
     },
@@ -491,9 +556,10 @@ export const BASIC_DRAFT_TEMPLATES: BasicDraftTemplate[] = [
   },
   {
     id: "draft-template-meeting-notes",
-    name: "Meeting Notes",
+    name: "Canadian Matter Meeting Notes",
     category: "internal",
-    description: "Template for recording matter-scoped meeting notes and action items.",
+    description:
+      "Template for recording matter-scoped Canadian meeting notes, instructions, and follow-up.",
     active: true,
     editorJson: {
       type: "doc",
@@ -501,24 +567,66 @@ export const BASIC_DRAFT_TEMPLATES: BasicDraftTemplate[] = [
         {
           type: "heading",
           attrs: { level: 1 },
-          content: [{ type: "text", text: "Meeting Notes" }],
+          content: [{ type: "text", text: "Canadian Matter Meeting Notes" }],
         },
         {
           type: "paragraph",
           content: [
-            { type: "text", text: "Matter: [Matter Number]" },
+            { type: "text", text: "Matter: {{ matter.number }} - {{ matter.title }}" },
             { type: "hardBreak" },
-            { type: "text", text: "Participants: [List]" },
+            { type: "text", text: "Jurisdiction: {{ matter.jurisdiction }}" },
+            { type: "hardBreak" },
+            { type: "text", text: "Practice area: {{ matter.practiceArea }}" },
+            { type: "hardBreak" },
+            { type: "text", text: "Participants: [Names and roles]" },
           ],
         },
         {
           type: "heading",
           attrs: { level: 2 },
-          content: [{ type: "text", text: "Discussion" }],
+          content: [{ type: "text", text: "Client Instructions" }],
         },
         {
           type: "paragraph",
-          content: [{ type: "text", text: "[Notes...]" }],
+          content: [{ type: "text", text: "[Record instructions and questions to confirm.]" }],
+        },
+        {
+          type: "heading",
+          attrs: { level: 2 },
+          content: [{ type: "text", text: "Documents Reviewed" }],
+        },
+        {
+          type: "bulletList",
+          content: [
+            {
+              type: "listItem",
+              content: [
+                {
+                  type: "paragraph",
+                  content: [{ type: "text", text: "[Document, notice, agreement, or email]" }],
+                },
+              ],
+            },
+          ],
+        },
+        {
+          type: "heading",
+          attrs: { level: 2 },
+          content: [{ type: "text", text: "Dates to Confirm" }],
+        },
+        {
+          type: "bulletList",
+          content: [
+            {
+              type: "listItem",
+              content: [
+                {
+                  type: "paragraph",
+                  content: [{ type: "text", text: "[Canadian deadline, hearing, or review date]" }],
+                },
+              ],
+            },
+          ],
         },
         {
           type: "heading",
@@ -533,7 +641,7 @@ export const BASIC_DRAFT_TEMPLATES: BasicDraftTemplate[] = [
               content: [
                 {
                   type: "paragraph",
-                  content: [{ type: "text", text: "[Action Item 1]" }],
+                  content: [{ type: "text", text: "[Action item, owner, and target date]" }],
                 },
               ],
             },
