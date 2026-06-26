@@ -287,6 +287,12 @@ describe("AdminReadinessSection", () => {
         detail: expect.stringContaining("Critical/High CVEs"),
       }),
     );
+    expect(summary.operations).toContainEqual(
+      expect.objectContaining({
+        key: "private-pilot-object-storage-blocker",
+        detail: expect.stringContaining("automated green private-pilot release proof"),
+      }),
+    );
   });
 
   it("renders bounded export and backup/restore readiness copy", () => {
@@ -301,7 +307,8 @@ describe("AdminReadinessSection", () => {
     expect(markup).toContain("Required provider blockers");
     expect(markup).toContain("Optional disabled boundaries");
     expect(markup).toContain("Private-pilot object storage blocker");
-    expect(markup).toContain("external HTTPS object storage");
+    expect(markup).toContain("manual handoff evidence");
+    expect(markup).toContain("external HTTPS S3 restore-drill evidence");
     expect(markup).toContain("MinIO hardening proof");
     expect(markup).not.toContain("private deployment");
     expect(markup).not.toContain("synthetic-secret");

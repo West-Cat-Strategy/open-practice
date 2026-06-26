@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { createHash } from "node:crypto";
+import { createRequire } from "node:module";
 import { createServer } from "node:net";
 import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -14,6 +15,10 @@ const DEFAULT_ENV_FILE = path.join("docker", "selfhost.example.env");
 const DEFAULT_EVIDENCE_ROOT = path.join(".tmp", "open-practice-selfhost-restore-drill");
 const DISPOSABLE_PROJECT_PREFIX = "open-practice-selfhost-restore-drill-";
 const MINIO_COMPOSE_ENDPOINT = "http://minio:9000";
+const OBJECT_STORAGE_MODES = {
+  bundledMinio: "bundled_minio",
+  externalHttpsS3: "external_https_s3",
+};
 const RESTORE_MARKER_TABLE = "open_practice_restore_drill_marker";
 const REDACTED = "[redacted]";
 
@@ -159,17 +164,32 @@ function readEnvFile(envFile) {
   return parseEnvFile(readFileSync(envFile, "utf8"));
 }
 
+export function restoreDrillObjectStorageMode(env) {
+  const endpoint = String(env.OPEN_PRACTICE_SELFHOST_S3_ENDPOINT ?? "").trim();
+  if (endpoint === MINIO_COMPOSE_ENDPOINT) return OBJECT_STORAGE_MODES.bundledMinio;
+
+  let url;
+  try {
+    url = new URL(endpoint);
+  } catch {
+    throw new Error("OPEN_PRACTICE_SELFHOST_S3_ENDPOINT must be a valid URL.");
+  }
+  if (url.protocol !== "https:") {
+    throw new Error(
+      "External self-host restore drill object storage endpoints must use https unless they are the private http://minio:9000 Compose endpoint.",
+    );
+  }
+  return OBJECT_STORAGE_MODES.externalHttpsS3;
+}
+
 export function validateRestoreDrillEnv(
   fileEnv,
   mergedEnv,
   { allowSyntheticExample = false } = {},
 ) {
+  void fileEnv;
   validateSelfhostEnv(mergedEnv, { allowSyntheticExample });
-  if (mergedEnv.OPEN_PRACTICE_SELFHOST_S3_ENDPOINT !== MINIO_COMPOSE_ENDPOINT) {
-    throw new Error(
-      "Self-host restore drill archives bundled MinIO data only; set OPEN_PRACTICE_SELFHOST_S3_ENDPOINT=http://minio:9000.",
-    );
-  }
+  const objectStorageMode = restoreDrillObjectStorageMode(mergedEnv);
 
   const enabledBoundaryKeys = BOUNDARY_ENABLEMENT_KEYS.filter((key) =>
     boundaryValueEnabled(key, mergedEnv[key]),
@@ -182,6 +202,7 @@ export function validateRestoreDrillEnv(
   if (mergedEnv.AI_PROVIDER && mergedEnv.AI_PROVIDER !== "disabled") {
     throw new Error("Self-host restore drill env must not enable AI_PROVIDER.");
   }
+  return objectStorageMode;
 }
 
 function serviceEnv(service) {
@@ -246,6 +267,15 @@ function objectMarkerBody(markerId) {
   ].join("\n");
 }
 
+function disturbedObjectMarkerBody(markerId) {
+  return [
+    "Open Practice self-host restore drill synthetic disturbed marker.",
+    `markerId=${markerId}`,
+    "This file proves external S3 restore evidence can recover the backed-up marker body.",
+    "",
+  ].join("\n");
+}
+
 function redactText(text, secretValues = []) {
   let redacted = String(text);
   for (const value of secretValues) {
@@ -258,12 +288,23 @@ function redactText(text, secretValues = []) {
 }
 
 export function createRedactor(env) {
-  const secretValues = Object.entries(env)
-    .filter(
-      ([key, value]) => /(PASSWORD|SECRET|TOKEN|KEY|DATABASE_URL|REDIS_URL)/i.test(key) && value,
-    )
-    .map(([, value]) => String(value))
-    .filter((value) => value.length >= 4);
+  const secretValues = [];
+  for (const [key, value] of Object.entries(env)) {
+    if (
+      !/(PASSWORD|SECRET|TOKEN|KEY|DATABASE_URL|REDIS_URL|ENDPOINT|BUCKET)/i.test(key) ||
+      !value
+    ) {
+      continue;
+    }
+    const text = String(value);
+    if (text.length >= 4) secretValues.push(text);
+    try {
+      const hostname = new URL(text).hostname;
+      if (hostname.length >= 4) secretValues.push(hostname);
+    } catch {
+      // Non-URL secret values are redacted by exact value above.
+    }
+  }
   return (text) => redactText(text, secretValues);
 }
 
@@ -406,6 +447,16 @@ async function waitForCommand(label, command, options = {}) {
   throw lastError ?? new Error(`${label} did not become ready before timeout.`);
 }
 
+async function waitForStableCommand(label, command, options = {}) {
+  const firstResult = await waitForCommand(label, command, options);
+  await delay(options.stabilityMs ?? 1000);
+  await waitForCommand(`${label} stable`, command, {
+    ...options,
+    timeoutMs: options.stabilityTimeoutMs ?? 15_000,
+  });
+  return firstResult;
+}
+
 async function waitForUrl(label, url, options = {}) {
   const timeoutMs = options.timeoutMs ?? 90_000;
   const start = Date.now();
@@ -452,6 +503,102 @@ function artifactMetadata(file) {
     sizeBytes: stat.size,
     sha256: sha256(readFileSync(file)),
   };
+}
+
+function artifactMetadataWithoutSha(file) {
+  const stat = statSync(file);
+  return {
+    path: path.basename(file),
+    sizeBytes: stat.size,
+    sha256: REDACTED,
+  };
+}
+
+export function externalS3MarkerKey(markerId) {
+  return `restore-drill/${markerId}.txt`;
+}
+
+async function loadApiS3Module(cwd) {
+  const apiRequire = createRequire(pathToFileURL(path.resolve(cwd, "apps/api/package.json")));
+  return await import(pathToFileURL(apiRequire.resolve("@aws-sdk/client-s3")).href);
+}
+
+async function createExternalS3({ cwd, env, s3Module }) {
+  const module = s3Module ?? (await loadApiS3Module(cwd));
+  return {
+    client: new module.S3Client({
+      endpoint: env.OPEN_PRACTICE_SELFHOST_S3_ENDPOINT,
+      region: env.OPEN_PRACTICE_SELFHOST_S3_REGION || "local",
+      credentials: {
+        accessKeyId: env.OPEN_PRACTICE_SELFHOST_S3_ACCESS_KEY || "open_practice",
+        secretAccessKey: env.OPEN_PRACTICE_SELFHOST_S3_SECRET_KEY,
+      },
+      forcePathStyle: true,
+    }),
+    GetObjectCommand: module.GetObjectCommand,
+    PutObjectCommand: module.PutObjectCommand,
+  };
+}
+
+async function objectBodyToBuffer(body) {
+  if (Buffer.isBuffer(body)) return body;
+  if (typeof body === "string") return Buffer.from(body, "utf8");
+  if (body instanceof Uint8Array) return Buffer.from(body);
+  if (body?.transformToByteArray) return Buffer.from(await body.transformToByteArray());
+  if (body?.transformToString) return Buffer.from(await body.transformToString(), "utf8");
+  if (body?.[Symbol.asyncIterator]) {
+    const chunks = [];
+    for await (const chunk of body) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    }
+    return Buffer.concat(chunks);
+  }
+  throw new Error("External S3 restore marker body was not readable.");
+}
+
+export async function writeExternalS3Marker({ s3, bucket, key, markerBody }) {
+  await s3.client.send(
+    new s3.PutObjectCommand({
+      Bucket: bucket,
+      Key: key,
+      Body: Buffer.from(markerBody, "utf8"),
+      ServerSideEncryption: "AES256",
+    }),
+  );
+}
+
+async function readExternalS3Marker({ s3, bucket, key }) {
+  const result = await s3.client.send(
+    new s3.GetObjectCommand({
+      Bucket: bucket,
+      Key: key,
+    }),
+  );
+  return objectBodyToBuffer(result.Body);
+}
+
+export async function backupExternalS3Marker({ s3, bucket, key, backupPath }) {
+  const body = await readExternalS3Marker({ s3, bucket, key });
+  writeFileSync(backupPath, body);
+  return artifactMetadataWithoutSha(backupPath);
+}
+
+export async function restoreExternalS3Marker({ s3, bucket, key, backupPath }) {
+  await s3.client.send(
+    new s3.PutObjectCommand({
+      Bucket: bucket,
+      Key: key,
+      Body: readFileSync(backupPath),
+      ServerSideEncryption: "AES256",
+    }),
+  );
+}
+
+export async function verifyExternalS3Marker({ s3, bucket, key, markerSha256 }) {
+  const body = await readExternalS3Marker({ s3, bucket, key });
+  if (sha256(body) !== markerSha256) {
+    throw new Error("Restored external S3 marker checksum did not match.");
+  }
 }
 
 async function captureFailureLogs({ runner, evidenceDir, evidence, redactor }) {
@@ -561,17 +708,20 @@ export async function runRestoreDrill(rawArgs = process.argv.slice(2), dependenc
   const envFile = path.resolve(cwd, options.envFile);
   const fileEnv = readEnvFile(envFile);
   const mergedEnv = { ...process.env, ...fileEnv };
-  validateRestoreDrillEnv(fileEnv, mergedEnv, {
+  const objectStorageMode = validateRestoreDrillEnv(fileEnv, mergedEnv, {
     allowSyntheticExample: options.allowSyntheticExample,
   });
+  const usesBundledMinio = objectStorageMode === OBJECT_STORAGE_MODES.bundledMinio;
 
   const markerId = safeMarkerId(now);
   const dbMarkerBody = `Open Practice restore drill synthetic database marker: ${markerId}\n`;
-  const minioMarkerBody = objectMarkerBody(markerId);
+  const objectBody = objectMarkerBody(markerId);
+  const disturbedObjectBody = disturbedObjectMarkerBody(markerId);
   const marker = {
     id: markerId,
     postgresSha256: sha256(dbMarkerBody),
-    minioSha256: sha256(minioMarkerBody),
+    objectSha256: sha256(objectBody),
+    disturbedObjectSha256: usesBundledMinio ? undefined : sha256(disturbedObjectBody),
   };
   const ports = dependencies.allocatePorts
     ? await dependencies.allocatePorts()
@@ -592,6 +742,13 @@ export async function runRestoreDrill(rawArgs = process.argv.slice(2), dependenc
       file: path.relative(cwd, envFile),
       syntheticExampleAllowed: options.allowSyntheticExample,
       valuesRedacted: true,
+    },
+    objectStorage: {
+      mode: objectStorageMode,
+      endpointRedacted: true,
+      bucketRedacted: true,
+      markerKeySha256: sha256(externalS3MarkerKey(markerId)),
+      serverSideEncryption: "AES256",
     },
     ports: {
       api: `127.0.0.1:${ports.api}`,
@@ -623,6 +780,15 @@ export async function runRestoreDrill(rawArgs = process.argv.slice(2), dependenc
   const webSetupStatusUrl = `http://127.0.0.1:${ports.web}/api/setup/status`;
   const postgresDumpPath = path.join(evidenceDir, "postgres.dump");
   const minioArchivePath = path.join(evidenceDir, "minio-data.tgz");
+  const objectMarkerBackupPath = path.join(evidenceDir, "external-s3-marker.txt");
+  const objectMarkerKey = externalS3MarkerKey(markerId);
+  const externalS3 = usesBundledMinio
+    ? null
+    : await createExternalS3({
+        cwd,
+        env: composeEnv,
+        s3Module: dependencies.s3Module,
+      });
   let mainError;
 
   console.log(`Self-host restore drill starting in disposable project ${options.projectName}.`);
@@ -678,7 +844,16 @@ export async function runRestoreDrill(rawArgs = process.argv.slice(2), dependenc
       dbUser,
       dbName,
     });
-    await writeMinioMarker({ runner, bucket, markerId, markerBody: minioMarkerBody });
+    if (usesBundledMinio) {
+      await writeMinioMarker({ runner, bucket, markerId, markerBody: objectBody });
+    } else {
+      await writeExternalS3Marker({
+        s3: externalS3,
+        bucket,
+        key: objectMarkerKey,
+        markerBody: objectBody,
+      });
+    }
     evidence.checks.push({ id: "synthetic-markers-created", status: "passed" });
 
     const dump = await runner.compose(
@@ -700,19 +875,45 @@ export async function runRestoreDrill(rawArgs = process.argv.slice(2), dependenc
     writeFileSync(postgresDumpPath, dump.stdout);
     evidence.artifacts.postgresDump = artifactMetadata(postgresDumpPath);
 
-    const minioArchive = await runner.compose(
-      "minio-data-archive",
-      ["exec", "-T", "minio", "sh", "-c", "cd /data && tar -czf - ."],
-      { captureStdout: true },
-    );
-    writeFileSync(minioArchivePath, minioArchive.stdout);
-    evidence.artifacts.minioArchive = artifactMetadata(minioArchivePath);
+    if (usesBundledMinio) {
+      const minioArchive = await runner.compose(
+        "minio-data-archive",
+        ["exec", "-T", "minio", "sh", "-c", "cd /data && tar -czf - ."],
+        { captureStdout: true },
+      );
+      writeFileSync(minioArchivePath, minioArchive.stdout);
+      evidence.artifacts.minioArchive = artifactMetadata(minioArchivePath);
+    } else {
+      evidence.artifacts.externalS3Marker = await backupExternalS3Marker({
+        s3: externalS3,
+        bucket,
+        key: objectMarkerKey,
+        backupPath: objectMarkerBackupPath,
+      });
+    }
     evidence.checks.push({ id: "backup-artifacts-created", status: "passed" });
     writeJson(evidenceJsonPath, evidence);
 
+    if (!usesBundledMinio) {
+      await writeExternalS3Marker({
+        s3: externalS3,
+        bucket,
+        key: objectMarkerKey,
+        markerBody: disturbedObjectBody,
+      });
+      await verifyExternalS3Marker({
+        s3: externalS3,
+        bucket,
+        key: objectMarkerKey,
+        markerSha256: marker.disturbedObjectSha256,
+      });
+      evidence.checks.push({ id: "external-s3-marker-disturbed", status: "passed" });
+      writeJson(evidenceJsonPath, evidence);
+    }
+
     await runner.compose("selfhost-down-before-restore", ["down", "--volumes", "--remove-orphans"]);
     await runner.compose("selfhost-up-restore-infra", ["up", "-d", "postgres", "redis"]);
-    await waitForCommand("restored PostgreSQL", () =>
+    await waitForStableCommand("restored PostgreSQL", () =>
       runner.compose("restored-postgres-ready", [
         "exec",
         "-T",
@@ -741,20 +942,34 @@ export async function runRestoreDrill(rawArgs = process.argv.slice(2), dependenc
       ],
       { input: readFileSync(postgresDumpPath) },
     );
-    await runner.compose("minio-data-restore", [
-      "run",
-      "--rm",
-      "--no-deps",
-      "--entrypoint",
-      "sh",
-      "--volume",
-      `${minioArchivePath}:/restore/minio-data.tgz:ro`,
-      "minio",
-      "-c",
-      "rm -rf /data/* /data/.[!.]* /data/..?* && tar -xzf /restore/minio-data.tgz -C /data",
-    ]);
-    await runner.compose("selfhost-up-restored-minio", ["up", "-d", "minio"]);
-    await waitForUrl("restored MinIO", `http://127.0.0.1:${ports.minio}/minio/health/ready`);
+    if (usesBundledMinio) {
+      await runner.compose("minio-data-restore", [
+        "run",
+        "--rm",
+        "--no-deps",
+        "--entrypoint",
+        "sh",
+        "--volume",
+        `${minioArchivePath}:/restore/minio-data.tgz:ro`,
+        "minio",
+        "-c",
+        "rm -rf /data/* /data/.[!.]* /data/..?* && tar -xzf /restore/minio-data.tgz -C /data",
+      ]);
+      await runner.compose("selfhost-up-restored-minio", ["up", "-d", "minio"]);
+      await waitForUrl("restored MinIO", `http://127.0.0.1:${ports.minio}/minio/health/ready`);
+    } else {
+      await restoreExternalS3Marker({
+        s3: externalS3,
+        bucket,
+        key: objectMarkerKey,
+        backupPath: objectMarkerBackupPath,
+      });
+      await runner.compose("selfhost-up-restored-minio", ["up", "-d", "minio"]);
+      await waitForUrl(
+        "supporting MinIO service",
+        `http://127.0.0.1:${ports.minio}/minio/health/ready`,
+      );
+    }
     evidence.checks.push({ id: "fresh-volumes-restored", status: "passed" });
     writeJson(evidenceJsonPath, evidence);
 
@@ -765,12 +980,21 @@ export async function runRestoreDrill(rawArgs = process.argv.slice(2), dependenc
       dbUser,
       dbName,
     });
-    await verifyMinioMarker({
-      runner,
-      bucket,
-      markerId,
-      markerSha256: marker.minioSha256,
-    });
+    if (usesBundledMinio) {
+      await verifyMinioMarker({
+        runner,
+        bucket,
+        markerId,
+        markerSha256: marker.objectSha256,
+      });
+    } else {
+      await verifyExternalS3Marker({
+        s3: externalS3,
+        bucket,
+        key: objectMarkerKey,
+        markerSha256: marker.objectSha256,
+      });
+    }
     evidence.checks.push({ id: "restored-marker-checksums", status: "passed" });
     writeJson(evidenceJsonPath, evidence);
 
