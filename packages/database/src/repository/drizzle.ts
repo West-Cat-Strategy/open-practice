@@ -43,6 +43,17 @@ import {
   recordDrizzleAuditEvent,
 } from "./audit/drizzle.js";
 import {
+  createDrizzleAppointmentBookingLink,
+  createDrizzleAppointmentBookingTentativeHold,
+  getDrizzleAppointmentBookingLinkByTokenHash,
+  getDrizzleAppointmentBookingProfile,
+  getDrizzleAppointmentBookingRequest,
+  listDrizzleAppointmentBookingProfiles,
+  listDrizzleAppointmentBookingRequests,
+  reviewDrizzleAppointmentBookingRequest,
+  upsertDrizzleAppointmentBookingProfile,
+} from "./appointment-booking/drizzle.js";
+import {
   createDrizzleAiOperationalProposal,
   getDrizzleAiOperationalProposal,
   listDrizzleAiOperationalProposals,
@@ -992,6 +1003,64 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     options: Parameters<OpenPracticeRepository["listCalendarSchedulingRequests"]>[1] = {},
   ): ReturnType<OpenPracticeRepository["listCalendarSchedulingRequests"]> {
     return listDrizzleCalendarSchedulingRequests(this.db, firmId, options);
+  }
+
+  async listAppointmentBookingProfiles(
+    firmId: string,
+    options: Parameters<OpenPracticeRepository["listAppointmentBookingProfiles"]>[1] = {},
+  ): ReturnType<OpenPracticeRepository["listAppointmentBookingProfiles"]> {
+    return listDrizzleAppointmentBookingProfiles(this.db, firmId, options);
+  }
+
+  async getAppointmentBookingProfile(
+    firmId: string,
+    profileId: string,
+  ): ReturnType<OpenPracticeRepository["getAppointmentBookingProfile"]> {
+    return getDrizzleAppointmentBookingProfile(this.db, firmId, profileId);
+  }
+
+  async upsertAppointmentBookingProfile(
+    profile: Parameters<OpenPracticeRepository["upsertAppointmentBookingProfile"]>[0],
+  ): ReturnType<OpenPracticeRepository["upsertAppointmentBookingProfile"]> {
+    return upsertDrizzleAppointmentBookingProfile(this.db, profile);
+  }
+
+  async createAppointmentBookingLink(
+    link: Parameters<OpenPracticeRepository["createAppointmentBookingLink"]>[0],
+  ): ReturnType<OpenPracticeRepository["createAppointmentBookingLink"]> {
+    return createDrizzleAppointmentBookingLink(this.db, link);
+  }
+
+  async getAppointmentBookingLinkByTokenHash(
+    tokenHash: string,
+  ): ReturnType<OpenPracticeRepository["getAppointmentBookingLinkByTokenHash"]> {
+    return getDrizzleAppointmentBookingLinkByTokenHash(this.db, tokenHash);
+  }
+
+  async listAppointmentBookingRequests(
+    firmId: string,
+    options: Parameters<OpenPracticeRepository["listAppointmentBookingRequests"]>[1] = {},
+  ): ReturnType<OpenPracticeRepository["listAppointmentBookingRequests"]> {
+    return listDrizzleAppointmentBookingRequests(this.db, firmId, options);
+  }
+
+  async getAppointmentBookingRequest(
+    firmId: string,
+    requestId: string,
+  ): ReturnType<OpenPracticeRepository["getAppointmentBookingRequest"]> {
+    return getDrizzleAppointmentBookingRequest(this.db, firmId, requestId);
+  }
+
+  async createAppointmentBookingTentativeHold(
+    input: Parameters<OpenPracticeRepository["createAppointmentBookingTentativeHold"]>[0],
+  ): ReturnType<OpenPracticeRepository["createAppointmentBookingTentativeHold"]> {
+    return createDrizzleAppointmentBookingTentativeHold(this.db, input);
+  }
+
+  async reviewAppointmentBookingRequest(
+    input: Parameters<OpenPracticeRepository["reviewAppointmentBookingRequest"]>[0],
+  ): ReturnType<OpenPracticeRepository["reviewAppointmentBookingRequest"]> {
+    return reviewDrizzleAppointmentBookingRequest(this.db, input);
   }
 
   async deleteCalendarEventReminder(

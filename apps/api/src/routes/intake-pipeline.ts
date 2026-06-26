@@ -68,33 +68,35 @@ export function registerIntakePipelineRoutes(
     );
     const intakeSessionIds = new Set(intakeSessions.map((session) => session.id));
     const matterIds = unique(intakeSessions.map((session) => session.matterId));
-    const [intakeFormLinks, intakeFormReviews, calendarEvents] = await Promise.all([
-      Promise.all(
-        matterIds.map((matterId) =>
-          repository.listIntakeFormLinks(request.auth.firmId, { matterId }),
+    const [intakeFormLinks, intakeFormReviews, calendarEvents, appointmentBookingRequests] =
+      await Promise.all([
+        Promise.all(
+          matterIds.map((matterId) =>
+            repository.listIntakeFormLinks(request.auth.firmId, { matterId }),
+          ),
+        ).then((groups) =>
+          groups.flat().filter((link) => intakeSessionIds.has(link.intakeSessionId)),
         ),
-      ).then((groups) =>
-        groups.flat().filter((link) => intakeSessionIds.has(link.intakeSessionId)),
-      ),
-      Promise.all(
-        matterIds.map((matterId) =>
-          repository.listIntakeFormReviews(request.auth.firmId, { matterId }),
+        Promise.all(
+          matterIds.map((matterId) =>
+            repository.listIntakeFormReviews(request.auth.firmId, { matterId }),
+          ),
+        ).then((groups) =>
+          groups.flat().filter((review) => intakeSessionIds.has(review.intakeSessionId)),
         ),
-      ).then((groups) =>
-        groups.flat().filter((review) => intakeSessionIds.has(review.intakeSessionId)),
-      ),
-      Promise.all(
-        matterIds.map((matterId) => {
-          const access = requireAccess(request.auth, {
-            resource: "calendar_event",
-            action: "read",
-            matterId,
-          });
-          if (!access.ok) return [];
-          return repository.listCalendarEvents(request.auth.firmId, { matterId });
-        }),
-      ).then((groups) => groups.flat()),
-    ]);
+        Promise.all(
+          matterIds.map((matterId) => {
+            const access = requireAccess(request.auth, {
+              resource: "calendar_event",
+              action: "read",
+              matterId,
+            });
+            if (!access.ok) return [];
+            return repository.listCalendarEvents(request.auth.firmId, { matterId });
+          }),
+        ).then((groups) => groups.flat()),
+        repository.listAppointmentBookingRequests(request.auth.firmId),
+      ]);
 
     return buildIntakePipelineSnapshot({
       publicConsultationIntakes,
@@ -102,6 +104,7 @@ export function registerIntakePipelineRoutes(
       intakeFormLinks,
       intakeFormReviews,
       calendarEvents,
+      appointmentBookingRequests,
       publicConsultationReviewOwnerUserId: publicConsultationSettings.reviewOwnerUserId,
       assignedMatterIds: request.auth.user.assignedMatterIds,
     });

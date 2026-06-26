@@ -325,6 +325,7 @@ import {
 import { ContactsSection } from "./dashboard/contacts-section";
 import { CommunicationsSection } from "./dashboard/communications-section";
 import { CalendarSection } from "./dashboard/calendar-section";
+import { AppointmentBookingPanel } from "./dashboard/appointment-booking-panel";
 import {
   EmailTemplateDraftsPanel,
   type EmailTemplateDraftFormState,
@@ -1745,6 +1746,15 @@ export default function DashboardClient({
         ? (calendarClientOptions.find((option) => option.id === selectedCalendarClientContactId)
             ?.label ?? "Client calendar")
         : "Firm calendar";
+  const appointmentBookingPanel = (
+    <AppointmentBookingPanel
+      activeCalendarScope={activeCalendarScope}
+      activeClientContactId={selectedCalendarClientContactId}
+      activeMatterId={activeMatter?.id}
+      apiBaseUrl={apiBaseUrl}
+      devHeaders={devHeaders}
+    />
+  );
   const matterCalendarControlsEnabled = activeCalendarScope === "matter" && Boolean(activeMatter);
   const activeCalendarBuckets = useMemo(
     () => buildCalendarRadarBuckets(activeCalendarEvents),
@@ -6295,6 +6305,7 @@ export default function DashboardClient({
                   activeCalendarSchedulingRequests={activeCalendarSchedulingRequests}
                   activeCalendarScope={activeCalendarScope}
                   activeMatterNumber={activeCalendarLabel}
+                  appointmentBookingPanel={appointmentBookingPanel}
                   addingCalendarAttendee={addingCalendarAttendee}
                   addingCalendarReminder={addingCalendarReminder}
                   calendarAttendeeEmail={calendarAttendeeEmail}
@@ -7220,6 +7231,7 @@ export default function DashboardClient({
                   activeCalendarSchedulingRequests={activeCalendarSchedulingRequests}
                   activeCalendarScope={activeCalendarScope}
                   activeMatterNumber={activeCalendarLabel}
+                  appointmentBookingPanel={appointmentBookingPanel}
                   addingCalendarAttendee={addingCalendarAttendee}
                   addingCalendarReminder={addingCalendarReminder}
                   calendarAttendeeEmail={calendarAttendeeEmail}

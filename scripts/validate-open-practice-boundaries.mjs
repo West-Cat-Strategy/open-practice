@@ -102,6 +102,12 @@ export const ROUTE_REGISTRARS = [
   ["CalDAV", "apps/api/src/routes/caldav.ts", "./routes/caldav.js", "registerCalDavRoutes"],
   ["calendar", "apps/api/src/routes/calendar.ts", "./routes/calendar.js", "registerCalendarRoutes"],
   [
+    "appointment booking",
+    "apps/api/src/routes/appointment-booking.ts",
+    "./routes/appointment-booking.js",
+    "registerAppointmentBookingRoutes",
+  ],
+  [
     "client portal",
     "apps/api/src/routes/client-portal.ts",
     "./routes/client-portal.js",
@@ -238,6 +244,7 @@ export const ROUTE_REGISTRAR_TEST_FILES = {
   registerE2ESupportRoutes: ["apps/api/src/routes/e2e-support.test.ts"],
   registerDraftAssistRoutes: ["apps/api/src/routes/draft-assist.test.ts"],
   registerAiOperationalProposalRoutes: ["apps/api/src/routes/ai-operational-proposals.test.ts"],
+  registerAppointmentBookingRoutes: ["apps/api/src/routes/appointment-booking.test.ts"],
   registerDraftRoutes: ["apps/api/src/routes/drafts.test.ts"],
   registerEmailRoutes: ["apps/api/src/routes/email.test.ts"],
   registerExternalUploadRoutes: ["apps/api/src/routes/external-uploads.test.ts"],
@@ -387,6 +394,14 @@ export const FORBIDDEN_PREFIX_ROUTE_GROUPS = [
   { family: "legal clinic", routeLiterals: ["/api/legal-clinic/"] },
   { family: "CalDAV", routeLiterals: ["/caldav", "/.well-known/caldav"] },
   { family: "calendar", routeLiterals: ["/api/calendar/"] },
+  {
+    family: "appointment booking",
+    routeLiterals: [
+      "/api/appointment-booking/",
+      "/api/public/appointment-booking/",
+      "/api/portal/appointment-bookings",
+    ],
+  },
   { family: "document processing", routeLiterals: ["/api/document-processing/"] },
   {
     family: "draft assist",

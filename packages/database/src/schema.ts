@@ -1,6 +1,7 @@
 export * from "./schema/access-logs.js";
 export * from "./schema/audit-events.js";
 export * from "./schema/ai.js";
+export * from "./schema/appointment-booking.js";
 export * from "./schema/auth.js";
 export * from "./schema/billing.js";
 export * from "./schema/billing-controls.js";

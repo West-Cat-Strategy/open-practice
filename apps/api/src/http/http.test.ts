@@ -179,6 +179,14 @@ describe("API HTTP helpers", () => {
     expect(isPublicRoute("GET", "/api/portal/guest-sessions")).toBe(true);
     expect(isPublicRoute("POST", "/api/portal/guest-sessions/token-001/check-in")).toBe(true);
     expect(isPublicRoute("POST", "/api/portal/guest-sessions/check-in")).toBe(true);
+    expect(isPublicRoute("GET", "/api/portal/appointment-bookings/token-001")).toBe(true);
+    expect(isPublicRoute("GET", "/api/portal/appointment-bookings")).toBe(true);
+    expect(isPublicRoute("POST", "/api/portal/appointment-bookings/token-001/book")).toBe(true);
+    expect(isPublicRoute("POST", "/api/portal/appointment-bookings/book")).toBe(true);
+    expect(isPublicRoute("GET", "/api/public/appointment-booking/profile-001/slots")).toBe(true);
+    expect(isPublicRoute("POST", "/api/public/appointment-booking/profile-001/bookings")).toBe(
+      true,
+    );
     expect(isPublicRoute("GET", "/api/portal/email-receipts/token-001")).toBe(true);
     expect(isPublicRoute("GET", "/api/portal/email-receipts")).toBe(true);
     expect(isPublicRoute("POST", "/api/portal/email-receipts/token-001")).toBe(true);
@@ -207,6 +215,9 @@ describe("API HTTP helpers", () => {
     ).toBe("/api/portal/intake-forms/:token/items/evidence/documents/document-001/complete");
     expect(redactPublicTokenUrl("/api/portal/guest-sessions/raw-token/check-in")).toBe(
       "/api/portal/guest-sessions/:token/check-in",
+    );
+    expect(redactPublicTokenUrl("/api/portal/appointment-bookings/raw-token/book")).toBe(
+      "/api/portal/appointment-bookings/:token/book",
     );
     expect(redactPublicTokenUrl("/api/portal/email-receipts/raw-token")).toBe(
       "/api/portal/email-receipts/:token",

@@ -210,10 +210,12 @@ surface.
 - **Meeting availability request review**
   - **Shipped slice:** Staff-reviewed availability/request records now live in
     `calendar_scheduling_requests`, with explicit review decisions and optional links to existing
-    staff-created events.
+    staff-created events. Appointment booking tentative holds now add staff-managed profiles,
+    website booking requests, direct booking links, and immediate tentative calendar holds for staff
+    review.
   - **Remaining boundary:** Public booking rooms, public room URLs, native media, signaling, chat,
-    recordings, automatic event creation, and provider sync remain out of scope unless a future
-    design explicitly widens scheduling.
+    recordings, automatic final confirmation, hold auto-expiry, and provider sync remain out of
+    scope unless a future design explicitly widens scheduling.
   - **References:** `calcom__cal.diy` and `jitsi__jitsi-meet`.
   - **Reuse and snippets:** Cal.diy is MIT/adapt-with-attribution and Jitsi is Apache-2.0
     adopt-selectively; keep this as behavior-level planning unless implementation scope opens reuse.

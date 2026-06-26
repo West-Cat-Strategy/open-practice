@@ -90,6 +90,7 @@ const PUBLIC_TOKEN_PATH_REDACTIONS: Array<[RegExp, string]> = [
   ],
   [/^(\/api\/portal\/external-uploads)\/[^/?]+(\?.*)?$/, "$1/:token$2"],
   [/^(\/api\/portal\/guest-sessions)\/[^/?]+(\/check-in)?(\?.*)?$/, "$1/:token$2$3"],
+  [/^(\/api\/portal\/appointment-bookings)\/[^/?]+(\/book)?(\?.*)?$/, "$1/:token$2$3"],
   [/^(\/api\/portal\/intake-forms)\/[^/?]+(\/draft|\/submit)?(\?.*)?$/, "$1/:token$2$3"],
   [/^(\/api\/portal\/intake-forms)\/[^/?]+(\/items\/[^/?]+\/uploads)(\?.*)?$/, "$1/:token$2$3"],
   [
@@ -133,6 +134,8 @@ export const PUBLIC_ROUTE_SAMPLES = [
   { method: "POST", path: "/api/auth/password-setup" },
   { method: "POST", path: "/api/auth/recovery-codes/verify" },
   { method: "POST", path: "/api/public/consultation-intakes" },
+  { method: "GET", path: "/api/public/appointment-booking/sample/slots" },
+  { method: "POST", path: "/api/public/appointment-booking/sample/bookings" },
   { method: "POST", path: "/api/inbound-email/provider-webhooks/mailgun/raw-mime" },
   { method: "GET", path: "/api/portal/shares/sample" },
   { method: "GET", path: "/api/portal/shares" },
@@ -192,6 +195,10 @@ export const PUBLIC_ROUTE_SAMPLES = [
   { method: "GET", path: "/api/portal/guest-sessions" },
   { method: "POST", path: "/api/portal/guest-sessions/sample/check-in" },
   { method: "POST", path: "/api/portal/guest-sessions/check-in" },
+  { method: "GET", path: "/api/portal/appointment-bookings/sample" },
+  { method: "GET", path: "/api/portal/appointment-bookings" },
+  { method: "POST", path: "/api/portal/appointment-bookings/sample/book" },
+  { method: "POST", path: "/api/portal/appointment-bookings/book" },
 ] as const;
 
 export function isPublicRoute(method: string, url: string): boolean {
@@ -208,6 +215,9 @@ export function isPublicRoute(method: string, url: string): boolean {
     (method === "POST" && path === "/api/auth/password-setup") ||
     (method === "POST" && path === "/api/auth/recovery-codes/verify") ||
     (method === "POST" && path === "/api/public/consultation-intakes") ||
+    (method === "GET" && /^\/api\/public\/appointment-booking\/[^/]+\/slots$/.test(path ?? "")) ||
+    (method === "POST" &&
+      /^\/api\/public\/appointment-booking\/[^/]+\/bookings$/.test(path ?? "")) ||
     (method === "POST" && path === "/api/inbound-email/provider-webhooks/mailgun/raw-mime") ||
     (method === "GET" && path === "/api/portal/shares") ||
     (method === "GET" && path?.startsWith("/api/portal/shares/")) ||
@@ -233,6 +243,10 @@ export function isPublicRoute(method: string, url: string): boolean {
     (method === "POST" && /^\/api\/portal\/intake-forms\/[^/]+\/submit$/.test(path ?? "")) ||
     (method === "POST" && path === "/api/portal/guest-sessions/check-in") ||
     (method === "POST" && /^\/api\/portal\/guest-sessions\/[^/]+\/check-in$/.test(path ?? "")) ||
+    (method === "GET" && path === "/api/portal/appointment-bookings") ||
+    (method === "GET" && /^\/api\/portal\/appointment-bookings\/[^/]+$/.test(path ?? "")) ||
+    (method === "POST" && path === "/api/portal/appointment-bookings/book") ||
+    (method === "POST" && /^\/api\/portal\/appointment-bookings\/[^/]+\/book$/.test(path ?? "")) ||
     (method === "POST" &&
       /^\/api\/portal\/intake-forms\/items\/[^/]+\/uploads$/.test(path ?? "")) ||
     (method === "POST" &&

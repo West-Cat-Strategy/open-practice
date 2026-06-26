@@ -1,4 +1,5 @@
 import { AlertTriangle, CalendarDays, Clock3, Link2, Plus, X } from "lucide-react";
+import type { ReactNode } from "react";
 import type { CalendarMeetingLinkMode } from "@open-practice/domain/calendar-models";
 import {
   calendarMeetingReadinessItems,
@@ -45,6 +46,7 @@ export interface CalendarSectionProps {
   activeCalendarSchedulingRequests: CalendarSchedulingRequest[];
   activeCalendarScope: "matter" | "firm" | "client";
   activeMatterNumber: string;
+  appointmentBookingPanel?: ReactNode;
   addingCalendarAttendee: boolean;
   addingCalendarReminder: boolean;
   calendarAttendeeEmail: string;
@@ -195,6 +197,7 @@ export function CalendarSection({
   activeCalendarSchedulingRequests,
   activeCalendarScope,
   activeMatterNumber,
+  appointmentBookingPanel,
   addingCalendarAttendee,
   addingCalendarReminder,
   calendarAttendeeEmail,
@@ -355,6 +358,8 @@ export function CalendarSection({
           </p>
         ) : null}
       </div>
+
+      {appointmentBookingPanel}
 
       <div className="section-title">
         <h3>Deadline radar</h3>

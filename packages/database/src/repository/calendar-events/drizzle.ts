@@ -125,10 +125,12 @@ export async function listDrizzleCalendarEvents(
     eq(schema.calendarEvents.firmId, firmId),
     isNull(schema.calendarEvents.deletedAt),
   ];
-  if (options.matterId) {
-    filters.push(eq(schema.calendarEvents.matterId, options.matterId));
-  } else {
-    filters.push(sql`${schema.calendarEvents.matterId} is null`);
+  if (!options.includeAllScopes) {
+    if (options.matterId) {
+      filters.push(eq(schema.calendarEvents.matterId, options.matterId));
+    } else {
+      filters.push(sql`${schema.calendarEvents.matterId} is null`);
+    }
   }
   if (options.scopes?.length) {
     filters.push(inArray(schema.calendarEvents.scope, options.scopes));

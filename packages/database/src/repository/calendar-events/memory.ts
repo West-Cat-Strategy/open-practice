@@ -49,6 +49,7 @@ function calendarScopeMatches(
   event: Pick<CalendarEventRecord, "scope" | "matterId" | "clientContactId">,
   options: CalendarEventListOptions,
 ): boolean {
+  if (options.includeAllScopes) return true;
   if (options.matterId) return event.matterId === options.matterId;
   if (options.scopes && !options.scopes.includes(calendarScope(event))) return false;
   if (calendarScope(event) === "client" && !options.clientContactIds) return false;
