@@ -22,7 +22,6 @@ import { registerCalendarMeetingLinkRoutes } from "./calendar/meeting-links.js";
 import { registerCalendarReminderRoutes } from "./calendar/reminders.js";
 import {
   assertCalendarScopeAccess,
-  baseUrl,
   calendarEventResponse,
   calendarEventParamsSchema,
   calendarEventScope,
@@ -31,6 +30,7 @@ import {
   calendarScopeTarget,
   calendarScopeTargetMatchesEvent,
   recordCalendarAuditEvent,
+  trustedApiBaseUrl,
   visibleCalendarClientContactIds,
 } from "./calendar/shared.js";
 import type { CalendarRouteDependencies } from "./calendar/shared.js";
@@ -242,7 +242,7 @@ export function registerCalendarRoutes(
   server: FastifyInstance,
   dependencies: CalendarRouteDependencies,
 ): void {
-  const { repository } = dependencies;
+  const { repository, publicApiBaseUrl } = dependencies;
 
   server.get("/api/calendar/events", async (request) => {
     const query = parseRequestPart(calendarEventsQuerySchema, request.query, "query");
@@ -286,8 +286,8 @@ export function registerCalendarRoutes(
           events,
           includeTimeCapture: canReadTimeCapture(request.auth, query.matterId),
         }),
-        caldavUrl: `${baseUrl(request)}/caldav`,
-        subscriptionUrl: webcalSubscriptionUrl(request, query.matterId),
+        caldavUrl: `${trustedApiBaseUrl(request, publicApiBaseUrl)}/caldav`,
+        subscriptionUrl: webcalSubscriptionUrl(request, query.matterId, publicApiBaseUrl),
       };
     }
 

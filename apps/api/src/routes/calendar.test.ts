@@ -68,6 +68,7 @@ function testServer(
     | undefined = undefined,
   jwtSecret = guestAccessJwtSecret,
   publicWebBaseUrl = "https://practice.example.test",
+  publicApiBaseUrl = "https://practice.example.test",
 ) {
   const server = Fastify({ logger: false });
   server.addHook("preHandler", async (request) => {
@@ -79,6 +80,7 @@ function testServer(
     meetingLinks,
     jwtSecret,
     publicWebBaseUrl,
+    publicApiBaseUrl,
   });
   servers.push(server);
   return server;
@@ -209,6 +211,52 @@ describe("calendar routes", () => {
       "Reviewed tenancy branch materials",
     );
     expect(JSON.stringify(response.json().schedulingRequests)).not.toContain("ada.morgan");
+  });
+
+  it("generates calendar URLs from the configured public API origin", async () => {
+    const server = testServer(
+      user("licensee", ["matter-001"]),
+      new AuditRecordingRepository(),
+      undefined,
+      undefined,
+      guestAccessJwtSecret,
+      "https://app.practice.example.test",
+      "https://api.practice.example.test/base-path",
+    );
+    const hostileHeaders = {
+      host: "attacker.example.test",
+      "x-forwarded-proto": "http",
+    };
+
+    const listed = await server.inject({
+      method: "GET",
+      url: "/api/calendar/events?matterId=matter-001",
+      headers: hostileHeaders,
+    });
+    const credential = await server.inject({
+      method: "POST",
+      url: "/api/calendar/credentials",
+      headers: hostileHeaders,
+      payload: { label: "Synthetic calendar client" },
+    });
+
+    expect(listed.statusCode).toBe(200);
+    expect(listed.json()).toMatchObject({
+      caldavUrl: "https://api.practice.example.test/caldav",
+      subscriptionUrl: "webcal://api.practice.example.test/api/calendar/matters/matter-001.ics",
+    });
+    expect(credential.statusCode).toBe(201);
+    expect(credential.json()).toMatchObject({
+      caldavUrl: "https://api.practice.example.test/caldav",
+      principalUrl: expect.stringMatching(
+        /^https:\/\/api\.practice\.example\.test\/caldav\/principals\//,
+      ),
+      calendarHomeUrl: expect.stringMatching(
+        /^https:\/\/api\.practice\.example\.test\/caldav\/calendars\//,
+      ),
+    });
+    expect(JSON.stringify(listed.json())).not.toContain("attacker.example.test");
+    expect(JSON.stringify(credential.json())).not.toContain("attacker.example.test");
   });
 
   it("creates and reviews staff-only scheduling requests with redacted audit metadata", async () => {
@@ -1366,11 +1414,11 @@ describe("calendar routes", () => {
     expect(created.json()).toMatchObject({
       username: expect.stringContaining("firm-west-legal.user-licensee."),
       password: expect.any(String),
-      caldavUrl: "http://practice.example.test/caldav",
-      principalUrl: `http://practice.example.test/caldav/principals/${encodeURIComponent(
+      caldavUrl: "https://practice.example.test/caldav",
+      principalUrl: `https://practice.example.test/caldav/principals/${encodeURIComponent(
         created.json().username,
       )}/`,
-      calendarHomeUrl: `http://practice.example.test/caldav/calendars/${encodeURIComponent(
+      calendarHomeUrl: `https://practice.example.test/caldav/calendars/${encodeURIComponent(
         created.json().username,
       )}/`,
       credential: {
@@ -1660,12 +1708,16 @@ describe("calendar routes", () => {
         meetingUrlAvailable: false,
       },
       guest: { status: "issued" },
-      lobby: { waitingCount: 0 },
+      lobby: { status: "open" },
     });
     expect(JSON.stringify(publicStatus.json())).not.toContain("matter-001");
     expect(JSON.stringify(publicStatus.json())).not.toContain("calendar-event-002");
     expect(JSON.stringify(publicStatus.json())).not.toContain("meet.example.test");
     expect(JSON.stringify(publicStatus.json())).not.toContain("ada.morgan@example.test");
+    expect(JSON.stringify(publicStatus.json())).not.toContain("waitingCount");
+    expect(JSON.stringify(publicStatus.json())).not.toContain("admittedCount");
+    expect(JSON.stringify(publicStatus.json())).not.toContain("deniedCount");
+    expect(JSON.stringify(publicStatus.json())).not.toContain("revokedCount");
 
     const headerPublicStatus = await server.inject({
       method: "GET",
@@ -1700,8 +1752,9 @@ describe("calendar routes", () => {
     expect(checkedIn.statusCode).toBe(200);
     expect(checkedIn.json()).toMatchObject({
       guest: { status: "waiting", checkedInAt: expect.any(String) },
-      lobby: { waitingCount: 1 },
+      lobby: { status: "open" },
     });
+    expect(JSON.stringify(checkedIn.json())).not.toContain("waitingCount");
 
     const admitted = await server.inject({
       method: "POST",
@@ -1730,6 +1783,7 @@ describe("calendar routes", () => {
     });
     expect(JSON.stringify(publicAdmitted.json())).not.toContain("meet.example.test");
     expect(JSON.stringify(publicAdmitted.json())).not.toContain("calendar-event-002");
+    expect(JSON.stringify(publicAdmitted.json())).not.toContain("admittedCount");
 
     const ended = await server.inject({
       method: "POST",

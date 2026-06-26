@@ -16,6 +16,7 @@ import type { ApiRouteDependencies } from "../types.js";
 export type CalendarRouteDependencies = ApiRouteDependencies & {
   jwtSecret?: string;
   publicWebBaseUrl?: string;
+  publicApiBaseUrl?: string;
 };
 
 export const calendarEventParamsSchema = z.object({
@@ -31,11 +32,33 @@ export interface CalendarScopeTarget {
 }
 
 export function baseUrl(request: FastifyRequest): string {
+  return requestBaseUrl(request);
+}
+
+function normalizedBaseUrl(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return undefined;
+    return parsed.origin;
+  } catch {
+    return undefined;
+  }
+}
+
+function requestBaseUrl(request: FastifyRequest): string {
   const forwardedProto = request.headers["x-forwarded-proto"];
   const proto =
     typeof forwardedProto === "string" ? forwardedProto.split(",")[0]?.trim() : request.protocol;
   const host = request.headers.host ?? request.hostname;
   return `${proto}://${host}`;
+}
+
+export function trustedApiBaseUrl(
+  request: FastifyRequest,
+  publicApiBaseUrl: string | undefined,
+): string {
+  return normalizedBaseUrl(publicApiBaseUrl) ?? requestBaseUrl(request);
 }
 
 export async function recordCalendarAuditEvent(

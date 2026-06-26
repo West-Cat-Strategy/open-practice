@@ -994,7 +994,7 @@ describe("external upload routes", () => {
     );
   });
 
-  it("keeps upload quota unspent until successful completion when capacity is lost during claim", async () => {
+  it("denies public upload intents before issuing storage URLs when capacity cannot be reserved", async () => {
     class ClaimFailingRepository extends InMemoryOpenPracticeRepository {
       override async claimExternalUploadUse() {
         return undefined;
@@ -1016,26 +1016,16 @@ describe("external upload routes", () => {
       payload: { filename: "race.pdf", checksumSha256: checksum, fileSizeBytes },
     });
 
-    expect(intent.statusCode).toBe(200);
-    const documentId = intent.json<{ document: { id: string } }>().document.id;
-    const completed = await server.inject({
-      method: "POST",
-      url: `/api/portal/external-uploads/${token}/documents/${documentId}/complete`,
-      payload: { checksumSha256: checksum, scanStatus: "passed" },
-    });
-
-    expect(completed.statusCode).toBe(403);
-    expect(completed.json()).toMatchObject({
+    expect(intent.statusCode).toBe(403);
+    expect(intent.json()).toMatchObject({
       message: "External upload link is not available",
     });
-    await expect(repository.listMatterDocuments("firm-west-legal", "matter-001")).resolves.toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          externalUploadLinkId: "external-upload-claim-race",
-          uploadStatus: "intent_created",
-        }),
-      ]),
-    );
+    const documents = await repository.listMatterDocuments("firm-west-legal", "matter-001");
+    expect(
+      documents.filter(
+        (document) => document.externalUploadLinkId === "external-upload-claim-race",
+      ),
+    ).toHaveLength(0);
     await expect(repository.listExternalUploadLinks("firm-west-legal")).resolves.toEqual(
       expect.arrayContaining([
         expect.objectContaining({ id: "external-upload-claim-race", usedUploads: 0 }),
@@ -1098,7 +1088,7 @@ describe("external upload routes", () => {
     });
     await expect(repository.listExternalUploadLinks("firm-west-legal")).resolves.toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ id: "external-upload-aged-intent", usedUploads: 0 }),
+        expect.objectContaining({ id: "external-upload-aged-intent", usedUploads: 1 }),
       ]),
     );
     await expect(repository.listMatterDocuments("firm-west-legal", "matter-001")).resolves.toEqual(
@@ -1117,7 +1107,6 @@ describe("external upload routes", () => {
           metadata: expect.objectContaining({
             outcome: "denied",
             reason: "upload_limit",
-            pendingUploadCount: 1,
           }),
         }),
       ]),

@@ -11,10 +11,15 @@ import type { ApiRouteDependencies } from "./types.js";
 
 export function registerInboundEmailRoutes(
   server: FastifyInstance,
-  { repository, inboundEmailJobQueue, s3 }: ApiRouteDependencies,
+  { repository, inboundEmailJobQueue, s3, connectorDnsResolver }: ApiRouteDependencies,
 ): void {
   registerInboundEmailRawMimeRoutes(server, { repository, inboundEmailJobQueue, s3 });
-  registerInboundEmailImapSettingsRoutes(server, { repository, inboundEmailJobQueue, s3 });
+  registerInboundEmailImapSettingsRoutes(server, {
+    repository,
+    inboundEmailJobQueue,
+    s3,
+    connectorDnsResolver,
+  });
   registerInboundEmailParserJobRoutes(server, { repository, inboundEmailJobQueue });
   registerInboundEmailStatusRoutes(server, { repository });
   registerInboundEmailAttachmentPromotionRoutes(server, { repository });

@@ -11,6 +11,7 @@ import { ApiHttpError } from "../../http/response.js";
 import { parseRequestPart } from "../../http/validation.js";
 import { appendRouteAuditEvent } from "../audit-events.js";
 import type { ApiRouteDependencies } from "../types.js";
+import { assertProviderEgressAllowed } from "../provider-egress.js";
 import { assertEmailAccess } from "./shared.js";
 
 const optionalTrimmedString = z.preprocess((value) => {
@@ -82,7 +83,10 @@ function providerId(firmId: string): string {
 
 export function registerEmailSettingsRoutes(
   server: FastifyInstance,
-  { repository }: Pick<ApiRouteDependencies, "repository">,
+  {
+    repository,
+    connectorDnsResolver,
+  }: Pick<ApiRouteDependencies, "repository" | "connectorDnsResolver">,
 ): void {
   server.get("/api/email/settings", async (request) => {
     assertEmailAccess(request.auth, { resource: "provider_setting", action: "read" });
@@ -99,7 +103,17 @@ export function registerEmailSettingsRoutes(
       await repository.listProviderSettings(request.auth.firmId, { kind: "smtp" })
     ).find((candidate) => candidate.key === SMTP_PROVIDER_KEY);
     const config = nextSmtpConfig({ existing, body });
-    if (body.enabled) assertEnabledSmtpConfigComplete(config);
+    if (body.enabled) {
+      assertEnabledSmtpConfigComplete(config);
+      const host = config.host;
+      if (!host) throw new ApiHttpError(400, "SMTP_SETTINGS_INCOMPLETE", "SMTP host is required.");
+      await assertProviderEgressAllowed({
+        hostname: host,
+        resolver: connectorDnsResolver,
+        code: "SMTP_SETTINGS_EGRESS_DENIED",
+        field: "SMTP host",
+      });
+    }
 
     const now = new Date().toISOString();
     const saved = await repository.upsertProviderSetting({

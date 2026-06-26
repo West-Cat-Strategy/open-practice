@@ -600,7 +600,6 @@ describe("intake form builder routes", () => {
       method: "POST",
       url: `/api/portal/intake-forms/${token}/items/client-attestation/signature`,
       payload: {
-        status: "completed",
         consentText: "I confirm these synthetic intake answers are accurate.",
       },
     });
@@ -934,7 +933,6 @@ describe("intake form builder routes", () => {
       method: "POST",
       url: `/api/portal/intake-forms/${token}/items/client-attestation/signature`,
       payload: {
-        status: "completed",
         consentText: "I confirm these synthetic intake answers are accurate.",
       },
     });
@@ -1027,11 +1025,22 @@ describe("intake form builder routes", () => {
     const token = created.json<{ token: string }>().token;
     const linkId = created.json<{ link: { id: string } }>().link.id;
 
-    const signature = await server.inject({
+    const terminalForgery = await server.inject({
       method: "POST",
       url: `/api/portal/intake-forms/${token}/items/client-attestation/signature`,
       payload: {
         status: "completed",
+        consentText: "I confirm these synthetic intake answers are accurate.",
+        evidence: { acceptedInBrowser: true },
+      },
+    });
+
+    expect(terminalForgery.statusCode).toBe(400);
+
+    const signature = await server.inject({
+      method: "POST",
+      url: `/api/portal/intake-forms/${token}/items/client-attestation/signature`,
+      payload: {
         consentText: "I confirm these synthetic intake answers are accurate.",
         evidence: { acceptedInBrowser: true },
       },
@@ -1043,7 +1052,7 @@ describe("intake form builder routes", () => {
     }>().action;
     expect(signature.json()).toMatchObject({
       action: expect.objectContaining({
-        status: "completed",
+        status: "intent_created",
         itemId: "client-attestation",
         kind: "signature",
         documentId: "doc-001",
@@ -1051,7 +1060,7 @@ describe("intake form builder routes", () => {
       }),
       signatureRequest: {
         id: signatureAction.signatureRequestId,
-        status: "completed",
+        status: "sent",
       },
     });
     expect(signature.json().action).not.toHaveProperty("evidence");
@@ -1075,7 +1084,7 @@ describe("intake form builder routes", () => {
           matterId: "matter-001",
           documentId: "doc-001",
           title: "Client attestation",
-          status: "completed",
+          status: "sent",
         }),
       ]),
     );
@@ -1083,17 +1092,7 @@ describe("intake form builder routes", () => {
       repository.listSignatureProviderEvents("firm-west-legal", {
         signatureRequestId: signatureAction.signatureRequestId,
       }),
-    ).resolves.toEqual([
-      expect.objectContaining({ status: "sent" }),
-      expect.objectContaining({
-        status: "completed",
-        evidence: expect.objectContaining({
-          mode: "embedded_intake_signature_request",
-          signerId: expect.any(String),
-          consentText: "I confirm these synthetic intake answers are accurate.",
-        }),
-      }),
-    ]);
+    ).resolves.toEqual([expect.objectContaining({ status: "sent" })]);
     await expect(
       repository.listAccessLogs("firm-west-legal", {
         intakeFormLinkId: linkId,
@@ -1121,7 +1120,7 @@ describe("intake form builder routes", () => {
             matterId: "matter-001",
             documentId: "doc-001",
             provider: "embedded",
-            status: "completed",
+            status: "sent",
             signerCount: 1,
           }),
         }),
@@ -1260,7 +1259,6 @@ describe("intake form builder routes", () => {
       method: "POST",
       url: `/api/portal/intake-forms/${missingDocumentLink.json<{ token: string }>().token}/items/client-attestation/signature`,
       payload: {
-        status: "completed",
         consentText: "I confirm these synthetic intake answers are accurate.",
       },
     });
@@ -1299,7 +1297,6 @@ describe("intake form builder routes", () => {
       method: "POST",
       url: `/api/portal/intake-forms/${missingEmailLink.json<{ token: string }>().token}/items/client-attestation/signature`,
       payload: {
-        status: "completed",
         consentText: "I confirm these synthetic intake answers are accurate.",
       },
     });
@@ -1506,7 +1503,6 @@ describe("intake form builder routes", () => {
       method: "POST",
       url: `/api/portal/intake-forms/${submittedToken}/items/client-attestation/signature`,
       payload: {
-        status: "completed",
         consentText: "I confirm these synthetic intake answers are accurate.",
       },
     });

@@ -26,15 +26,19 @@ describe("ProviderConfiguredSmtpMailSender", () => {
     });
     const configs: unknown[] = [];
     const messages: unknown[] = [];
-    const sender = new ProviderConfiguredSmtpMailSender(repository, (config) => {
-      configs.push(config);
-      return {
-        async send(message) {
-          messages.push(message);
-          return { providerMessageId: "smtp-message-001" };
-        },
-      };
-    });
+    const sender = new ProviderConfiguredSmtpMailSender(
+      repository,
+      (config) => {
+        configs.push(config);
+        return {
+          async send(message) {
+            messages.push(message);
+            return { providerMessageId: "smtp-message-001" };
+          },
+        };
+      },
+      async () => ["203.0.113.10"],
+    );
 
     await sender.send({
       firmId: "firm-west-legal",
@@ -83,5 +87,48 @@ describe("ProviderConfiguredSmtpMailSender", () => {
         text: "Hello",
       }),
     ).rejects.toThrow("SMTP provider settings are incomplete");
+  });
+
+  it("rejects SMTP provider DNS resolutions to unsafe infrastructure before connecting", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.upsertProviderSetting({
+      id: "provider-smtp-default",
+      firmId: "firm-west-legal",
+      kind: "smtp",
+      key: "default",
+      enabled: true,
+      encryptedConfig: serializeSmtpProviderConfig({
+        version: 1,
+        host: "smtp.example.test",
+        port: 587,
+        secure: false,
+        username: "mailer@example.test",
+        password: "smtp-secret",
+        fromAddress: "Open Practice <no-reply@example.test>",
+      }),
+      createdAt: "2026-06-10T00:00:00.000Z",
+      updatedAt: "2026-06-10T00:00:00.000Z",
+    });
+    let factoryCalled = false;
+    const sender = new ProviderConfiguredSmtpMailSender(
+      repository,
+      () => {
+        factoryCalled = true;
+        return { send: async () => ({ providerMessageId: "unexpected" }) };
+      },
+      async () => ["10.0.0.7"],
+    );
+
+    await expect(
+      sender.send({
+        firmId: "firm-west-legal",
+        from: "Open Practice <no-reply@example.test>",
+        to: ["client@example.test"],
+        subject: "Hello",
+        html: "",
+        text: "Hello",
+      }),
+    ).rejects.toThrow("SMTP provider host failed egress guardrail validation");
+    expect(factoryCalled).toBe(false);
   });
 });

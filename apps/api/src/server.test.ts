@@ -70,6 +70,7 @@ function testServer(overrides: Partial<CreateServerOptions> = {}) {
       rpID: "localhost",
       origin: "http://localhost:3000",
     },
+    connectorDnsResolver: async () => ["203.0.113.10"],
     ...overrides,
   });
   servers.push(server);
@@ -89,6 +90,7 @@ function productionEnv(overrides: Record<string, unknown> = {}) {
     DATABASE_URL: "postgresql://open_practice:open_practice@localhost:5432/open_practice",
     AUTH_JWT_SECRET: "production-test-secret-at-least-32-characters",
     OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY: providerConfigEncryptionKey,
+    OPEN_PRACTICE_PUBLIC_API_ORIGIN: "https://api.open-practice.example.test",
     ...overrides,
   });
 }
@@ -1090,6 +1092,9 @@ describe("API auth and persistence boundaries", () => {
         productionEnv({ OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY: undefined }),
       ),
     ).toThrow(/OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY/);
+    expect(() =>
+      validateProductionReadiness(productionEnv({ OPEN_PRACTICE_PUBLIC_API_ORIGIN: undefined })),
+    ).toThrow(/OPEN_PRACTICE_PUBLIC_API_ORIGIN/);
     expect(() =>
       envSchema.parse({ OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY: "not-a-32-byte-key" }),
     ).toThrow(/OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY/);

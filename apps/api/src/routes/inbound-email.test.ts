@@ -18,7 +18,7 @@ import {
 } from "@open-practice/domain";
 import { sampleFirm, sampleUsers } from "@open-practice/domain/sample-data";
 import { registerInboundEmailRoutes } from "./inbound-email.js";
-import type { ApiJobQueue } from "./types.js";
+import type { ApiJobQueue, ConnectorDnsResolver } from "./types.js";
 
 const firmId = "firm-west-legal";
 const now = "2026-04-29T12:00:00.000Z";
@@ -65,6 +65,7 @@ function testServer(
   ocrJobQueue?: ApiJobQueue,
   s3: TestS3Config | null = fakeS3(),
   inboundEmailJobQueue?: ApiJobQueue,
+  connectorDnsResolver: ConnectorDnsResolver = async () => ["203.0.113.10"],
 ): FastifyInstance {
   const server = Fastify({ logger: false });
   server.addHook("preHandler", async (request) => {
@@ -75,6 +76,7 @@ function testServer(
     ocrJobQueue,
     inboundEmailJobQueue,
     s3: s3 ?? undefined,
+    connectorDnsResolver,
   });
   servers.push(server);
   return server;
@@ -484,7 +486,7 @@ describe("inbound email routes", () => {
   it("keeps Mailgun token replays idempotent without enqueueing duplicate parser jobs", async () => {
     const repository = singleFirmMemoryRepository();
     await enableMailgunProvider(repository);
-    const { s3 } = writableFakeS3();
+    const { s3, puts } = writableFakeS3();
     const inboundQueue = fakeInboundEmailQueue();
     const token = "synthetic-duplicate-mailgun-token";
     const timestamp = Math.floor(Date.now() / 1000).toString();
@@ -514,10 +516,46 @@ describe("inbound email routes", () => {
     expect(second.statusCode).toBe(200);
     expect(second.json()).toMatchObject({ duplicate: true });
     expect(second.json().job.id).toBe(first.json().job.id);
+    expect(puts).toHaveLength(1);
     expect(inboundQueue.jobs).toHaveLength(1);
     expect(
       await repository.listJobLifecycleRecords(firmId, { queueName: "inbound_email" }),
     ).toHaveLength(1);
+  });
+
+  it("rejects changed-body Mailgun token replays before writing raw MIME storage", async () => {
+    const repository = singleFirmMemoryRepository();
+    await enableMailgunProvider(repository);
+    const { s3, puts } = writableFakeS3();
+    const inboundQueue = fakeInboundEmailQueue();
+    const token = "synthetic-changed-body-mailgun-token";
+    const timestamp = Math.floor(Date.now() / 1000).toString();
+    const server = testServer(
+      repository,
+      user("owner_admin", ["matter-001", "matter-002"]),
+      undefined,
+      s3,
+      inboundQueue.queue,
+    );
+
+    const first = await server.inject({
+      method: "POST",
+      url: "/api/inbound-email/provider-webhooks/mailgun/raw-mime",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      payload: mailgunRawMimePayload({ token, timestamp, rawMime: "first synthetic raw body" }),
+    });
+    const replay = await server.inject({
+      method: "POST",
+      url: "/api/inbound-email/provider-webhooks/mailgun/raw-mime",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      payload: mailgunRawMimePayload({ token, timestamp, rawMime: "changed synthetic raw body" }),
+    });
+
+    expect(first.statusCode).toBe(200);
+    expect(replay.statusCode).toBe(409);
+    expect(replay.json()).toMatchObject({ code: "IDEMPOTENCY_KEY_CONFLICT" });
+    expect(puts).toHaveLength(1);
+    expect(inboundQueue.jobs).toHaveLength(1);
   });
 
   it("marks Mailgun lifecycle jobs failed when the parser queue rejects enqueue", async () => {
@@ -1386,6 +1424,77 @@ describe("inbound email routes", () => {
     expect(getResponse.statusCode).toBe(200);
     expect(getResponse.body).not.toContain("imap-secret");
     expect(getResponse.json().settings.passwordConfigured).toBe(true);
+  });
+
+  it("rejects IMAP settings for unsafe provider egress hosts", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const { queue, jobs } = fakeInboundEmailQueue();
+
+    const response = await testServer(
+      repository,
+      user("owner_admin", ["matter-001", "matter-002"]),
+      undefined,
+      fakeS3(),
+      queue,
+    ).inject({
+      method: "PUT",
+      url: "/api/inbound-email/settings/imap",
+      payload: {
+        enabled: true,
+        host: "localhost",
+        port: 993,
+        secure: true,
+        username: "inbox@example.test",
+        password: "imap-secret",
+        mailbox: "INBOX",
+        pollIntervalSeconds: 300,
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      code: "IMAP_SETTINGS_EGRESS_DENIED",
+    });
+    expect(jobs).toHaveLength(0);
+    await expect(
+      repository.listProviderSettings(firmId, { kind: "inbound_email" }),
+    ).resolves.toHaveLength(0);
+  });
+
+  it("rejects IMAP settings when DNS resolves to unsafe infrastructure", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const { queue, jobs } = fakeInboundEmailQueue();
+
+    const response = await testServer(
+      repository,
+      user("owner_admin", ["matter-001", "matter-002"]),
+      undefined,
+      fakeS3(),
+      queue,
+      async () => ["169.254.169.254"],
+    ).inject({
+      method: "PUT",
+      url: "/api/inbound-email/settings/imap",
+      payload: {
+        enabled: true,
+        host: "imap.example.test",
+        port: 993,
+        secure: true,
+        username: "inbox@example.test",
+        password: "imap-secret",
+        mailbox: "INBOX",
+        pollIntervalSeconds: 300,
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      code: "IMAP_SETTINGS_EGRESS_DENIED",
+    });
+    expect(jobs).toHaveLength(0);
+    await expect(
+      repository.listProviderSettings(firmId, { kind: "inbound_email" }),
+    ).resolves.toHaveLength(0);
   });
 
   it("preserves the IMAP password when settings are updated without a replacement", async () => {

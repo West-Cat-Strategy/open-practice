@@ -107,41 +107,6 @@ function serializePublicStatusDocument(document: DocumentRecord): Record<string,
   };
 }
 
-function activePendingExternalUploadCount(input: {
-  documents: DocumentRecord[];
-  linkId: string;
-}): number {
-  return input.documents.filter(
-    (document) =>
-      externalUploadLinkIdForDocument(document) === input.linkId &&
-      document.uploadStatus === "intent_created",
-  ).length;
-}
-
-async function assertExternalUploadIntentCapacity(input: {
-  repository: ApiRouteDependencies["repository"];
-  link: ExternalUploadLinkRecord;
-  request: FastifyRequest;
-}): Promise<void> {
-  const documents = await input.repository.listMatterDocuments(
-    input.link.firmId,
-    input.link.matterId,
-  );
-  const pendingUploadCount = activePendingExternalUploadCount({
-    documents,
-    linkId: input.link.id,
-  });
-  if (input.link.usedUploads + pendingUploadCount < input.link.maxUploads) return;
-  await recordAccessLog(requireExternalUploadRepository(input.repository), {
-    link: input.link,
-    request: input.request,
-    resourceType: "external_upload_link",
-    resourceId: input.link.id,
-    metadata: { outcome: "denied", reason: "upload_limit", pendingUploadCount },
-  });
-  throw externalUploadDenied();
-}
-
 export function registerPublicExternalUploadRoutes(
   server: FastifyInstance,
   { repository, s3, jwtSecret }: PublicExternalUploadRouteDependencies,
@@ -192,7 +157,21 @@ export function registerPublicExternalUploadRoutes(
       request,
       enforceUploadLimit: false,
     });
-    await assertExternalUploadIntentCapacity({ repository, link, request });
+    const claimed = await claimExternalUploadUse(externalUploadRepository, {
+      firmId: link.firmId,
+      id: link.id,
+      usedAt: new Date().toISOString(),
+    });
+    if (!claimed) {
+      await recordAccessLog(externalUploadRepository, {
+        link,
+        request,
+        resourceType: "external_upload_link",
+        resourceId: link.id,
+        metadata: { outcome: "denied", reason: "upload_limit" },
+      });
+      throw externalUploadDenied();
+    }
     const documentId = crypto.randomUUID();
     const storageKey = `external-uploads/${link.id}/${documentId}-${sanitizeUploadFilenameSegment(
       body.filename,
@@ -320,22 +299,6 @@ export function registerPublicExternalUploadRoutes(
       return {
         document: serializePublicCompletionDocument(rejected),
       };
-    }
-
-    const claimed = await claimExternalUploadUse(externalUploadRepository, {
-      firmId: link.firmId,
-      id: link.id,
-      usedAt: new Date().toISOString(),
-    });
-    if (!claimed) {
-      await recordAccessLog(externalUploadRepository, {
-        link,
-        request,
-        resourceType: "external_upload_link",
-        resourceId: link.id,
-        metadata: { outcome: "denied", reason: "upload_limit" },
-      });
-      throw externalUploadDenied();
     }
 
     const completed = await repository.completeDocumentUpload({

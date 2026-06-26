@@ -268,16 +268,6 @@ export function registerInboundEmailRawMimeRoutes(
         rawContentSha256,
       });
 
-      await s3.client.send(
-        new PutObjectCommand({
-          Bucket: s3.bucket,
-          Key: rawStorageKey,
-          Body: rawContent,
-          ContentType: "message/rfc822",
-          ...(s3.serverSideEncryption ? { ServerSideEncryption: s3.serverSideEncryption } : {}),
-        }),
-      );
-
       const { job, created } = await createMailgunRawMimeJob({
         repository,
         firmId: firm.id,
@@ -290,6 +280,35 @@ export function registerInboundEmailRawMimeRoutes(
 
       let queuedJob = job;
       if (created) {
+        try {
+          await s3.client.send(
+            new PutObjectCommand({
+              Bucket: s3.bucket,
+              Key: rawStorageKey,
+              Body: rawContent,
+              ContentType: "message/rfc822",
+              ...(s3.serverSideEncryption ? { ServerSideEncryption: s3.serverSideEncryption } : {}),
+            }),
+          );
+        } catch {
+          await repository.updateJobLifecycleRecord(firm.id, job.id, {
+            status: "failed",
+            attemptsMade: Math.max(job.attemptsMade, 1),
+            failedAt: new Date().toISOString(),
+            errorMessage:
+              "Inbound email raw MIME storage failed; retry after object storage is available.",
+            metadata: {
+              ...job.metadata,
+              ...INBOUND_EMAIL_PARSER_RECOVERY_METADATA,
+              providerFailureStage: "raw_mime_storage",
+            },
+          });
+          throw new ApiHttpError(
+            503,
+            "INBOUND_EMAIL_STORAGE_WRITE_FAILED",
+            "Inbound email raw MIME storage did not accept the object.",
+          );
+        }
         try {
           const bullJob = await inboundEmailJobQueue.add(
             MAILGUN_RAW_MIME_JOB_NAME,

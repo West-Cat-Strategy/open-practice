@@ -36,6 +36,17 @@ wrapped-runtime reuse record, dedicated `worker-ocr` self-host profile, and Dock
 toolchain validation. The proof was refreshed with 2026-06-26 selector-driven package, docs,
 self-host, Docker, API contract, workspace build, and proof-reconciliation evidence.
 
+The 2026-06-24 deep security remediation proof is recorded in
+[OP_DEEP_SECURITY_REMEDIATION_PROOF_2026-06-24.md](OP_DEEP_SECURITY_REMEDIATION_PROOF_2026-06-24.md).
+It covers the `security/deep-scan-main-20260624` branch remediation for all 11 main-branch
+deep-scan findings: signature terminal-state authority, signature audit chronology, granular portal
+workspace permissions, external-upload reservation, Mailgun raw MIME idempotency ordering, receipt
+token form posting, public guest-session count redaction, SMTP/IMAP egress guardrails, trusted
+calendar feed origins, and production CSP script policy. `pnpm ci:local` passed; `pnpm
+security:review` is accepted with the existing MinIO readiness-blocked result because the only
+failed required command was the already-documented Docker residual-watch MinIO private-pilot
+blocker.
+
 The 2026-06-24 mainline merge/push/prune proof is recorded in
 [OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-24.md](OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-24.md).
 It covers the three-lane closeout through `merge/open-practice-mainline-20260624`, including the

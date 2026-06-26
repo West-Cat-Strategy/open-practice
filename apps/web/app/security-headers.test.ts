@@ -56,17 +56,18 @@ describe("web security headers", () => {
     expect(reportOnly).not.toContain("frame-ancestors");
   });
 
-  it("allows production Next hydration without unsafe-eval or loopback connect sources", () => {
+  it("removes inline script allowance from the enforced production CSP", () => {
     const productionCsp = buildContentSecurityPolicy({ production: true });
     const scriptSrc = productionCsp
       .split(";")
       .map((directive) => directive.trim())
       .find((directive) => directive.startsWith("script-src"));
-    expect(scriptSrc).toBe("script-src 'self' 'unsafe-inline'");
+    expect(scriptSrc).toBe("script-src 'self'");
     expect(productionCsp).toContain("connect-src 'self'");
     expect(productionCsp).toContain("upgrade-insecure-requests");
     expect(productionCsp).not.toContain("http://localhost:*");
     expect(productionCsp).not.toContain("http://127.0.0.1:*");
+    expect(scriptSrc).not.toContain("'unsafe-inline'");
     expect(productionCsp).not.toContain("'unsafe-eval'");
   });
 
