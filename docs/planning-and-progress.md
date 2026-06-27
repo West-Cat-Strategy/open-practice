@@ -10,8 +10,8 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 | Snapshot              | Value                                                                |
 | --------------------- | -------------------------------------------------------------------- |
-| Current focus         | 2026-06-26 active-lane mainline closeout is in proof reconciliation. |
-| Next recommended pick | Fast-forward, push, verify parity, and prune after reconciliation.   |
+| Current focus         | 2026-06-26 active-lane mainline closeout is complete.                |
+| Next recommended pick | Choose the next candidate from the durable roadmap/backlog.          |
 | Ready rows            | 0                                                                    |
 | Candidate rows        | 0                                                                    |
 | In progress rows      | 0                                                                    |
@@ -28,8 +28,8 @@ review bridge, external S3 env bootstrap, Docker storage preflight, and Gitleaks
 tuning lanes through `merge/open-practice-mainline-20260626`. The integration keeps appointment
 booking as migration `0071`, renumbers structured task management to `0072`, preserves synthetic
 data/privacy/route-boundary posture, and records broad selector-driven package, browser, Docker,
-self-host, security, and private-pilot release proof. Final publication and prune evidence are
-being recorded in
+self-host, security, and private-pilot release proof. Final publication, clean worktree/branch
+pruning, GitHub `main` parity, and unchanged stash count `42` are recorded in
 [2026-06-26 mainline merge/push/prune proof](validation/OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-26.md).
 
 The 2026-06-26 `feat/structured-task-management-v3-20260626` branch implements structured task

@@ -130,15 +130,108 @@ pnpm build
 | `pnpm selfhost:restore-drill -- --env-file docker/selfhost.example.env --allow-synthetic-example`      | Passed           | Artifact: `.tmp/open-practice-selfhost-restore-drill/2026-06-27T00-51-01Z`.                              |
 | `pnpm migrations:replay`                                                                               | Passed           | After `docker compose up -d postgres`, 73 migrations replayed into a disposable database and cleaned up. |
 | `pnpm release:local -- --private-pilot`                                                                | Passed after fix | First artifact failed because local Postgres was absent; final artifact `2026-06-27T00-56-56Z` passed.   |
-| `pnpm proof:reconcile -- --proof docs/validation/OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-26.md ...` | Passed           | Reconciled 124 final paths and the selected command set against `origin/main` plus dirty proof edits.    |
+| `pnpm proof:reconcile -- --proof docs/validation/OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-26.md ...` | Passed           | Reconciled 124 final paths and the selected command set against the original integration base.           |
 
 Skipped checks: none.
 
 ## Publish And Prune
 
-Publication and pruning are intentionally not recorded in this first proof version. They will be
-refreshed after `main` is fast-forwarded, pushed, verified against the remote GitHub head, and the
-clean merged included worktrees/branches are pruned.
+Local `main` was fast-forwarded from `e21cd343d1f7904d372a0473fdf54572012e3083` to
+`455e3392a3442f424b615eac7658fa25c46790f8` and pushed to `origin/main`.
+
+```text
+To https://github.com/West-Cat-Strategy/open-practice.git
+   e21cd343..455e3392  main -> main
+```
+
+Post-push parity before pruning:
+
+```text
+git rev-list --left-right --count main...origin/main
+0 0
+
+git rev-parse main origin/main HEAD
+455e3392a3442f424b615eac7658fa25c46790f8
+455e3392a3442f424b615eac7658fa25c46790f8
+455e3392a3442f424b615eac7658fa25c46790f8
+
+git ls-remote --heads origin main
+455e3392a3442f424b615eac7658fa25c46790f8	refs/heads/main
+
+git status --short --branch
+## main...origin/main
+```
+
+Only after parity, the clean merged sibling worktrees were removed:
+
+```text
+/Users/bryan/projects/open-practice-appointment-booking-20260626
+/Users/bryan/projects/open-practice-calendar-tickler-review-bridge-20260626
+/Users/bryan/projects/open-practice-docker-storage-preflight-20260626
+/Users/bryan/projects/open-practice-external-s3-env-bootstrap-20260626
+/Users/bryan/projects/open-practice-features-capabilities-remediation-20260626
+/Users/bryan/projects/open-practice-gitleaks-history-fixture-tuning-20260626
+/Users/bryan/projects/open-practice-task-structure-v3-20260626
+```
+
+The merged local branches were deleted:
+
+```text
+audit/features-capabilities-parity-20260626
+remediation/features-capabilities-parity-20260626
+feature/appointment-booking-tentative-holds-20260626
+feat/structured-task-management-v3-20260626
+feat/calendar-tickler-review-bridge-20260626
+private-pilot/external-s3-env-bootstrap-20260626
+chore/docker-storage-preflight-20260626
+security/gitleaks-history-fixture-tuning-20260626
+merge/open-practice-mainline-20260626
+```
+
+`git worktree prune --verbose` and `git remote prune origin` completed with no additional output.
+The replay Postgres container used for `pnpm migrations:replay` was stopped before final evidence
+capture.
+
+Post-prune evidence:
+
+```text
+git worktree list --porcelain
+worktree /Users/bryan/projects/open-practice
+HEAD 455e3392a3442f424b615eac7658fa25c46790f8
+branch refs/heads/main
+
+git branch --format='%(refname:short)'
+main
+
+git rev-list --left-right --count main...origin/main
+0 0
+
+git rev-parse main origin/main HEAD
+455e3392a3442f424b615eac7658fa25c46790f8
+455e3392a3442f424b615eac7658fa25c46790f8
+455e3392a3442f424b615eac7658fa25c46790f8
+
+git ls-remote --heads origin main
+455e3392a3442f424b615eac7658fa25c46790f8	refs/heads/main
+
+git stash list | wc -l
+42
+
+git status --short --branch
+## main...origin/main
+
+docker compose ps --format json
+<no output>
+```
+
+Final invariants:
+
+- One remaining worktree at `/Users/bryan/projects/open-practice`.
+- Local branch `main` only.
+- `main`, `origin/main`, `HEAD`, and GitHub `main` match at
+  `455e3392a3442f424b615eac7658fa25c46790f8`.
+- `git rev-list --left-right --count main...origin/main` reports `0 0`.
+- Stash count remains `42`.
 
 ## Final Changed Paths
 
