@@ -42,6 +42,12 @@ running after failed required commands for diagnosis, then exits nonzero if any 
 failed. It does not run Cosign, enable GitHub Actions, Dependabot, CodeQL default setup, remote
 required checks, external SaaS scans, or a formal Codex Security repository-wide scan.
 
+`pnpm security:secrets-history` passes `.gitleaksignore` explicitly to Gitleaks. Keep that file to
+exact reviewed fingerprints for synthetic test/proof false positives only; do not use it for broad
+rule, path, regex, or commit allowlists. The repo-owned `pnpm security:scan` tracked-content gate
+remains separate and must continue scanning high-confidence tracked-secret patterns without
+serializing matched secret values.
+
 ## Hot-Path Security Rescans
 
 Use the local hot-path rescan helper after future edits to inbound email serialization or promotion,

@@ -1,0 +1,17 @@
+# Reviewed synthetic connector and provider-status fixture keys.
+fc88d79fe6dad16ce7c85749c10a81c293ecd671:apps/api/src/routes/connectors.test.ts:generic-api-key:208
+d08eff26fdea06fead889e18d7484134fdfd1b21:apps/api/src/routes/providers-status.test.ts:generic-api-key:186
+d08eff26fdea06fead889e18d7484134fdfd1b21:apps/api/src/routes/providers-status.test.ts:generic-api-key:282
+aadcebc0d9c9f196819731c67e8e520b6ca10059:apps/api/src/routes/providers-status.test.ts:generic-api-key:232
+aadcebc0d9c9f196819731c67e8e520b6ca10059:apps/api/src/routes/providers-status.test.ts:generic-api-key:369
+
+# Reviewed synthetic auth/session fixture keys.
+81c3adbec03a79c76ad0b98f5378fccabbc2f8b7:apps/api/src/routes/auth.test.ts:generic-api-key:11
+3d29d562219e0552a30632e9f691be15bcb3057d:apps/api/src/routes/mfa.test.ts:generic-api-key:19
+3d29d562219e0552a30632e9f691be15bcb3057d:apps/api/src/routes/webauthn.test.ts:generic-api-key:46
+
+# Reviewed synthetic worker, report, and scanner proof fixtures.
+3d29d562219e0552a30632e9f691be15bcb3057d:apps/worker/src/worker.ts:generic-api-key:101
+de6c5c08b835d0e7b568f92cb23fd1b99e4cd268:packages/domain/src/reports.test.ts:generic-api-key:485
+28bd2657e91cf69eab8c8abe4b83b6e9c4432068:docs/validation/OP-MOD-001_MODULARIZATION_FOUNDATION_PROOF_2026-06-06.md:generic-api-key:1699
+af85f7abaf2650b6a86cebd6e9e921b167dc52de:scripts/scan-tracked-secrets.test.mjs:stripe-access-token:31
