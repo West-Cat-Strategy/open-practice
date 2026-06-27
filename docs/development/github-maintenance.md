@@ -95,9 +95,11 @@ evidence directory is needed.
   synthetic render proof, then repeat with the operator's ignored env file before real startup.
 - For private self-hosted pilot release handoff, run
   `pnpm selfhost:restore-drill -- --env-file docker/selfhost.example.env --allow-synthetic-example`
-  for the checked-in synthetic MinIO profile, then repeat
-  `pnpm selfhost:restore-drill -- --env-file .env.selfhost.local` with an ignored operator env when
-  external HTTPS S3-compatible storage is the private-pilot path. `pnpm release:local -- --private-pilot`
+  for the checked-in synthetic MinIO profile. When external HTTPS S3-compatible storage is the
+  private-pilot path, create the ignored operator template with
+  `pnpm selfhost:restore-drill -- --bootstrap-env-file .env.selfhost.local`, replace every
+  placeholder, run `pnpm selfhost:restore-drill -- --env-file .env.selfhost.local --preflight-only`,
+  then run the real external drill with that ignored env. `pnpm release:local -- --private-pilot`
   still includes the default restore drill alongside the release proof and still requires Docker
   residual-watch; external S3 restore evidence is manual release-handoff evidence for an external
   object-storage path and does not make the automated release proof green while bundled MinIO

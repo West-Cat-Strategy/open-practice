@@ -22,7 +22,16 @@ production safety gates in [Deployment Hardening](../deployment-hardening.md).
 ## Environment
 
 The checked-in `docker/selfhost.example.env` file is for render checks only. Create an ignored file
-such as `.env.selfhost.local`, copy the variable names, and replace every secret before startup.
+such as `.env.selfhost.local`, copy the variable names, and replace every secret before startup. To
+bootstrap the ignored external-S3 operator file without copying from `.env`, run:
+
+```bash
+pnpm selfhost:restore-drill -- --bootstrap-env-file .env.selfhost.local
+```
+
+The bootstrap command refuses to overwrite an existing file, verifies that the target path is
+ignored by Git, writes local-only permissions, and leaves operator-specific values as `change-me`
+placeholders. The placeholder file is not restore-drill evidence.
 
 Required operator values:
 
@@ -48,6 +57,17 @@ Run the self-host check before starting or changing the profile:
 ```bash
 pnpm selfhost:check -- --env-file .env.selfhost.local
 ```
+
+For an external HTTPS S3 operator env, run the restore-drill preflight before attempting live
+external evidence:
+
+```bash
+pnpm selfhost:restore-drill -- --env-file .env.selfhost.local --preflight-only
+```
+
+The preflight validates the ignored env file, requires an external HTTPS S3-compatible endpoint,
+rejects placeholder values and live/provider flags, redacts values in output, and exits before
+Docker or S3 actions.
 
 For the checked-in synthetic example only:
 
@@ -114,7 +134,9 @@ Do not enable `OPEN_PRACTICE_ALLOW_DOCKER_BRIDGE_SETUP` or development auth help
 - Back up PostgreSQL and object storage together, and test restores before relying on the profile.
 - Run
   `pnpm selfhost:restore-drill -- --env-file docker/selfhost.example.env --allow-synthetic-example`
-  for the checked-in synthetic MinIO profile, then repeat with
+  for the checked-in synthetic MinIO profile. For external HTTPS S3-compatible storage, bootstrap
+  `.env.selfhost.local` if needed, replace every placeholder, run
+  `pnpm selfhost:restore-drill -- --env-file .env.selfhost.local --preflight-only`, then repeat with
   `pnpm selfhost:restore-drill -- --env-file .env.selfhost.local` for an ignored operator env before
   relying on a deployment. The bundled-MinIO path uses a disposable Compose project, synthetic
   PostgreSQL and MinIO markers, `pg_dump`, a MinIO object-storage archive, fresh-volume restore,

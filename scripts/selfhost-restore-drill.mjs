@@ -3,15 +3,24 @@
 import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import { createServer } from "node:net";
-import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import {
+  closeSync,
+  existsSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { inspectRenderedCompose, parseEnvFile, validateSelfhostEnv } from "./selfhost-check.mjs";
 
 const DEFAULT_ENV_FILE = path.join("docker", "selfhost.example.env");
+const DEFAULT_OPERATOR_ENV_FILE = ".env.selfhost.local";
 const DEFAULT_EVIDENCE_ROOT = path.join(".tmp", "open-practice-selfhost-restore-drill");
 const DISPOSABLE_PROJECT_PREFIX = "open-practice-selfhost-restore-drill-";
 const MINIO_COMPOSE_ENDPOINT = "http://minio:9000";
@@ -71,9 +80,13 @@ function usage() {
   return [
     "Usage:",
     "  node scripts/selfhost-restore-drill.mjs [--env-file <path>] [--evidence-root <path>] [--project-name <name>]",
+    "  node scripts/selfhost-restore-drill.mjs --bootstrap-env-file <path>",
+    "  node scripts/selfhost-restore-drill.mjs --env-file <path> --preflight-only",
     "",
     "Defaults to docker/selfhost.example.env and a disposable Compose project.",
     "The checked-in synthetic env is allowed automatically; copied synthetic env files require --allow-synthetic-example.",
+    "Use --bootstrap-env-file to create an ignored external-S3 operator template without secrets.",
+    "Use --preflight-only to validate an ignored external-S3 operator env without Docker or S3 actions.",
   ].join("\n");
 }
 
@@ -108,17 +121,35 @@ export function assertDisposableProjectName(projectName) {
 export function parseRestoreDrillArgs(rawArgs, { cwd = process.cwd(), pid = process.pid } = {}) {
   const args = rawArgs[0] === "--" ? rawArgs.slice(1) : rawArgs;
   let envFile = DEFAULT_ENV_FILE;
+  let bootstrapEnvFile = null;
   let evidenceRoot = DEFAULT_EVIDENCE_ROOT;
   let projectName = defaultProjectName(pid);
   let allowSyntheticExample;
+  let preflightOnly = false;
+  let sawEnvFile = false;
+  let sawEvidenceRoot = false;
+  let sawProjectName = false;
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
     if (arg === "--help" || arg === "-h") return { help: true };
     if (arg === "--env-file") {
       envFile = args[index + 1];
+      sawEnvFile = true;
       index += 1;
       if (!envFile || envFile.startsWith("--")) throw new Error("--env-file requires a path.");
+      continue;
+    }
+    if (arg === "--bootstrap-env-file") {
+      bootstrapEnvFile = args[index + 1];
+      index += 1;
+      if (!bootstrapEnvFile || bootstrapEnvFile.startsWith("--")) {
+        throw new Error("--bootstrap-env-file requires a path.");
+      }
+      continue;
+    }
+    if (arg === "--preflight-only") {
+      preflightOnly = true;
       continue;
     }
     if (arg === "--allow-synthetic-example") {
@@ -127,6 +158,7 @@ export function parseRestoreDrillArgs(rawArgs, { cwd = process.cwd(), pid = proc
     }
     if (arg === "--evidence-root") {
       evidenceRoot = args[index + 1];
+      sawEvidenceRoot = true;
       index += 1;
       if (!evidenceRoot || evidenceRoot.startsWith("--")) {
         throw new Error("--evidence-root requires a path.");
@@ -135,6 +167,7 @@ export function parseRestoreDrillArgs(rawArgs, { cwd = process.cwd(), pid = proc
     }
     if (arg === "--project-name") {
       projectName = args[index + 1];
+      sawProjectName = true;
       index += 1;
       if (!projectName || projectName.startsWith("--"))
         throw new Error("--project-name requires a value.");
@@ -143,12 +176,25 @@ export function parseRestoreDrillArgs(rawArgs, { cwd = process.cwd(), pid = proc
     throw new Error(`Unknown argument: ${arg}`);
   }
 
+  if (
+    bootstrapEnvFile &&
+    (sawEnvFile ||
+      sawEvidenceRoot ||
+      sawProjectName ||
+      preflightOnly ||
+      allowSyntheticExample !== undefined)
+  ) {
+    throw new Error("--bootstrap-env-file cannot be combined with restore-drill options.");
+  }
+
   assertDisposableProjectName(projectName);
   return {
     envFile,
+    bootstrapEnvFile,
     evidenceRoot,
     projectName,
     allowSyntheticExample: allowSyntheticExample ?? isDefaultEnvFile(envFile, cwd),
+    preflightOnly,
   };
 }
 
@@ -162,6 +208,152 @@ export function buildRestoreEvidenceDir({
 
 function readEnvFile(envFile) {
   return parseEnvFile(readFileSync(envFile, "utf8"));
+}
+
+function operatorEnvTemplate() {
+  return [
+    "# Ignored Open Practice self-host operator env bootstrap.",
+    "# Replace every change-me value before running preflight or restore-drill evidence.",
+    "# Do not commit this file; .env.selfhost.local is ignored by the repo .gitignore.",
+    "",
+    "OPEN_PRACTICE_SELFHOST_PUBLIC_WEB_ORIGIN=https://change-me-practice.example.test",
+    "OPEN_PRACTICE_SELFHOST_PUBLIC_API_ORIGIN=https://change-me-practice.example.test",
+    "OPEN_PRACTICE_SELFHOST_WEBAUTHN_RP_ID=change-me-practice.example.test",
+    "OPEN_PRACTICE_SELFHOST_WEB_HOST_PORT=33080",
+    "OPEN_PRACTICE_SELFHOST_API_SETUP_HOST_PORT=34080",
+    "OPEN_PRACTICE_SELFHOST_MINIO_HOST_PORT=39080",
+    "",
+    "OPEN_PRACTICE_SELFHOST_POSTGRES_DB=open_practice",
+    "OPEN_PRACTICE_SELFHOST_POSTGRES_USER=open_practice",
+    "OPEN_PRACTICE_SELFHOST_POSTGRES_PASSWORD=change-me-postgres-password",
+    "",
+    "OPEN_PRACTICE_SELFHOST_AUTH_JWT_SECRET=change-me-unique-jwt-secret-at-least-32-chars",
+    "OPEN_PRACTICE_SELFHOST_CONFIG_ENCRYPTION_KEY=change-me-32-byte-base64-base64url-or-hex-key",
+    "",
+    "OPEN_PRACTICE_SELFHOST_S3_ENDPOINT=https://change-me-s3.example.test",
+    "OPEN_PRACTICE_SELFHOST_S3_REGION=change-me-region",
+    "OPEN_PRACTICE_SELFHOST_S3_BUCKET=change-me-bucket",
+    "OPEN_PRACTICE_SELFHOST_S3_ACCESS_KEY=change-me-access-key",
+    "OPEN_PRACTICE_SELFHOST_S3_SECRET_KEY=change-me-secret-key",
+    "",
+    "OPEN_PRACTICE_SELFHOST_SESSION_TTL_HOURS=12",
+    "OPEN_PRACTICE_SELFHOST_WORKER_QUEUES=email,inbound_email,ai_triage,transcription,media",
+    "OPEN_PRACTICE_SELFHOST_WORKER_CONCURRENCY=2",
+    "",
+    "OPEN_PRACTICE_SELFHOST_OCR_WORKER_QUEUES=ocr",
+    "OPEN_PRACTICE_SELFHOST_OCR_WORKER_CONCURRENCY=1",
+    "OPEN_PRACTICE_SELFHOST_OCR_PROVIDER=local_cli",
+    "OPEN_PRACTICE_SELFHOST_OCR_CLI_TIMEOUT_SECONDS=120",
+    "OPEN_PRACTICE_SELFHOST_OCR_TEMP_DIR=",
+    "",
+  ].join("\n");
+}
+
+function pathForGitCheck(cwd, file) {
+  const resolved = path.resolve(cwd, file);
+  const relativePath = path.relative(cwd, resolved).replaceAll("\\", "/");
+  return relativePath && !relativePath.startsWith("..") && !path.isAbsolute(relativePath)
+    ? relativePath
+    : resolved;
+}
+
+export function assertIgnoredEnvPath(
+  envFile,
+  { cwd = process.cwd(), checkIgnored = defaultCheckIgnored } = {},
+) {
+  const target = pathForGitCheck(cwd, envFile);
+  if (!checkIgnored(cwd, target)) {
+    throw new Error(
+      `${target} must be ignored before it can be used for self-host operator secrets.`,
+    );
+  }
+}
+
+function defaultCheckIgnored(cwd, target) {
+  try {
+    execFileSync("git", ["check-ignore", "--quiet", "--", target], { cwd });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function bootstrapOperatorEnvFile(
+  envFile = DEFAULT_OPERATOR_ENV_FILE,
+  { cwd = process.cwd(), checkIgnored = defaultCheckIgnored } = {},
+) {
+  const target = path.resolve(cwd, envFile);
+  assertIgnoredEnvPath(target, { cwd, checkIgnored });
+  if (existsSync(target)) {
+    throw new Error(`${pathForGitCheck(cwd, target)} already exists; refusing to overwrite it.`);
+  }
+
+  mkdirSync(path.dirname(target), { recursive: true });
+  const fd = openSync(target, "wx", 0o600);
+  try {
+    writeFileSync(fd, operatorEnvTemplate(), "utf8");
+  } finally {
+    closeSync(fd);
+  }
+
+  return {
+    file: pathForGitCheck(cwd, target),
+    mode: "external_https_s3_template",
+    valuesRedacted: true,
+  };
+}
+
+function placeholderOperatorKeys(env) {
+  return Object.entries(env)
+    .filter(([key, value]) => {
+      if (!key.startsWith("OPEN_PRACTICE_SELFHOST_")) return false;
+      return /(?:change-me|replace-me|placeholder|synthetic)/i.test(String(value ?? ""));
+    })
+    .map(([key]) => key)
+    .sort();
+}
+
+export function preflightRestoreDrillEnv(
+  envFile,
+  { cwd = process.cwd(), checkIgnored = defaultCheckIgnored } = {},
+) {
+  const resolvedEnvFile = path.resolve(cwd, envFile);
+  assertIgnoredEnvPath(resolvedEnvFile, { cwd, checkIgnored });
+  const fileEnv = readEnvFile(resolvedEnvFile);
+  const placeholders = placeholderOperatorKeys(fileEnv);
+  if (placeholders.length > 0) {
+    throw new Error(
+      `Self-host operator env still has placeholder value(s): ${placeholders.join(", ")}`,
+    );
+  }
+
+  const objectStorageMode = validateRestoreDrillEnv(fileEnv, fileEnv, {
+    allowSyntheticExample: false,
+  });
+  validateRestoreDrillEnv(
+    fileEnv,
+    { ...process.env, ...fileEnv },
+    { allowSyntheticExample: false },
+  );
+  if (objectStorageMode !== OBJECT_STORAGE_MODES.externalHttpsS3) {
+    throw new Error(
+      "External S3 restore-drill preflight requires an external HTTPS S3-compatible endpoint, not bundled MinIO.",
+    );
+  }
+
+  return {
+    env: {
+      file: pathForGitCheck(cwd, resolvedEnvFile),
+      valuesRedacted: true,
+      ignored: true,
+    },
+    objectStorage: {
+      mode: objectStorageMode,
+      endpointRedacted: true,
+      bucketRedacted: true,
+    },
+    status: "passed",
+  };
 }
 
 export function restoreDrillObjectStorageMode(env) {
@@ -697,6 +889,21 @@ export async function runRestoreDrill(rawArgs = process.argv.slice(2), dependenc
   }
 
   const cwd = dependencies.cwd ?? process.cwd();
+  const checkIgnored = dependencies.checkIgnored ?? defaultCheckIgnored;
+  if (options.bootstrapEnvFile) {
+    const result = bootstrapOperatorEnvFile(options.bootstrapEnvFile, { cwd, checkIgnored });
+    console.log(`Created ignored external S3 operator env template: ${result.file}`);
+    console.log("Replace every placeholder value before running preflight or restore-drill proof.");
+    return { status: "bootstrapped", ...result };
+  }
+
+  if (options.preflightOnly) {
+    const result = preflightRestoreDrillEnv(options.envFile, { cwd, checkIgnored });
+    console.log(`External S3 restore-drill preflight passed for ignored env: ${result.env.file}`);
+    console.log("Values, endpoint, and bucket are redacted; no Docker or S3 actions were run.");
+    return { ...result, status: "preflight-passed" };
+  }
+
   const now = dependencies.now ?? new Date();
   const evidenceDir = buildRestoreEvidenceDir({
     cwd,
