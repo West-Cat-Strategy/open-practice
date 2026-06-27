@@ -1746,7 +1746,10 @@ export async function applyVariableProposalWithTx(
       .select()
       .from(schema.contacts)
       .where(
-        and(eq(schema.contacts.firmId, proposal.firmId), eq(schema.contacts.id, proposal.targetRecordId)),
+        and(
+          eq(schema.contacts.firmId, proposal.firmId),
+          eq(schema.contacts.id, proposal.targetRecordId),
+        ),
       );
     if (!contact) throw new Error(`Unknown intake proposal contact ${proposal.targetRecordId}`);
 

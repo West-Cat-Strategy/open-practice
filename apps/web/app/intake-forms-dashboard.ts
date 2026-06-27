@@ -325,7 +325,9 @@ export function describeSubmittedIntakeReviewAction(input: {
       decisionBusy && disabledOperationalAction("decision_in_progress"),
       decisionAction && !input.reviewLoaded && disabledOperationalAction("review_payload_required"),
       decisionAlreadyRecorded && disabledOperationalAction("decision_already_recorded"),
-      engagementAction && !input.reviewLoaded && disabledOperationalAction("review_payload_required"),
+      engagementAction &&
+        !input.reviewLoaded &&
+        disabledOperationalAction("review_payload_required"),
       engagementAction &&
         !input.acceptedReview &&
         disabledOperationalAction("accepted_review_required"),

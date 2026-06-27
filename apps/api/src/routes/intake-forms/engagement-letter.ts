@@ -212,8 +212,10 @@ async function buildEngagementDraftMergeContext(input: {
     },
     client: {
       displayName: input.contact.displayName,
-      email: contactIdentifier(input.contact, "email") ?? contactMethodValue(input.contact, "email"),
-      phone: contactIdentifier(input.contact, "phone") ?? contactMethodValue(input.contact, "phone"),
+      email:
+        contactIdentifier(input.contact, "email") ?? contactMethodValue(input.contact, "email"),
+      phone:
+        contactIdentifier(input.contact, "phone") ?? contactMethodValue(input.contact, "phone"),
       address: contactAddress(input.contact),
       preferredLanguage: input.contact.preferredLanguage,
       timezone: input.contact.timezone,
@@ -402,7 +404,9 @@ export function registerIntakeEngagementLetterRoutes(
         409,
         "INTAKE_ENGAGEMENT_INTAKE_INCOMPLETE",
         "Accepted intake still has incomplete required items",
-        { requiredIncompleteItemCount: payload.snapshot.resolution.requiredIncompleteItemIds.length },
+        {
+          requiredIncompleteItemCount: payload.snapshot.resolution.requiredIncompleteItemIds.length,
+        },
       );
     }
     if (!s3) {
@@ -420,8 +424,12 @@ export function registerIntakeEngagementLetterRoutes(
       );
     }
 
-    const session = await repository.getIntakeSession(request.auth.firmId, payload.link.intakeSessionId);
-    if (!session) throw Object.assign(new Error("Intake session was not found"), { statusCode: 404 });
+    const session = await repository.getIntakeSession(
+      request.auth.firmId,
+      payload.link.intakeSessionId,
+    );
+    if (!session)
+      throw Object.assign(new Error("Intake session was not found"), { statusCode: 404 });
     const template = await getTemplateForSession(repository, request.auth.firmId, session);
     const packageDocument = findSelectedPackageDocument({
       definition: template.definition,
@@ -459,7 +467,9 @@ export function registerIntakeEngagementLetterRoutes(
       );
     }
     const contactId = payload.link.clientContactId ?? session.clientContactId;
-    const contact = contactId ? await repository.getContact(request.auth.firmId, contactId) : undefined;
+    const contact = contactId
+      ? await repository.getContact(request.auth.firmId, contactId)
+      : undefined;
     if (!contact) {
       throw new ApiHttpError(
         409,
@@ -631,7 +641,13 @@ export function registerIntakeEngagementLetterRoutes(
         documentId: verifiedDocument.id,
         title: exportDocument.title,
         consentText: "Please review and sign this engagement letter.",
-        signers: [{ name: mergeContext.client?.displayName ?? contact.displayName, email: recipientEmail, role: "client" }],
+        signers: [
+          {
+            name: mergeContext.client?.displayName ?? contact.displayName,
+            email: recipientEmail,
+            role: "client",
+          },
+        ],
       });
       const envelopeMetadata = defaultSignatureRequestEnvelopeMetadata();
       const requestRecord: SignatureRequestRecord = {

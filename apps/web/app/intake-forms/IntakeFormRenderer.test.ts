@@ -104,12 +104,7 @@ describe("shared intake renderer inputs", () => {
         "client-attestation",
         "unknown-required-item",
       ]),
-    ).toEqual([
-      "Client name",
-      "Supporting upload",
-      "Client attestation",
-      "unknown-required-item",
-    ]);
+    ).toEqual(["Client name", "Supporting upload", "Client attestation", "unknown-required-item"]);
   });
 
   it("keeps public runner branch visibility unchanged for staff-authored rules", () => {

@@ -240,7 +240,9 @@ async function enableAdaPortalAccountGrant(repository: OpenPracticeRepository): 
   });
 }
 
-const engagementDraftExportRenderer: CreateServerOptions["draftExportRenderer"] = async (input) => ({
+const engagementDraftExportRenderer: CreateServerOptions["draftExportRenderer"] = async (
+  input,
+) => ({
   buffer: Buffer.from(`Synthetic rendered ${input.document.title}`, "utf8"),
   contentType:
     input.format === "pdf"
