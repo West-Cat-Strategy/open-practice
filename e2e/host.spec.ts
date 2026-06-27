@@ -49,9 +49,12 @@ test.describe("host Playwright suite", () => {
 
     await expect(page.getByText(/Draft saved/)).toBeVisible();
     await page.getByRole("button", { name: /Submit intake/i }).click();
-    await expect(page.getByText(/Submit blocked: complete/)).toBeVisible();
-    await expect(page.getByText(/evidence-upload/)).toBeVisible();
-    await expect(page.getByText(/client-attestation/)).toBeVisible();
+    const blockedStatus = page.getByRole("status").filter({ hasText: /^Submit blocked: complete/ });
+    await expect(blockedStatus).toBeVisible();
+    await expect(blockedStatus).toContainText(
+      "Upload tenancy agreement, notice, photos, or correspondence",
+    );
+    await expect(blockedStatus).toContainText("Client attestation");
   });
 
   test("checks in to a hosted guest-session lobby and reflects staff admission", async ({

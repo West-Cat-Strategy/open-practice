@@ -18,6 +18,15 @@ skipped-check context. The live workboard remains
 
 ## Current Handoff Notes
 
+The 2026-06-26 mainline merge/push/prune proof is recorded in
+[OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-26.md](OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-26.md).
+It covers the all-active-lane closeout through `merge/open-practice-mainline-20260626`, including
+features/capabilities audit and remediation, appointment booking tentative holds, structured task
+management V3, the calendar tickler review bridge, external S3 env bootstrap, Docker storage
+preflight, and Gitleaks history fixture tuning. It records selector-driven validation, migration
+renumbering from appointment booking `0071` to structured tasks `0072`, release-proof retry after
+starting local replay Postgres, and pending final push/prune evidence.
+
 The 2026-06-26 OP-T161 calendar tickler review bridge proof is recorded in
 [OP-T161_CALENDAR_TICKLER_REVIEW_BRIDGE_PROOF_2026-06-26.md](OP-T161_CALENDAR_TICKLER_REVIEW_BRIDGE_PROOF_2026-06-26.md).
 It covers the review-only tickler bridge over existing `calendar_scheduling_requests`, including
@@ -30,8 +39,8 @@ The 2026-06-26 Docker storage preflight proof is recorded in
 It covers the branch-first local tooling guard that makes `pnpm docker:app-smoke`,
 `pnpm e2e:docker`, `pnpm selfhost:restore-drill`, and private-pilot release proof fail early on
 avoidable Docker free-space exhaustion while preserving runtime behavior and using synthetic-only
-proof. Selector-chosen validation passed; private-pilot release proof is locally blocked until
-Docker storage is reclaimed and replay Postgres is available.
+proof. Selector-chosen validation passed; the integrated private-pilot release proof passed after
+starting local replay Postgres for `pnpm migrations:replay`.
 
 The 2026-06-26 Gitleaks history false-positive tuning proof is recorded in
 [OP_GITLEAKS_HISTORY_FALSE_POSITIVE_TUNING_PROOF_2026-06-26.md](OP_GITLEAKS_HISTORY_FALSE_POSITIVE_TUNING_PROOF_2026-06-26.md).
@@ -40,7 +49,7 @@ reviewed synthetic test/proof fixtures, routes `.gitleaksignore` through the sec
 selector lane, documents the no-broad-allowlist boundary, and preserves tracked-secret scanning
 strength plus clean-room posture.
 
-The 2026-06-26 features and capabilities parity remediation proof is being recorded in
+The 2026-06-26 features and capabilities parity remediation proof is recorded in
 [OP_FEATURES_CAPABILITIES_PARITY_REMEDIATION_PROOF_2026-06-26.md](OP_FEATURES_CAPABILITIES_PARITY_REMEDIATION_PROOF_2026-06-26.md).
 It covers the metadata-only document conversion review state/readiness packet, including additive
 `conversionReview.reviewReadiness` API/workbench responses, reviewed/rejected conversion-review
@@ -840,6 +849,7 @@ use [Planning and Progress](../planning-and-progress.md) for current row status.
 
 | Artifact                                                                                                                                                           | Type                 | Use                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-26.md](OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-26.md)                                                               | Mainline proof       | Proof for the 2026-06-26 all-active-lane closeout, covering features/capabilities audit and remediation, appointment booking tentative holds, structured task management V3, calendar tickler review bridge, external S3 env bootstrap, Docker storage preflight, Gitleaks history fixture tuning, selector-driven validation, `0071`/`0072` migration reconciliation, private-pilot release proof, and pending final push/prune evidence.                                                                                                                                      |
 | [OP-T161_CALENDAR_TICKLER_REVIEW_BRIDGE_PROOF_2026-06-26.md](OP-T161_CALENDAR_TICKLER_REVIEW_BRIDGE_PROOF_2026-06-26.md)                                           | Row-local proof note | Proof for the OP-T161 calendar tickler review bridge, covering review-only reuse of `calendar_scheduling_requests`, duplicate-open-request rejection, typed web payload defaults, Tasks and Calendar dashboard request actions, task-workbench refresh, selector-driven validation, and preserved no-new-table, no-migration, no-dependency, no-provider-sync, no-public-booking, no-court-rule-automation, and no-automatic-mutation boundaries.                                                                                                                               |
 | [OP_DOCKER_STORAGE_PREFLIGHT_PROOF_2026-06-26.md](OP_DOCKER_STORAGE_PREFLIGHT_PROOF_2026-06-26.md)                                                                 | Maintenance proof    | Proof for the Docker storage preflight guard, covering early local Docker free-space checks for Docker-heavy validation and private-pilot release proof, Docker `system df` context capture, pull-free local-image probing, selector coverage, and preserved runtime APIs, schemas, Compose contracts, Docker pins, dependencies, automatic Docker pruning, synthetic-only proof, and clean-room posture.                                                                                                                                                                       |
 | [OP_GITLEAKS_HISTORY_FALSE_POSITIVE_TUNING_PROOF_2026-06-26.md](OP_GITLEAKS_HISTORY_FALSE_POSITIVE_TUNING_PROOF_2026-06-26.md)                                     | Maintenance proof    | Proof for Gitleaks history false-positive tuning, covering exact reviewed fingerprints for synthetic test/proof fixtures, `.gitleaksignore` selector and security-review routing, no broad allowlist boundary, tracked-secret scan strength, local evidence posture, selector-driven validation, and clean-room posture.                                                                                                                                                                                                                                                        |

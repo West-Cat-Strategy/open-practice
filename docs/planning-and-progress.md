@@ -8,19 +8,29 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 ## At a Glance
 
-| Snapshot              | Value                                                                   |
-| --------------------- | ----------------------------------------------------------------------- |
-| Current focus         | Structured task management V3 is in final validation.                   |
-| Next recommended pick | Review and merge the structured task branch after proof reconciliation. |
-| Ready rows            | 0                                                                       |
-| Candidate rows        | 0                                                                       |
-| In progress rows      | 0                                                                       |
-| Review rows           | 0                                                                       |
-| Blocked rows          | 0                                                                       |
-| Archive               | Historical snapshots and proof live in [Archive](archive/README.md).    |
-| Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`        |
+| Snapshot              | Value                                                                |
+| --------------------- | -------------------------------------------------------------------- |
+| Current focus         | 2026-06-26 active-lane mainline closeout is in proof reconciliation. |
+| Next recommended pick | Fast-forward, push, verify parity, and prune after reconciliation.   |
+| Ready rows            | 0                                                                    |
+| Candidate rows        | 0                                                                    |
+| In progress rows      | 0                                                                    |
+| Review rows           | 0                                                                    |
+| Blocked rows          | 0                                                                    |
+| Archive               | Historical snapshots and proof live in [Archive](archive/README.md). |
+| Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`     |
 
 ## Current Handoff Notes
+
+The 2026-06-26 active-lane mainline closeout integrates the features/capabilities parity audit and
+remediation, appointment booking tentative holds, structured task management V3, calendar tickler
+review bridge, external S3 env bootstrap, Docker storage preflight, and Gitleaks history fixture
+tuning lanes through `merge/open-practice-mainline-20260626`. The integration keeps appointment
+booking as migration `0071`, renumbers structured task management to `0072`, preserves synthetic
+data/privacy/route-boundary posture, and records broad selector-driven package, browser, Docker,
+self-host, security, and private-pilot release proof. Final publication and prune evidence are
+being recorded in
+[2026-06-26 mainline merge/push/prune proof](validation/OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-26.md).
 
 The 2026-06-26 `feat/structured-task-management-v3-20260626` branch implements structured task
 management V3 in a clean sibling worktree while preserving the dirty
@@ -36,9 +46,8 @@ preflight for Docker-heavy validation and private-pilot release proof. It fails 
 container filesystem has less than 8 GiB free, records Docker `system df` context, uses only a
 pull-free local-image `df -Pk /` probe, and never prunes Docker data automatically. It preserves
 runtime APIs, schemas, Compose contracts, Docker pins, dependencies, synthetic-only proof, and
-clean-room posture. Selector-chosen validation passed; the explicit private-pilot release proof is
-blocked locally until Docker storage is reclaimed and replay Postgres is available. Evidence is
-recorded in
+clean-room posture. Selector-chosen validation passed; the integrated private-pilot release proof
+passed after starting local replay Postgres for `pnpm migrations:replay`. Evidence is recorded in
 [Docker storage preflight proof](validation/OP_DOCKER_STORAGE_PREFLIGHT_PROOF_2026-06-26.md).
 
 The 2026-06-25 active-lane mainline closeout integrates the Canadian template/sample enhancements,
