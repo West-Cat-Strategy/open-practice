@@ -4,6 +4,7 @@ import type {
   CalendarSchedulingRequestSummary,
 } from "@open-practice/domain/calendar-models";
 import {
+  buildCalendarSchedulingRequestPayload,
   describeCalendarEventHandoff,
   describeCalendarSchedulingRequestHandoff,
 } from "./calendar-dashboard";
@@ -115,6 +116,51 @@ describe("calendar staff handoff helpers", () => {
     ).toMatchObject({
       label: "existing event linked",
       action: "linked_existing_event",
+    });
+  });
+
+  it("builds tickler scheduling-request payloads from existing tasks and reminders", () => {
+    expect(
+      buildCalendarSchedulingRequestPayload({
+        type: "task_deadline",
+        matterId: "matter-synthetic-001",
+        taskId: "task-synthetic-001",
+        title: "Review synthetic filing deadline",
+        dueAt: "2026-06-24T17:00:00.000Z",
+      }),
+    ).toEqual({
+      matterId: "matter-synthetic-001",
+      kind: "deadline_review",
+      title: "Review synthetic filing deadline",
+      taskId: "task-synthetic-001",
+      sourceType: "task_deadline",
+      sourceId: "task-synthetic-001",
+      sourceLabel: "Review synthetic filing deadline",
+      requestedDueAt: "2026-06-24T17:00:00.000Z",
+      reminderPosture: "none",
+      privacy: "staff_only",
+    });
+    expect(
+      buildCalendarSchedulingRequestPayload({
+        type: "calendar_reminder",
+        matterId: "matter-synthetic-001",
+        calendarEventId: "calendar-event-synthetic-001",
+        calendarReminderId: "calendar-reminder-synthetic-001",
+        title: "Review synthetic reminder",
+        remindAt: "2026-06-24T14:45:00.000Z",
+      }),
+    ).toEqual({
+      matterId: "matter-synthetic-001",
+      kind: "reminder_review",
+      title: "Review synthetic reminder",
+      calendarEventId: "calendar-event-synthetic-001",
+      calendarReminderId: "calendar-reminder-synthetic-001",
+      sourceType: "calendar_reminder",
+      sourceId: "calendar-reminder-synthetic-001",
+      sourceLabel: "Review synthetic reminder",
+      requestedDueAt: "2026-06-24T14:45:00.000Z",
+      reminderPosture: "dashboard_pending",
+      privacy: "staff_only",
     });
   });
 });

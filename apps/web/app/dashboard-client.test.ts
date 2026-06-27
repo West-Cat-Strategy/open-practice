@@ -129,6 +129,7 @@ import {
   buildCalendarRadarBuckets,
   buildCalendarReminderPayload,
   buildCalendarReschedulePayload,
+  buildCalendarSchedulingRequestPayload,
   buildCalendarSchedulingReviewPayload,
   calendarMeetingReadinessItems,
   describeCalendarSchedulingReviewNextStep,
@@ -6448,6 +6449,42 @@ describe("dashboard client behavior", () => {
         calendarEventId: "calendar-event-001",
       }),
     ).toEqual({ matterId: "matter-001", status: "reviewed" });
+    expect(
+      buildCalendarSchedulingRequestPayload({
+        type: "task_deadline",
+        matterId: "matter-001",
+        taskId: "task-deadline-001",
+        title: "Review tenant evidence package",
+        dueAt: "2026-05-01T19:00:00.000Z",
+      }),
+    ).toMatchObject({
+      kind: "deadline_review",
+      sourceType: "task_deadline",
+      sourceId: "task-deadline-001",
+      taskId: "task-deadline-001",
+      requestedDueAt: "2026-05-01T19:00:00.000Z",
+      reminderPosture: "none",
+      privacy: "staff_only",
+    });
+    expect(
+      buildCalendarSchedulingRequestPayload({
+        type: "calendar_reminder",
+        matterId: "matter-001",
+        calendarEventId: "calendar-event-001",
+        calendarReminderId: "calendar-reminder-001",
+        title: "Review deadline reminder",
+        remindAt: "2026-05-01T18:30:00.000Z",
+      }),
+    ).toMatchObject({
+      kind: "reminder_review",
+      sourceType: "calendar_reminder",
+      sourceId: "calendar-reminder-001",
+      calendarEventId: "calendar-event-001",
+      calendarReminderId: "calendar-reminder-001",
+      requestedDueAt: "2026-05-01T18:30:00.000Z",
+      reminderPosture: "dashboard_pending",
+      privacy: "staff_only",
+    });
     expect(
       upsertCalendarSchedulingRequest(
         { "matter-001": [existingRequest], "matter-002": [] },

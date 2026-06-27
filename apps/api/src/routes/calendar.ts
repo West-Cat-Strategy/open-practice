@@ -124,6 +124,7 @@ const calendarSchedulingRequestBodySchema = z
     message: "Scheduling requests with calendarReminderId require calendarEventId",
     path: ["calendarEventId"],
   });
+type CalendarSchedulingRequestBody = z.infer<typeof calendarSchedulingRequestBodySchema>;
 
 const calendarSchedulingReviewBodySchema = z
   .object({
@@ -196,6 +197,55 @@ function schedulingRequestAuditMetadata(
     calendarEventId: request.calendarEventId,
     calendarReminderId: request.calendarReminderId,
   };
+}
+
+function openSchedulingRequestDuplicate(
+  existing: CalendarSchedulingRequestRecord,
+  body: CalendarSchedulingRequestBody,
+): boolean {
+  if (existing.status !== "needs_review") return false;
+  if (body.taskId && existing.taskId === body.taskId) return true;
+  if (
+    body.calendarReminderId &&
+    existing.calendarReminderId === body.calendarReminderId &&
+    existing.calendarEventId === body.calendarEventId
+  ) {
+    return true;
+  }
+  if (
+    !body.calendarReminderId &&
+    body.calendarEventId &&
+    existing.calendarEventId === body.calendarEventId
+  ) {
+    return true;
+  }
+  return Boolean(
+    body.sourceId && existing.sourceType === body.sourceType && existing.sourceId === body.sourceId,
+  );
+}
+
+async function assertNoOpenSchedulingRequestDuplicate(input: {
+  repository: CalendarRouteDependencies["repository"];
+  firmId: string;
+  body: CalendarSchedulingRequestBody;
+}): Promise<void> {
+  const existingRequests = await input.repository.listCalendarSchedulingRequests(input.firmId, {
+    matterId: input.body.matterId,
+    status: "needs_review",
+  });
+  const duplicate = existingRequests.find((request) =>
+    openSchedulingRequestDuplicate(request, input.body),
+  );
+  if (!duplicate) return;
+  throw new ApiHttpError(
+    409,
+    "CALENDAR_SCHEDULING_REQUEST_DUPLICATE",
+    "Open scheduling request already exists for this source",
+    {
+      matterId: input.body.matterId,
+      requestId: duplicate.id,
+    },
+  );
 }
 
 async function schedulingRequestSummaryForResponse(input: {
@@ -422,6 +472,11 @@ export function registerCalendarRoutes(
       );
       if (!ownerAccess.ok) throw ownerAccess.error;
     }
+    await assertNoOpenSchedulingRequestDuplicate({
+      repository,
+      firmId: request.auth.firmId,
+      body,
+    });
     const now = new Date().toISOString();
     const schedulingRequest: CalendarSchedulingRequestRecord = {
       id: `calendar-request-${createSessionToken().slice(0, 16)}`,

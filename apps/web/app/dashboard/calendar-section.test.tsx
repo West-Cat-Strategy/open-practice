@@ -170,6 +170,7 @@ function matterlessCalendarMarkup(
       onCreateCalendarCredential: noop,
       onCreateCalendarEvent: noop,
       onCreateCalendarGuestSession: noop,
+      onCreateCalendarSchedulingRequestForReminder: noop,
       onIssueCalendarGuestLink: noop,
       onOpenCalendarInvitationConfirmation: noop,
       onRemoveCalendarAttendee: noop,
@@ -279,6 +280,7 @@ describe("CalendarSection", () => {
         onCreateCalendarCredential: noop,
         onCreateCalendarEvent: noop,
         onCreateCalendarGuestSession: noop,
+        onCreateCalendarSchedulingRequestForReminder: noop,
         onIssueCalendarGuestLink: noop,
         onOpenCalendarInvitationConfirmation: noop,
         onRemoveCalendarAttendee: noop,
@@ -432,6 +434,73 @@ describe("CalendarSection", () => {
     expect(html).toContain("matterless calendars stay display-only");
     expect(html).not.toContain("Link scheduling request to an existing event");
     expect(html).not.toContain("Mark scheduling request reviewed");
+  });
+
+  it("renders reminder review requests only for open matter pending reminders", () => {
+    const reminderEvent: DashboardCalendarEvent = {
+      ...syntheticEvent,
+      reminders: [
+        {
+          id: "calendar_reminder_pending",
+          firmId: "firm_synthetic",
+          matterId: "matter_synthetic",
+          eventId: syntheticEvent.id,
+          remindAt: "2035-06-06T15:30:00.000Z",
+          channel: "dashboard",
+          status: "pending",
+          createdAt: "2026-06-06T00:00:00.000Z",
+          updatedAt: "2026-06-06T00:00:00.000Z",
+          createdByUserId: "user_synthetic",
+          updatedByUserId: "user_synthetic",
+        },
+      ],
+    };
+    const reminderReviewRequest: DashboardSchedulingRequest = {
+      ...syntheticSchedulingRequest,
+      id: "schedule_request_reminder",
+      kind: "reminder_review",
+      title: "Review synthetic reminder",
+      source: { type: "calendar_reminder", label: "Synthetic reminder" },
+      linkedEvent: {
+        id: reminderEvent.id,
+        title: reminderEvent.title,
+        startsAt: reminderEvent.startsAt,
+        endsAt: reminderEvent.endsAt,
+        status: reminderEvent.status,
+      },
+      linkedReminderId: "calendar_reminder_pending",
+      requestedDueAt: "2035-06-06T15:30:00.000Z",
+      reminderSummary: {
+        posture: "dashboard_pending",
+        pendingCount: 1,
+        acknowledgedCount: 0,
+        nextRemindAt: "2035-06-06T15:30:00.000Z",
+      },
+    };
+
+    const availableHtml = matterlessCalendarMarkup(
+      {
+        activeCalendarScope: "matter",
+        activeMatterNumber: "OP-2026-001",
+        matterCalendarControlsEnabled: true,
+      },
+      [reminderEvent],
+    );
+    const duplicateHtml = matterlessCalendarMarkup(
+      {
+        activeCalendarScope: "matter",
+        activeMatterNumber: "OP-2026-001",
+        matterCalendarControlsEnabled: true,
+        activeCalendarSchedulingRequests: [reminderReviewRequest],
+      },
+      [reminderEvent],
+    );
+
+    expect(availableHtml).toContain("Request review");
+    expect(availableHtml).toContain("Create reminder review request.");
+    expect(duplicateHtml).toContain("Review requested");
+    expect(duplicateHtml).toContain("An open review request already exists for this reminder.");
+    expect(duplicateHtml).toContain("Acknowledge");
   });
 
   it("renders guest queue disabled reasons without guest or room identifiers", () => {

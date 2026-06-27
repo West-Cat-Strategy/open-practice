@@ -88,9 +88,11 @@ export interface TasksSectionProps {
   onIncludeArchivedChange: (includeArchived: boolean) => void;
   onReopenTask: (taskId: string) => void;
   onReopenTaskChecklistItem: (taskId: string, itemId: string) => void;
+  onRequestTaskDeadlineReview: (task: TaskRow) => void;
   onSelectMatter: (matterId: string) => void;
   onSelectTaskStructure: (taskId: string) => void;
   onUpdateTask: (taskId: string, payload: TaskUpdatePayload) => void;
+  schedulingReviewBusyKey: string;
   status: string;
   taskStructure?: TaskStructuredDetailResponse;
   taskTemplateItems: TaskTemplateItem[];
@@ -231,9 +233,11 @@ export function TasksSection({
   onIncludeArchivedChange,
   onReopenTask,
   onReopenTaskChecklistItem,
+  onRequestTaskDeadlineReview,
   onSelectMatter,
   onSelectTaskStructure,
   onUpdateTask,
+  schedulingReviewBusyKey,
   status,
   taskStructure,
   taskTemplateItems,
@@ -269,6 +273,10 @@ export function TasksSection({
   const [dependencyType, setDependencyType] =
     useState<TaskDependencyCreatePayload["dependencyType"]>("blocks");
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
+  const taskReviewItemsById = useMemo(
+    () => new Map(taskWorkbench.taskReview.items.map((item) => [item.id, item])),
+    [taskWorkbench.taskReview.items],
+  );
 
   const visibleTasks = useMemo(
     () =>
@@ -604,6 +612,19 @@ export function TasksSection({
       <div className="party-list queue-section-list task-list">
         {visibleTasks.map((task) => {
           const archived = task.status === "archived";
+          const schedulingReviewBusyKeyForTask = `task:${task.id}:scheduling-request`;
+          const schedulingReviewBusy = schedulingReviewBusyKey === schedulingReviewBusyKeyForTask;
+          const openSchedulingReview =
+            (taskReviewItemsById.get(task.id)?.scheduling.needsReviewCount ?? 0) > 0;
+          const requestReviewDisabled =
+            archived || task.status === "completed" || schedulingReviewBusy || openSchedulingReview;
+          const requestReviewTitle = archived
+            ? "Archived tasks cannot be sent for deadline review."
+            : task.status === "completed"
+              ? "Completed tasks cannot be sent for deadline review."
+              : openSchedulingReview
+                ? "An open deadline review request already exists for this task."
+                : "Create deadline review request.";
           return (
             <div className="party-row queue-item-row" key={task.id}>
               <span>
@@ -647,6 +668,19 @@ export function TasksSection({
                   type="button"
                 >
                   {busyKey === `structure:${task.id}` ? "Loading" : "Structure"}
+                </button>
+                <button
+                  className="secondary-button compact-button row-button"
+                  disabled={requestReviewDisabled}
+                  onClick={() => onRequestTaskDeadlineReview(task)}
+                  title={requestReviewTitle}
+                  type="button"
+                >
+                  {schedulingReviewBusy
+                    ? "Requesting"
+                    : openSchedulingReview
+                      ? "Review requested"
+                      : "Request review"}
                 </button>
                 {task.status === "completed" ? (
                   <button

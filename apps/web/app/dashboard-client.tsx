@@ -147,6 +147,7 @@ import {
   buildCalendarMeetingLinkPayload,
   buildCalendarReminderPayload,
   buildCalendarReschedulePayload,
+  buildCalendarSchedulingRequestPayload,
   buildCalendarSchedulingReviewPayload,
   removeCalendarEventReminder,
   removeStandaloneCalendarEventReminder,
@@ -159,6 +160,7 @@ import {
   upsertCalendarSchedulingRequest,
   upsertStandaloneCalendarEvent,
   upsertStandaloneCalendarEventReminder,
+  type CalendarSchedulingRequestPayload,
   type CalendarSchedulingReviewDecision,
 } from "./calendar-dashboard";
 import {
@@ -606,9 +608,11 @@ type DashboardDraft = DraftingDashboardResponse["draftsByMatterId"][string][numb
 type DashboardDraftAssistRecord = DraftAssistRecordsResponse["records"][number];
 type DashboardIntakeVariableProposal = IntakeVariableProposalsResponse["proposals"][number];
 type DashboardCalendarEvent = CalendarDashboardResponse["eventsByMatterId"][string][number];
+type DashboardCalendarEventReminder = NonNullable<DashboardCalendarEvent["reminders"]>[number];
 type DashboardCalendarSchedulingRequest =
   CalendarDashboardResponse["schedulingRequestsByMatterId"][string][number];
 type DashboardCalendarScope = NonNullable<DashboardCalendarEvent["scope"]>;
+type DashboardTask = TaskDeadlineWorkbenchResponse["tasks"][number];
 type DashboardTaskListResponse = { tasks: TaskDeadlineWorkbenchResponse["tasks"] };
 type DashboardTaskStructureResponse = { structure: TaskStructuredDetailResponse };
 type InboundMatterDraftResponse = {
@@ -4929,6 +4933,89 @@ export default function DashboardClient({
     }
   }
 
+  async function createCalendarSchedulingRequest(
+    payload: CalendarSchedulingRequestPayload,
+    options: { busyKey: string; busyMessage: string; successMessage: string },
+  ): Promise<void> {
+    setReviewingCalendarSchedulingRequestKey(options.busyKey);
+    setCalendarSchedulingReviewStatus(options.busyMessage);
+    setTaskActionStatus(options.busyMessage);
+
+    try {
+      const response = await requestDashboardJson<CalendarSchedulingRequestReviewResponse>(
+        apiBaseUrl,
+        "/api/calendar/scheduling-requests",
+        {
+          method: "POST",
+          headers: devHeaders,
+          payload,
+        },
+      );
+      setCalendarSchedulingRequestsByMatterId((current) =>
+        upsertCalendarSchedulingRequest(current, payload.matterId, response.schedulingRequest),
+      );
+      await refreshTaskWorkspace();
+      setCalendarSchedulingReviewStatus(options.successMessage);
+      setTaskActionStatus(options.successMessage);
+    } catch (error) {
+      const failureMessage = `Scheduling request failed: ${dashboardApiStatus(error)}`;
+      setCalendarSchedulingReviewStatus(failureMessage);
+      setTaskActionStatus(failureMessage);
+    } finally {
+      setReviewingCalendarSchedulingRequestKey("");
+    }
+  }
+
+  function createTaskDeadlineSchedulingRequest(task: DashboardTask): void {
+    if (!task.matterId) {
+      setTaskActionStatus("Choose a matter before requesting deadline review.");
+      return;
+    }
+    void createCalendarSchedulingRequest(
+      buildCalendarSchedulingRequestPayload({
+        type: "task_deadline",
+        matterId: task.matterId,
+        taskId: task.id,
+        title: `Review deadline: ${task.title}`,
+        dueAt: task.dueAt,
+        sourceLabel: task.title,
+      }),
+      {
+        busyKey: `task:${task.id}:scheduling-request`,
+        busyMessage: "Creating deadline review request...",
+        successMessage: "Deadline review request created.",
+      },
+    );
+  }
+
+  function createCalendarReminderSchedulingRequest(
+    event: DashboardCalendarEvent,
+    reminder: DashboardCalendarEventReminder,
+  ): void {
+    if (!event.matterId) {
+      setCalendarSchedulingReviewStatus(
+        "Choose a matter before requesting calendar reminder review.",
+      );
+      return;
+    }
+    void createCalendarSchedulingRequest(
+      buildCalendarSchedulingRequestPayload({
+        type: "calendar_reminder",
+        matterId: event.matterId,
+        calendarEventId: event.id,
+        calendarReminderId: reminder.id,
+        title: `Review reminder: ${event.title}`,
+        remindAt: reminder.remindAt,
+        sourceLabel: `${event.title} reminder`,
+      }),
+      {
+        busyKey: `reminder:${reminder.id}:scheduling-request`,
+        busyMessage: "Creating reminder review request...",
+        successMessage: "Reminder review request created.",
+      },
+    );
+  }
+
   function syncCalendarGuestSession(session: CalendarGuestSessionSummary): void {
     setCalendarGuestSessionsByEventId((current) => upsertCalendarGuestSession(current, session));
   }
@@ -6655,6 +6742,9 @@ export default function DashboardClient({
                   onCreateCalendarCredential={() => void createCalendarCredential()}
                   onCreateCalendarEvent={() => void createCalendarEvent()}
                   onCreateCalendarGuestSession={(event) => void createCalendarGuestSession(event)}
+                  onCreateCalendarSchedulingRequestForReminder={(event, reminder) =>
+                    createCalendarReminderSchedulingRequest(event, reminder)
+                  }
                   onIssueCalendarGuestLink={(event, session) =>
                     void issueCalendarGuestLink(event, session)
                   }
@@ -6886,9 +6976,11 @@ export default function DashboardClient({
                   onReopenTaskChecklistItem={(taskId, itemId) =>
                     void reopenTaskChecklistItem(taskId, itemId)
                   }
+                  onRequestTaskDeadlineReview={createTaskDeadlineSchedulingRequest}
                   onSelectMatter={selectMatter}
                   onSelectTaskStructure={(taskId) => void refreshTaskStructure(taskId)}
                   onUpdateTask={(taskId, payload) => void updateTask(taskId, payload)}
+                  schedulingReviewBusyKey={reviewingCalendarSchedulingRequestKey}
                   status={taskActionStatus}
                   taskStructure={taskStructure}
                   taskTemplateItems={taskTemplateItems}
@@ -7610,6 +7702,9 @@ export default function DashboardClient({
                   onCreateCalendarCredential={() => void createCalendarCredential()}
                   onCreateCalendarEvent={() => void createCalendarEvent()}
                   onCreateCalendarGuestSession={(event) => void createCalendarGuestSession(event)}
+                  onCreateCalendarSchedulingRequestForReminder={(event, reminder) =>
+                    createCalendarReminderSchedulingRequest(event, reminder)
+                  }
                   onIssueCalendarGuestLink={(event, session) =>
                     void issueCalendarGuestLink(event, session)
                   }
@@ -7972,9 +8067,11 @@ export default function DashboardClient({
                   onReopenTaskChecklistItem={(taskId, itemId) =>
                     void reopenTaskChecklistItem(taskId, itemId)
                   }
+                  onRequestTaskDeadlineReview={createTaskDeadlineSchedulingRequest}
                   onSelectMatter={selectMatter}
                   onSelectTaskStructure={(taskId) => void refreshTaskStructure(taskId)}
                   onUpdateTask={(taskId, payload) => void updateTask(taskId, payload)}
+                  schedulingReviewBusyKey={reviewingCalendarSchedulingRequestKey}
                   status={taskActionStatus}
                   taskStructure={taskStructure}
                   taskTemplateItems={taskTemplateItems}

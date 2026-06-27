@@ -311,9 +311,11 @@ describe("TasksSection", () => {
         onIncludeArchivedChange: () => {},
         onReopenTask: () => {},
         onReopenTaskChecklistItem: () => {},
+        onRequestTaskDeadlineReview: () => {},
         onSelectMatter: () => {},
         onSelectTaskStructure: () => {},
         onUpdateTask: () => {},
+        schedulingReviewBusyKey: "",
         status: "Task workspace ready.",
         taskStructure,
         taskTemplateItems,
@@ -334,6 +336,7 @@ describe("TasksSection", () => {
     expect(html).toContain("Confirm synthetic exhibit list");
     expect(html).toContain("Synthetic staff-only note.");
     expect(html).toContain("Synthetic evidence review");
+    expect(html).toContain("Request review");
     expect(html).toContain("Suggested follow-ups");
     expect(html).toContain("Follow up on synthetic scheduling request");
     expect(html).toContain("Review legal clinic cadence");
@@ -342,5 +345,85 @@ describe("TasksSection", () => {
     expect(html).not.toContain("Archived synthetic task");
     expect(html).not.toContain("Synthetic Client");
     expect(html).not.toContain("raw-client-private");
+  });
+
+  it("disables deadline review requests when an open scheduling cue already exists", () => {
+    const taskReviewItem: TaskDeadlineWorkbenchResponse["taskReview"]["items"][number] = {
+      id: "task_open",
+      matterId: "matter_synthetic",
+      matterNumber: "OP-2026-001",
+      matterTitle: "Synthetic tenancy matter",
+      title: "Review synthetic evidence",
+      dueAt: "2026-06-20T17:00:00.000Z",
+      bucket: "upcoming",
+      completionStatus: "open",
+      priority: "high",
+      tone: "risk",
+      assignment: {
+        status: "assigned",
+        userId: "user_synthetic",
+        scope: "current_user",
+        label: "My task",
+      },
+      privacy: {
+        matterScoped: true,
+        clientVisible: false,
+        visibility: "staff_only",
+      },
+      source: {
+        type: "task_deadline",
+        label: "Review synthetic evidence",
+      },
+      scheduling: {
+        requestCount: 1,
+        needsReviewCount: 1,
+        reviewedCount: 0,
+        nextReviewAt: "2026-06-20T17:00:00.000Z",
+        sourceTypes: ["task_deadline"],
+        reminderPostures: ["none"],
+        timeCapturePostures: ["none"],
+      },
+      reviewBoundary: {
+        courtRuleAutomation: false,
+        providerSync: false,
+        automaticDeadlineMutation: false,
+        automaticReminderChanges: false,
+        queueDelivery: false,
+        automaticTimeEntryCreation: false,
+      },
+    };
+    const html = renderToStaticMarkup(
+      createElement(TasksSection, {
+        activeMatterId: "matter_synthetic",
+        busyKey: "",
+        compactDate: (value?: string) => value?.slice(0, 10) ?? "No date",
+        currentUserId: "user_synthetic",
+        includeArchived: false,
+        matters: [syntheticMatter],
+        onArchiveTask: () => {},
+        onCompleteTask: () => {},
+        onCreateTask: () => {},
+        onIncludeArchivedChange: () => {},
+        onReopenTask: () => {},
+        onRequestTaskDeadlineReview: () => {},
+        onSelectMatter: () => {},
+        onUpdateTask: () => {},
+        schedulingReviewBusyKey: "",
+        status: "Task workspace ready.",
+        taskWorkbench: {
+          ...taskWorkbench,
+          taskReview: {
+            ...taskWorkbench.taskReview,
+            items: [taskReviewItem],
+          },
+        },
+        tasks: taskWorkbench.tasks,
+        users: syntheticUsers,
+      }),
+    );
+
+    expect(html).toContain("Review requested");
+    expect(html).toContain("An open deadline review request already exists for this task.");
+    expect(html).toContain("Complete");
   });
 });

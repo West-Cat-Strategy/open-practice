@@ -360,6 +360,111 @@ describe("calendar routes", () => {
     });
   });
 
+  it("rejects duplicate open scheduling requests for the same task or reminder source", async () => {
+    const server = testServer(user("licensee", ["matter-001"]));
+
+    const duplicateTask = await server.inject({
+      method: "POST",
+      url: "/api/calendar/scheduling-requests",
+      payload: {
+        matterId: "matter-001",
+        kind: "deadline_review",
+        title: "Duplicate synthetic task review",
+        taskId: "task-deadline-001",
+        sourceType: "task_deadline",
+        sourceId: "task-deadline-001",
+        sourceLabel: "Synthetic task deadline",
+        requestedDueAt: "2026-05-01T19:00:00.000Z",
+      },
+    });
+
+    expect(duplicateTask.statusCode).toBe(409);
+    expect(duplicateTask.json()).toMatchObject({
+      code: "CALENDAR_SCHEDULING_REQUEST_DUPLICATE",
+      message: "Open scheduling request already exists for this source",
+    });
+
+    const dismissed = await server.inject({
+      method: "PATCH",
+      url: "/api/calendar/scheduling-requests/calendar-scheduling-request-001/review",
+      payload: {
+        matterId: "matter-001",
+        status: "dismissed",
+      },
+    });
+    expect(dismissed.statusCode).toBe(200);
+
+    const recreatedTask = await server.inject({
+      method: "POST",
+      url: "/api/calendar/scheduling-requests",
+      payload: {
+        matterId: "matter-001",
+        kind: "deadline_review",
+        title: "Fresh synthetic task review",
+        taskId: "task-deadline-001",
+        sourceType: "task_deadline",
+        sourceId: "task-deadline-001",
+        sourceLabel: "Synthetic task deadline",
+        requestedDueAt: "2026-05-01T19:00:00.000Z",
+      },
+    });
+    expect(recreatedTask.statusCode).toBe(201);
+
+    const reminder = await server.inject({
+      method: "POST",
+      url: "/api/calendar/events/calendar-event-001/reminders",
+      payload: {
+        matterId: "matter-001",
+        remindAt: "2026-05-05T15:45:00.000Z",
+      },
+    });
+    expect(reminder.statusCode).toBe(201);
+    const reminderId = reminder.json().reminder.id;
+
+    const reminderReview = await server.inject({
+      method: "POST",
+      url: "/api/calendar/scheduling-requests",
+      payload: {
+        matterId: "matter-001",
+        kind: "reminder_review",
+        title: "Review synthetic reminder",
+        sourceType: "calendar_reminder",
+        sourceId: reminderId,
+        sourceLabel: "Synthetic reminder",
+        calendarEventId: "calendar-event-001",
+        calendarReminderId: reminderId,
+        requestedDueAt: "2026-05-05T15:45:00.000Z",
+        reminderPosture: "dashboard_pending",
+      },
+    });
+    expect(reminderReview.statusCode).toBe(201);
+    const requestId = reminderReview.json().schedulingRequest.id;
+
+    const duplicateReminder = await server.inject({
+      method: "POST",
+      url: "/api/calendar/scheduling-requests",
+      payload: {
+        matterId: "matter-001",
+        kind: "reminder_review",
+        title: "Review synthetic reminder again",
+        sourceType: "calendar_reminder",
+        sourceId: reminderId,
+        sourceLabel: "Synthetic reminder",
+        calendarEventId: "calendar-event-001",
+        calendarReminderId: reminderId,
+        requestedDueAt: "2026-05-05T15:45:00.000Z",
+        reminderPosture: "dashboard_pending",
+      },
+    });
+
+    expect(duplicateReminder.statusCode).toBe(409);
+    expect(duplicateReminder.json()).toMatchObject({
+      code: "CALENDAR_SCHEDULING_REQUEST_DUPLICATE",
+      message: "Open scheduling request already exists for this source",
+    });
+    expect(requestId).toMatch(/^calendar-request-/);
+  });
+
   it("requires calendarEventId before marking a scheduling request scheduled", async () => {
     const server = testServer(user("licensee", ["matter-001"]));
 

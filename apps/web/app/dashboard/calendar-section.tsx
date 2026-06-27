@@ -32,6 +32,7 @@ import {
 } from "./shared-panels";
 
 type DashboardCalendarEvent = CalendarDashboardResponse["eventsByMatterId"][string][number];
+type CalendarEventReminder = NonNullable<DashboardCalendarEvent["reminders"]>[number];
 type CalendarSchedulingRequest =
   CalendarDashboardResponse["schedulingRequestsByMatterId"][string][number];
 type CalendarCredential = CalendarDashboardResponse["credentials"][number];
@@ -107,6 +108,10 @@ export interface CalendarSectionProps {
   onCreateCalendarCredential: () => void;
   onCreateCalendarEvent: () => void;
   onCreateCalendarGuestSession: (event: DashboardCalendarEvent) => void;
+  onCreateCalendarSchedulingRequestForReminder: (
+    event: DashboardCalendarEvent,
+    reminder: CalendarEventReminder,
+  ) => void;
   onIssueCalendarGuestLink: (
     event: DashboardCalendarEvent,
     session: CalendarGuestSessionSummary,
@@ -254,6 +259,7 @@ export function CalendarSection({
   onCreateCalendarCredential,
   onCreateCalendarEvent,
   onCreateCalendarGuestSession,
+  onCreateCalendarSchedulingRequestForReminder,
   onIssueCalendarGuestLink,
   onOpenCalendarInvitationConfirmation,
   onRemoveCalendarAttendee,
@@ -285,6 +291,12 @@ export function CalendarSection({
   onUpdateCalendarMeetingLink,
   onUpdateCalendarReminder,
 }: CalendarSectionProps) {
+  const openReminderReviewKeys = new Set(
+    activeCalendarSchedulingRequests
+      .filter((request) => request.status === "needs_review" && request.linkedReminderId)
+      .map((request) => `${request.linkedEvent?.id ?? ""}:${request.linkedReminderId}`),
+  );
+
   return (
     <>
       <div className="detail-grid">
@@ -1028,54 +1040,89 @@ export function CalendarSection({
                 />
               ) : null}
               <div className="calendar-attendee-list">
-                {(event.reminders ?? []).map((reminder) => (
-                  <div className="calendar-attendee-row" key={reminder.id}>
-                    <span>
-                      <strong>{compactDate(reminder.remindAt)}</strong>
-                      <small>
-                        {reminder.channel} · {reminder.status.replace("_", " ")}
-                        {reminder.note ? ` · ${reminder.note}` : ""}
-                      </small>
-                    </span>
-                    <div className="row-actions">
-                      <button
-                        className="secondary-button compact-button row-button"
-                        disabled={
-                          !matterCalendarControlsEnabled ||
-                          updatingCalendarReminderId === reminder.id
-                        }
-                        onClick={() =>
-                          void onUpdateCalendarReminder(event.id, reminder.id, "acknowledged")
-                        }
-                        title={
-                          matterCalendarControlsEnabled
-                            ? "Acknowledge reminder"
-                            : "Matter required before changing reminders."
-                        }
-                        type="button"
-                      >
-                        Acknowledge
-                      </button>
-                      <button
-                        aria-label={`Remove reminder ${reminder.id}`}
-                        className="icon-button"
-                        disabled={
-                          !matterCalendarControlsEnabled ||
-                          removingCalendarReminderId === reminder.id
-                        }
-                        onClick={() => void onRemoveCalendarReminder(event.id, reminder.id)}
-                        title={
-                          matterCalendarControlsEnabled
-                            ? "Remove reminder"
-                            : "Matter required before changing reminders."
-                        }
-                        type="button"
-                      >
-                        <X size={16} />
-                      </button>
+                {(event.reminders ?? []).map((reminder) => {
+                  const reviewBusy =
+                    reviewingCalendarSchedulingRequestKey ===
+                    `reminder:${reminder.id}:scheduling-request`;
+                  const reviewRequested = openReminderReviewKeys.has(`${event.id}:${reminder.id}`);
+                  const requestReviewDisabled =
+                    !matterCalendarControlsEnabled ||
+                    !event.matterId ||
+                    reminder.status !== "pending" ||
+                    reviewRequested ||
+                    reviewBusy;
+                  const requestReviewTitle =
+                    !matterCalendarControlsEnabled || !event.matterId
+                      ? "Matter required before requesting reminder review."
+                      : reminder.status !== "pending"
+                        ? "Only pending reminders can be sent for review."
+                        : reviewRequested
+                          ? "An open review request already exists for this reminder."
+                          : "Create reminder review request.";
+                  return (
+                    <div className="calendar-attendee-row" key={reminder.id}>
+                      <span>
+                        <strong>{compactDate(reminder.remindAt)}</strong>
+                        <small>
+                          {reminder.channel} · {reminder.status.replace("_", " ")}
+                          {reminder.note ? ` · ${reminder.note}` : ""}
+                        </small>
+                      </span>
+                      <div className="row-actions">
+                        <button
+                          className="secondary-button compact-button row-button"
+                          disabled={requestReviewDisabled}
+                          onClick={() =>
+                            onCreateCalendarSchedulingRequestForReminder(event, reminder)
+                          }
+                          title={requestReviewTitle}
+                          type="button"
+                        >
+                          {reviewBusy
+                            ? "Requesting..."
+                            : reviewRequested
+                              ? "Review requested"
+                              : "Request review"}
+                        </button>
+                        <button
+                          className="secondary-button compact-button row-button"
+                          disabled={
+                            !matterCalendarControlsEnabled ||
+                            updatingCalendarReminderId === reminder.id
+                          }
+                          onClick={() =>
+                            void onUpdateCalendarReminder(event.id, reminder.id, "acknowledged")
+                          }
+                          title={
+                            matterCalendarControlsEnabled
+                              ? "Acknowledge reminder"
+                              : "Matter required before changing reminders."
+                          }
+                          type="button"
+                        >
+                          Acknowledge
+                        </button>
+                        <button
+                          aria-label={`Remove reminder ${reminder.id}`}
+                          className="icon-button"
+                          disabled={
+                            !matterCalendarControlsEnabled ||
+                            removingCalendarReminderId === reminder.id
+                          }
+                          onClick={() => void onRemoveCalendarReminder(event.id, reminder.id)}
+                          title={
+                            matterCalendarControlsEnabled
+                              ? "Remove reminder"
+                              : "Matter required before changing reminders."
+                          }
+                          type="button"
+                        >
+                          <X size={16} />
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
                 {(event.reminders ?? []).length === 0 ? (
                   <p className="inline-empty">No reminders are linked to this event.</p>
                 ) : null}
