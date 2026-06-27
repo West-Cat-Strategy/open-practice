@@ -7,10 +7,15 @@ import type {
   CalendarSchedulingRequestPrivacy,
   Matter,
   MatterParty,
+  TaskChecklistItemRecord,
+  TaskCommentRecord,
   TaskDeadlineBucket,
   TaskDeadlineProjection,
   TaskDeadlineRecord,
+  TaskDependencyRecord,
   TaskSourceType,
+  TaskTemplateItemRecord,
+  TaskTemplateRecord,
 } from "./models.js";
 import type { LegalClinicCadenceSignal } from "./legal-clinics.js";
 
@@ -49,6 +54,46 @@ export interface TaskDeadlineWorkbench {
   };
   taskReview: TaskDeadlineReviewWorkspace;
   suggestedFollowUps: TaskFollowUpSuggestion[];
+}
+
+export interface TaskChecklistProgress {
+  total: number;
+  open: number;
+  completed: number;
+  blocked: number;
+  percentComplete: number;
+}
+
+export interface TaskDependencySummary {
+  blocks: number;
+  relatesTo: number;
+  blockingTaskIds: string[];
+  blockedByOpenTaskIds: string[];
+}
+
+export interface TaskCommentSummary {
+  count: number;
+  latestCreatedAt?: string;
+}
+
+export interface TaskStructuredDetail {
+  task: TaskDeadlineProjection;
+  checklistItems: TaskChecklistItemRecord[];
+  comments: TaskCommentRecord[];
+  dependencies: TaskDependencyRecord[];
+  templates: TaskTemplateRecord[];
+  templateItems: TaskTemplateItemRecord[];
+  checklistProgress: TaskChecklistProgress;
+  dependencySummary: TaskDependencySummary;
+  commentSummary: TaskCommentSummary;
+  structureBoundary: {
+    staffOnlyComments: true;
+    clientVisible: false;
+    automaticDeadlineMutation: false;
+    automaticTaskCreation: false;
+    providerSync: false;
+    emailDelivery: false;
+  };
 }
 
 export type TaskDeadlineReviewPriority = "high" | "medium" | "low";
@@ -208,6 +253,94 @@ export function projectTaskDeadline(
     assignmentStatus: task.assignedToUserId ? "assigned" : "unassigned",
     completionStatus: task.status === "completed" || task.completedAt ? "completed" : "open",
     bucket: classifyTaskDeadline(task, now),
+  };
+}
+
+const TASK_STRUCTURE_BOUNDARY = {
+  staffOnlyComments: true,
+  clientVisible: false,
+  automaticDeadlineMutation: false,
+  automaticTaskCreation: false,
+  providerSync: false,
+  emailDelivery: false,
+} as const;
+
+export function buildTaskStructuredDetail(input: {
+  task: TaskDeadlineRecord;
+  checklistItems?: TaskChecklistItemRecord[];
+  comments?: TaskCommentRecord[];
+  dependencies?: TaskDependencyRecord[];
+  dependencyTasks?: TaskDeadlineRecord[];
+  templates?: TaskTemplateRecord[];
+  templateItems?: TaskTemplateItemRecord[];
+  now?: Date;
+}): TaskStructuredDetail {
+  const checklistItems = (input.checklistItems ?? [])
+    .filter((item) => !item.archivedAt)
+    .slice()
+    .sort((left, right) =>
+      left.sortOrder === right.sortOrder
+        ? left.id.localeCompare(right.id)
+        : left.sortOrder - right.sortOrder,
+    );
+  const comments = (input.comments ?? [])
+    .filter((comment) => !comment.archivedAt)
+    .slice()
+    .sort((left, right) => {
+      const leftTime = Date.parse(left.createdAt);
+      const rightTime = Date.parse(right.createdAt);
+      return leftTime === rightTime ? left.id.localeCompare(right.id) : leftTime - rightTime;
+    });
+  const dependencies = (input.dependencies ?? [])
+    .filter((dependency) => !dependency.archivedAt)
+    .slice()
+    .sort((left, right) => left.id.localeCompare(right.id));
+  const completed = checklistItems.filter((item) => item.status === "completed").length;
+  const open = checklistItems.filter((item) => item.status === "open").length;
+  const blocked = checklistItems.filter((item) => item.status === "blocked").length;
+  const dependencyTasksById = new Map((input.dependencyTasks ?? []).map((task) => [task.id, task]));
+  const blockingTaskIds = dependencies
+    .filter((dependency) => dependency.dependencyType === "blocks")
+    .map((dependency) => dependency.dependsOnTaskId);
+  const blockedByOpenTaskIds = blockingTaskIds.filter((taskId) => {
+    const task = dependencyTasksById.get(taskId);
+    return !task || task.status !== "completed";
+  });
+  const latestComment = comments[comments.length - 1];
+
+  return {
+    task: projectTaskDeadline(input.task, input.now),
+    checklistItems,
+    comments,
+    dependencies,
+    templates: (input.templates ?? []).filter((template) => template.status === "active"),
+    templateItems: (input.templateItems ?? [])
+      .slice()
+      .sort((left, right) =>
+        left.sortOrder === right.sortOrder
+          ? left.id.localeCompare(right.id)
+          : left.sortOrder - right.sortOrder,
+      ),
+    checklistProgress: {
+      total: checklistItems.length,
+      open,
+      completed,
+      blocked,
+      percentComplete:
+        checklistItems.length === 0 ? 0 : Math.round((completed / checklistItems.length) * 100),
+    },
+    dependencySummary: {
+      blocks: dependencies.filter((dependency) => dependency.dependencyType === "blocks").length,
+      relatesTo: dependencies.filter((dependency) => dependency.dependencyType === "relates_to")
+        .length,
+      blockingTaskIds,
+      blockedByOpenTaskIds,
+    },
+    commentSummary: {
+      count: comments.length,
+      latestCreatedAt: latestComment?.createdAt,
+    },
+    structureBoundary: TASK_STRUCTURE_BOUNDARY,
   };
 }
 

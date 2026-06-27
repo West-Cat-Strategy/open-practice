@@ -1,7 +1,17 @@
 import { describe, expect, it } from "vitest";
-import type { CalendarSchedulingRequestRecord, MatterParty, TaskDeadlineRecord } from "./models.js";
+import type {
+  CalendarSchedulingRequestRecord,
+  MatterParty,
+  TaskChecklistItemRecord,
+  TaskCommentRecord,
+  TaskDeadlineRecord,
+  TaskDependencyRecord,
+  TaskTemplateItemRecord,
+  TaskTemplateRecord,
+} from "./models.js";
 import {
   buildContactTimelineTaskCues,
+  buildTaskStructuredDetail,
   buildTaskDeadlineWorkbench,
   classifyTaskDeadline,
 } from "./tasks.js";
@@ -568,5 +578,174 @@ describe("task deadline workbench", () => {
     expect(JSON.stringify(entries)).not.toContain("Hidden matter task");
     expect(JSON.stringify(entries)).not.toContain("task-completed");
     expect(JSON.stringify(entries)).not.toContain("calendar-scheduling-request-existing-task");
+  });
+});
+
+describe("structured task detail", () => {
+  it("summarizes checklist progress, blockers, comments, and safe structure boundaries", () => {
+    const structuredTask = task({
+      id: "task-structured",
+      title: "Structured synthetic task",
+      dueAt: "2026-05-10T17:00:00.000Z",
+    });
+    const checklistItems: TaskChecklistItemRecord[] = [
+      {
+        id: "checklist-open",
+        firmId: structuredTask.firmId,
+        matterId: structuredTask.matterId,
+        taskId: structuredTask.id,
+        title: "Open synthetic checklist item",
+        status: "open",
+        sortOrder: 2,
+        createdAt: "2026-05-01T10:00:00.000Z",
+        updatedAt: "2026-05-01T10:00:00.000Z",
+        version: 1,
+      },
+      {
+        id: "checklist-completed",
+        firmId: structuredTask.firmId,
+        matterId: structuredTask.matterId,
+        taskId: structuredTask.id,
+        title: "Completed synthetic checklist item",
+        status: "completed",
+        sortOrder: 1,
+        completedAt: "2026-05-02T10:00:00.000Z",
+        createdAt: "2026-05-01T10:00:00.000Z",
+        updatedAt: "2026-05-02T10:00:00.000Z",
+        version: 2,
+      },
+      {
+        id: "checklist-archived",
+        firmId: structuredTask.firmId,
+        matterId: structuredTask.matterId,
+        taskId: structuredTask.id,
+        title: "Archived synthetic checklist item",
+        status: "blocked",
+        sortOrder: 0,
+        archivedAt: "2026-05-02T11:00:00.000Z",
+        createdAt: "2026-05-01T10:00:00.000Z",
+        updatedAt: "2026-05-02T11:00:00.000Z",
+        version: 2,
+      },
+    ];
+    const comments: TaskCommentRecord[] = [
+      {
+        id: "comment-active",
+        firmId: structuredTask.firmId,
+        matterId: structuredTask.matterId,
+        taskId: structuredTask.id,
+        body: "Synthetic staff-only detail.",
+        createdAt: "2026-05-02T12:00:00.000Z",
+        createdByUserId: "user-licensee",
+      },
+      {
+        id: "comment-archived",
+        firmId: structuredTask.firmId,
+        matterId: structuredTask.matterId,
+        taskId: structuredTask.id,
+        body: "Archived staff-only detail.",
+        archivedAt: "2026-05-02T13:00:00.000Z",
+        createdAt: "2026-05-02T11:00:00.000Z",
+        createdByUserId: "user-licensee",
+      },
+    ];
+    const dependencies: TaskDependencyRecord[] = [
+      {
+        id: "dependency-blocks-open",
+        firmId: structuredTask.firmId,
+        matterId: structuredTask.matterId,
+        taskId: structuredTask.id,
+        dependsOnTaskId: "task-blocking-open",
+        dependencyType: "blocks",
+        createdAt: "2026-05-02T14:00:00.000Z",
+      },
+      {
+        id: "dependency-relates",
+        firmId: structuredTask.firmId,
+        matterId: structuredTask.matterId,
+        taskId: structuredTask.id,
+        dependsOnTaskId: "task-related",
+        dependencyType: "relates_to",
+        createdAt: "2026-05-02T15:00:00.000Z",
+      },
+    ];
+    const templates: TaskTemplateRecord[] = [
+      {
+        id: "template-active",
+        firmId: structuredTask.firmId,
+        name: "Active synthetic template",
+        defaultPriority: "medium",
+        status: "active",
+        createdAt: "2026-05-01T10:00:00.000Z",
+        updatedAt: "2026-05-01T10:00:00.000Z",
+        version: 1,
+      },
+      {
+        id: "template-archived",
+        firmId: structuredTask.firmId,
+        name: "Archived synthetic template",
+        defaultPriority: "low",
+        status: "archived",
+        createdAt: "2026-05-01T10:00:00.000Z",
+        updatedAt: "2026-05-01T10:00:00.000Z",
+        version: 1,
+      },
+    ];
+    const templateItems: TaskTemplateItemRecord[] = [
+      {
+        id: "template-item",
+        firmId: structuredTask.firmId,
+        templateId: "template-active",
+        title: "Synthetic template item",
+        sortOrder: 0,
+        createdAt: "2026-05-01T10:00:00.000Z",
+        updatedAt: "2026-05-01T10:00:00.000Z",
+      },
+    ];
+
+    const detail = buildTaskStructuredDetail({
+      task: structuredTask,
+      checklistItems,
+      comments,
+      dependencies,
+      dependencyTasks: [task({ id: "task-blocking-open" })],
+      templates,
+      templateItems,
+      now,
+    });
+
+    expect(detail.checklistItems.map((item) => item.id)).toEqual([
+      "checklist-completed",
+      "checklist-open",
+    ]);
+    expect(detail.checklistProgress).toEqual({
+      total: 2,
+      open: 1,
+      completed: 1,
+      blocked: 0,
+      percentComplete: 50,
+    });
+    expect(detail.commentSummary).toEqual({
+      count: 1,
+      latestCreatedAt: "2026-05-02T12:00:00.000Z",
+    });
+    expect(detail.dependencySummary).toEqual({
+      blocks: 1,
+      relatesTo: 1,
+      blockingTaskIds: ["task-blocking-open"],
+      blockedByOpenTaskIds: ["task-blocking-open"],
+    });
+    expect(detail.templates.map((template) => template.id)).toEqual(["template-active"]);
+    expect(detail.templateItems.map((item) => item.id)).toEqual(["template-item"]);
+    expect(detail.structureBoundary).toEqual({
+      staffOnlyComments: true,
+      clientVisible: false,
+      automaticDeadlineMutation: false,
+      automaticTaskCreation: false,
+      providerSync: false,
+      emailDelivery: false,
+    });
+    expect(JSON.stringify(detail)).not.toContain("Archived synthetic checklist item");
+    expect(JSON.stringify(detail)).not.toContain("Archived staff-only detail");
   });
 });

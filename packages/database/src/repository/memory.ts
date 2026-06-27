@@ -93,7 +93,12 @@ import {
   type RecoveryCodeRecord,
   type SavedOperationalViewDefinition,
   type ShareLinkRecord,
+  type TaskChecklistItemRecord,
+  type TaskCommentRecord,
+  type TaskDependencyRecord,
   type TaskDeadlineRecord,
+  type TaskTemplateItemRecord,
+  type TaskTemplateRecord,
   type TimeEntry,
   type TrustTransferRequestRecord,
   type User,
@@ -374,13 +379,32 @@ import {
   type MemoryDraftStore,
 } from "./drafts/memory.js";
 import {
+  archiveMemoryTaskChecklistItem,
+  archiveMemoryTaskComment,
   archiveMemoryTaskDeadline,
+  archiveMemoryTaskDependency,
+  archiveMemoryTaskTemplate,
   completeMemoryTaskDeadline,
+  createMemoryTaskChecklistItem,
+  createMemoryTaskComment,
   createMemoryTaskDeadline,
+  createMemoryTaskDependency,
+  createMemoryTaskTemplate,
+  getMemoryTaskChecklistItem,
+  getMemoryTaskComment,
   getMemoryTaskDeadline,
+  getMemoryTaskDependency,
+  getMemoryTaskTemplate,
+  listMemoryTaskChecklistItems,
+  listMemoryTaskComments,
   listMemoryTaskDeadlines,
+  listMemoryTaskDependencies,
+  listMemoryTaskTemplateItems,
+  listMemoryTaskTemplates,
   reopenMemoryTaskDeadline,
+  updateMemoryTaskChecklistItem,
   updateMemoryTaskDeadline,
+  updateMemoryTaskTemplate,
   type MemoryTaskStore,
 } from "./tasks/memory.js";
 import {
@@ -653,6 +677,11 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private calendarMeetingSessions: CalendarMeetingSessionRecord[] = [];
   private calendarGuestLinks: CalendarGuestLinkRecord[] = [];
   private taskDeadlines: TaskDeadlineRecord[];
+  private taskChecklistItems: TaskChecklistItemRecord[] = [];
+  private taskComments: TaskCommentRecord[] = [];
+  private taskDependencies: TaskDependencyRecord[] = [];
+  private taskTemplates: TaskTemplateRecord[] = [];
+  private taskTemplateItems: TaskTemplateItemRecord[] = [];
   private portalGrants: PortalGrant[];
   private portalDocumentAccess: PortalDocumentAccess[] = [];
   private externalUploadLinks: ExternalUploadLinkRecord[] = [];
@@ -1463,6 +1492,11 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private get taskStore(): MemoryTaskStore {
     return {
       taskDeadlines: this.taskDeadlines,
+      taskChecklistItems: this.taskChecklistItems,
+      taskComments: this.taskComments,
+      taskDependencies: this.taskDependencies,
+      taskTemplates: this.taskTemplates,
+      taskTemplateItems: this.taskTemplateItems,
     };
   }
 
@@ -1555,6 +1589,11 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     this.calendarEvents = seeded ? clone(sampleCalendarEvents) : [];
     this.calendarSchedulingRequests = seeded ? clone(sampleCalendarSchedulingRequests) : [];
     this.taskDeadlines = seeded ? clone(sampleTaskDeadlines) : [];
+    this.taskChecklistItems = [];
+    this.taskComments = [];
+    this.taskDependencies = [];
+    this.taskTemplates = [];
+    this.taskTemplateItems = [];
     this.portalGrants = seeded ? clone(samplePortalGrants) : [];
     this.portalDocumentAccess = [];
     this.timeEntries = seeded ? clone(sampleTimeEntries) : [];
@@ -1905,6 +1944,133 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     input: Parameters<OpenPracticeRepository["archiveTaskDeadline"]>[0],
   ): Promise<TaskDeadlineRecord | undefined> {
     return archiveMemoryTaskDeadline(this.taskStore, input);
+  }
+
+  async listTaskChecklistItems(
+    firmId: string,
+    options: Parameters<OpenPracticeRepository["listTaskChecklistItems"]>[1] = {},
+  ): ReturnType<OpenPracticeRepository["listTaskChecklistItems"]> {
+    return listMemoryTaskChecklistItems(this.taskStore, firmId, options);
+  }
+
+  async getTaskChecklistItem(
+    firmId: string,
+    itemId: string,
+    options: Parameters<OpenPracticeRepository["getTaskChecklistItem"]>[2] = {},
+  ): ReturnType<OpenPracticeRepository["getTaskChecklistItem"]> {
+    return getMemoryTaskChecklistItem(this.taskStore, firmId, itemId, options);
+  }
+
+  async createTaskChecklistItem(
+    input: Parameters<OpenPracticeRepository["createTaskChecklistItem"]>[0],
+  ): ReturnType<OpenPracticeRepository["createTaskChecklistItem"]> {
+    return createMemoryTaskChecklistItem(this.taskStore, input);
+  }
+
+  async updateTaskChecklistItem(
+    input: Parameters<OpenPracticeRepository["updateTaskChecklistItem"]>[0],
+  ): ReturnType<OpenPracticeRepository["updateTaskChecklistItem"]> {
+    return updateMemoryTaskChecklistItem(this.taskStore, input);
+  }
+
+  async archiveTaskChecklistItem(
+    input: Parameters<OpenPracticeRepository["archiveTaskChecklistItem"]>[0],
+  ): ReturnType<OpenPracticeRepository["archiveTaskChecklistItem"]> {
+    return archiveMemoryTaskChecklistItem(this.taskStore, input);
+  }
+
+  async listTaskComments(
+    firmId: string,
+    options: Parameters<OpenPracticeRepository["listTaskComments"]>[1] = {},
+  ): ReturnType<OpenPracticeRepository["listTaskComments"]> {
+    return listMemoryTaskComments(this.taskStore, firmId, options);
+  }
+
+  async getTaskComment(
+    firmId: string,
+    commentId: string,
+    options: Parameters<OpenPracticeRepository["getTaskComment"]>[2] = {},
+  ): ReturnType<OpenPracticeRepository["getTaskComment"]> {
+    return getMemoryTaskComment(this.taskStore, firmId, commentId, options);
+  }
+
+  async createTaskComment(
+    input: Parameters<OpenPracticeRepository["createTaskComment"]>[0],
+  ): ReturnType<OpenPracticeRepository["createTaskComment"]> {
+    return createMemoryTaskComment(this.taskStore, input);
+  }
+
+  async archiveTaskComment(
+    input: Parameters<OpenPracticeRepository["archiveTaskComment"]>[0],
+  ): ReturnType<OpenPracticeRepository["archiveTaskComment"]> {
+    return archiveMemoryTaskComment(this.taskStore, input);
+  }
+
+  async listTaskDependencies(
+    firmId: string,
+    options: Parameters<OpenPracticeRepository["listTaskDependencies"]>[1] = {},
+  ): ReturnType<OpenPracticeRepository["listTaskDependencies"]> {
+    return listMemoryTaskDependencies(this.taskStore, firmId, options);
+  }
+
+  async getTaskDependency(
+    firmId: string,
+    dependencyId: string,
+    options: Parameters<OpenPracticeRepository["getTaskDependency"]>[2] = {},
+  ): ReturnType<OpenPracticeRepository["getTaskDependency"]> {
+    return getMemoryTaskDependency(this.taskStore, firmId, dependencyId, options);
+  }
+
+  async createTaskDependency(
+    input: Parameters<OpenPracticeRepository["createTaskDependency"]>[0],
+  ): ReturnType<OpenPracticeRepository["createTaskDependency"]> {
+    return createMemoryTaskDependency(this.taskStore, input);
+  }
+
+  async archiveTaskDependency(
+    input: Parameters<OpenPracticeRepository["archiveTaskDependency"]>[0],
+  ): ReturnType<OpenPracticeRepository["archiveTaskDependency"]> {
+    return archiveMemoryTaskDependency(this.taskStore, input);
+  }
+
+  async listTaskTemplates(
+    firmId: string,
+    options: Parameters<OpenPracticeRepository["listTaskTemplates"]>[1] = {},
+  ): ReturnType<OpenPracticeRepository["listTaskTemplates"]> {
+    return listMemoryTaskTemplates(this.taskStore, firmId, options);
+  }
+
+  async getTaskTemplate(
+    firmId: string,
+    templateId: string,
+    options: Parameters<OpenPracticeRepository["getTaskTemplate"]>[2] = {},
+  ): ReturnType<OpenPracticeRepository["getTaskTemplate"]> {
+    return getMemoryTaskTemplate(this.taskStore, firmId, templateId, options);
+  }
+
+  async listTaskTemplateItems(
+    firmId: string,
+    options: Parameters<OpenPracticeRepository["listTaskTemplateItems"]>[1] = {},
+  ): ReturnType<OpenPracticeRepository["listTaskTemplateItems"]> {
+    return listMemoryTaskTemplateItems(this.taskStore, firmId, options);
+  }
+
+  async createTaskTemplate(
+    input: Parameters<OpenPracticeRepository["createTaskTemplate"]>[0],
+  ): ReturnType<OpenPracticeRepository["createTaskTemplate"]> {
+    return createMemoryTaskTemplate(this.taskStore, input);
+  }
+
+  async updateTaskTemplate(
+    input: Parameters<OpenPracticeRepository["updateTaskTemplate"]>[0],
+  ): ReturnType<OpenPracticeRepository["updateTaskTemplate"]> {
+    return updateMemoryTaskTemplate(this.taskStore, input);
+  }
+
+  async archiveTaskTemplate(
+    input: Parameters<OpenPracticeRepository["archiveTaskTemplate"]>[0],
+  ): ReturnType<OpenPracticeRepository["archiveTaskTemplate"]> {
+    return archiveMemoryTaskTemplate(this.taskStore, input);
   }
 
   async listConversationThreads(

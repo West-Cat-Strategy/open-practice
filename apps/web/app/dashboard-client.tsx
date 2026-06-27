@@ -104,7 +104,10 @@ import { ExternalUploadsSection } from "./dashboard/external-uploads-section";
 import { ShareLinksSection } from "./dashboard/share-links-section";
 import {
   TasksSection,
+  type TaskChecklistItemCreatePayload,
+  type TaskCommentCreatePayload,
   type TaskCreatePayload,
+  type TaskDependencyCreatePayload,
   type TaskUpdatePayload,
 } from "./dashboard/tasks-section";
 import { TrustControlsSection } from "./dashboard/trust-controls-section";
@@ -448,6 +451,8 @@ import type {
   StaffReportExportRequestResponse,
   StaffReportingWorkspaceResponse,
   TaskDeadlineWorkbenchResponse,
+  TaskStructuredDetailResponse,
+  TaskTemplatesResponse,
   IntakeVariableProposalsResponse,
   InboundEmailMatterDraft,
   LegalResearchDashboardResponse,
@@ -605,6 +610,7 @@ type DashboardCalendarSchedulingRequest =
   CalendarDashboardResponse["schedulingRequestsByMatterId"][string][number];
 type DashboardCalendarScope = NonNullable<DashboardCalendarEvent["scope"]>;
 type DashboardTaskListResponse = { tasks: TaskDeadlineWorkbenchResponse["tasks"] };
+type DashboardTaskStructureResponse = { structure: TaskStructuredDetailResponse };
 type InboundMatterDraftResponse = {
   status: "drafted";
   message: {
@@ -1020,6 +1026,11 @@ export default function DashboardClient({
   const [taskRows, setTaskRows] = useState<TaskDeadlineWorkbenchResponse["tasks"]>(
     initialTaskWorkbench.tasks,
   );
+  const [taskStructure, setTaskStructure] = useState<TaskStructuredDetailResponse | undefined>();
+  const [taskTemplates, setTaskTemplates] = useState<TaskTemplatesResponse["templates"]>([]);
+  const [taskTemplateItems, setTaskTemplateItems] = useState<
+    TaskTemplatesResponse["templateItems"]
+  >([]);
   const [taskIncludeArchived, setTaskIncludeArchived] = useState(false);
   const [taskActionBusyKey, setTaskActionBusyKey] = useState("");
   const [taskActionStatus, setTaskActionStatus] = useState(
@@ -2472,7 +2483,7 @@ export default function DashboardClient({
 
   async function refreshTaskWorkspace(options: { includeArchived?: boolean } = {}): Promise<void> {
     const includeArchived = options.includeArchived ?? taskIncludeArchived;
-    const [workbenchPayload, taskListPayload] = await Promise.all([
+    const [workbenchPayload, taskListPayload, taskTemplatePayload] = await Promise.all([
       requestDashboardJson<TaskDeadlineWorkbenchResponse>(apiBaseUrl, "/api/tasks/workbench", {
         headers: devHeaders,
       }),
@@ -2483,9 +2494,41 @@ export default function DashboardClient({
           headers: devHeaders,
         },
       ),
+      requestDashboardJson<TaskTemplatesResponse>(apiBaseUrl, "/api/task-templates", {
+        headers: devHeaders,
+      }),
     ]);
     setTaskWorkbench(workbenchPayload);
     setTaskRows(taskListPayload.tasks);
+    setTaskTemplates(taskTemplatePayload.templates);
+    setTaskTemplateItems(taskTemplatePayload.templateItems);
+    if (taskStructure) {
+      await refreshTaskStructure(taskStructure.task.id, { quiet: true });
+    }
+  }
+
+  async function refreshTaskStructure(
+    taskId: string,
+    options: { quiet?: boolean } = {},
+  ): Promise<void> {
+    if (!options.quiet) {
+      setTaskActionBusyKey(`structure:${taskId}`);
+      setTaskActionStatus("Loading task structure...");
+    }
+    try {
+      const payload = await requestDashboardJson<DashboardTaskStructureResponse>(
+        apiBaseUrl,
+        `/api/tasks/${encodeURIComponent(taskId)}/structure`,
+        { headers: devHeaders },
+      );
+      setTaskStructure(payload.structure);
+      if (!options.quiet) setTaskActionStatus("Task structure loaded.");
+    } catch (error) {
+      if (!options.quiet)
+        setTaskActionStatus(`Task structure failed: ${dashboardApiStatus(error)}`);
+    } finally {
+      if (!options.quiet) setTaskActionBusyKey("");
+    }
   }
 
   async function recordMatterLifecycleTransition(): Promise<void> {
@@ -2625,6 +2668,140 @@ export default function DashboardClient({
     } finally {
       setTaskActionBusyKey("");
     }
+  }
+
+  async function runTaskStructureMutation(input: {
+    taskId: string;
+    busyKey: string;
+    status: string;
+    success: string;
+    path: string;
+    method?: "POST" | "PATCH";
+    payload?: unknown;
+  }): Promise<void> {
+    setTaskActionBusyKey(input.busyKey);
+    setTaskActionStatus(input.status);
+    try {
+      await requestDashboardJson(apiBaseUrl, input.path, {
+        method: input.method ?? "PATCH",
+        headers: devHeaders,
+        payload: input.payload ?? {},
+      });
+      await refreshTaskWorkspace();
+      await refreshTaskStructure(input.taskId, { quiet: true });
+      setTaskActionStatus(input.success);
+    } catch (error) {
+      setTaskActionStatus(`Task structure update failed: ${dashboardApiStatus(error)}`);
+    } finally {
+      setTaskActionBusyKey("");
+    }
+  }
+
+  async function createTaskChecklistItem(
+    taskId: string,
+    payload: TaskChecklistItemCreatePayload,
+  ): Promise<void> {
+    await runTaskStructureMutation({
+      taskId,
+      busyKey: `checklist-create:${taskId}`,
+      status: "Adding checklist item...",
+      success: "Checklist item added.",
+      path: `/api/tasks/${encodeURIComponent(taskId)}/checklist-items`,
+      method: "POST",
+      payload,
+    });
+  }
+
+  async function completeTaskChecklistItem(taskId: string, itemId: string): Promise<void> {
+    await runTaskStructureMutation({
+      taskId,
+      busyKey: `checklist-complete:${itemId}`,
+      status: "Completing checklist item...",
+      success: "Checklist item completed.",
+      path: `/api/tasks/${encodeURIComponent(taskId)}/checklist-items/${encodeURIComponent(itemId)}/complete`,
+    });
+  }
+
+  async function reopenTaskChecklistItem(taskId: string, itemId: string): Promise<void> {
+    await runTaskStructureMutation({
+      taskId,
+      busyKey: `checklist-reopen:${itemId}`,
+      status: "Reopening checklist item...",
+      success: "Checklist item reopened.",
+      path: `/api/tasks/${encodeURIComponent(taskId)}/checklist-items/${encodeURIComponent(itemId)}/reopen`,
+    });
+  }
+
+  async function archiveTaskChecklistItem(taskId: string, itemId: string): Promise<void> {
+    await runTaskStructureMutation({
+      taskId,
+      busyKey: `checklist-archive:${itemId}`,
+      status: "Archiving checklist item...",
+      success: "Checklist item archived.",
+      path: `/api/tasks/${encodeURIComponent(taskId)}/checklist-items/${encodeURIComponent(itemId)}/archive`,
+    });
+  }
+
+  async function createTaskComment(
+    taskId: string,
+    payload: TaskCommentCreatePayload,
+  ): Promise<void> {
+    await runTaskStructureMutation({
+      taskId,
+      busyKey: `comment-create:${taskId}`,
+      status: "Adding staff comment...",
+      success: "Staff comment added.",
+      path: `/api/tasks/${encodeURIComponent(taskId)}/comments`,
+      method: "POST",
+      payload,
+    });
+  }
+
+  async function archiveTaskComment(taskId: string, commentId: string): Promise<void> {
+    await runTaskStructureMutation({
+      taskId,
+      busyKey: `comment-archive:${commentId}`,
+      status: "Archiving staff comment...",
+      success: "Staff comment archived.",
+      path: `/api/tasks/${encodeURIComponent(taskId)}/comments/${encodeURIComponent(commentId)}/archive`,
+    });
+  }
+
+  async function createTaskDependency(
+    taskId: string,
+    payload: TaskDependencyCreatePayload,
+  ): Promise<void> {
+    await runTaskStructureMutation({
+      taskId,
+      busyKey: `dependency-create:${taskId}`,
+      status: "Linking dependency...",
+      success: "Task dependency linked.",
+      path: `/api/tasks/${encodeURIComponent(taskId)}/dependencies`,
+      method: "POST",
+      payload,
+    });
+  }
+
+  async function archiveTaskDependency(taskId: string, dependencyId: string): Promise<void> {
+    await runTaskStructureMutation({
+      taskId,
+      busyKey: `dependency-archive:${dependencyId}`,
+      status: "Archiving dependency...",
+      success: "Task dependency archived.",
+      path: `/api/tasks/${encodeURIComponent(taskId)}/dependencies/${encodeURIComponent(dependencyId)}/archive`,
+    });
+  }
+
+  async function applyTaskTemplate(taskId: string, templateId: string): Promise<void> {
+    await runTaskStructureMutation({
+      taskId,
+      busyKey: `template-apply:${taskId}`,
+      status: "Applying task template...",
+      success: "Task template applied.",
+      path: `/api/tasks/${encodeURIComponent(taskId)}/apply-template`,
+      method: "POST",
+      payload: { templateId },
+    });
   }
 
   async function refreshQueueLane(): Promise<void> {
@@ -6678,15 +6855,44 @@ export default function DashboardClient({
                   includeArchived={taskIncludeArchived}
                   matters={matters}
                   onArchiveTask={(taskId) => void archiveTask(taskId)}
+                  onArchiveTaskChecklistItem={(taskId, itemId) =>
+                    void archiveTaskChecklistItem(taskId, itemId)
+                  }
+                  onArchiveTaskComment={(taskId, commentId) =>
+                    void archiveTaskComment(taskId, commentId)
+                  }
+                  onArchiveTaskDependency={(taskId, dependencyId) =>
+                    void archiveTaskDependency(taskId, dependencyId)
+                  }
+                  onApplyTaskTemplate={(taskId, templateId) =>
+                    void applyTaskTemplate(taskId, templateId)
+                  }
                   onCompleteTask={(taskId) => void completeTask(taskId)}
+                  onCompleteTaskChecklistItem={(taskId, itemId) =>
+                    void completeTaskChecklistItem(taskId, itemId)
+                  }
+                  onCreateTaskChecklistItem={(taskId, payload) =>
+                    void createTaskChecklistItem(taskId, payload)
+                  }
+                  onCreateTaskComment={(taskId, payload) => void createTaskComment(taskId, payload)}
+                  onCreateTaskDependency={(taskId, payload) =>
+                    void createTaskDependency(taskId, payload)
+                  }
                   onCreateTask={(payload) => void createTask(payload)}
                   onIncludeArchivedChange={(includeArchived) =>
                     void updateTaskArchivedVisibility(includeArchived)
                   }
                   onReopenTask={(taskId) => void reopenTask(taskId)}
+                  onReopenTaskChecklistItem={(taskId, itemId) =>
+                    void reopenTaskChecklistItem(taskId, itemId)
+                  }
                   onSelectMatter={selectMatter}
+                  onSelectTaskStructure={(taskId) => void refreshTaskStructure(taskId)}
                   onUpdateTask={(taskId, payload) => void updateTask(taskId, payload)}
                   status={taskActionStatus}
+                  taskStructure={taskStructure}
+                  taskTemplateItems={taskTemplateItems}
+                  taskTemplates={taskTemplates}
                   taskWorkbench={taskWorkbench}
                   tasks={taskRows}
                   users={overview.users}
@@ -7735,15 +7941,44 @@ export default function DashboardClient({
                   includeArchived={taskIncludeArchived}
                   matters={matters}
                   onArchiveTask={(taskId) => void archiveTask(taskId)}
+                  onArchiveTaskChecklistItem={(taskId, itemId) =>
+                    void archiveTaskChecklistItem(taskId, itemId)
+                  }
+                  onArchiveTaskComment={(taskId, commentId) =>
+                    void archiveTaskComment(taskId, commentId)
+                  }
+                  onArchiveTaskDependency={(taskId, dependencyId) =>
+                    void archiveTaskDependency(taskId, dependencyId)
+                  }
+                  onApplyTaskTemplate={(taskId, templateId) =>
+                    void applyTaskTemplate(taskId, templateId)
+                  }
                   onCompleteTask={(taskId) => void completeTask(taskId)}
+                  onCompleteTaskChecklistItem={(taskId, itemId) =>
+                    void completeTaskChecklistItem(taskId, itemId)
+                  }
+                  onCreateTaskChecklistItem={(taskId, payload) =>
+                    void createTaskChecklistItem(taskId, payload)
+                  }
+                  onCreateTaskComment={(taskId, payload) => void createTaskComment(taskId, payload)}
+                  onCreateTaskDependency={(taskId, payload) =>
+                    void createTaskDependency(taskId, payload)
+                  }
                   onCreateTask={(payload) => void createTask(payload)}
                   onIncludeArchivedChange={(includeArchived) =>
                     void updateTaskArchivedVisibility(includeArchived)
                   }
                   onReopenTask={(taskId) => void reopenTask(taskId)}
+                  onReopenTaskChecklistItem={(taskId, itemId) =>
+                    void reopenTaskChecklistItem(taskId, itemId)
+                  }
                   onSelectMatter={selectMatter}
+                  onSelectTaskStructure={(taskId) => void refreshTaskStructure(taskId)}
                   onUpdateTask={(taskId, payload) => void updateTask(taskId, payload)}
                   status={taskActionStatus}
+                  taskStructure={taskStructure}
+                  taskTemplateItems={taskTemplateItems}
+                  taskTemplates={taskTemplates}
                   taskWorkbench={taskWorkbench}
                   tasks={taskRows}
                   users={overview.users}

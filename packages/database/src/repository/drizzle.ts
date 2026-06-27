@@ -298,13 +298,32 @@ import {
   updateDrizzleDraftAssistRecord,
 } from "./drafts/drizzle.js";
 import {
+  archiveDrizzleTaskChecklistItem,
+  archiveDrizzleTaskComment,
   archiveDrizzleTaskDeadline,
+  archiveDrizzleTaskDependency,
+  archiveDrizzleTaskTemplate,
   completeDrizzleTaskDeadline,
+  createDrizzleTaskChecklistItem,
+  createDrizzleTaskComment,
   createDrizzleTaskDeadline,
+  createDrizzleTaskDependency,
+  createDrizzleTaskTemplate,
+  getDrizzleTaskChecklistItem,
+  getDrizzleTaskComment,
   getDrizzleTaskDeadline,
+  getDrizzleTaskDependency,
+  getDrizzleTaskTemplate,
+  listDrizzleTaskChecklistItems,
+  listDrizzleTaskComments,
   listDrizzleTaskDeadlines,
+  listDrizzleTaskDependencies,
+  listDrizzleTaskTemplateItems,
+  listDrizzleTaskTemplates,
   reopenDrizzleTaskDeadline,
+  updateDrizzleTaskChecklistItem,
   updateDrizzleTaskDeadline,
+  updateDrizzleTaskTemplate,
 } from "./tasks/drizzle.js";
 import {
   createDrizzleConversationMessage,
@@ -807,6 +826,133 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     input: Parameters<OpenPracticeRepository["archiveTaskDeadline"]>[0],
   ): Promise<TaskDeadlineRecord | undefined> {
     return archiveDrizzleTaskDeadline(this.db, input);
+  }
+
+  async listTaskChecklistItems(
+    firmId: string,
+    options: Parameters<OpenPracticeRepository["listTaskChecklistItems"]>[1] = {},
+  ): ReturnType<OpenPracticeRepository["listTaskChecklistItems"]> {
+    return listDrizzleTaskChecklistItems(this.db, firmId, options);
+  }
+
+  async getTaskChecklistItem(
+    firmId: string,
+    itemId: string,
+    options: Parameters<OpenPracticeRepository["getTaskChecklistItem"]>[2] = {},
+  ): ReturnType<OpenPracticeRepository["getTaskChecklistItem"]> {
+    return getDrizzleTaskChecklistItem(this.db, firmId, itemId, options);
+  }
+
+  async createTaskChecklistItem(
+    input: Parameters<OpenPracticeRepository["createTaskChecklistItem"]>[0],
+  ): ReturnType<OpenPracticeRepository["createTaskChecklistItem"]> {
+    return createDrizzleTaskChecklistItem(this.db, input);
+  }
+
+  async updateTaskChecklistItem(
+    input: Parameters<OpenPracticeRepository["updateTaskChecklistItem"]>[0],
+  ): ReturnType<OpenPracticeRepository["updateTaskChecklistItem"]> {
+    return updateDrizzleTaskChecklistItem(this.db, input);
+  }
+
+  async archiveTaskChecklistItem(
+    input: Parameters<OpenPracticeRepository["archiveTaskChecklistItem"]>[0],
+  ): ReturnType<OpenPracticeRepository["archiveTaskChecklistItem"]> {
+    return archiveDrizzleTaskChecklistItem(this.db, input);
+  }
+
+  async listTaskComments(
+    firmId: string,
+    options: Parameters<OpenPracticeRepository["listTaskComments"]>[1] = {},
+  ): ReturnType<OpenPracticeRepository["listTaskComments"]> {
+    return listDrizzleTaskComments(this.db, firmId, options);
+  }
+
+  async getTaskComment(
+    firmId: string,
+    commentId: string,
+    options: Parameters<OpenPracticeRepository["getTaskComment"]>[2] = {},
+  ): ReturnType<OpenPracticeRepository["getTaskComment"]> {
+    return getDrizzleTaskComment(this.db, firmId, commentId, options);
+  }
+
+  async createTaskComment(
+    input: Parameters<OpenPracticeRepository["createTaskComment"]>[0],
+  ): ReturnType<OpenPracticeRepository["createTaskComment"]> {
+    return createDrizzleTaskComment(this.db, input);
+  }
+
+  async archiveTaskComment(
+    input: Parameters<OpenPracticeRepository["archiveTaskComment"]>[0],
+  ): ReturnType<OpenPracticeRepository["archiveTaskComment"]> {
+    return archiveDrizzleTaskComment(this.db, input);
+  }
+
+  async listTaskDependencies(
+    firmId: string,
+    options: Parameters<OpenPracticeRepository["listTaskDependencies"]>[1] = {},
+  ): ReturnType<OpenPracticeRepository["listTaskDependencies"]> {
+    return listDrizzleTaskDependencies(this.db, firmId, options);
+  }
+
+  async getTaskDependency(
+    firmId: string,
+    dependencyId: string,
+    options: Parameters<OpenPracticeRepository["getTaskDependency"]>[2] = {},
+  ): ReturnType<OpenPracticeRepository["getTaskDependency"]> {
+    return getDrizzleTaskDependency(this.db, firmId, dependencyId, options);
+  }
+
+  async createTaskDependency(
+    input: Parameters<OpenPracticeRepository["createTaskDependency"]>[0],
+  ): ReturnType<OpenPracticeRepository["createTaskDependency"]> {
+    return createDrizzleTaskDependency(this.db, input);
+  }
+
+  async archiveTaskDependency(
+    input: Parameters<OpenPracticeRepository["archiveTaskDependency"]>[0],
+  ): ReturnType<OpenPracticeRepository["archiveTaskDependency"]> {
+    return archiveDrizzleTaskDependency(this.db, input);
+  }
+
+  async listTaskTemplates(
+    firmId: string,
+    options: Parameters<OpenPracticeRepository["listTaskTemplates"]>[1] = {},
+  ): ReturnType<OpenPracticeRepository["listTaskTemplates"]> {
+    return listDrizzleTaskTemplates(this.db, firmId, options);
+  }
+
+  async getTaskTemplate(
+    firmId: string,
+    templateId: string,
+    options: Parameters<OpenPracticeRepository["getTaskTemplate"]>[2] = {},
+  ): ReturnType<OpenPracticeRepository["getTaskTemplate"]> {
+    return getDrizzleTaskTemplate(this.db, firmId, templateId, options);
+  }
+
+  async listTaskTemplateItems(
+    firmId: string,
+    options: Parameters<OpenPracticeRepository["listTaskTemplateItems"]>[1] = {},
+  ): ReturnType<OpenPracticeRepository["listTaskTemplateItems"]> {
+    return listDrizzleTaskTemplateItems(this.db, firmId, options);
+  }
+
+  async createTaskTemplate(
+    input: Parameters<OpenPracticeRepository["createTaskTemplate"]>[0],
+  ): ReturnType<OpenPracticeRepository["createTaskTemplate"]> {
+    return createDrizzleTaskTemplate(this.db, input);
+  }
+
+  async updateTaskTemplate(
+    input: Parameters<OpenPracticeRepository["updateTaskTemplate"]>[0],
+  ): ReturnType<OpenPracticeRepository["updateTaskTemplate"]> {
+    return updateDrizzleTaskTemplate(this.db, input);
+  }
+
+  async archiveTaskTemplate(
+    input: Parameters<OpenPracticeRepository["archiveTaskTemplate"]>[0],
+  ): ReturnType<OpenPracticeRepository["archiveTaskTemplate"]> {
+    return archiveDrizzleTaskTemplate(this.db, input);
   }
 
   async listConversationThreads(

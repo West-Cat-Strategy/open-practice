@@ -426,6 +426,89 @@ export interface TaskDeadlineProjection extends TaskDeadlineRecord {
   bucket: TaskDeadlineBucket;
 }
 
+export type TaskChecklistItemStatus = "open" | "completed" | "blocked";
+
+export interface TaskChecklistItemRecord {
+  id: string;
+  firmId: string;
+  matterId: string;
+  taskId: string;
+  title: string;
+  status: TaskChecklistItemStatus;
+  assignedToUserId?: string;
+  dueAt?: string;
+  sortOrder: number;
+  completedAt?: string;
+  completedByUserId?: string;
+  archivedAt?: string;
+  archivedByUserId?: string;
+  createdAt: string;
+  createdByUserId?: string;
+  updatedAt: string;
+  updatedByUserId?: string;
+  version: number;
+}
+
+export interface TaskCommentRecord {
+  id: string;
+  firmId: string;
+  matterId: string;
+  taskId: string;
+  body: string;
+  archivedAt?: string;
+  archivedByUserId?: string;
+  createdAt: string;
+  createdByUserId: string;
+}
+
+export type TaskDependencyType = "blocks" | "relates_to";
+
+export interface TaskDependencyRecord {
+  id: string;
+  firmId: string;
+  matterId: string;
+  taskId: string;
+  dependsOnTaskId: string;
+  dependencyType: TaskDependencyType;
+  archivedAt?: string;
+  archivedByUserId?: string;
+  createdAt: string;
+  createdByUserId?: string;
+}
+
+export type TaskTemplateStatus = "active" | "archived";
+
+export interface TaskTemplateRecord {
+  id: string;
+  firmId: string;
+  name: string;
+  description?: string;
+  defaultTitle?: string;
+  defaultPriority: TaskPriority;
+  status: TaskTemplateStatus;
+  createdAt: string;
+  createdByUserId?: string;
+  updatedAt: string;
+  updatedByUserId?: string;
+  archivedAt?: string;
+  archivedByUserId?: string;
+  version: number;
+}
+
+export interface TaskTemplateItemRecord {
+  id: string;
+  firmId: string;
+  templateId: string;
+  title: string;
+  sortOrder: number;
+  defaultAssigneeUserId?: string;
+  dueOffsetDays?: number;
+  createdAt: string;
+  createdByUserId?: string;
+  updatedAt: string;
+  updatedByUserId?: string;
+}
+
 export type ConversationThreadStatus = "open" | "closed" | "revoked";
 export type ConversationThreadExportState = "not_requested" | "requested" | "exported";
 export type ConversationThreadNotificationBoundary = "disabled" | "internal_only";

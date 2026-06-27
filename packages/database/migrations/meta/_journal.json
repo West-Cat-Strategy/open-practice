@@ -505,6 +505,13 @@
       "when": 1781568015000,
       "tag": "0071_appointment_booking_tentative_holds",
       "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1782515627167,
+      "tag": "0072_structured_task_management",
+      "breakpoints": true
     }
   ]
 }

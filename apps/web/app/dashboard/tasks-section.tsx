@@ -1,5 +1,11 @@
 import { useMemo, useState } from "react";
-import type { MatterSummary, PracticeOverview, TaskDeadlineWorkbenchResponse } from "../types";
+import type {
+  MatterSummary,
+  PracticeOverview,
+  TaskDeadlineWorkbenchResponse,
+  TaskStructuredDetailResponse,
+  TaskTemplatesResponse,
+} from "../types";
 
 type TaskRow = TaskDeadlineWorkbenchResponse["tasks"][number];
 type TaskSuggestion = TaskDeadlineWorkbenchResponse["suggestedFollowUps"][number];
@@ -7,6 +13,11 @@ type TaskPriority = TaskRow["priority"];
 type TaskStatus = TaskRow["status"];
 type TaskBucket = TaskRow["bucket"];
 type TaskSourceType = NonNullable<TaskRow["sourceType"]>;
+type TaskChecklistItem = TaskStructuredDetailResponse["checklistItems"][number];
+type TaskComment = TaskStructuredDetailResponse["comments"][number];
+type TaskDependency = TaskStructuredDetailResponse["dependencies"][number];
+type TaskTemplate = TaskTemplatesResponse["templates"][number];
+type TaskTemplateItem = TaskTemplatesResponse["templateItems"][number];
 
 export interface TaskCreatePayload {
   matterId: string;
@@ -29,6 +40,22 @@ export interface TaskUpdatePayload {
   sourceId?: string | null;
 }
 
+export interface TaskChecklistItemCreatePayload {
+  title: string;
+  assignedToUserId?: string;
+  dueAt?: string;
+  sortOrder?: number;
+}
+
+export interface TaskCommentCreatePayload {
+  body: string;
+}
+
+export interface TaskDependencyCreatePayload {
+  dependsOnTaskId: string;
+  dependencyType: TaskDependency["dependencyType"];
+}
+
 interface TaskFormState {
   matterId: string;
   title: string;
@@ -48,13 +75,26 @@ export interface TasksSectionProps {
   includeArchived: boolean;
   matters: MatterSummary[];
   onArchiveTask: (taskId: string) => void;
+  onArchiveTaskChecklistItem: (taskId: string, itemId: string) => void;
+  onArchiveTaskComment: (taskId: string, commentId: string) => void;
+  onArchiveTaskDependency: (taskId: string, dependencyId: string) => void;
+  onApplyTaskTemplate: (taskId: string, templateId: string) => void;
+  onCompleteTaskChecklistItem: (taskId: string, itemId: string) => void;
+  onCreateTaskChecklistItem: (taskId: string, payload: TaskChecklistItemCreatePayload) => void;
+  onCreateTaskComment: (taskId: string, payload: TaskCommentCreatePayload) => void;
+  onCreateTaskDependency: (taskId: string, payload: TaskDependencyCreatePayload) => void;
   onCompleteTask: (taskId: string) => void;
   onCreateTask: (payload: TaskCreatePayload) => void;
   onIncludeArchivedChange: (includeArchived: boolean) => void;
   onReopenTask: (taskId: string) => void;
+  onReopenTaskChecklistItem: (taskId: string, itemId: string) => void;
   onSelectMatter: (matterId: string) => void;
+  onSelectTaskStructure: (taskId: string) => void;
   onUpdateTask: (taskId: string, payload: TaskUpdatePayload) => void;
   status: string;
+  taskStructure?: TaskStructuredDetailResponse;
+  taskTemplateItems: TaskTemplateItem[];
+  taskTemplates: TaskTemplate[];
   taskWorkbench: TaskDeadlineWorkbenchResponse;
   tasks: TaskRow[];
   users: PracticeOverview["users"];
@@ -178,13 +218,26 @@ export function TasksSection({
   includeArchived,
   matters,
   onArchiveTask,
+  onArchiveTaskChecklistItem,
+  onArchiveTaskComment,
+  onArchiveTaskDependency,
+  onApplyTaskTemplate,
   onCompleteTask,
+  onCompleteTaskChecklistItem,
+  onCreateTaskChecklistItem,
+  onCreateTaskComment,
+  onCreateTaskDependency,
   onCreateTask,
   onIncludeArchivedChange,
   onReopenTask,
+  onReopenTaskChecklistItem,
   onSelectMatter,
+  onSelectTaskStructure,
   onUpdateTask,
   status,
+  taskStructure,
+  taskTemplateItems,
+  taskTemplates,
   taskWorkbench,
   tasks,
   users,
@@ -208,6 +261,14 @@ export function TasksSection({
   const [priorityFilter, setPriorityFilter] = useState<TaskPriority | "all">("all");
   const [editingTaskId, setEditingTaskId] = useState("");
   const [form, setForm] = useState<TaskFormState>(() => emptyForm(defaultMatterId));
+  const [checklistTitle, setChecklistTitle] = useState("");
+  const [checklistAssignee, setChecklistAssignee] = useState("");
+  const [checklistDueDate, setChecklistDueDate] = useState("");
+  const [commentBody, setCommentBody] = useState("");
+  const [dependencyTaskId, setDependencyTaskId] = useState("");
+  const [dependencyType, setDependencyType] =
+    useState<TaskDependencyCreatePayload["dependencyType"]>("blocks");
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
 
   const visibleTasks = useMemo(
     () =>
@@ -245,6 +306,28 @@ export function TasksSection({
   const formTitle = editingTask ? "Edit task" : "Create task";
   const createDisabled = busyKey === "create" || !form.matterId || form.title.trim().length === 0;
   const suggestedFollowUps = taskWorkbench.suggestedFollowUps.slice(0, 6);
+  const selectedTask = taskStructure?.task;
+  const sameMatterTasks = useMemo(
+    () =>
+      selectedTask
+        ? tasks.filter(
+            (task) =>
+              task.matterId === selectedTask.matterId &&
+              task.id !== selectedTask.id &&
+              (includeArchived || task.status !== "archived"),
+          )
+        : [],
+    [includeArchived, selectedTask, tasks],
+  );
+  const templateItemsByTemplateId = useMemo(() => {
+    const grouped = new Map<string, TaskTemplateItem[]>();
+    for (const item of taskTemplateItems) {
+      const items = grouped.get(item.templateId) ?? [];
+      items.push(item);
+      grouped.set(item.templateId, items);
+    }
+    return grouped;
+  }, [taskTemplateItems]);
 
   function resetForm(): void {
     setEditingTaskId("");
@@ -261,6 +344,38 @@ export function TasksSection({
 
   function createFromSuggestion(suggestion: TaskSuggestion): void {
     onCreateTask(createPayloadFromForm(formFromSuggestion(suggestion)));
+  }
+
+  function submitChecklistItem(): void {
+    if (!selectedTask || checklistTitle.trim().length === 0) return;
+    onCreateTaskChecklistItem(selectedTask.id, {
+      title: checklistTitle.trim(),
+      ...(checklistAssignee ? { assignedToUserId: checklistAssignee } : {}),
+      ...(dateInputToIso(checklistDueDate) ? { dueAt: dateInputToIso(checklistDueDate) } : {}),
+    });
+    setChecklistTitle("");
+    setChecklistAssignee("");
+    setChecklistDueDate("");
+  }
+
+  function submitComment(): void {
+    if (!selectedTask || commentBody.trim().length === 0) return;
+    onCreateTaskComment(selectedTask.id, { body: commentBody.trim() });
+    setCommentBody("");
+  }
+
+  function submitDependency(): void {
+    if (!selectedTask || !dependencyTaskId) return;
+    onCreateTaskDependency(selectedTask.id, {
+      dependsOnTaskId: dependencyTaskId,
+      dependencyType,
+    });
+    setDependencyTaskId("");
+  }
+
+  function applyTemplate(): void {
+    if (!selectedTask || !selectedTemplateId) return;
+    onApplyTaskTemplate(selectedTask.id, selectedTemplateId);
   }
 
   return (
@@ -525,6 +640,14 @@ export function TasksSection({
                 >
                   Matter
                 </button>
+                <button
+                  className="secondary-button compact-button row-button"
+                  disabled={busyKey === `structure:${task.id}`}
+                  onClick={() => onSelectTaskStructure(task.id)}
+                  type="button"
+                >
+                  {busyKey === `structure:${task.id}` ? "Loading" : "Structure"}
+                </button>
                 {task.status === "completed" ? (
                   <button
                     className="secondary-button compact-button row-button"
@@ -560,6 +683,273 @@ export function TasksSection({
           <p className="inline-empty">No tasks match the filters.</p>
         ) : null}
       </div>
+
+      <div className="section-title">
+        <h3>Structured detail</h3>
+        {selectedTask ? <span>{selectedTask.title}</span> : <span>Select a task</span>}
+      </div>
+      {taskStructure && selectedTask ? (
+        <div className="party-list queue-section-list task-structure-panel">
+          <div className="detail-grid queue-summary-grid">
+            <div>
+              <span className="field-label">Checklist</span>
+              <strong>{taskStructure.checklistProgress.percentComplete}%</strong>
+              <small>
+                {taskStructure.checklistProgress.completed}/{taskStructure.checklistProgress.total}{" "}
+                done
+              </small>
+            </div>
+            <div>
+              <span className="field-label">Blockers</span>
+              <strong>{taskStructure.dependencySummary.blockedByOpenTaskIds.length}</strong>
+              <small>{taskStructure.dependencySummary.blockingTaskIds.length} linked</small>
+            </div>
+            <div>
+              <span className="field-label">Staff comments</span>
+              <strong>{taskStructure.commentSummary.count}</strong>
+              <small>{compactDate(taskStructure.commentSummary.latestCreatedAt)}</small>
+            </div>
+            <div>
+              <span className="field-label">Templates</span>
+              <strong>{taskTemplates.length}</strong>
+              <small>Firm scoped</small>
+            </div>
+          </div>
+
+          <div className="first-matter-form-grid task-editor-grid">
+            <label>
+              <span className="field-label">Checklist item</span>
+              <input
+                value={checklistTitle}
+                onChange={(event) => setChecklistTitle(event.target.value)}
+              />
+            </label>
+            <label>
+              <span className="field-label">Assignee</span>
+              <select
+                value={checklistAssignee}
+                onChange={(event) => setChecklistAssignee(event.target.value)}
+              >
+                <option value="">Unassigned</option>
+                {staffUsers.map((user) => (
+                  <option key={user.id} value={user.id}>
+                    {user.displayName}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span className="field-label">Due date</span>
+              <input
+                type="date"
+                value={checklistDueDate}
+                onChange={(event) => setChecklistDueDate(event.target.value)}
+              />
+            </label>
+            <button
+              className="secondary-button compact-button"
+              disabled={
+                checklistTitle.trim().length === 0 ||
+                busyKey === `checklist-create:${selectedTask.id}`
+              }
+              onClick={submitChecklistItem}
+              type="button"
+            >
+              {busyKey === `checklist-create:${selectedTask.id}` ? "Adding" : "Add item"}
+            </button>
+          </div>
+
+          <div className="party-list queue-section-list">
+            {taskStructure.checklistItems.map((item: TaskChecklistItem) => (
+              <div className="party-row queue-item-row" key={item.id}>
+                <span>
+                  <strong>{item.title}</strong>
+                  <small>
+                    {toTitleCase(item.status)} ·{" "}
+                    {item.assignedToUserId
+                      ? (usersById.get(item.assignedToUserId) ?? item.assignedToUserId)
+                      : "Unassigned"}{" "}
+                    · {compactDate(item.dueAt)}
+                  </small>
+                </span>
+                <span className="queue-row-actions row-actions">
+                  {item.status === "completed" ? (
+                    <button
+                      className="secondary-button compact-button row-button"
+                      disabled={busyKey === `checklist-reopen:${item.id}`}
+                      onClick={() => onReopenTaskChecklistItem(selectedTask.id, item.id)}
+                      type="button"
+                    >
+                      {busyKey === `checklist-reopen:${item.id}` ? "Reopening" : "Reopen"}
+                    </button>
+                  ) : (
+                    <button
+                      className="secondary-button compact-button row-button"
+                      disabled={busyKey === `checklist-complete:${item.id}`}
+                      onClick={() => onCompleteTaskChecklistItem(selectedTask.id, item.id)}
+                      type="button"
+                    >
+                      {busyKey === `checklist-complete:${item.id}` ? "Completing" : "Complete"}
+                    </button>
+                  )}
+                  <button
+                    className="secondary-button compact-button row-button"
+                    disabled={busyKey === `checklist-archive:${item.id}`}
+                    onClick={() => onArchiveTaskChecklistItem(selectedTask.id, item.id)}
+                    type="button"
+                  >
+                    {busyKey === `checklist-archive:${item.id}` ? "Archiving" : "Archive"}
+                  </button>
+                </span>
+              </div>
+            ))}
+            {taskStructure.checklistItems.length === 0 ? (
+              <p className="inline-empty">No checklist items.</p>
+            ) : null}
+          </div>
+
+          <div className="first-matter-form-grid task-editor-grid">
+            <label>
+              <span className="field-label">Dependency</span>
+              <select
+                value={dependencyTaskId}
+                onChange={(event) => setDependencyTaskId(event.target.value)}
+              >
+                <option value="">Select task</option>
+                {sameMatterTasks.map((task) => (
+                  <option key={task.id} value={task.id}>
+                    {task.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span className="field-label">Type</span>
+              <select
+                value={dependencyType}
+                onChange={(event) =>
+                  setDependencyType(
+                    event.target.value as TaskDependencyCreatePayload["dependencyType"],
+                  )
+                }
+              >
+                <option value="blocks">Blocks</option>
+                <option value="relates_to">Relates to</option>
+              </select>
+            </label>
+            <button
+              className="secondary-button compact-button"
+              disabled={!dependencyTaskId || busyKey === `dependency-create:${selectedTask.id}`}
+              onClick={submitDependency}
+              type="button"
+            >
+              {busyKey === `dependency-create:${selectedTask.id}` ? "Linking" : "Link"}
+            </button>
+          </div>
+
+          <div className="party-list queue-section-list">
+            {taskStructure.dependencies.map((dependency: TaskDependency) => (
+              <div className="party-row queue-item-row" key={dependency.id}>
+                <span>
+                  <strong>{toTitleCase(dependency.dependencyType)}</strong>
+                  <small>
+                    {tasks.find((task) => task.id === dependency.dependsOnTaskId)?.title ??
+                      dependency.dependsOnTaskId}
+                  </small>
+                </span>
+                <span className="queue-row-actions row-actions">
+                  <button
+                    className="secondary-button compact-button row-button"
+                    disabled={busyKey === `dependency-archive:${dependency.id}`}
+                    onClick={() => onArchiveTaskDependency(selectedTask.id, dependency.id)}
+                    type="button"
+                  >
+                    {busyKey === `dependency-archive:${dependency.id}` ? "Archiving" : "Archive"}
+                  </button>
+                </span>
+              </div>
+            ))}
+            {taskStructure.dependencies.length === 0 ? (
+              <p className="inline-empty">No dependencies.</p>
+            ) : null}
+          </div>
+
+          <div className="first-matter-form-grid task-editor-grid">
+            <label>
+              <span className="field-label">Staff comment</span>
+              <textarea
+                rows={3}
+                value={commentBody}
+                onChange={(event) => setCommentBody(event.target.value)}
+              />
+            </label>
+            <button
+              className="secondary-button compact-button"
+              disabled={
+                commentBody.trim().length === 0 || busyKey === `comment-create:${selectedTask.id}`
+              }
+              onClick={submitComment}
+              type="button"
+            >
+              {busyKey === `comment-create:${selectedTask.id}` ? "Adding" : "Add comment"}
+            </button>
+          </div>
+
+          <div className="party-list queue-section-list">
+            {taskStructure.comments.map((comment: TaskComment) => (
+              <div className="party-row queue-item-row" key={comment.id}>
+                <span>
+                  <strong>
+                    {usersById.get(comment.createdByUserId) ?? comment.createdByUserId}
+                  </strong>
+                  <small>{compactDate(comment.createdAt)}</small>
+                  <small>{comment.body}</small>
+                </span>
+                <span className="queue-row-actions row-actions">
+                  <button
+                    className="secondary-button compact-button row-button"
+                    disabled={busyKey === `comment-archive:${comment.id}`}
+                    onClick={() => onArchiveTaskComment(selectedTask.id, comment.id)}
+                    type="button"
+                  >
+                    {busyKey === `comment-archive:${comment.id}` ? "Archiving" : "Archive"}
+                  </button>
+                </span>
+              </div>
+            ))}
+            {taskStructure.comments.length === 0 ? (
+              <p className="inline-empty">No staff comments.</p>
+            ) : null}
+          </div>
+
+          <div className="first-matter-form-grid task-editor-grid">
+            <label>
+              <span className="field-label">Template</span>
+              <select
+                value={selectedTemplateId}
+                onChange={(event) => setSelectedTemplateId(event.target.value)}
+              >
+                <option value="">Select template</option>
+                {taskTemplates.map((template) => (
+                  <option key={template.id} value={template.id}>
+                    {template.name} ({templateItemsByTemplateId.get(template.id)?.length ?? 0})
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              className="secondary-button compact-button"
+              disabled={!selectedTemplateId || busyKey === `template-apply:${selectedTask.id}`}
+              onClick={applyTemplate}
+              type="button"
+            >
+              {busyKey === `template-apply:${selectedTask.id}` ? "Applying" : "Apply"}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <p className="inline-empty">No structured task selected.</p>
+      )}
 
       <div className="section-title">
         <h3>Suggested follow-ups</h3>

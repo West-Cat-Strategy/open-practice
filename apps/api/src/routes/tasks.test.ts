@@ -569,4 +569,193 @@ describe("task routes", () => {
 
     expect(response.statusCode).toBe(403);
   });
+
+  it("manages structured task detail with staff-only comments and audit-safe metadata", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({
+      repository,
+      user: user("licensee", ["matter-001"]),
+    });
+
+    const templateResponse = await server.inject({
+      method: "POST",
+      url: "/api/task-templates",
+      payload: {
+        name: "Synthetic hearing prep",
+        defaultTitle: "Synthetic hearing task",
+        defaultPriority: "high",
+        items: [{ title: "Synthetic template checklist private title", dueOffsetDays: 1 }],
+      },
+    });
+    expect(templateResponse.statusCode).toBe(201);
+    const template = templateResponse.json<{ template: { id: string } }>().template;
+
+    const checklistResponse = await server.inject({
+      method: "POST",
+      url: "/api/tasks/task-deadline-001/checklist-items",
+      payload: {
+        title: "Synthetic checklist private title",
+        assignedToUserId: "user-licensee",
+        dueAt: "2026-05-03T18:00:00.000Z",
+      },
+    });
+    expect(checklistResponse.statusCode).toBe(201);
+    const checklistItem = checklistResponse.json<{ checklistItem: { id: string } }>().checklistItem;
+
+    const completeChecklistResponse = await server.inject({
+      method: "PATCH",
+      url: `/api/tasks/task-deadline-001/checklist-items/${checklistItem.id}/complete`,
+      payload: {},
+    });
+    expect(completeChecklistResponse.statusCode).toBe(200);
+
+    const commentResponse = await server.inject({
+      method: "POST",
+      url: "/api/tasks/task-deadline-001/comments",
+      payload: { body: "Synthetic staff-only comment body" },
+    });
+    expect(commentResponse.statusCode).toBe(201);
+    expect(commentResponse.json()).toMatchObject({
+      comment: {
+        taskId: "task-deadline-001",
+        body: "Synthetic staff-only comment body",
+      },
+    });
+
+    const dependencyResponse = await server.inject({
+      method: "POST",
+      url: "/api/tasks/task-deadline-001/dependencies",
+      payload: { dependsOnTaskId: "task-deadline-002", dependencyType: "blocks" },
+    });
+    expect(dependencyResponse.statusCode).toBe(201);
+
+    const applyResponse = await server.inject({
+      method: "POST",
+      url: "/api/tasks/task-deadline-001/apply-template",
+      payload: { templateId: template.id },
+    });
+    expect(applyResponse.statusCode).toBe(200);
+    expect(applyResponse.json()).toMatchObject({
+      createdChecklistItemIds: expect.arrayContaining([expect.any(String)]),
+    });
+
+    const structureResponse = await server.inject({
+      method: "GET",
+      url: "/api/tasks/task-deadline-001/structure",
+    });
+    expect(structureResponse.statusCode).toBe(200);
+    expect(structureResponse.json()).toMatchObject({
+      structure: {
+        task: { id: "task-deadline-001", matterId: "matter-001" },
+        checklistProgress: { completed: 1, total: 2 },
+        dependencySummary: {
+          blocks: 1,
+          blockingTaskIds: ["task-deadline-002"],
+        },
+        commentSummary: { count: 1 },
+        structureBoundary: {
+          staffOnlyComments: true,
+          clientVisible: false,
+          automaticDeadlineMutation: false,
+          providerSync: false,
+        },
+      },
+    });
+
+    const audit = await repository.listAuditEvents("firm-west-legal");
+    const serializedAudit = JSON.stringify(audit.events);
+    expect(audit.valid).toBe(true);
+    expect(audit.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          action: "task.checklist_item.created",
+          metadata: expect.objectContaining({
+            taskId: "task-deadline-001",
+            matterId: "matter-001",
+            checklistItemId: checklistItem.id,
+            assignedToUserId: "user-licensee",
+          }),
+        }),
+        expect.objectContaining({
+          action: "task.comment.added",
+          metadata: expect.objectContaining({
+            taskId: "task-deadline-001",
+            matterId: "matter-001",
+            commentCount: 1,
+            staffOnly: true,
+          }),
+        }),
+        expect.objectContaining({
+          action: "task.template.applied",
+          metadata: expect.objectContaining({
+            taskId: "task-deadline-001",
+            templateId: template.id,
+            checklistItemCount: 1,
+            appliedToExistingTask: true,
+          }),
+        }),
+      ]),
+    );
+    expect(serializedAudit).not.toContain("Synthetic staff-only comment body");
+    expect(serializedAudit).not.toContain("Synthetic checklist private title");
+    expect(serializedAudit).not.toContain("Synthetic template checklist private title");
+    expect(serializedAudit).not.toContain("Synthetic hearing prep");
+  });
+
+  it("rejects client access, non-admin template administration, and invalid dependencies", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+
+    const clientStructureResponse = await testServer({
+      repository,
+      user: user("client_external", ["matter-001"]),
+    }).inject({
+      method: "GET",
+      url: "/api/tasks/task-deadline-001/structure",
+    });
+    expect(clientStructureResponse.statusCode).toBe(403);
+
+    const firmMemberTemplateResponse = await testServer({
+      repository,
+      user: user("firm_member", ["matter-001"]),
+    }).inject({
+      method: "POST",
+      url: "/api/task-templates",
+      payload: { name: "Denied synthetic template" },
+    });
+    expect(firmMemberTemplateResponse.statusCode).toBe(403);
+    expect(firmMemberTemplateResponse.json()).toMatchObject({
+      message: "Task template administration requires owner administrator or licensee access",
+    });
+
+    const server = testServer({
+      repository,
+      user: user("licensee", ["matter-001", "matter-002"]),
+    });
+    const crossMatterDependency = await server.inject({
+      method: "POST",
+      url: "/api/tasks/task-deadline-001/dependencies",
+      payload: { dependsOnTaskId: "task-deadline-003", dependencyType: "blocks" },
+    });
+    expect(crossMatterDependency.statusCode).toBe(400);
+    expect(crossMatterDependency.json()).toMatchObject({
+      message: "Task dependencies must stay within the same matter",
+    });
+
+    const forwardDependency = await server.inject({
+      method: "POST",
+      url: "/api/tasks/task-deadline-001/dependencies",
+      payload: { dependsOnTaskId: "task-deadline-002", dependencyType: "blocks" },
+    });
+    expect(forwardDependency.statusCode).toBe(201);
+
+    const cycleDependency = await server.inject({
+      method: "POST",
+      url: "/api/tasks/task-deadline-002/dependencies",
+      payload: { dependsOnTaskId: "task-deadline-001", dependencyType: "blocks" },
+    });
+    expect(cycleDependency.statusCode).toBe(409);
+    expect(cycleDependency.json()).toMatchObject({
+      message: "Task dependency would create a blocking cycle",
+    });
+  });
 });
