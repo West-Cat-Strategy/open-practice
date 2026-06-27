@@ -31,6 +31,16 @@ preserves existing task CRUD, source-pair, workbench, archive, permission, audit
 provider, recurrence, and email boundaries. Evidence is recorded in
 [structured task management V3 proof](validation/OP_STRUCTURED_TASK_MANAGEMENT_V3_PROOF_2026-06-26.md).
 
+The 2026-06-26 `chore/docker-storage-preflight-20260626` branch adds a narrow local Docker storage
+preflight for Docker-heavy validation and private-pilot release proof. It fails early when Docker's
+container filesystem has less than 8 GiB free, records Docker `system df` context, uses only a
+pull-free local-image `df -Pk /` probe, and never prunes Docker data automatically. It preserves
+runtime APIs, schemas, Compose contracts, Docker pins, dependencies, synthetic-only proof, and
+clean-room posture. Selector-chosen validation passed; the explicit private-pilot release proof is
+blocked locally until Docker storage is reclaimed and replay Postgres is available. Evidence is
+recorded in
+[Docker storage preflight proof](validation/OP_DOCKER_STORAGE_PREFLIGHT_PROOF_2026-06-26.md).
+
 The 2026-06-25 active-lane mainline closeout integrates the Canadian template/sample enhancements,
 reliable local PDF/image OCR, deep security remediation, external HTTPS S3 restore drill, and
 bundled-MinIO hardening proof lanes through `merge/open-practice-mainline-20260625`. The integration

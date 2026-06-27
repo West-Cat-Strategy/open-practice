@@ -35,6 +35,16 @@ export function releaseProofCommands({
       args: ["verify:select", "--", "--dirty"],
       required: false,
     },
+    ...(privatePilot
+      ? [
+          {
+            id: "docker-storage-preflight",
+            command: "node",
+            args: ["scripts/docker-storage-preflight.mjs"],
+            required: true,
+          },
+        ]
+      : []),
     { id: "dependency-audit", command: "pnpm", args: ["deps:audit"], required: true },
     {
       id: "license-evidence",

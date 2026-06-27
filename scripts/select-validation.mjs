@@ -390,6 +390,13 @@ function isDockerResidualWatchTooling(path) {
   ].includes(path);
 }
 
+function isDockerStoragePreflightTooling(path) {
+  return [
+    "scripts/docker-storage-preflight.mjs",
+    "scripts/docker-storage-preflight.test.mjs",
+  ].includes(path);
+}
+
 function isApiContractTooling(path) {
   return (
     path === "scripts/generate-api-contract.mjs" ||
@@ -510,6 +517,12 @@ export function classifyPath(path) {
 
   if (isDockerResidualWatchTooling(path)) {
     commands.add(COMMANDS.dockerResidualWatch);
+  }
+
+  if (isDockerStoragePreflightTooling(path)) {
+    commands.add(COMMANDS.dockerAppSmoke);
+    commands.add(COMMANDS.e2eDocker);
+    commands.add(COMMANDS.selfhostRestoreDrill);
   }
 
   if (isApiContractTooling(path)) {
