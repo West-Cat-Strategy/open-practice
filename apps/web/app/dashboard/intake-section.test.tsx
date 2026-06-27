@@ -332,7 +332,6 @@ function baseProps(overrides: Partial<IntakeSectionProps> = {}): IntakeSectionPr
     activePendingIntakeVariableProposals: [syntheticProposal],
     confirmPendingDelivery: noop,
     convertPublicConsultationIntake: noop,
-    createIntakeFormLink: noop,
     creatingEngagementLetterLinkId: "",
     creatingIntakeFormLink: false,
     decideSubmittedIntakeReview: noop,

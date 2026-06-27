@@ -127,7 +127,6 @@ interface IntakeSectionProps {
   startingIntakeSession: boolean;
   confirmPendingDelivery: () => void;
   convertPublicConsultationIntake: (intakeRecord: PublicConsultationIntake) => void | Promise<void>;
-  createIntakeFormLink: () => void | Promise<void>;
   decideSubmittedIntakeReview: (
     linkId: string,
     decision: SubmittedIntakeReviewDecision,
@@ -227,7 +226,6 @@ export function IntakeSection({
   startingIntakeSession,
   confirmPendingDelivery,
   convertPublicConsultationIntake,
-  createIntakeFormLink,
   decideSubmittedIntakeReview,
   dismissPublicConsultationIntake,
   loadSubmittedIntakeReview,
