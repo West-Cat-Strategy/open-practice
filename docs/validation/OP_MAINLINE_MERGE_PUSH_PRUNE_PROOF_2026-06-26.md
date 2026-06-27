@@ -192,7 +192,7 @@ merge/open-practice-mainline-20260626
 The replay Postgres container used for `pnpm migrations:replay` was stopped before final evidence
 capture.
 
-Post-prune evidence:
+Post-prune evidence captured before the docs-only evidence refresh:
 
 ```text
 git worktree list --porcelain
@@ -224,12 +224,11 @@ docker compose ps --format json
 <no output>
 ```
 
-Final invariants:
+Post-prune invariants captured at the evidence point above:
 
 - One remaining worktree at `/Users/bryan/projects/open-practice`.
 - Local branch `main` only.
-- `main`, `origin/main`, `HEAD`, and GitHub `main` match at
-  `455e3392a3442f424b615eac7658fa25c46790f8`.
+- `main`, `origin/main`, `HEAD`, and GitHub `main` match.
 - `git rev-list --left-right --count main...origin/main` reports `0 0`.
 - Stash count remains `42`.
 
