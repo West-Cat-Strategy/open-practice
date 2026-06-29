@@ -444,6 +444,65 @@ describe("ledger routes", () => {
           publicExposure: false,
         },
       },
+      makerCheckerReadiness: {
+        reviewOnly: true,
+        summary: {
+          categoryCount: 6,
+          categoriesRequiringPolicyCount: expect.any(Number),
+          matterCount: expect.any(Number),
+          mattersRequiringPolicyCount: expect.any(Number),
+          reviewOnly: true,
+        },
+        categories: expect.arrayContaining([
+          expect.objectContaining({
+            category: "ledger",
+            readiness: "policy_required_if_enabled",
+            reasonCodes: expect.arrayContaining([
+              "pending_ledger_transaction_approval",
+              "rejected_ledger_transaction_approval",
+            ]),
+            reviewOnly: true,
+          }),
+          expect.objectContaining({
+            category: "statement_import",
+            reasonCodes: expect.arrayContaining([
+              "statement_import_review_ready",
+              "statement_import_duplicate_rows",
+            ]),
+            reviewOnly: true,
+          }),
+          expect.objectContaining({
+            category: "payment_import",
+            reasonCodes: expect.arrayContaining([
+              "payment_import_review_required",
+              "payment_import_conflict",
+            ]),
+            reviewOnly: true,
+          }),
+        ]),
+        matters: expect.arrayContaining([
+          expect.objectContaining({
+            matterId: "matter-001",
+            categoryKeys: expect.arrayContaining(["trust_transfer", "payment_import"]),
+            reviewOnly: true,
+          }),
+          expect.objectContaining({
+            matterId: "matter-002",
+            categoryKeys: expect.arrayContaining(["ledger"]),
+            reviewOnly: true,
+          }),
+        ]),
+        policy: {
+          source: "existing_trust_controls_projection",
+          makerCheckerPolicyEnabled: false,
+          directPostingSemantics: "unchanged",
+          approvalMutation: false,
+          automaticTrustPosting: false,
+          settlementAutomation: false,
+          bankFeedMatching: false,
+          jurisdictionCertifiedAccounting: false,
+        },
+      },
       diagnostics: {
         pendingApprovalTransactionIds: ["trust-retainer"],
         rejectedApprovalTransactionIds: ["matter-002-retainer"],
@@ -1137,6 +1196,23 @@ describe("ledger routes", () => {
           amountCents: number;
         }>;
       };
+      makerCheckerReadiness: {
+        matters: Array<{
+          matterId: string;
+          categoryKeys: string[];
+          reasonCodes: string[];
+          reviewOnly: true;
+        }>;
+        policy: {
+          makerCheckerPolicyEnabled: false;
+          directPostingSemantics: "unchanged";
+          approvalMutation: false;
+          automaticTrustPosting: false;
+          settlementAutomation: false;
+          bankFeedMatching: false;
+          jurisdictionCertifiedAccounting: false;
+        };
+      };
     }>();
     expect(body.ledger.entries.map((entry) => entry.matterId)).toEqual([
       "matter-001",
@@ -1221,6 +1297,26 @@ describe("ledger routes", () => {
       evidenceCount: 0,
       pendingCount: 0,
       amountCents: 0,
+    });
+    expect(body.makerCheckerReadiness.matters).toEqual([
+      expect.objectContaining({
+        matterId: "matter-001",
+        categoryKeys: expect.arrayContaining(["trust_transfer", "payment_import"]),
+        reasonCodes: expect.arrayContaining([
+          "pending_trust_transfer_request",
+          "payment_import_review_required",
+        ]),
+        reviewOnly: true,
+      }),
+    ]);
+    expect(body.makerCheckerReadiness.policy).toMatchObject({
+      makerCheckerPolicyEnabled: false,
+      directPostingSemantics: "unchanged",
+      approvalMutation: false,
+      automaticTrustPosting: false,
+      settlementAutomation: false,
+      bankFeedMatching: false,
+      jurisdictionCertifiedAccounting: false,
     });
     const serialized = JSON.stringify(body);
     expect(serialized).not.toContain("trust-transfer-hidden-matter-002-controls");

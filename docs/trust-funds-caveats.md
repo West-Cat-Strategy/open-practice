@@ -45,6 +45,12 @@ trust accounting software, accounting software, or tax-advice tooling.
   approvals, reconciliations, statement-row counts, variance notes, recent postings,
   pending/posted/rejected posting-request cues, and diagnostics. It does not itself post, approve,
   reconcile, certify, or move funds.
+- Trust Controls maker-checker readiness indicators are read-only projection cues over existing
+  control categories, diagnostics, posting-request/trust-transfer/payment-import review records,
+  reconciliation packet summaries, and safe matter IDs. They show which categories or matters would
+  need policy if maker-checker were later enabled, but they do not enable the policy, approve or
+  reject records, change direct posting semantics, auto-post trust entries, settle funds, match bank
+  feeds, or certify accounting conclusions.
 - Jurisdictional trust reports are read-only aggregates over existing matter jurisdiction labels,
   balances, approvals, reconciliation summaries, variance totals, and diagnostics. They do not expose
   statement evidence or private matter detail, create export packages, or certify compliance in any

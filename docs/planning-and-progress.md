@@ -1,6 +1,6 @@
 # Planning and Progress
 
-**Last Updated:** 2026-06-26
+**Last Updated:** 2026-06-28
 
 Use this file for live tracked work, immediate next moves, and the forward-looking development plan.
 Use `docs/planning.md` for the durable roadmap, `docs/improvement-opportunities.md` for candidate
@@ -10,7 +10,7 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 | Snapshot              | Value                                                                |
 | --------------------- | -------------------------------------------------------------------- |
-| Current focus         | 2026-06-26 active-lane mainline closeout is complete.                |
+| Current focus         | 2026-06-28 Trust Controls maker-checker readiness closeout.          |
 | Next recommended pick | Choose the next candidate from the durable roadmap/backlog.          |
 | Ready rows            | 0                                                                    |
 | Candidate rows        | 0                                                                    |
@@ -21,6 +21,15 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 | Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`     |
 
 ## Current Handoff Notes
+
+The 2026-06-28 `feat/trust-controls-maker-checker-readiness-20260628` branch adds read-only
+Trust Controls maker-checker readiness indicators to the existing controls payload and dashboard.
+The indicators reuse ledger controls, reconciliation packet, posting-request, trust-transfer,
+payment-import, diagnostics, and safe matter-ID projections to show which categories or matters
+would require policy if maker-checker were later enabled. Policy remains disabled, direct posting
+semantics stay unchanged, and the branch does not approve, reject, auto-post, settle, match bank
+feeds, or claim jurisdiction-certified accounting. Proof is recorded in
+[Trust Controls maker-checker readiness proof](validation/OP_TRUST_CONTROLS_MAKER_CHECKER_READINESS_PROOF_2026-06-28.md).
 
 The 2026-06-26 active-lane mainline closeout integrates the features/capabilities parity audit and
 remediation, appointment booking tentative holds, structured task management V3, calendar tickler
