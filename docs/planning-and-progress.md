@@ -57,6 +57,14 @@ decision/timestamp/posture flags in Documents and Research without artifact meta
 text, Markdown, annotations, chunks, embeddings, prompts, provider payloads, storage keys, object
 bodies, or generated summaries. Proof is recorded in
 [provider document conversion review cues proof](validation/OP_PROVIDER_DOCUMENT_CONVERSION_REVIEW_CUES_PROOF_2026-06-29.md).
+The 2026-06-29 semantic-readiness follow-up keeps semantic review non-executing and metadata-only
+by adding `conversionReview.semanticReviewReadiness` to the existing safe conversion-review
+summary. It is ready only for same-matter `ready_for_review` or `reviewed`
+`document_analysis_status` artifacts and blocked for rejected, queued, failed, not-requested,
+missing, draft, or otherwise not-ready states. The packet carries only IDs, counts/lengths,
+statuses, and fixed no-provider/no-raw-text/no-Markdown/no-annotation/no-chunk/no-embedding/
+no-prompt/no-payload/no-storage/no-summary/no-downstream-mutation flags. Proof is recorded in
+[provider document conversion semantic-review readiness proof](validation/OP_PROVIDER_DOCUMENT_CONVERSION_SEMANTIC_REVIEW_READINESS_PROOF_2026-06-29.md).
 
 The 2026-06-29 legal-research artifact review action-descriptor follow-up keeps those review
 commands and provider/document-processing boundaries unchanged while moving the existing Research

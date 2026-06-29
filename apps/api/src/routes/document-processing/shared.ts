@@ -195,6 +195,35 @@ export interface DocumentConversionReviewDecisionCue {
   rawOcrTextReturned: false;
 }
 
+export interface DocumentConversionReviewSemanticReviewReadiness {
+  documentId: string;
+  artifactId?: string;
+  jobId?: string;
+  counts?: DocumentConversionReviewCounts;
+  posture: "ready" | "blocked";
+  conversionReviewStatus: DocumentConversionReviewPosture;
+  artifactStatus: DocumentConversionReviewArtifactStatus;
+  staffReviewRequired: true;
+  reviewOnly: true;
+  metadataOnly: true;
+  providerActivated: false;
+  downstreamMutation: false;
+  providerEvidenceStored: false;
+  rawOcrTextReturned: false;
+  rawOcrTextStoredInMetadata: false;
+  rawMarkdownStored: false;
+  convertedMarkdownStored: false;
+  annotationBodiesStored: false;
+  annotationSpansStored: false;
+  chunksStored: false;
+  embeddingsStored: false;
+  promptsStored: false;
+  providerPayloadsStored: false;
+  storageKeysStored: false;
+  objectBodiesStored: false;
+  generatedSummariesStored: false;
+}
+
 export interface DocumentConversionReviewCounts {
   sourceTextLength: number;
   wordCount?: number;
@@ -213,6 +242,7 @@ export interface DocumentConversionReviewSummary {
   providerStatus?: string;
   counts?: DocumentConversionReviewCounts;
   reviewReadiness: DocumentConversionReviewReadiness;
+  semanticReviewReadiness: DocumentConversionReviewSemanticReviewReadiness;
   latestDecision?: DocumentConversionReviewDecisionCue;
   decisionHistory: DocumentConversionReviewDecisionCue[];
   policy: typeof documentConversionReviewPolicy;
@@ -706,6 +736,64 @@ function buildDocumentConversionReviewReadiness(input: {
   };
 }
 
+function semanticReadinessConversionReviewStatus(input: {
+  status: DocumentConversionReviewPosture;
+  artifact?: LegalResearchArtifactRecord;
+}): DocumentConversionReviewPosture {
+  if (!input.artifact) return input.status;
+  if (
+    input.artifact.status === "ready_for_review" ||
+    input.artifact.status === "reviewed" ||
+    input.artifact.status === "rejected"
+  ) {
+    return input.artifact.status;
+  }
+  return "blocked";
+}
+
+function buildDocumentConversionReviewSemanticReviewReadiness(input: {
+  document: DocumentRecord;
+  status: DocumentConversionReviewPosture;
+  artifact?: LegalResearchArtifactRecord;
+  jobId?: string;
+  counts?: DocumentConversionReviewCounts;
+}): DocumentConversionReviewSemanticReviewReadiness {
+  const conversionReviewStatus = semanticReadinessConversionReviewStatus({
+    status: input.status,
+    artifact: input.artifact,
+  });
+  const ready =
+    input.artifact?.status === "ready_for_review" || input.artifact?.status === "reviewed";
+  return {
+    documentId: input.document.id,
+    ...(input.artifact ? { artifactId: input.artifact.id } : {}),
+    ...(input.jobId ? { jobId: input.jobId } : {}),
+    ...(input.counts ? { counts: input.counts } : {}),
+    posture: ready ? "ready" : "blocked",
+    conversionReviewStatus,
+    artifactStatus: input.artifact ? artifactStatusFromRecord(input.artifact) : "not_created",
+    staffReviewRequired: true,
+    reviewOnly: true,
+    metadataOnly: true,
+    providerActivated: false,
+    downstreamMutation: false,
+    providerEvidenceStored: false,
+    rawOcrTextReturned: false,
+    rawOcrTextStoredInMetadata: false,
+    rawMarkdownStored: false,
+    convertedMarkdownStored: false,
+    annotationBodiesStored: false,
+    annotationSpansStored: false,
+    chunksStored: false,
+    embeddingsStored: false,
+    promptsStored: false,
+    providerPayloadsStored: false,
+    storageKeysStored: false,
+    objectBodiesStored: false,
+    generatedSummariesStored: false,
+  };
+}
+
 function artifactStatusFromRecord(
   artifact: LegalResearchArtifactRecord,
 ): DocumentConversionReviewArtifactStatus {
@@ -793,58 +881,88 @@ export function buildDocumentConversionReviewSummary(input: {
       status: "ready_for_review",
       artifact: input.artifact,
     });
+    const posture = reviewReadiness.status;
+    const jobId =
+      typeof input.artifact.metadata.jobId === "string"
+        ? input.artifact.metadata.jobId
+        : input.latestJob?.id;
     return {
-      posture: reviewReadiness.status,
+      posture,
       summaryPosture: documentConversionReviewSummaryPosture,
-      jobId:
-        typeof input.artifact.metadata.jobId === "string"
-          ? input.artifact.metadata.jobId
-          : input.latestJob?.id,
+      jobId,
       artifactId: input.artifact.id,
       provider: metadataString(input.artifact.metadata, "provider"),
       providerStatus: metadataString(input.artifact.metadata, "providerStatus"),
       counts: artifactCounts,
       reviewReadiness,
+      semanticReviewReadiness: buildDocumentConversionReviewSemanticReviewReadiness({
+        document: input.document,
+        status: posture,
+        artifact: input.artifact,
+        jobId,
+        counts: artifactCounts,
+      }),
       ...decisionCues,
       policy: documentConversionReviewPolicy,
     };
   }
 
   if (input.latestJob?.status === "queued" || input.latestJob?.status === "active") {
+    const counts = conversionReviewCountsFromJob(input.latestJob);
     return {
       posture: "queued",
       summaryPosture: documentConversionReviewSummaryPosture,
       jobId: input.latestJob.id,
       provider: metadataString(input.latestJob.metadata, "provider"),
       providerStatus: metadataString(input.latestJob.metadata, "providerStatus"),
-      counts: conversionReviewCountsFromJob(input.latestJob),
+      counts,
       reviewReadiness: buildDocumentConversionReviewReadiness({ status: "queued" }),
+      semanticReviewReadiness: buildDocumentConversionReviewSemanticReviewReadiness({
+        document: input.document,
+        status: "queued",
+        jobId: input.latestJob.id,
+        counts,
+      }),
       ...decisionCues,
       policy: documentConversionReviewPolicy,
     };
   }
   if (input.latestJob?.status === "failed" || input.latestJob?.status === "dead_letter") {
+    const counts = conversionReviewCountsFromJob(input.latestJob);
     return {
       posture: "failed",
       summaryPosture: documentConversionReviewSummaryPosture,
       jobId: input.latestJob.id,
       provider: metadataString(input.latestJob.metadata, "provider"),
       providerStatus: metadataString(input.latestJob.metadata, "providerStatus"),
-      counts: conversionReviewCountsFromJob(input.latestJob),
+      counts,
       reviewReadiness: buildDocumentConversionReviewReadiness({ status: "failed" }),
+      semanticReviewReadiness: buildDocumentConversionReviewSemanticReviewReadiness({
+        document: input.document,
+        status: "failed",
+        jobId: input.latestJob.id,
+        counts,
+      }),
       ...decisionCues,
       policy: documentConversionReviewPolicy,
     };
   }
   if (input.latestJob?.status === "completed") {
+    const counts = conversionReviewCountsFromJob(input.latestJob);
     return {
       posture: "ready_for_review",
       summaryPosture: documentConversionReviewSummaryPosture,
       jobId: input.latestJob.id,
       provider: metadataString(input.latestJob.metadata, "provider"),
       providerStatus: metadataString(input.latestJob.metadata, "providerStatus"),
-      counts: conversionReviewCountsFromJob(input.latestJob),
+      counts,
       reviewReadiness: buildDocumentConversionReviewReadiness({ status: "ready_for_review" }),
+      semanticReviewReadiness: buildDocumentConversionReviewSemanticReviewReadiness({
+        document: input.document,
+        status: "ready_for_review",
+        jobId: input.latestJob.id,
+        counts,
+      }),
       ...decisionCues,
       policy: documentConversionReviewPolicy,
     };
@@ -861,18 +979,28 @@ export function buildDocumentConversionReviewSummary(input: {
       posture: "blocked",
       summaryPosture: documentConversionReviewSummaryPosture,
       reviewReadiness: buildDocumentConversionReviewReadiness({ status: "blocked" }),
+      semanticReviewReadiness: buildDocumentConversionReviewSemanticReviewReadiness({
+        document: input.document,
+        status: "blocked",
+      }),
       ...decisionCues,
       policy: documentConversionReviewPolicy,
     };
   }
 
+  const counts = {
+    sourceTextLength: documentExtractionTextLength(input.latestExtraction),
+  };
   return {
     posture: "not_requested",
     summaryPosture: documentConversionReviewSummaryPosture,
-    counts: {
-      sourceTextLength: documentExtractionTextLength(input.latestExtraction),
-    },
+    counts,
     reviewReadiness: buildDocumentConversionReviewReadiness({ status: "not_requested" }),
+    semanticReviewReadiness: buildDocumentConversionReviewSemanticReviewReadiness({
+      document: input.document,
+      status: "not_requested",
+      counts,
+    }),
     ...decisionCues,
     policy: documentConversionReviewPolicy,
   };

@@ -70,6 +70,70 @@ const unsafeConversionReviewFragments = [
   "Synthetic generated summary",
 ] as const;
 
+const semanticReviewReadinessAllowedKeys = new Set([
+  "documentId",
+  "artifactId",
+  "jobId",
+  "counts",
+  "posture",
+  "conversionReviewStatus",
+  "artifactStatus",
+  "staffReviewRequired",
+  "reviewOnly",
+  "metadataOnly",
+  "providerActivated",
+  "downstreamMutation",
+  "providerEvidenceStored",
+  "rawOcrTextReturned",
+  "rawOcrTextStoredInMetadata",
+  "rawMarkdownStored",
+  "convertedMarkdownStored",
+  "annotationBodiesStored",
+  "annotationSpansStored",
+  "chunksStored",
+  "embeddingsStored",
+  "promptsStored",
+  "providerPayloadsStored",
+  "storageKeysStored",
+  "objectBodiesStored",
+  "generatedSummariesStored",
+]);
+
+function expectSemanticReviewReadinessSafe(packet: Record<string, unknown>): void {
+  expect(Object.keys(packet).every((key) => semanticReviewReadinessAllowedKeys.has(key))).toBe(
+    true,
+  );
+  for (const key of [
+    "provider",
+    "providerStatus",
+    "schema",
+    "schemas",
+    "queue",
+    "queueName",
+    "metadata",
+    "rawMetadata",
+    "note",
+    "rawText",
+    "rawOcrText",
+    "rawMarkdown",
+    "convertedMarkdown",
+    "annotationSpans",
+    "annotations",
+    "chunks",
+    "embeddings",
+    "prompt",
+    "prompts",
+    "providerPayload",
+    "providerPayloads",
+    "storageKey",
+    "objectKey",
+    "objectBody",
+    "generatedSummary",
+  ]) {
+    expect(packet).not.toHaveProperty(key);
+  }
+}
+
 async function createConversionReviewArtifact(
   repository: InMemoryOpenPracticeRepository,
   input: {
@@ -165,6 +229,40 @@ async function createConversionReviewArtifact(
             generatedSummary: "Synthetic generated summary",
           }),
     },
+  });
+}
+
+async function createVerifiedSyntheticDocumentWithExtraction(
+  repository: InMemoryOpenPracticeRepository,
+  documentId: string,
+): Promise<void> {
+  await repository.createDocumentUploadIntent({
+    id: documentId,
+    firmId,
+    matterId: "matter-001",
+    title: `${documentId}.pdf`,
+    storageKey: `matters/matter-001/${documentId}.pdf`,
+    checksumSha256: "7".repeat(64),
+    classification: "general",
+    legalHold: false,
+  });
+  await repository.completeDocumentUpload({
+    firmId,
+    documentId,
+    checksumSha256: "7".repeat(64),
+    scanStatus: "passed",
+  });
+  await repository.createDocumentTextExtraction({
+    id: `extraction-${documentId}`,
+    firmId,
+    documentId,
+    engine: "tesseract",
+    status: "completed",
+    language: "eng",
+    extractedText: "Synthetic semantic readiness OCR text stays private.",
+    metadata: { textLength: 52 },
+    createdAt: "2026-06-29T12:00:00.000Z",
+    completedAt: "2026-06-29T12:01:00.000Z",
   });
 }
 
@@ -764,6 +862,33 @@ describe("document processing routes", () => {
         providerStatus: "metadata_only",
         jobId: expect.any(String),
         counts: { sourceTextLength: 54 },
+        semanticReviewReadiness: {
+          documentId: "doc-conversion-review",
+          jobId: expect.any(String),
+          counts: { sourceTextLength: 54 },
+          posture: "blocked",
+          conversionReviewStatus: "queued",
+          artifactStatus: "not_created",
+          staffReviewRequired: true,
+          reviewOnly: true,
+          metadataOnly: true,
+          providerActivated: false,
+          downstreamMutation: false,
+          providerEvidenceStored: false,
+          rawOcrTextReturned: false,
+          rawOcrTextStoredInMetadata: false,
+          rawMarkdownStored: false,
+          convertedMarkdownStored: false,
+          annotationBodiesStored: false,
+          annotationSpansStored: false,
+          chunksStored: false,
+          embeddingsStored: false,
+          promptsStored: false,
+          providerPayloadsStored: false,
+          storageKeysStored: false,
+          objectBodiesStored: false,
+          generatedSummariesStored: false,
+        },
         policy: expect.objectContaining({
           metadataOnly: true,
           reviewOnly: true,
@@ -828,6 +953,7 @@ describe("document processing routes", () => {
     expect(JSON.stringify(payload)).not.toContain("Synthetic OCR text");
     expect(JSON.stringify(payload)).not.toContain("# must not survive");
     expect(JSON.stringify(payload)).not.toContain('"private":true');
+    expectSemanticReviewReadinessSafe(payload.conversionReview.semanticReviewReadiness);
     expect(workbench.json().documents).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -839,6 +965,13 @@ describe("document processing routes", () => {
             providerStatus: "metadata_only",
             jobId: payload.job.id,
             counts: { sourceTextLength: 54 },
+            semanticReviewReadiness: expect.objectContaining({
+              documentId: "doc-conversion-review",
+              jobId: payload.job.id,
+              posture: "blocked",
+              conversionReviewStatus: "queued",
+              artifactStatus: "not_created",
+            }),
           }),
         }),
       ]),
@@ -945,17 +1078,47 @@ describe("document processing routes", () => {
           providerEvidenceStored: false,
           rawOcrTextReturned: false,
         },
+        semanticReviewReadiness: {
+          documentId: "doc-001",
+          artifactId: "artifact-conversion-review-doc-001",
+          jobId: "job-conversion-review-completed",
+          counts: { sourceTextLength: 42, wordCount: 5, lineCount: 1 },
+          posture: "ready",
+          conversionReviewStatus: "ready_for_review",
+          artifactStatus: "metadata_only",
+          staffReviewRequired: true,
+          reviewOnly: true,
+          metadataOnly: true,
+          providerActivated: false,
+          downstreamMutation: false,
+          providerEvidenceStored: false,
+          rawOcrTextReturned: false,
+          rawOcrTextStoredInMetadata: false,
+          rawMarkdownStored: false,
+          convertedMarkdownStored: false,
+          annotationBodiesStored: false,
+          annotationSpansStored: false,
+          chunksStored: false,
+          embeddingsStored: false,
+          promptsStored: false,
+          providerPayloadsStored: false,
+          storageKeysStored: false,
+          objectBodiesStored: false,
+          generatedSummariesStored: false,
+        },
       },
     });
-    expect(JSON.stringify(response.json())).not.toContain("Synthetic completed OCR text");
-    expect(JSON.stringify(response.json())).not.toContain("# must not survive");
-    expect(JSON.stringify(response.json())).not.toContain('"private":true');
-    expect(JSON.stringify(response.json())).not.toContain("annotationSpans");
-    expect(JSON.stringify(response.json())).not.toContain("Synthetic prompt");
-    expect(JSON.stringify(response.json())).not.toContain("Synthetic chunk");
-    expect(JSON.stringify(response.json())).not.toContain("Synthetic object body");
-    expect(JSON.stringify(response.json())).not.toContain("Synthetic private excerpt");
-    expect(JSON.stringify(response.json())).not.toContain("Synthetic generated summary");
+    const payload = response.json();
+    expectSemanticReviewReadinessSafe(payload.conversionReview.semanticReviewReadiness);
+    expect(JSON.stringify(payload)).not.toContain("Synthetic completed OCR text");
+    expect(JSON.stringify(payload)).not.toContain("# must not survive");
+    expect(JSON.stringify(payload)).not.toContain('"private":true');
+    expect(JSON.stringify(payload)).not.toContain('"annotationSpans":');
+    expect(JSON.stringify(payload)).not.toContain("Synthetic prompt");
+    expect(JSON.stringify(payload)).not.toContain("Synthetic chunk");
+    expect(JSON.stringify(payload)).not.toContain("Synthetic object body");
+    expect(JSON.stringify(payload)).not.toContain("Synthetic private excerpt");
+    expect(JSON.stringify(payload)).not.toContain("Synthetic generated summary");
   });
 
   it.each([
@@ -1039,8 +1202,37 @@ describe("document processing routes", () => {
             providerEvidenceStored: false,
             rawOcrTextReturned: false,
           },
+          semanticReviewReadiness: {
+            documentId: "doc-001",
+            artifactId: `artifact-conversion-review-doc-001-${decision}`,
+            jobId: `job-conversion-review-${decision}`,
+            counts: { sourceTextLength: 47, wordCount: 6, lineCount: 2 },
+            posture: decision === "reviewed" ? "ready" : "blocked",
+            conversionReviewStatus: decision,
+            artifactStatus: "metadata_only",
+            staffReviewRequired: true,
+            reviewOnly: true,
+            metadataOnly: true,
+            providerActivated: false,
+            downstreamMutation: false,
+            providerEvidenceStored: false,
+            rawOcrTextReturned: false,
+            rawOcrTextStoredInMetadata: false,
+            rawMarkdownStored: false,
+            convertedMarkdownStored: false,
+            annotationBodiesStored: false,
+            annotationSpansStored: false,
+            chunksStored: false,
+            embeddingsStored: false,
+            promptsStored: false,
+            providerPayloadsStored: false,
+            storageKeysStored: false,
+            objectBodiesStored: false,
+            generatedSummariesStored: false,
+          },
         },
       });
+      expectSemanticReviewReadinessSafe(entry.conversionReview.semanticReviewReadiness);
       expect(JSON.stringify(entry?.conversionReview)).not.toContain(
         "Synthetic reviewed OCR text must stay private.",
       );
@@ -1097,6 +1289,34 @@ describe("document processing routes", () => {
             providerEvidenceStored: false,
             rawOcrTextReturned: false,
           },
+          semanticReviewReadiness: {
+            documentId: "doc-001",
+            artifactId: `artifact-conversion-review-decision-${decision}`,
+            jobId: "job-conversion-review-decision",
+            counts: { sourceTextLength: 47, wordCount: 6, lineCount: 2, nonEmptyLineCount: 2 },
+            posture: decision === "reviewed" ? "ready" : "blocked",
+            conversionReviewStatus: decision,
+            artifactStatus: "metadata_only",
+            staffReviewRequired: true,
+            reviewOnly: true,
+            metadataOnly: true,
+            providerActivated: false,
+            downstreamMutation: false,
+            providerEvidenceStored: false,
+            rawOcrTextReturned: false,
+            rawOcrTextStoredInMetadata: false,
+            rawMarkdownStored: false,
+            convertedMarkdownStored: false,
+            annotationBodiesStored: false,
+            annotationSpansStored: false,
+            chunksStored: false,
+            embeddingsStored: false,
+            promptsStored: false,
+            providerPayloadsStored: false,
+            storageKeysStored: false,
+            objectBodiesStored: false,
+            generatedSummariesStored: false,
+          },
           latestDecision: {
             artifactId: `artifact-conversion-review-decision-${decision}`,
             decision,
@@ -1128,6 +1348,7 @@ describe("document processing routes", () => {
         },
       });
       expect(payload).not.toHaveProperty("artifact");
+      expectSemanticReviewReadinessSafe(payload.conversionReview.semanticReviewReadiness);
       const responseJson = JSON.stringify(payload);
       for (const fragment of unsafeConversionReviewFragments) {
         expect(responseJson).not.toContain(fragment);
@@ -1261,8 +1482,21 @@ describe("document processing routes", () => {
           terminalReview: true,
           downstreamMutation: false,
         },
+        semanticReviewReadiness: {
+          documentId: "doc-001",
+          artifactId: "artifact-conversion-review-doc-001-reviewed",
+          jobId: "job-conversion-review-decision",
+          posture: "ready",
+          conversionReviewStatus: "reviewed",
+          artifactStatus: "metadata_only",
+          downstreamMutation: false,
+          providerActivated: false,
+          providerPayloadsStored: false,
+          generatedSummariesStored: false,
+        },
       },
     });
+    expectSemanticReviewReadinessSafe(response.json().conversionReview.semanticReviewReadiness);
     const [artifact] = await repository.listLegalResearchArtifacts(firmId, {
       matterId: "matter-001",
       kind: "document_analysis_status",
@@ -1301,6 +1535,18 @@ describe("document processing routes", () => {
       .documents.filter((item: { document: { id: string } }) => item.document.id === "doc-001");
     expect(entry.conversionReview).toMatchObject({
       posture: "rejected",
+      semanticReviewReadiness: {
+        documentId: "doc-001",
+        artifactId: "artifact-conversion-review-history-new",
+        jobId: "job-conversion-review-decision",
+        posture: "blocked",
+        conversionReviewStatus: "rejected",
+        artifactStatus: "metadata_only",
+        downstreamMutation: false,
+        providerActivated: false,
+        providerPayloadsStored: false,
+        generatedSummariesStored: false,
+      },
       latestDecision: {
         artifactId: "artifact-conversion-review-history-new",
         decision: "rejected",
@@ -1328,12 +1574,121 @@ describe("document processing routes", () => {
       ],
     });
     const responseJson = JSON.stringify(entry.conversionReview);
+    expectSemanticReviewReadinessSafe(entry.conversionReview.semanticReviewReadiness);
     for (const fragment of unsafeConversionReviewFragments) {
       expect(responseJson).not.toContain(fragment);
     }
     expect(responseJson).not.toContain('"providerPayload":');
     expect(responseJson).not.toContain('"storageKey":');
     expect(responseJson).not.toContain('"generatedSummary":');
+  });
+
+  it("blocks semantic review readiness for conversion review states without a ready artifact", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await createVerifiedSyntheticDocumentWithExtraction(repository, "doc-semantic-not-requested");
+    await createVerifiedSyntheticDocumentWithExtraction(repository, "doc-semantic-draft");
+    await createVerifiedSyntheticDocumentWithExtraction(repository, "doc-semantic-failed");
+    await createConversionReviewArtifact(repository, {
+      id: "artifact-conversion-review-semantic-draft",
+      documentId: "doc-semantic-draft",
+      status: "draft",
+    });
+    await repository.createJobLifecycleRecord({
+      id: "job-conversion-review-semantic-failed",
+      firmId,
+      queueName: "ocr",
+      jobName: "document_conversion_review",
+      status: "failed",
+      targetResourceType: "document",
+      targetResourceId: "doc-semantic-failed",
+      attemptsMade: 1,
+      maxAttempts: 3,
+      queuedAt: "2026-06-29T12:10:00.000Z",
+      failedAt: "2026-06-29T12:11:00.000Z",
+      errorMessage: "Synthetic conversion review failure",
+      metadata: {
+        matterId: "matter-001",
+        documentId: "doc-semantic-failed",
+        provider: "local-document-conversion-metadata",
+        providerStatus: "metadata_only",
+        sourceTextLength: 52,
+        rawOcrText: "Synthetic failed OCR text must stay private.",
+        providerPayload: { private: true },
+        generatedSummary: "Synthetic failed generated summary",
+      },
+    });
+
+    const response = await testServer({ repository, ocrJobQueue: undefined }).inject({
+      method: "GET",
+      url: "/api/document-processing/workbench?matterId=matter-001",
+    });
+
+    expect(response.statusCode).toBe(200);
+    const entries = new Map(
+      response
+        .json()
+        .documents.map((item: { document: { id: string }; conversionReview?: unknown }) => [
+          item.document.id,
+          item.conversionReview,
+        ]),
+    );
+    expect(entries.get("doc-semantic-not-requested")).toMatchObject({
+      posture: "not_requested",
+      semanticReviewReadiness: {
+        documentId: "doc-semantic-not-requested",
+        counts: { sourceTextLength: 52 },
+        posture: "blocked",
+        conversionReviewStatus: "not_requested",
+        artifactStatus: "not_created",
+        providerActivated: false,
+        downstreamMutation: false,
+        rawOcrTextReturned: false,
+        providerPayloadsStored: false,
+        generatedSummariesStored: false,
+      },
+    });
+    expect(entries.get("doc-semantic-draft")).toMatchObject({
+      artifactId: "artifact-conversion-review-semantic-draft",
+      semanticReviewReadiness: {
+        documentId: "doc-semantic-draft",
+        artifactId: "artifact-conversion-review-semantic-draft",
+        jobId: "job-conversion-review-decision",
+        posture: "blocked",
+        conversionReviewStatus: "blocked",
+        artifactStatus: "metadata_only",
+        providerActivated: false,
+        downstreamMutation: false,
+        providerPayloadsStored: false,
+        generatedSummariesStored: false,
+      },
+    });
+    expect(entries.get("doc-semantic-failed")).toMatchObject({
+      posture: "failed",
+      semanticReviewReadiness: {
+        documentId: "doc-semantic-failed",
+        jobId: "job-conversion-review-semantic-failed",
+        counts: { sourceTextLength: 52 },
+        posture: "blocked",
+        conversionReviewStatus: "failed",
+        artifactStatus: "not_created",
+        providerActivated: false,
+        downstreamMutation: false,
+        providerPayloadsStored: false,
+        generatedSummariesStored: false,
+      },
+    });
+    for (const documentId of [
+      "doc-semantic-not-requested",
+      "doc-semantic-draft",
+      "doc-semantic-failed",
+    ]) {
+      const entry = entries.get(documentId) as { semanticReviewReadiness: Record<string, unknown> };
+      expectSemanticReviewReadinessSafe(entry.semanticReviewReadiness);
+    }
+    const responseJson = JSON.stringify(response.json());
+    expect(responseJson).not.toContain("Synthetic failed OCR text must stay private.");
+    expect(responseJson).not.toContain('"providerPayload":');
+    expect(responseJson).not.toContain("Synthetic failed generated summary");
   });
 
   it("rejects opposite terminal conversion review decisions", async () => {
