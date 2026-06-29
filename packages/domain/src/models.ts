@@ -1,5 +1,10 @@
 import type { BillingRateSnapshot, BillingStatus } from "./billing.js";
-import type { ReviewAgingCue } from "./review-aging.js";
+import type {
+  ReviewAgingCue,
+  ReviewAgingDecision,
+  ReviewAgingDecisionRecord,
+  ReviewAgingStatus,
+} from "./review-aging.js";
 
 export type Province = "BC" | "ON" | "CANADA" | "OTHER";
 
@@ -714,6 +719,11 @@ export interface CalendarSchedulingRequestRecord {
   updatedByUserId: string;
   reviewedAt?: string;
   reviewedByUserId?: string;
+  reviewAgingDecision?: ReviewAgingDecision;
+  reviewAgingDecidedAt?: string;
+  reviewAgingDecidedByUserId?: string;
+  reviewAgingCueStatus?: ReviewAgingStatus;
+  reviewAgingAgeHours?: number;
 }
 
 export interface CalendarSchedulingRequestSummary {
@@ -759,6 +769,7 @@ export interface CalendarSchedulingRequestSummary {
     approvalCreatesTimeEntry: false;
   };
   reviewAging?: ReviewAgingCue;
+  reviewAgingDecision?: ReviewAgingDecisionRecord;
   reviewedAt?: string;
   reviewedByUserId?: string;
 }

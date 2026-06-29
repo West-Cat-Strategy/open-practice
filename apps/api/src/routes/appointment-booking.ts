@@ -8,8 +8,10 @@ import {
 import {
   appointmentBookingLinkStatus,
   appointmentBookingPublicRequestResponse,
+  buildReviewAgingCue,
   buildAppointmentBookingSlots,
   publicAppointmentBookingProfile,
+  reviewAgingDecisionValues,
   summarizeAppointmentBookingLink,
   summarizeAppointmentBookingProfile,
   summarizeAppointmentBookingRequest,
@@ -180,6 +182,10 @@ const reviewBodySchema = z
     message: "Dismissed booking requests require a reason",
     path: ["dismissedReason"],
   });
+
+const agingReviewBodySchema = z.object({
+  decision: z.enum(reviewAgingDecisionValues),
+});
 
 export type AppointmentBookingRouteDependencies = Pick<
   ApiRouteDependencies,
@@ -947,6 +953,89 @@ export function registerAppointmentBookingRoutes(
     return {
       request: summarizeAppointmentBookingRequest({
         request: reviewed.request,
+        profile,
+        now,
+      }),
+    };
+  });
+
+  server.patch("/api/appointment-booking/requests/:requestId/aging-review", async (request) => {
+    const staffAccess = requireStaffAccess(request.auth);
+    if (!staffAccess.ok) throw staffAccess.error;
+    const params = parseRequestPart(requestIdParamsSchema, request.params, "params");
+    const body = parseRequestPart(agingReviewBodySchema, request.body, "body");
+    const existing = await repository.getAppointmentBookingRequest(
+      request.auth.firmId,
+      params.requestId,
+    );
+    if (!existing) {
+      throw new ApiHttpError(
+        404,
+        "APPOINTMENT_BOOKING_REQUEST_NOT_FOUND",
+        "Booking request not found",
+      );
+    }
+    if (existing.status !== "tentative_hold") {
+      throw new ApiHttpError(
+        409,
+        "APPOINTMENT_BOOKING_AGING_REVIEW_CLOSED",
+        "Booking request is no longer an open tentative hold",
+      );
+    }
+    const now = new Date().toISOString();
+    const cue = buildReviewAgingCue({ referenceAt: existing.submittedAt, now });
+    if (cue.status === "fresh") {
+      throw new ApiHttpError(
+        409,
+        "APPOINTMENT_BOOKING_AGING_REVIEW_NOT_AGING",
+        "Booking request is not aging or stale yet",
+      );
+    }
+    const updated = await repository.recordAppointmentBookingAgingReviewDecision({
+      firmId: request.auth.firmId,
+      requestId: existing.id,
+      decision: body.decision,
+      decidedAt: now,
+      decidedByUserId: request.auth.user.id,
+      cueStatus: cue.status,
+      ageHours: cue.ageHours,
+    });
+    if (!updated) {
+      throw new ApiHttpError(
+        404,
+        "APPOINTMENT_BOOKING_REQUEST_NOT_FOUND",
+        "Booking request not found",
+      );
+    }
+    const profile = await repository.getAppointmentBookingProfile(
+      request.auth.firmId,
+      updated.profileId,
+    );
+    await appendRouteAuditEvent(repository, request.auth, {
+      action: "appointment_booking.hold.aging_review_recorded",
+      resourceType: "appointment_booking_request",
+      resourceId: updated.id,
+      occurredAt: now,
+      metadata: {
+        requestId: updated.id,
+        profileId: updated.profileId,
+        eventId: updated.calendarEventId,
+        decision: body.decision,
+        cueStatus: cue.status,
+        ageHours: cue.ageHours,
+        automaticFinalConfirmation: false,
+        autoExpires: false,
+        providerSync: false,
+        publicRoomCreated: false,
+        nativeMediaCreated: false,
+        chatCreated: false,
+        recordingCreated: false,
+        matterCreated: false,
+      },
+    });
+    return {
+      request: summarizeAppointmentBookingRequest({
+        request: updated,
         profile,
         now,
       }),

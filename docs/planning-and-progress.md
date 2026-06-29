@@ -88,6 +88,14 @@ derived from existing `submittedAt`/`createdAt` timestamps, display in Calendar/
 surfaces only, and preserve no automatic final confirmation, auto-expiry, provider sync, public
 room URLs, native media, chat, recordings, or matter creation. Proof is recorded in
 [calendar aging review cues proof](validation/OP_CALENDAR_AGING_REVIEW_CUES_PROOF_2026-06-28.md).
+The 2026-06-29 `feat/calendar-aging-review-decisions-20260629` follow-up adds the staff-only,
+enum-only triage decision layer for those aging/stale records. Appointment holds can record
+`acknowledged`, `follow_up_required`, or `defer_review` only while still `tentative_hold`; calendar
+scheduling requests can record the same decisions only while still `needs_review` and matter-access
+authorized. Decisions update latest row metadata plus safe audit events and dashboard row controls
+without confirming, scheduling, expiring, syncing providers, creating public rooms, adding native
+media/chat/recording, queueing reminders, creating tasks, or creating matters. Proof is recorded in
+[calendar aging review decisions proof](validation/OP_CALENDAR_AGING_REVIEW_DECISIONS_PROOF_2026-06-29.md).
 
 The 2026-06-26 active-lane mainline closeout integrates the features/capabilities parity audit and
 remediation, appointment booking tentative holds, structured task management V3, calendar tickler

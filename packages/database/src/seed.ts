@@ -207,6 +207,13 @@ export async function seedSampleData(db: OpenPracticeDatabase): Promise<void> {
         updatedAt: new Date(request.updatedAt),
         reviewedAt: request.reviewedAt ? new Date(request.reviewedAt) : null,
         reviewedByUserId: request.reviewedByUserId ?? null,
+        reviewAgingDecision: request.reviewAgingDecision ?? null,
+        reviewAgingDecidedAt: request.reviewAgingDecidedAt
+          ? new Date(request.reviewAgingDecidedAt)
+          : null,
+        reviewAgingDecidedByUserId: request.reviewAgingDecidedByUserId ?? null,
+        reviewAgingCueStatus: request.reviewAgingCueStatus ?? null,
+        reviewAgingAgeHours: request.reviewAgingAgeHours ?? null,
       })),
     )
     .onConflictDoNothing();

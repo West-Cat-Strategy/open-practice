@@ -1,7 +1,7 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { InMemoryOpenPracticeRepository, type AuthSessionRecord } from "@open-practice/database";
-import type { ProfessionalRole, User } from "@open-practice/domain";
+import type { AuditEvent, NewAuditEvent, ProfessionalRole, User } from "@open-practice/domain";
 import { hashToken } from "../http/auth-helpers.js";
 import { registerAppointmentBookingRoutes } from "./appointment-booking.js";
 
@@ -9,6 +9,16 @@ const jwtSecret = "appointment-booking-test-secret-at-least-32-characters";
 const websiteToken = "website-submission-token";
 const allowedOrigin = "https://booking.example.test";
 const servers: FastifyInstance[] = [];
+
+class AuditRecordingRepository extends InMemoryOpenPracticeRepository {
+  readonly recordedAuditEvents: AuditEvent[] = [];
+
+  override async appendAuditEvent(event: NewAuditEvent): Promise<AuditEvent> {
+    const appended = await super.appendAuditEvent(event);
+    this.recordedAuditEvents.push(appended);
+    return appended;
+  }
+}
 
 function user(role: ProfessionalRole = "owner_admin"): User {
   return {
@@ -36,7 +46,7 @@ function freshSession(authUser: User): AuthSessionRecord {
 }
 
 async function testServer(authUser = user()) {
-  const repository = new InMemoryOpenPracticeRepository();
+  const repository = new AuditRecordingRepository();
   await repository.upsertProviderSetting({
     id: "provider-public-intake-test",
     firmId: "firm-west-legal",
@@ -301,5 +311,116 @@ describe("appointment booking routes", () => {
       request: { id: requestId, status: "confirmed" },
     });
     expect(reviewed.json().request).not.toHaveProperty("reviewAging");
+  });
+
+  it("records stale hold aging review decisions without changing lifecycle or public responses", async () => {
+    const { server, repository } = await testServer();
+    const profileId = await createProfile(server);
+    const linkResponse = await server.inject({
+      method: "POST",
+      url: `/api/appointment-booking/profiles/${encodeURIComponent(profileId)}/links`,
+      payload: { matterId: "matter-001" },
+    });
+    const token = linkResponse.json().token as string;
+    const booked = await server.inject({
+      method: "POST",
+      url: "/api/portal/appointment-bookings/book",
+      headers: { "x-open-practice-public-token": token },
+      payload: {
+        startsAt: "2026-06-29T16:00:00.000Z",
+        requesterName: "Synthetic Known Client",
+        requesterEmail: "known@example.test",
+      },
+    });
+    expect(booked.statusCode).toBe(201);
+    expect(JSON.stringify(booked.json())).not.toContain("reviewAgingDecision");
+
+    const requestList = await server.inject({
+      method: "GET",
+      url: "/api/appointment-booking/requests",
+    });
+    const requestId = requestList.json().requests[0].id as string;
+
+    const freshReview = await server.inject({
+      method: "PATCH",
+      url: `/api/appointment-booking/requests/${encodeURIComponent(requestId)}/aging-review`,
+      payload: { decision: "acknowledged" },
+    });
+    expect(freshReview.statusCode).toBe(409);
+    expect(freshReview.json()).toMatchObject({
+      code: "APPOINTMENT_BOOKING_AGING_REVIEW_NOT_AGING",
+    });
+
+    vi.setSystemTime(new Date("2026-06-29T12:00:00.000Z"));
+    const invalidDecision = await server.inject({
+      method: "PATCH",
+      url: `/api/appointment-booking/requests/${encodeURIComponent(requestId)}/aging-review`,
+      payload: { decision: "confirm" },
+    });
+    expect(invalidDecision.statusCode).toBe(400);
+
+    const reviewed = await server.inject({
+      method: "PATCH",
+      url: `/api/appointment-booking/requests/${encodeURIComponent(requestId)}/aging-review`,
+      payload: { decision: "follow_up_required" },
+    });
+    expect(reviewed.statusCode).toBe(200);
+    expect(reviewed.json().request).toMatchObject({
+      id: requestId,
+      status: "tentative_hold",
+      reviewAging: {
+        status: "stale",
+        ageHours: 72,
+        automaticFinalConfirmation: false,
+        autoExpires: false,
+      },
+      reviewAgingDecision: {
+        decision: "follow_up_required",
+        decidedByUserId: "user-admin",
+        cueStatus: "stale",
+        ageHours: 72,
+        automaticFinalConfirmation: false,
+        autoExpires: false,
+        providerSync: false,
+        publicRoomCreated: false,
+        nativeMediaCreated: false,
+        chatCreated: false,
+        recordingCreated: false,
+        matterCreated: false,
+      },
+    });
+
+    const stored = await repository.getAppointmentBookingRequest("firm-west-legal", requestId);
+    expect(stored).toMatchObject({
+      status: "tentative_hold",
+      calendarEventId: reviewed.json().request.calendarEventId,
+      reviewAgingDecision: "follow_up_required",
+      reviewAgingCueStatus: "stale",
+      reviewAgingAgeHours: 72,
+    });
+    const audit = repository.recordedAuditEvents.find(
+      (event) => event.action === "appointment_booking.hold.aging_review_recorded",
+    );
+    expect(audit?.metadata).toMatchObject({
+      requestId,
+      profileId,
+      decision: "follow_up_required",
+      cueStatus: "stale",
+      ageHours: 72,
+      automaticFinalConfirmation: false,
+      autoExpires: false,
+      providerSync: false,
+      publicRoomCreated: false,
+      nativeMediaCreated: false,
+      chatCreated: false,
+      recordingCreated: false,
+      matterCreated: false,
+    });
+    const serializedAudit = JSON.stringify(audit);
+    expect(serializedAudit).not.toContain("known@example.test");
+    expect(serializedAudit).not.toContain("Synthetic Known Client");
+    expect(serializedAudit).not.toContain("2026-06-29T16:00:00.000Z");
+    expect(serializedAudit).not.toContain(token);
+    expect(serializedAudit).not.toContain("meeting");
   });
 });

@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { buildReviewAgingCue } from "./review-aging.js";
+import {
+  buildReviewAgingCue,
+  buildReviewAgingDecisionRecord,
+  isReviewAgingDecision,
+} from "./review-aging.js";
 
 describe("review aging cues", () => {
   it("classifies fresh, aging, and stale review cues at 24h and 72h thresholds", () => {
@@ -25,5 +29,45 @@ describe("review aging cues", () => {
       status: "stale",
       ageHours: 72,
     });
+  });
+
+  it("accepts only triage review decisions and projects non-mutating decision records", () => {
+    expect(isReviewAgingDecision("acknowledged")).toBe(true);
+    expect(isReviewAgingDecision("follow_up_required")).toBe(true);
+    expect(isReviewAgingDecision("defer_review")).toBe(true);
+    expect(isReviewAgingDecision("confirmed")).toBe(false);
+
+    expect(
+      buildReviewAgingDecisionRecord({
+        decision: "follow_up_required",
+        decidedAt: "2026-06-04T12:00:00.000Z",
+        decidedByUserId: "user-licensee",
+        cueStatus: "stale",
+        ageHours: 72.9,
+      }),
+    ).toEqual({
+      decision: "follow_up_required",
+      decidedAt: "2026-06-04T12:00:00.000Z",
+      decidedByUserId: "user-licensee",
+      cueStatus: "stale",
+      ageHours: 72,
+      automaticFinalConfirmation: false,
+      autoExpires: false,
+      providerSync: false,
+      publicRoomCreated: false,
+      nativeMediaCreated: false,
+      chatCreated: false,
+      recordingCreated: false,
+      matterCreated: false,
+    });
+    expect(
+      buildReviewAgingDecisionRecord({
+        decision: "acknowledged",
+        decidedAt: "2026-06-04T12:00:00.000Z",
+        decidedByUserId: "user-licensee",
+        cueStatus: "fresh",
+        ageHours: 12,
+      }),
+    ).toBeUndefined();
   });
 });

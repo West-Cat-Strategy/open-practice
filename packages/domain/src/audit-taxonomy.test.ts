@@ -214,6 +214,65 @@ describe("audit event taxonomy", () => {
     );
   });
 
+  it("classifies calendar scheduling aging review decisions without private request details", () => {
+    const classification = classifyAuditEvent(
+      auditEvent({
+        action: "calendar.scheduling_request.aging_review_recorded",
+        resourceType: "calendar_scheduling_request",
+        resourceId: "calendar-request-001",
+        metadata: {
+          matterId: "matter-001",
+          requestId: "calendar-request-001",
+          decision: "follow_up_required",
+          cueStatus: "stale",
+          ageHours: 96,
+          automaticFinalConfirmation: false,
+          autoExpires: false,
+          providerSync: false,
+          publicRoomCreated: false,
+          nativeMediaCreated: false,
+          chatCreated: false,
+          recordingCreated: false,
+          matterCreated: false,
+          taskCreated: false,
+          eventCreated: false,
+          eventRescheduled: false,
+          reminderCancelled: false,
+        },
+      }),
+    );
+
+    expect(classification).toMatchObject({
+      category: "calendar",
+      known: true,
+      matterScope: "matter",
+      resourceTypeMatches: true,
+    });
+    expect(classification.metadataHints.resource).toEqual(
+      expect.arrayContaining([
+        "requestId",
+        "decision",
+        "cueStatus",
+        "ageHours",
+        "automaticFinalConfirmation",
+        "autoExpires",
+        "providerSync",
+        "publicRoomCreated",
+        "nativeMediaCreated",
+        "chatCreated",
+        "recordingCreated",
+        "matterCreated",
+        "taskCreated",
+        "eventCreated",
+        "eventRescheduled",
+        "reminderCancelled",
+      ]),
+    );
+    expect(classification.metadataHints.resource).not.toEqual(
+      expect.arrayContaining(["title", "sourceLabel", "requestedStartsAt", "calendarEventId"]),
+    );
+  });
+
   it("classifies appointment booking hold audit metadata without tokens or requester contact", () => {
     const createdClassification = classifyAuditEvent(
       auditEvent({
@@ -274,6 +333,60 @@ describe("audit event taxonomy", () => {
         "meetingUrl",
         "eventTitle",
       ]),
+    );
+  });
+
+  it("classifies appointment booking aging review decisions without requester contact", () => {
+    const classification = classifyAuditEvent(
+      auditEvent({
+        action: "appointment_booking.hold.aging_review_recorded",
+        resourceType: "appointment_booking_request",
+        resourceId: "appointment-booking-request-001",
+        metadata: {
+          requestId: "appointment-booking-request-001",
+          profileId: "appointment-booking-profile-001",
+          eventId: "calendar-event-001",
+          decision: "acknowledged",
+          cueStatus: "aging",
+          ageHours: 48,
+          automaticFinalConfirmation: false,
+          autoExpires: false,
+          providerSync: false,
+          publicRoomCreated: false,
+          nativeMediaCreated: false,
+          chatCreated: false,
+          recordingCreated: false,
+          matterCreated: false,
+        },
+      }),
+    );
+
+    expect(classification).toMatchObject({
+      category: "calendar",
+      known: true,
+      matterScope: "optional_matter",
+      resourceTypeMatches: true,
+    });
+    expect(classification.metadataHints.resource).toEqual(
+      expect.arrayContaining([
+        "requestId",
+        "profileId",
+        "eventId",
+        "decision",
+        "cueStatus",
+        "ageHours",
+        "automaticFinalConfirmation",
+        "autoExpires",
+        "providerSync",
+        "publicRoomCreated",
+        "nativeMediaCreated",
+        "chatCreated",
+        "recordingCreated",
+        "matterCreated",
+      ]),
+    );
+    expect(classification.metadataHints.resource).not.toEqual(
+      expect.arrayContaining(["requesterName", "requesterEmail", "requestedStartsAt", "token"]),
     );
   });
 

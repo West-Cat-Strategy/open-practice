@@ -388,6 +388,11 @@ export function mapCalendarSchedulingRequestRow(
     updatedByUserId: row.updatedByUserId,
     reviewedAt: dateToIso(row.reviewedAt),
     reviewedByUserId: row.reviewedByUserId ?? undefined,
+    reviewAgingDecision: row.reviewAgingDecision ?? undefined,
+    reviewAgingDecidedAt: dateToIso(row.reviewAgingDecidedAt),
+    reviewAgingDecidedByUserId: row.reviewAgingDecidedByUserId ?? undefined,
+    reviewAgingCueStatus: row.reviewAgingCueStatus ?? undefined,
+    reviewAgingAgeHours: row.reviewAgingAgeHours ?? undefined,
   };
 }
 

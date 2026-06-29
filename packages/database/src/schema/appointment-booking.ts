@@ -147,6 +147,15 @@ export const appointmentBookingRequests = pgTable(
     reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
     reviewedByUserId: text("reviewed_by_user_id").references(() => users.id),
     dismissedReason: text("dismissed_reason"),
+    reviewAgingDecision:
+      text("review_aging_decision").$type<AppointmentBookingRequestRecord["reviewAgingDecision"]>(),
+    reviewAgingDecidedAt: timestamp("review_aging_decided_at", { withTimezone: true }),
+    reviewAgingDecidedByUserId: text("review_aging_decided_by_user_id").references(() => users.id),
+    reviewAgingCueStatus:
+      text("review_aging_cue_status").$type<
+        AppointmentBookingRequestRecord["reviewAgingCueStatus"]
+      >(),
+    reviewAgingAgeHours: integer("review_aging_age_hours"),
     metadata: jsonb("metadata")
       .$type<AppointmentBookingRequestRecord["metadata"]>()
       .notNull()
@@ -171,6 +180,22 @@ export const appointmentBookingRequests = pgTable(
     statusValue: check(
       "appointment_booking_requests_status_value",
       sql`${table.status} in ('tentative_hold', 'confirmed', 'dismissed')`,
+    ),
+    reviewAgingDecisionValue: check(
+      "appointment_booking_requests_review_aging_decision_value",
+      sql`${table.reviewAgingDecision} is null or ${table.reviewAgingDecision} in ('acknowledged', 'follow_up_required', 'defer_review')`,
+    ),
+    reviewAgingCueStatusValue: check(
+      "appointment_booking_requests_review_aging_cue_status_value",
+      sql`${table.reviewAgingCueStatus} is null or ${table.reviewAgingCueStatus} in ('aging', 'stale')`,
+    ),
+    reviewAgingAgeNonnegative: check(
+      "appointment_booking_requests_review_aging_age_nonnegative",
+      sql`${table.reviewAgingAgeHours} is null or ${table.reviewAgingAgeHours} >= 0`,
+    ),
+    reviewAgingDecisionComplete: check(
+      "appointment_booking_requests_review_aging_decision_complete",
+      sql`(${table.reviewAgingDecision} is null and ${table.reviewAgingDecidedAt} is null and ${table.reviewAgingDecidedByUserId} is null and ${table.reviewAgingCueStatus} is null and ${table.reviewAgingAgeHours} is null) or (${table.reviewAgingDecision} is not null and ${table.reviewAgingDecidedAt} is not null and ${table.reviewAgingDecidedByUserId} is not null and ${table.reviewAgingCueStatus} is not null and ${table.reviewAgingAgeHours} is not null)`,
     ),
     requesterNamePresent: check(
       "appointment_booking_requests_requester_name_present",

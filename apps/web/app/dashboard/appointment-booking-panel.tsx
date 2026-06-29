@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarCheck, Link2, Plus, RefreshCw, X } from "lucide-react";
+import { Bell, CalendarCheck, CheckCircle2, Clock3, Link2, Plus, RefreshCw, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { dashboardApiStatus, requestDashboardJson } from "../api-client";
 import { compactDate, compactStatus } from "../_features/dashboard/formatters";
@@ -29,6 +29,24 @@ interface ReviewAgingCue {
   autoExpires: false;
 }
 
+type ReviewAgingDecision = "acknowledged" | "follow_up_required" | "defer_review";
+
+interface ReviewAgingDecisionRecord {
+  decision: ReviewAgingDecision;
+  decidedAt: string;
+  decidedByUserId: string;
+  cueStatus: "aging" | "stale";
+  ageHours: number;
+  automaticFinalConfirmation: false;
+  autoExpires: false;
+  providerSync: false;
+  publicRoomCreated: false;
+  nativeMediaCreated: false;
+  chatCreated: false;
+  recordingCreated: false;
+  matterCreated: false;
+}
+
 interface AppointmentBookingRequestSummary {
   id: string;
   profileId: string;
@@ -47,6 +65,7 @@ interface AppointmentBookingRequestSummary {
   requestedEndsAt: string;
   submittedAt: string;
   reviewAging?: ReviewAgingCue;
+  reviewAgingDecision?: ReviewAgingDecisionRecord;
   reviewedAt?: string;
   dismissedReason?: string;
 }
@@ -143,6 +162,27 @@ export function describeAppointmentBookingHoldAging(
     label,
     detail: `${cue.ageHours}h waiting since ${cue.referenceAt}; manual review only, no auto-confirm, auto-expiry, or provider sync.`,
     ...(cue.status === "stale" ? { tone: "risk" as const } : {}),
+  };
+}
+
+export function describeAppointmentBookingAgingDecision(
+  record: AppointmentBookingRequestSummary["reviewAgingDecision"] | undefined,
+):
+  | {
+      label: string;
+      detail: string;
+    }
+  | undefined {
+  if (!record) return undefined;
+  const label =
+    record.decision === "acknowledged"
+      ? "acknowledged"
+      : record.decision === "follow_up_required"
+        ? "follow-up required"
+        : "deferred";
+  return {
+    label,
+    detail: `${compactStatus(record.cueStatus)} at ${record.ageHours}h by ${record.decidedByUserId}; review-only decision, no auto-confirm, auto-expiry, provider sync, public room, media, chat, recording, or matter.`,
   };
 }
 
@@ -323,6 +363,32 @@ export function AppointmentBookingPanel({
     }
   }
 
+  async function reviewAgingDecisionRequest(
+    request: AppointmentBookingRequestSummary,
+    decision: ReviewAgingDecision,
+  ): Promise<void> {
+    const actionKey = `${request.id}:aging:${decision}`;
+    setReviewingRequestId(actionKey);
+    setStatus("Recording aging review decision...");
+    try {
+      const payload = await requestDashboardJson<RequestReviewResponse>(
+        apiBaseUrl,
+        `/api/appointment-booking/requests/${encodeURIComponent(request.id)}/aging-review`,
+        {
+          method: "PATCH",
+          headers: devHeaders,
+          payload: { decision },
+        },
+      );
+      setRequests((current) => upsertRequest(current, payload.request));
+      setStatus("Aging review decision recorded.");
+    } catch (error) {
+      setStatus(`Aging review failed: ${dashboardApiStatus(error)}`);
+    } finally {
+      setReviewingRequestId("");
+    }
+  }
+
   return (
     <div className="share-controls calendar-booking-controls">
       <div className="section-title">
@@ -423,6 +489,13 @@ export function AppointmentBookingPanel({
       <div className="party-list">
         {tentativeRequests.slice(0, 5).map((request) => {
           const agingCue = describeAppointmentBookingHoldAging(request.reviewAging);
+          const agingDecision = describeAppointmentBookingAgingDecision(
+            request.reviewAgingDecision,
+          );
+          const agingDecisionAvailable =
+            request.reviewAging?.status === "aging" || request.reviewAging?.status === "stale";
+          const reviewBusy =
+            reviewingRequestId === request.id || reviewingRequestId.startsWith(`${request.id}:`);
           return (
             <div className="party-row" key={request.id}>
               <span>
@@ -442,11 +515,47 @@ export function AppointmentBookingPanel({
                     {agingCue.label}: {agingCue.detail}
                   </small>
                 ) : null}
+                {agingDecision ? (
+                  <small>
+                    {agingDecision.label}: {agingDecision.detail}
+                  </small>
+                ) : null}
               </span>
               <div className="row-actions">
+                {agingDecisionAvailable ? (
+                  <>
+                    <button
+                      className="secondary-button compact-button row-button"
+                      disabled={reviewBusy}
+                      onClick={() => void reviewAgingDecisionRequest(request, "acknowledged")}
+                      type="button"
+                    >
+                      <CheckCircle2 size={15} />
+                      Acknowledge
+                    </button>
+                    <button
+                      className="secondary-button compact-button row-button"
+                      disabled={reviewBusy}
+                      onClick={() => void reviewAgingDecisionRequest(request, "follow_up_required")}
+                      type="button"
+                    >
+                      <Bell size={15} />
+                      Follow up
+                    </button>
+                    <button
+                      className="secondary-button compact-button row-button"
+                      disabled={reviewBusy}
+                      onClick={() => void reviewAgingDecisionRequest(request, "defer_review")}
+                      type="button"
+                    >
+                      <Clock3 size={15} />
+                      Defer
+                    </button>
+                  </>
+                ) : null}
                 <button
                   className="secondary-button compact-button row-button"
-                  disabled={reviewingRequestId === request.id}
+                  disabled={reviewBusy}
                   onClick={() => void reviewRequest(request, "confirmed")}
                   type="button"
                 >
@@ -455,7 +564,7 @@ export function AppointmentBookingPanel({
                 </button>
                 <button
                   className="secondary-button compact-button row-button"
-                  disabled={reviewingRequestId === request.id}
+                  disabled={reviewBusy}
                   onClick={() => void reviewRequest(request, "dismissed")}
                   type="button"
                 >
