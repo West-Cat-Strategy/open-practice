@@ -65,6 +65,16 @@ export interface AppointmentBookingReviewResult {
   event: CalendarEventRecord;
 }
 
+export interface AppointmentBookingAgingReviewInput {
+  firmId: string;
+  requestId: string;
+  decision: NonNullable<AppointmentBookingRequestRecord["reviewAgingDecision"]>;
+  decidedAt: string;
+  decidedByUserId: string;
+  cueStatus: NonNullable<AppointmentBookingRequestRecord["reviewAgingCueStatus"]>;
+  ageHours: number;
+}
+
 export interface AppointmentBookingRepository {
   listAppointmentBookingProfiles(
     firmId: string,
@@ -97,4 +107,7 @@ export interface AppointmentBookingRepository {
   reviewAppointmentBookingRequest(
     input: AppointmentBookingReviewInput,
   ): Promise<AppointmentBookingReviewResult | undefined>;
+  recordAppointmentBookingAgingReviewDecision(
+    input: AppointmentBookingAgingReviewInput,
+  ): Promise<AppointmentBookingRequestRecord | undefined>;
 }

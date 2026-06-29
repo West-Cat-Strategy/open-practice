@@ -287,6 +287,15 @@ export const calendarSchedulingRequests = pgTable(
       .references(() => users.id),
     reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
     reviewedByUserId: text("reviewed_by_user_id").references(() => users.id),
+    reviewAgingDecision:
+      text("review_aging_decision").$type<CalendarSchedulingRequestRecord["reviewAgingDecision"]>(),
+    reviewAgingDecidedAt: timestamp("review_aging_decided_at", { withTimezone: true }),
+    reviewAgingDecidedByUserId: text("review_aging_decided_by_user_id").references(() => users.id),
+    reviewAgingCueStatus:
+      text("review_aging_cue_status").$type<
+        CalendarSchedulingRequestRecord["reviewAgingCueStatus"]
+      >(),
+    reviewAgingAgeHours: integer("review_aging_age_hours"),
   },
   (table) => ({
     matterStatus: index("calendar_scheduling_requests_matter_status_idx").on(
@@ -306,6 +315,22 @@ export const calendarSchedulingRequests = pgTable(
     statusValue: check(
       "calendar_scheduling_requests_status_value",
       sql`${table.status} in ('needs_review', 'reviewed', 'scheduled', 'dismissed')`,
+    ),
+    reviewAgingDecisionValue: check(
+      "calendar_scheduling_requests_review_aging_decision_value",
+      sql`${table.reviewAgingDecision} is null or ${table.reviewAgingDecision} in ('acknowledged', 'follow_up_required', 'defer_review')`,
+    ),
+    reviewAgingCueStatusValue: check(
+      "calendar_scheduling_requests_review_aging_cue_status_value",
+      sql`${table.reviewAgingCueStatus} is null or ${table.reviewAgingCueStatus} in ('aging', 'stale')`,
+    ),
+    reviewAgingAgeNonnegative: check(
+      "calendar_scheduling_requests_review_aging_age_nonnegative",
+      sql`${table.reviewAgingAgeHours} is null or ${table.reviewAgingAgeHours} >= 0`,
+    ),
+    reviewAgingDecisionComplete: check(
+      "calendar_scheduling_requests_review_aging_decision_complete",
+      sql`(${table.reviewAgingDecision} is null and ${table.reviewAgingDecidedAt} is null and ${table.reviewAgingDecidedByUserId} is null and ${table.reviewAgingCueStatus} is null and ${table.reviewAgingAgeHours} is null) or (${table.reviewAgingDecision} is not null and ${table.reviewAgingDecidedAt} is not null and ${table.reviewAgingDecidedByUserId} is not null and ${table.reviewAgingCueStatus} is not null and ${table.reviewAgingAgeHours} is not null)`,
     ),
     sourceTypeValue: check(
       "calendar_scheduling_requests_source_type_value",

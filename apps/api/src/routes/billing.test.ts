@@ -1,8 +1,18 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { InMemoryOpenPracticeRepository } from "@open-practice/database";
-import type { PaymentProcessorCheckoutSessionInput } from "@open-practice/domain";
+import {
+  defaultPaymentImportDepositMatchReviewBoundary,
+  defaultPaymentImportReviewBoundary,
+  type PaymentImportDepositMatchReviewRecord,
+  type PaymentImportReviewRecord,
+  type PaymentProcessorCheckoutSessionInput,
+} from "@open-practice/domain";
+import { authorizationFixtureCases } from "@open-practice/domain/authorization-fixtures";
 import { createApiServer } from "../server.js";
 
+const firmId = "firm-west-legal";
+const ownerNoAssignmentUserId = "user-payment-import-owner-no-assignment";
+const clientExternalUserId = "user-payment-import-client-external";
 const servers: Array<{ close: () => Promise<void> }> = [];
 type CreateServerOptions = Parameters<typeof createApiServer>[0];
 type QueuedReportJob = { name: string; data: unknown; jobId?: string };
@@ -67,6 +77,150 @@ function fakePaymentProcessor(
       };
     },
   };
+}
+
+function authHeaders(userId: string) {
+  return {
+    "x-open-practice-user-id": userId,
+    "x-open-practice-firm-id": firmId,
+  };
+}
+
+function authorizationFixtureCase(id: string) {
+  const match = authorizationFixtureCases.find((candidate) => candidate.id === id);
+  if (!match) throw new Error(`Missing authorization fixture case ${id}`);
+  return match;
+}
+
+async function seedPaymentImportAuthorizationUsers(
+  repository: InMemoryOpenPracticeRepository,
+): Promise<void> {
+  await repository.createUser({
+    id: ownerNoAssignmentUserId,
+    firmId,
+    displayName: "Synthetic Payment Import Owner",
+    email: "payment-import-owner@example.test",
+    role: "owner_admin",
+    assignedMatterIds: [],
+    mfaEnabled: true,
+  });
+  await repository.createUser({
+    id: clientExternalUserId,
+    firmId,
+    displayName: "Synthetic Payment Import Client",
+    email: "payment-import-client@example.test",
+    role: "client_external",
+    assignedMatterIds: ["matter-001"],
+    mfaEnabled: true,
+  });
+}
+
+function syntheticExternalEventId(id: string): string {
+  return `evt_synthetic_${id.replace(/[^a-zA-Z0-9]+/g, "_")}`;
+}
+
+function paymentImportReviewPayload(input: { id: string; matterId: string }) {
+  return {
+    id: input.id,
+    matterId: input.matterId,
+    providerLabel: "synthetic_processor",
+    eventFamily: "payment",
+    eventStatus: "payment_observed",
+    externalEventId: syntheticExternalEventId(input.id),
+    amountCents: 5000,
+    currency: "CAD",
+  };
+}
+
+function paymentImportReviewRecord(
+  overrides: Partial<PaymentImportReviewRecord> = {},
+): PaymentImportReviewRecord {
+  const id = overrides.id ?? "payment-import-review-auth-assigned";
+  return {
+    id,
+    firmId,
+    matterId: "matter-001",
+    providerLabel: "synthetic_processor",
+    eventFamily: "payment",
+    eventStatus: "payment_observed",
+    externalEventId: syntheticExternalEventId(id),
+    amountCents: 5000,
+    currency: "CAD",
+    importedAt: "2026-06-29T12:00:00.000Z",
+    importedByUserId: "user-licensee",
+    reviewState: "needs_review",
+    normalizedEvidenceFingerprint: `synthetic-${id}-fingerprint`,
+    boundaries: defaultPaymentImportReviewBoundary(),
+    updatedAt: "2026-06-29T12:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function depositMatchReviewRecord(
+  overrides: Partial<PaymentImportDepositMatchReviewRecord> = {},
+): PaymentImportDepositMatchReviewRecord {
+  const id = overrides.id ?? "deposit-match-review-auth-assigned";
+  return {
+    id,
+    firmId,
+    matterId: "matter-001",
+    paymentImportReviewRecordId: "payment-import-review-auth-assigned",
+    candidateManualPaymentId: "manual-payment-auth-assigned",
+    decision: "candidate_supported",
+    reason: "candidate_evidence_matches",
+    importAmountCents: 5000,
+    manualPaymentAmountCents: 5000,
+    currency: "CAD",
+    candidateManualPaymentStatus: "pending_reconciliation",
+    reviewerEvidencePresent: true,
+    idempotencyKey: `synthetic-${id}-key`,
+    decisionFingerprint: `synthetic-${id}-fingerprint`,
+    boundaries: defaultPaymentImportDepositMatchReviewBoundary(),
+    reviewedByUserId: "user-licensee",
+    reviewedAt: "2026-06-29T12:05:00.000Z",
+    createdAt: "2026-06-29T12:05:00.000Z",
+    ...overrides,
+  };
+}
+
+async function seedDepositMatchAuthorizationTarget(
+  repository: InMemoryOpenPracticeRepository,
+  input: { recordId: string; manualPaymentId: string; matterId: string; reviewId?: string },
+): Promise<void> {
+  await repository.createPayment({
+    payment: {
+      id: input.manualPaymentId,
+      firmId,
+      matterId: input.matterId,
+      receivedAt: "2026-06-29T12:01:00.000Z",
+      amountCents: 5000,
+      method: "eft",
+      status: "pending_reconciliation",
+      receivedByUserId: "user-licensee",
+      evidence: { source: "synthetic-payment-import-authorization" },
+    },
+    allocations: [],
+  });
+  await repository.createPaymentImportReviewRecord(
+    paymentImportReviewRecord({
+      id: input.recordId,
+      matterId: input.matterId,
+      eventFamily: "deposit",
+      eventStatus: "deposit_observed",
+      externalDepositId: `dep_${input.recordId.replace(/[^a-zA-Z0-9]+/g, "_")}`,
+      candidateManualPaymentId: input.manualPaymentId,
+    }),
+  );
+  if (input.reviewId) {
+    await repository.createPaymentImportDepositMatchReview(
+      depositMatchReviewRecord({
+        id: input.reviewId,
+        matterId: input.matterId,
+        paymentImportReviewRecordId: input.recordId,
+        candidateManualPaymentId: input.manualPaymentId,
+      }),
+    );
+  }
 }
 
 type SyntheticLedgerOptions = {
@@ -412,6 +566,346 @@ describe("billing routes", () => {
     expect(listCalls.expenseEntries).toEqual([{ matterIds: ["matter-001"] }]);
     expect(listCalls.invoices).toEqual([{ matterIds: ["matter-001"] }]);
     expect(listCalls.payments).toEqual([{ matterIds: ["matter-001"] }]);
+  });
+
+  it("matches payment import review list fixtures across firm-wide, assigned, unassigned, and external users", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await seedPaymentImportAuthorizationUsers(repository);
+    const fixtureIds = authorizationFixtureCases
+      .filter((item) => item.family === "payment_import_review" && item.action === "read")
+      .map((item) => item.id);
+    expect(fixtureIds).toEqual([
+      "payment-import-review:firm-wide:list-all",
+      "payment-import-review:assigned:list-visible",
+      "payment-import-review:unassigned:list-hidden",
+      "payment-import-review:portal-client:staff-list-denied",
+    ]);
+    const firmWideCase = authorizationFixtureCase("payment-import-review:firm-wide:list-all");
+    const assignedCase = authorizationFixtureCase("payment-import-review:assigned:list-visible");
+    const unassignedCase = authorizationFixtureCase("payment-import-review:unassigned:list-hidden");
+    const portalCase = authorizationFixtureCase(
+      "payment-import-review:portal-client:staff-list-denied",
+    );
+    await repository.createPaymentImportReviewRecord(
+      paymentImportReviewRecord({
+        id: assignedCase.resourceId,
+        matterId: assignedCase.matterId,
+      }),
+    );
+    await repository.createPaymentImportReviewRecord(
+      paymentImportReviewRecord({
+        id: firmWideCase.resourceId,
+        matterId: unassignedCase.matterId,
+      }),
+    );
+    const server = testServer({ repository });
+
+    const firmWide = await server.inject({
+      method: "GET",
+      url: "/api/billing/payment-import-review-records",
+      headers: authHeaders(ownerNoAssignmentUserId),
+    });
+    expect(firmWide.statusCode).toBe(200);
+    expect(
+      firmWide.json<{ records: Array<{ id: string }> }>().records.map((item) => item.id),
+    ).toEqual(expect.arrayContaining([assignedCase.resourceId, firmWideCase.resourceId]));
+
+    const assigned = await server.inject({
+      method: "GET",
+      url: "/api/billing/payment-import-review-records",
+      headers: authHeaders(assignedCase.subjectId),
+    });
+    expect(assigned.statusCode).toBe(200);
+    const assignedIds = assigned
+      .json<{ records: Array<{ id: string }> }>()
+      .records.map((item) => item.id);
+    expect(assignedIds).toContain(assignedCase.resourceId);
+    expect(assignedIds).not.toContain(unassignedCase.resourceId);
+
+    const unassigned = await server.inject({
+      method: "GET",
+      url: `/api/billing/payment-import-review-records?matterId=${unassignedCase.matterId}`,
+      headers: authHeaders(unassignedCase.subjectId),
+    });
+    expect(unassigned.statusCode).toBe(403);
+    expect(unassigned.json()).toMatchObject({ message: "Expense entry access required" });
+
+    const portalClient = await server.inject({
+      method: "GET",
+      url: "/api/billing/payment-import-review-records",
+      headers: authHeaders(clientExternalUserId),
+    });
+    expect(portalClient.statusCode).toBe(403);
+    expect(portalClient.json()).toMatchObject({ message: "Staff access required" });
+    expect(portalCase.listVisible).toBe(false);
+  });
+
+  it("matches payment import review create fixtures without creating denied records", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await seedPaymentImportAuthorizationUsers(repository);
+    const fixtureIds = authorizationFixtureCases
+      .filter((item) => item.family === "payment_import_review" && item.action === "create")
+      .map((item) => item.id);
+    expect(fixtureIds).toEqual([
+      "payment-import-review:firm-wide:create",
+      "payment-import-review:assigned:create",
+      "payment-import-review:unassigned:create-denied",
+      "payment-import-review:portal-client:create-denied",
+    ]);
+    const firmWideCase = authorizationFixtureCase("payment-import-review:firm-wide:create");
+    const assignedCase = authorizationFixtureCase("payment-import-review:assigned:create");
+    const unassignedCase = authorizationFixtureCase(
+      "payment-import-review:unassigned:create-denied",
+    );
+    const portalCase = authorizationFixtureCase(
+      "payment-import-review:portal-client:create-denied",
+    );
+    const server = testServer({ repository });
+
+    const firmWide = await server.inject({
+      method: "POST",
+      url: "/api/billing/payment-import-review-records",
+      headers: authHeaders(ownerNoAssignmentUserId),
+      payload: paymentImportReviewPayload({
+        id: firmWideCase.resourceId!,
+        matterId: firmWideCase.matterId!,
+      }),
+    });
+    expect(firmWide.statusCode).toBe(200);
+    expect(firmWide.json()).toMatchObject({ record: { id: firmWideCase.resourceId } });
+
+    const assigned = await server.inject({
+      method: "POST",
+      url: "/api/billing/payment-import-review-records",
+      headers: authHeaders(assignedCase.subjectId),
+      payload: paymentImportReviewPayload({
+        id: assignedCase.resourceId!,
+        matterId: assignedCase.matterId!,
+      }),
+    });
+    expect(assigned.statusCode).toBe(200);
+    expect(assigned.json()).toMatchObject({ record: { id: assignedCase.resourceId } });
+
+    const unassigned = await server.inject({
+      method: "POST",
+      url: "/api/billing/payment-import-review-records",
+      headers: authHeaders(unassignedCase.subjectId),
+      payload: paymentImportReviewPayload({
+        id: unassignedCase.resourceId!,
+        matterId: unassignedCase.matterId!,
+      }),
+    });
+    expect(unassigned.statusCode).toBe(403);
+    expect(unassigned.json()).toMatchObject({ message: "Expense entry access required" });
+
+    const portalClient = await server.inject({
+      method: "POST",
+      url: "/api/billing/payment-import-review-records",
+      headers: authHeaders(clientExternalUserId),
+      payload: paymentImportReviewPayload({
+        id: portalCase.resourceId!,
+        matterId: portalCase.matterId!,
+      }),
+    });
+    expect(portalClient.statusCode).toBe(403);
+    expect(portalClient.json()).toMatchObject({ message: "Staff access required" });
+
+    const records = await repository.listPaymentImportReviewRecords(firmId);
+    const recordIds = records.map((record) => record.id);
+    expect(recordIds).toEqual(
+      expect.arrayContaining([firmWideCase.resourceId, assignedCase.resourceId]),
+    );
+    expect(recordIds).not.toContain(unassignedCase.resourceId);
+    expect(recordIds).not.toContain(portalCase.resourceId);
+  });
+
+  it("matches deposit-match review list fixtures across firm-wide, assigned, unassigned, and external users", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await seedPaymentImportAuthorizationUsers(repository);
+    const fixtureIds = authorizationFixtureCases
+      .filter(
+        (item) => item.family === "payment_import_deposit_match_review" && item.action === "read",
+      )
+      .map((item) => item.id);
+    expect(fixtureIds).toEqual([
+      "deposit-match-review:firm-wide:list-all",
+      "deposit-match-review:assigned:list-visible",
+      "deposit-match-review:unassigned:list-hidden",
+      "deposit-match-review:portal-client:staff-list-denied",
+    ]);
+    const firmWideCase = authorizationFixtureCase("deposit-match-review:firm-wide:list-all");
+    const assignedCase = authorizationFixtureCase("deposit-match-review:assigned:list-visible");
+    const unassignedCase = authorizationFixtureCase("deposit-match-review:unassigned:list-hidden");
+    await seedDepositMatchAuthorizationTarget(repository, {
+      recordId: "payment-import-review-auth-assigned",
+      manualPaymentId: "manual-payment-auth-assigned",
+      matterId: assignedCase.matterId!,
+      reviewId: assignedCase.resourceId,
+    });
+    await seedDepositMatchAuthorizationTarget(repository, {
+      recordId: "payment-import-review-auth-unassigned",
+      manualPaymentId: "manual-payment-auth-unassigned",
+      matterId: unassignedCase.matterId!,
+      reviewId: firmWideCase.resourceId,
+    });
+    const server = testServer({ repository });
+
+    const firmWide = await server.inject({
+      method: "GET",
+      url: "/api/billing/payment-import-review-records/payment-import-review-auth-unassigned/deposit-match-reviews",
+      headers: authHeaders(ownerNoAssignmentUserId),
+    });
+    expect(firmWide.statusCode).toBe(200);
+    expect(firmWide.json()).toMatchObject({
+      reviewOnly: true,
+      reviews: [expect.objectContaining({ id: firmWideCase.resourceId })],
+    });
+
+    const assigned = await server.inject({
+      method: "GET",
+      url: "/api/billing/payment-import-review-records/payment-import-review-auth-assigned/deposit-match-reviews",
+      headers: authHeaders(assignedCase.subjectId),
+    });
+    expect(assigned.statusCode).toBe(200);
+    expect(assigned.json()).toMatchObject({
+      reviewOnly: true,
+      reviews: [expect.objectContaining({ id: assignedCase.resourceId })],
+    });
+
+    const unassigned = await server.inject({
+      method: "GET",
+      url: "/api/billing/payment-import-review-records/payment-import-review-auth-unassigned/deposit-match-reviews",
+      headers: authHeaders(unassignedCase.subjectId),
+    });
+    expect(unassigned.statusCode).toBe(403);
+    expect(unassigned.json()).toMatchObject({ message: "Expense entry access required" });
+
+    const portalClient = await server.inject({
+      method: "GET",
+      url: "/api/billing/payment-import-review-records/payment-import-review-auth-assigned/deposit-match-reviews",
+      headers: authHeaders(clientExternalUserId),
+    });
+    expect(portalClient.statusCode).toBe(403);
+    expect(portalClient.json()).toMatchObject({ message: "Staff access required" });
+  });
+
+  it("matches deposit-match review create fixtures without creating denied decisions", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await seedPaymentImportAuthorizationUsers(repository);
+    const fixtureIds = authorizationFixtureCases
+      .filter(
+        (item) => item.family === "payment_import_deposit_match_review" && item.action === "create",
+      )
+      .map((item) => item.id);
+    expect(fixtureIds).toEqual([
+      "deposit-match-review:firm-wide:create",
+      "deposit-match-review:assigned:create",
+      "deposit-match-review:unassigned:create-denied",
+      "deposit-match-review:portal-client:create-denied",
+    ]);
+    const firmWideCase = authorizationFixtureCase("deposit-match-review:firm-wide:create");
+    const assignedCase = authorizationFixtureCase("deposit-match-review:assigned:create");
+    const unassignedCase = authorizationFixtureCase(
+      "deposit-match-review:unassigned:create-denied",
+    );
+    const portalCase = authorizationFixtureCase("deposit-match-review:portal-client:create-denied");
+    await seedDepositMatchAuthorizationTarget(repository, {
+      recordId: "payment-import-review-auth-assigned",
+      manualPaymentId: "manual-payment-auth-assigned",
+      matterId: assignedCase.matterId!,
+    });
+    await seedDepositMatchAuthorizationTarget(repository, {
+      recordId: "payment-import-review-auth-unassigned",
+      manualPaymentId: "manual-payment-auth-unassigned",
+      matterId: unassignedCase.matterId!,
+    });
+    const server = testServer({ repository });
+
+    const firmWide = await server.inject({
+      method: "POST",
+      url: "/api/billing/payment-import-review-records/payment-import-review-auth-unassigned/deposit-match-reviews",
+      headers: authHeaders(ownerNoAssignmentUserId),
+      payload: {
+        id: firmWideCase.resourceId,
+        decision: "candidate_supported",
+        reason: "candidate_evidence_matches",
+        idempotencyKey: "synthetic-deposit-match-firm-wide-create",
+      },
+    });
+    expect(firmWide.statusCode).toBe(200);
+    expect(firmWide.json()).toMatchObject({
+      review: {
+        id: firmWideCase.resourceId,
+        paymentImportReviewRecordId: "payment-import-review-auth-unassigned",
+      },
+    });
+
+    const assigned = await server.inject({
+      method: "POST",
+      url: "/api/billing/payment-import-review-records/payment-import-review-auth-assigned/deposit-match-reviews",
+      headers: authHeaders(assignedCase.subjectId),
+      payload: {
+        id: assignedCase.resourceId,
+        decision: "candidate_supported",
+        reason: "candidate_evidence_matches",
+        idempotencyKey: "synthetic-deposit-match-assigned-create",
+      },
+    });
+    expect(assigned.statusCode).toBe(200);
+    expect(assigned.json()).toMatchObject({
+      review: {
+        id: assignedCase.resourceId,
+        paymentImportReviewRecordId: "payment-import-review-auth-assigned",
+      },
+    });
+
+    const unassignedCountBefore = (
+      await repository.listPaymentImportDepositMatchReviews(firmId, {
+        paymentImportReviewRecordId: "payment-import-review-auth-unassigned",
+      })
+    ).length;
+    const unassigned = await server.inject({
+      method: "POST",
+      url: "/api/billing/payment-import-review-records/payment-import-review-auth-unassigned/deposit-match-reviews",
+      headers: authHeaders(unassignedCase.subjectId),
+      payload: {
+        id: unassignedCase.resourceId,
+        decision: "candidate_supported",
+        reason: "candidate_evidence_matches",
+        idempotencyKey: "synthetic-deposit-match-unassigned-denied",
+      },
+    });
+    expect(unassigned.statusCode).toBe(403);
+    expect(unassigned.json()).toMatchObject({ message: "Expense entry access required" });
+    await expect(
+      repository.listPaymentImportDepositMatchReviews(firmId, {
+        paymentImportReviewRecordId: "payment-import-review-auth-unassigned",
+      }),
+    ).resolves.toHaveLength(unassignedCountBefore);
+
+    const assignedCountBefore = (
+      await repository.listPaymentImportDepositMatchReviews(firmId, {
+        paymentImportReviewRecordId: "payment-import-review-auth-assigned",
+      })
+    ).length;
+    const portalClient = await server.inject({
+      method: "POST",
+      url: "/api/billing/payment-import-review-records/payment-import-review-auth-assigned/deposit-match-reviews",
+      headers: authHeaders(clientExternalUserId),
+      payload: {
+        id: portalCase.resourceId,
+        decision: "candidate_supported",
+        reason: "candidate_evidence_matches",
+        idempotencyKey: "synthetic-deposit-match-portal-denied",
+      },
+    });
+    expect(portalClient.statusCode).toBe(403);
+    expect(portalClient.json()).toMatchObject({ message: "Staff access required" });
+    await expect(
+      repository.listPaymentImportDepositMatchReviews(firmId, {
+        paymentImportReviewRecordId: "payment-import-review-auth-assigned",
+      }),
+    ).resolves.toHaveLength(assignedCountBefore);
   });
 
   it("denies non-billing roles from the billing dashboard", async () => {
@@ -2132,6 +2626,19 @@ describe("billing routes", () => {
     expect(unsupportedDepositReview.json()).toMatchObject({
       code: "PAYMENT_IMPORT_DEPOSIT_MATCH_REVIEW_UNSUPPORTED",
     });
+    const unsupportedRefundChargebackReview = await server.inject({
+      method: "POST",
+      url: "/api/billing/payment-import-review-records/payment-import-review-payment-only/refund-chargeback-reviews",
+      payload: {
+        decision: "needs_more_evidence",
+        reason: "status_unclear",
+        idempotencyKey: "synthetic-payment-only-refund-chargeback-review",
+      },
+    });
+    expect(unsupportedRefundChargebackReview.statusCode).toBe(409);
+    expect(unsupportedRefundChargebackReview.json()).toMatchObject({
+      code: "PAYMENT_IMPORT_REFUND_CHARGEBACK_REVIEW_UNSUPPORTED",
+    });
 
     const refundCueRecord = await server.inject({
       method: "POST",
@@ -2165,6 +2672,100 @@ describe("billing routes", () => {
           trustPosting: "none",
         }),
       },
+    });
+    const refundChargebackReview = await server.inject({
+      method: "POST",
+      url: "/api/billing/payment-import-review-records/payment-import-review-refund-cue/refund-chargeback-reviews",
+      payload: {
+        id: "refund-chargeback-review-route-test",
+        decision: "exception_confirmed",
+        reason: "refund_observed",
+        idempotencyKey: "synthetic-refund-chargeback-review-key",
+      },
+    });
+    expect(refundChargebackReview.statusCode).toBe(200);
+    expect(refundChargebackReview.json()).toMatchObject({
+      review: {
+        id: "refund-chargeback-review-route-test",
+        paymentImportReviewRecordId: "payment-import-review-refund-cue",
+        category: "refund",
+        decision: "exception_confirmed",
+        reason: "refund_observed",
+        reviewerEvidencePresent: true,
+        boundaries: {
+          rawProviderPayloadRetained: false,
+          refundArtifactRetained: false,
+          disputeArtifactRetained: false,
+          invoiceBalanceMutation: "none",
+          ledgerReversal: "none",
+          trustPosting: "none",
+          providerCommand: "none",
+          clientNotification: "none",
+          fundsMovement: "none",
+          refundHandling: "review_decision_only",
+          chargebackHandling: "review_decision_only",
+        },
+      },
+    });
+    const repeatedRefundChargebackReview = await server.inject({
+      method: "POST",
+      url: "/api/billing/payment-import-review-records/payment-import-review-refund-cue/refund-chargeback-reviews",
+      payload: {
+        id: "refund-chargeback-review-route-retry",
+        decision: "exception_confirmed",
+        reason: "refund_observed",
+        idempotencyKey: "synthetic-refund-chargeback-review-key",
+      },
+    });
+    expect(repeatedRefundChargebackReview.statusCode).toBe(200);
+    expect(repeatedRefundChargebackReview.json()).toMatchObject({
+      review: { id: "refund-chargeback-review-route-test" },
+    });
+    const conflictingRefundChargebackReview = await server.inject({
+      method: "POST",
+      url: "/api/billing/payment-import-review-records/payment-import-review-refund-cue/refund-chargeback-reviews",
+      payload: {
+        decision: "needs_more_evidence",
+        reason: "status_unclear",
+        idempotencyKey: "synthetic-refund-chargeback-review-key",
+      },
+    });
+    expect(conflictingRefundChargebackReview.statusCode).toBe(409);
+    expect(conflictingRefundChargebackReview.json()).toMatchObject({
+      code: "IDEMPOTENCY_KEY_CONFLICT",
+    });
+    const refundReasonMismatch = await server.inject({
+      method: "POST",
+      url: "/api/billing/payment-import-review-records/payment-import-review-refund-cue/refund-chargeback-reviews",
+      payload: {
+        decision: "exception_confirmed",
+        reason: "chargeback_observed",
+        idempotencyKey: "synthetic-refund-reason-mismatch",
+      },
+    });
+    expect(refundReasonMismatch.statusCode).toBe(409);
+    expect(refundReasonMismatch.json()).toMatchObject({
+      code: "PAYMENT_IMPORT_REFUND_CHARGEBACK_REVIEW_REASON_MISMATCH",
+    });
+    const rawRefundChargebackReviewRejected = await server.inject({
+      method: "POST",
+      url: "/api/billing/payment-import-review-records/payment-import-review-refund-cue/refund-chargeback-reviews",
+      payload: {
+        decision: "needs_more_evidence",
+        reason: "missing_reviewer_evidence",
+        idempotencyKey: "synthetic-raw-refund-chargeback-review",
+        disputePacket: { private: "Synthetic private dispute packet" },
+      },
+    });
+    expect(rawRefundChargebackReviewRejected.statusCode).toBe(400);
+    const listedRefundChargebackReviews = await server.inject({
+      method: "GET",
+      url: "/api/billing/payment-import-review-records/payment-import-review-refund-cue/refund-chargeback-reviews",
+    });
+    expect(listedRefundChargebackReviews.statusCode).toBe(200);
+    expect(listedRefundChargebackReviews.json()).toMatchObject({
+      reviewOnly: true,
+      reviews: [expect.objectContaining({ id: "refund-chargeback-review-route-test" })],
     });
     const refundDepositReview = await server.inject({
       method: "POST",
@@ -2205,6 +2806,32 @@ describe("billing routes", () => {
         eventStatus: "chargeback_observed",
       },
     });
+    const chargebackReview = await server.inject({
+      method: "POST",
+      url: "/api/billing/payment-import-review-records/payment-import-review-chargeback-cue/refund-chargeback-reviews",
+      payload: {
+        id: "chargeback-review-route-test",
+        decision: "needs_more_evidence",
+        reason: "status_unclear",
+        idempotencyKey: "synthetic-chargeback-review-key",
+      },
+    });
+    expect(chargebackReview.statusCode).toBe(200);
+    expect(chargebackReview.json()).toMatchObject({
+      review: {
+        id: "chargeback-review-route-test",
+        category: "chargeback",
+        decision: "needs_more_evidence",
+        reason: "status_unclear",
+        boundaries: expect.objectContaining({
+          rawProviderPayloadRetained: false,
+          disputeArtifactRetained: false,
+          providerCommand: "none",
+          fundsMovement: "none",
+          trustPosting: "none",
+        }),
+      },
+    });
 
     const depositWithoutCandidateRecord = await server.inject({
       method: "POST",
@@ -2234,6 +2861,19 @@ describe("billing routes", () => {
     expect(missingCandidateDepositReview.statusCode).toBe(409);
     expect(missingCandidateDepositReview.json()).toMatchObject({
       code: "PAYMENT_IMPORT_DEPOSIT_MATCH_CANDIDATE_REQUIRED",
+    });
+    const depositRefundChargebackReview = await server.inject({
+      method: "POST",
+      url: "/api/billing/payment-import-review-records/payment-import-review-route-test/refund-chargeback-reviews",
+      payload: {
+        decision: "needs_more_evidence",
+        reason: "status_unclear",
+        idempotencyKey: "synthetic-deposit-refund-chargeback-review",
+      },
+    });
+    expect(depositRefundChargebackReview.statusCode).toBe(409);
+    expect(depositRefundChargebackReview.json()).toMatchObject({
+      code: "PAYMENT_IMPORT_REFUND_CHARGEBACK_REVIEW_UNSUPPORTED",
     });
 
     const conflictRecord = await server.inject({
@@ -2317,6 +2957,73 @@ describe("billing routes", () => {
       },
     });
     expect(crossMatterDepositReview.statusCode).toBe(403);
+    const crossMatterRefundChargebackReview = await server.inject({
+      method: "GET",
+      url: "/api/billing/payment-import-review-records/payment-import-review-refund-cue/refund-chargeback-reviews",
+      headers: {
+        "x-open-practice-user-id": "user-other-licensee",
+        "x-open-practice-firm-id": "firm-west-legal",
+      },
+    });
+    expect(crossMatterRefundChargebackReview.statusCode).toBe(403);
+
+    await repository.createPayment({
+      payment: {
+        id: "payment-import-review-manual-now-received",
+        firmId: "firm-west-legal",
+        matterId: "matter-001",
+        invoiceId: "invoice-001",
+        receivedAt: "2026-06-19T16:10:00.000Z",
+        amountCents: 5000,
+        method: "eft",
+        status: "received",
+        receivedByUserId: "user-licensee",
+        evidence: { source: "synthetic-payment-import-review-now-received" },
+      },
+      allocations: [],
+    });
+    await repository.createPaymentImportReviewRecord({
+      id: "payment-import-review-supported-now-ineligible",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      providerLabel: "synthetic_processor",
+      eventFamily: "deposit",
+      eventStatus: "deposit_observed",
+      externalEventId: "evt_synthetic_supported_now_ineligible",
+      externalDepositId: "dep_synthetic_supported_now_ineligible",
+      amountCents: 5000,
+      currency: "CAD",
+      observedAt: "2026-06-19T16:10:00.000Z",
+      importedAt: "2026-06-19T16:12:00.000Z",
+      importedByUserId: "user-licensee",
+      candidateInvoiceId: "invoice-001",
+      candidateManualPaymentId: "payment-import-review-manual-now-received",
+      reviewState: "needs_review",
+      normalizedEvidenceFingerprint: "synthetic-supported-now-ineligible-fingerprint",
+      boundaries: defaultPaymentImportReviewBoundary(),
+      updatedAt: "2026-06-19T16:12:00.000Z",
+    });
+    await repository.createPaymentImportDepositMatchReview({
+      id: "deposit-match-review-supported-now-ineligible",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      paymentImportReviewRecordId: "payment-import-review-supported-now-ineligible",
+      candidateManualPaymentId: "payment-import-review-manual-now-received",
+      candidateInvoiceId: "invoice-001",
+      decision: "candidate_supported",
+      reason: "candidate_evidence_matches",
+      importAmountCents: 5000,
+      manualPaymentAmountCents: 5000,
+      currency: "CAD",
+      candidateManualPaymentStatus: "pending_reconciliation",
+      reviewerEvidencePresent: true,
+      idempotencyKey: "synthetic-supported-now-ineligible-key",
+      decisionFingerprint: "synthetic-supported-now-ineligible-fingerprint",
+      boundaries: defaultPaymentImportDepositMatchReviewBoundary(),
+      reviewedByUserId: "user-licensee",
+      reviewedAt: "2026-06-19T16:15:00.000Z",
+      createdAt: "2026-06-19T16:15:00.000Z",
+    });
 
     const list = await server.inject({
       method: "GET",
@@ -2345,6 +3052,7 @@ describe("billing routes", () => {
           refundReviewCueCount: number;
           chargebackReviewCueCount: number;
           refundChargebackReviewCueCount: number;
+          refundChargebackReviewDecisionCount: number;
         };
         matters: Array<{
           matterId: string;
@@ -2360,13 +3068,14 @@ describe("billing routes", () => {
         }>;
       }>().summary,
     ).toMatchObject({
-      paymentImportReviewCount: 8,
-      depositMatchReviewCount: 5,
-      depositMatchDecisionCount: 1,
+      paymentImportReviewCount: 9,
+      depositMatchReviewCount: 6,
+      depositMatchDecisionCount: 2,
       depositMatchReconciliationReadyCount: 1,
       refundReviewCueCount: 1,
       chargebackReviewCueCount: 1,
       refundChargebackReviewCueCount: 2,
+      refundChargebackReviewDecisionCount: 2,
     });
     expect(
       dashboard
@@ -2383,9 +3092,17 @@ describe("billing routes", () => {
                 status: string;
                 reviewAction: string;
               };
+              refundChargebackReviewDecisionCount?: number;
+              latestRefundChargebackReview?: {
+                category: string;
+                decision: string;
+                reason: string;
+                boundaries: { providerCommand: string; fundsMovement: string };
+              };
               reconciliationReadiness?: {
                 eligible: boolean;
                 reason: string;
+                reasonDetails: Array<{ code: string; status: string; label: string }>;
                 reviewAction: string;
                 mutation: string;
               };
@@ -2409,6 +3126,18 @@ describe("billing routes", () => {
           reconciliationReadiness: expect.objectContaining({
             eligible: true,
             reason: "supported_candidate_ready",
+            reasonDetails: expect.arrayContaining([
+              {
+                code: "latest_supported_decision",
+                status: "satisfied",
+                label: "Latest decision supports candidate",
+              },
+              {
+                code: "invoice_balance_covers_payment",
+                status: "satisfied",
+                label: "Invoice balance covers payment",
+              },
+            ]),
             reviewAction: "manual_payment_reconcile_review",
             mutation: "none",
           }),
@@ -2418,11 +3147,42 @@ describe("billing routes", () => {
           }),
         }),
         expect.objectContaining({
+          id: "payment-import-review-supported-now-ineligible",
+          candidateManualPaymentId: "payment-import-review-manual-now-received",
+          latestDepositMatchReview: expect.objectContaining({
+            decision: "candidate_supported",
+            reason: "candidate_evidence_matches",
+          }),
+          reconciliationReadiness: expect.objectContaining({
+            eligible: false,
+            reason: "manual_payment_not_pending",
+            reasonDetails: expect.arrayContaining([
+              {
+                code: "manual_payment_pending",
+                status: "blocked",
+                label: "Manual payment remains pending",
+              },
+            ]),
+            reviewAction: "manual_payment_reconcile_review",
+            mutation: "none",
+          }),
+        }),
+        expect.objectContaining({
           id: "payment-import-review-refund-cue",
           refundChargebackReviewCue: expect.objectContaining({
             category: "refund",
             status: "needs_review",
             reviewAction: "staff_refund_chargeback_review_required",
+          }),
+          refundChargebackReviewDecisionCount: 1,
+          latestRefundChargebackReview: expect.objectContaining({
+            category: "refund",
+            decision: "exception_confirmed",
+            reason: "refund_observed",
+            boundaries: expect.objectContaining({
+              providerCommand: "none",
+              fundsMovement: "none",
+            }),
           }),
           boundaries: expect.objectContaining({
             rawProviderPayloadRetained: false,
@@ -2434,6 +3194,12 @@ describe("billing routes", () => {
           refundChargebackReviewCue: expect.objectContaining({
             category: "chargeback",
             status: "needs_review",
+          }),
+          refundChargebackReviewDecisionCount: 1,
+          latestRefundChargebackReview: expect.objectContaining({
+            category: "chargeback",
+            decision: "needs_more_evidence",
+            reason: "status_unclear",
           }),
         }),
       ]),
@@ -2494,6 +3260,31 @@ describe("billing routes", () => {
         trustPosting: "none",
       }),
     });
+    const refundChargebackAudit = (await auditEvents(repository)).find(
+      (event) => event.action === "payment_import_refund_chargeback_review.recorded",
+    );
+    expect(refundChargebackAudit).toMatchObject({
+      resourceType: "payment_import_refund_chargeback_review",
+      resourceId: "refund-chargeback-review-route-test",
+      metadata: expect.objectContaining({
+        paymentImportRefundChargebackReviewId: "refund-chargeback-review-route-test",
+        paymentImportReviewRecordId: "payment-import-review-refund-cue",
+        category: "refund",
+        decision: "exception_confirmed",
+        reason: "refund_observed",
+        reviewerEvidencePresent: true,
+        idempotencyKeyPresent: true,
+        rawProviderPayloadRetained: false,
+        refundArtifactRetained: false,
+        disputeArtifactRetained: false,
+        invoiceBalanceMutation: "none",
+        ledgerReversal: "none",
+        providerCommand: "none",
+        clientNotification: "none",
+        fundsMovement: "none",
+        trustPosting: "none",
+      }),
+    });
     const depositMatchAudit = (await auditEvents(repository)).find(
       (event) => event.action === "payment_import_deposit_match_review.recorded",
     );
@@ -2522,6 +3313,9 @@ describe("billing routes", () => {
     });
     expect(JSON.stringify(await auditEvents(repository))).not.toContain(
       "synthetic-deposit-match-review-key",
+    );
+    expect(JSON.stringify(await auditEvents(repository))).not.toContain(
+      "synthetic-refund-chargeback-review-key",
     );
     expect(JSON.stringify(await auditEvents(repository))).not.toContain(
       "Synthetic private raw provider payload",

@@ -29,6 +29,7 @@ import {
   type CalendarMeetingSessionCreateInput,
   type CalendarMeetingSessionListOptions,
   type CalendarMeetingSessionStatusUpdateInput,
+  type CalendarSchedulingRequestAgingReviewInput,
   type CalendarSchedulingRequestListOptions,
   type CalendarSchedulingRequestUpdateInput,
 } from "../calendar-events-contracts.js";
@@ -551,6 +552,13 @@ export async function createDrizzleCalendarSchedulingRequest(
       updatedByUserId: request.updatedByUserId,
       reviewedAt: request.reviewedAt ? new Date(request.reviewedAt) : null,
       reviewedByUserId: request.reviewedByUserId ?? null,
+      reviewAgingDecision: request.reviewAgingDecision ?? null,
+      reviewAgingDecidedAt: request.reviewAgingDecidedAt
+        ? new Date(request.reviewAgingDecidedAt)
+        : null,
+      reviewAgingDecidedByUserId: request.reviewAgingDecidedByUserId ?? null,
+      reviewAgingCueStatus: request.reviewAgingCueStatus ?? null,
+      reviewAgingAgeHours: request.reviewAgingAgeHours ?? null,
     })
     .onConflictDoNothing()
     .returning();
@@ -632,6 +640,30 @@ export async function updateDrizzleCalendarSchedulingRequestReview(
       reviewedByUserId: input.reviewedByUserId,
       updatedAt: new Date(input.reviewedAt),
       updatedByUserId: input.reviewedByUserId,
+    })
+    .where(
+      and(
+        eq(schema.calendarSchedulingRequests.firmId, input.firmId),
+        eq(schema.calendarSchedulingRequests.matterId, input.matterId),
+        eq(schema.calendarSchedulingRequests.id, input.requestId),
+      ),
+    )
+    .returning();
+  return row ? mapCalendarSchedulingRequestRow(row) : undefined;
+}
+
+export async function recordDrizzleCalendarSchedulingRequestAgingReviewDecision(
+  db: OpenPracticeDatabase,
+  input: CalendarSchedulingRequestAgingReviewInput,
+): Promise<CalendarSchedulingRequestRecord | undefined> {
+  const [row] = await db
+    .update(schema.calendarSchedulingRequests)
+    .set({
+      reviewAgingDecision: input.decision,
+      reviewAgingDecidedAt: new Date(input.decidedAt),
+      reviewAgingDecidedByUserId: input.decidedByUserId,
+      reviewAgingCueStatus: input.cueStatus,
+      reviewAgingAgeHours: input.ageHours,
     })
     .where(
       and(

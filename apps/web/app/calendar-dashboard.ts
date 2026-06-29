@@ -6,6 +6,7 @@ import type {
   CalendarMeetingLinkMode,
   CalendarSchedulingRequestSummary,
 } from "@open-practice/domain/calendar-models";
+import type { ReviewAgingDecision } from "@open-practice/domain";
 import type {
   CalendarCredentialSummary,
   CalendarDashboardResponse,
@@ -115,6 +116,7 @@ export interface CalendarMeetingReadinessItem {
 }
 
 export type CalendarSchedulingReviewDecision = "reviewed" | "dismissed" | "scheduled";
+export type CalendarSchedulingAgingReviewDecision = ReviewAgingDecision;
 
 export interface CalendarSchedulingReviewNextStep {
   label: string;
@@ -358,6 +360,24 @@ export function describeReviewAgingCue(
     label,
     detail: `${cue.ageHours}h waiting since ${cue.referenceAt}; manual review only, no auto-confirm, auto-expiry, or provider sync.`,
     ...(cue.status === "stale" ? { tone: "risk" as const } : {}),
+  };
+}
+
+export function describeReviewAgingDecision(
+  record: CalendarSchedulingRequestSummary["reviewAgingDecision"] | undefined,
+): ReviewAgingDisplay | undefined {
+  if (!record) return undefined;
+  const label =
+    record.decision === "acknowledged"
+      ? "acknowledged"
+      : record.decision === "follow_up_required"
+        ? "follow-up required"
+        : "deferred";
+  return {
+    label,
+    detail: `${record.cueStatus.replace("_", " ")} at ${
+      record.ageHours
+    }h by ${record.decidedByUserId}; review-only decision, no auto-confirm, auto-expiry, provider sync, public room, media, chat, recording, or matter.`,
   };
 }
 

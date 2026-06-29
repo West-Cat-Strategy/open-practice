@@ -70,6 +70,8 @@ import {
   mediaTranscripts,
   notificationPreferences,
   paymentAllocations,
+  paymentImportDepositMatchReviews,
+  paymentImportRefundChargebackReviews,
   paymentImportReviewRecords,
   portalGrants,
   providerSettings,
@@ -917,6 +919,7 @@ describe("database schema hardening", () => {
         "trust_account_label",
         "trust_funds_caveat_accepted_at",
         "trust_funds_caveat_accepted_by_user_id",
+        "disposition_review_schedule_profile",
       ]),
     );
   });
@@ -1516,6 +1519,10 @@ describe("database schema hardening", () => {
     const invoiceLineConfig = getTableConfig(invoiceLines);
     const manualPaymentConfig = getTableConfig(manualPayments);
     const paymentAllocationConfig = getTableConfig(paymentAllocations);
+    const paymentImportDepositMatchReviewConfig = getTableConfig(paymentImportDepositMatchReviews);
+    const paymentImportRefundChargebackReviewConfig = getTableConfig(
+      paymentImportRefundChargebackReviews,
+    );
     const paymentImportReviewConfig = getTableConfig(paymentImportReviewRecords);
     const trustTransferRequestConfig = getTableConfig(billingTrustTransferRequests);
 
@@ -1665,6 +1672,47 @@ describe("database schema hardening", () => {
         "payment_import_review_records_external_deposit_id_format",
         "payment_import_review_records_positive_amount",
         "payment_import_review_records_cad_currency",
+      ]),
+    );
+    expect(paymentImportDepositMatchReviewConfig.indexes.map((index) => index.config.name)).toEqual(
+      expect.arrayContaining([
+        "payment_import_deposit_match_reviews_firm_matter_reviewed_idx",
+        "payment_import_deposit_match_reviews_firm_import_record_idx",
+        "payment_import_deposit_match_reviews_firm_record_idempotency_idx",
+      ]),
+    );
+    expect(paymentImportRefundChargebackReviewConfig.columns.map((column) => column.name)).toEqual([
+      "id",
+      "firm_id",
+      "matter_id",
+      "payment_import_review_record_id",
+      "category",
+      "decision",
+      "reason",
+      "reviewer_evidence_present",
+      "idempotency_key",
+      "decision_fingerprint",
+      "boundaries",
+      "reviewed_by_user_id",
+      "reviewed_at",
+      "created_at",
+    ]);
+    expect(
+      paymentImportRefundChargebackReviewConfig.indexes.map((index) => index.config.name),
+    ).toEqual(
+      expect.arrayContaining([
+        "payment_import_rc_reviews_firm_matter_reviewed_idx",
+        "payment_import_rc_reviews_firm_import_record_idx",
+        "payment_import_rc_reviews_firm_record_idempotency_idx",
+      ]),
+    );
+    expect(paymentImportRefundChargebackReviewConfig.checks.map((check) => check.name)).toEqual(
+      expect.arrayContaining([
+        "payment_import_rc_reviews_category_value",
+        "payment_import_rc_reviews_decision_value",
+        "payment_import_rc_reviews_reason_value",
+        "payment_import_rc_reviews_reviewer_evidence_required",
+        "payment_import_rc_reviews_idempotency_key_format",
       ]),
     );
     expect(trustTransferRequestConfig.columns.map((column) => column.name)).toEqual(

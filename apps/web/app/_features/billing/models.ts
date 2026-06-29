@@ -151,9 +151,27 @@ export type BillingPaymentImportDepositMatchReconciliationReadinessReason =
   | "invoice_candidate_mismatch"
   | "invoice_balance_insufficient";
 
+export type BillingPaymentImportDepositMatchReconciliationReadinessDetailCode =
+  | "latest_supported_decision"
+  | "no_duplicate_or_conflict_cue"
+  | "manual_payment_candidate_matches"
+  | "manual_payment_found"
+  | "manual_payment_pending"
+  | "amounts_match"
+  | "invoice_found"
+  | "invoice_candidate_matches"
+  | "invoice_balance_covers_payment";
+
+export interface BillingPaymentImportDepositMatchReconciliationReadinessDetail {
+  code: BillingPaymentImportDepositMatchReconciliationReadinessDetailCode;
+  status: "satisfied" | "blocked";
+  label: string;
+}
+
 export interface BillingPaymentImportDepositMatchReconciliationReadiness {
   eligible: boolean;
   reason: BillingPaymentImportDepositMatchReconciliationReadinessReason;
+  reasonDetails: BillingPaymentImportDepositMatchReconciliationReadinessDetail[];
   reviewAction: "manual_payment_reconcile_review";
   candidateManualPaymentId?: string;
   candidateInvoiceId?: string;
@@ -171,6 +189,36 @@ export interface BillingPaymentImportRefundChargebackReviewCue {
   trustPosting: "none";
   providerCommand: "none";
   clientNotification: "none";
+}
+
+export interface PaymentImportRefundChargebackReviewBoundary {
+  rawProviderPayloadRetained: false;
+  refundArtifactRetained: false;
+  disputeArtifactRetained: false;
+  invoiceBalanceMutation: "none";
+  ledgerReversal: "none";
+  trustPosting: "none";
+  providerCommand: "none";
+  clientNotification: "none";
+  fundsMovement: "none";
+  refundHandling: "review_decision_only";
+  chargebackHandling: "review_decision_only";
+}
+
+export interface BillingPaymentImportRefundChargebackReviewSummary {
+  id: string;
+  category: "refund" | "chargeback";
+  decision: "exception_confirmed" | "exception_rejected" | "needs_more_evidence";
+  reason:
+    | "refund_observed"
+    | "chargeback_observed"
+    | "duplicate_or_conflict"
+    | "candidate_reference_mismatch"
+    | "missing_reviewer_evidence"
+    | "status_unclear";
+  reviewerEvidencePresent: true;
+  reviewedAt: string;
+  boundaries: PaymentImportRefundChargebackReviewBoundary;
 }
 
 export interface BillingPaymentImportReviewSummary {
@@ -194,6 +242,8 @@ export interface BillingPaymentImportReviewSummary {
   reviewState: "needs_review";
   boundaries: PaymentImportReviewBoundary;
   refundChargebackReviewCue?: BillingPaymentImportRefundChargebackReviewCue;
+  refundChargebackReviewDecisionCount?: number;
+  latestRefundChargebackReview?: BillingPaymentImportRefundChargebackReviewSummary;
   depositMatchReviewCount?: number;
   latestDepositMatchReview?: BillingPaymentImportDepositMatchReviewSummary;
   reconciliationReadiness?: BillingPaymentImportDepositMatchReconciliationReadiness;
@@ -230,6 +280,7 @@ export interface BillingDashboardResponse {
     refundReviewCueCount?: number;
     chargebackReviewCueCount?: number;
     refundChargebackReviewCueCount?: number;
+    refundChargebackReviewDecisionCount?: number;
   };
   periodLocks: BillingPeriodLockRecord[];
   rateRules: BillingRateRuleRecord[];

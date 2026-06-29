@@ -91,6 +91,7 @@ export interface PaymentImportReviewSummary {
   refundReviewCueCount: number;
   chargebackReviewCueCount: number;
   refundChargebackReviewCueCount: number;
+  refundChargebackReviewDecisionCount: number;
   rawProviderPayloadRetained: false;
   invoiceBalanceMutation: "none";
   settlementAutomation: false;
@@ -128,6 +129,10 @@ export function summarizePaymentImportReviews(
     ).length,
     refundChargebackReviewCueCount: records.filter((record) => record.refundChargebackReviewCue)
       .length,
+    refundChargebackReviewDecisionCount: records.reduce(
+      (count, record) => count + (record.refundChargebackReviewDecisionCount ?? 0),
+      0,
+    ),
     rawProviderPayloadRetained: false,
     invoiceBalanceMutation: "none",
     settlementAutomation: false,
@@ -162,7 +167,10 @@ export function describePaymentImportReview(record: BillingPaymentImportReviewSu
   const refundChargebackLabel = record.refundChargebackReviewCue
     ? ` · ${record.refundChargebackReviewCue.category} review cue`
     : "";
-  return `${record.providerLabel} · ${eventLabel} · ${candidateLabel}${depositMatchLabel}${refundChargebackLabel}${conflictLabel}${latestReviewLabel}`;
+  const latestRefundChargebackReviewLabel = record.latestRefundChargebackReview
+    ? ` · latest exception ${record.latestRefundChargebackReview.decision.replaceAll("_", " ")}`
+    : "";
+  return `${record.providerLabel} · ${eventLabel} · ${candidateLabel}${depositMatchLabel}${refundChargebackLabel}${conflictLabel}${latestReviewLabel}${latestRefundChargebackReviewLabel}`;
 }
 
 const depositMatchReadinessReasonLabels: Record<
@@ -191,6 +199,16 @@ export function describePaymentImportReconciliationReadiness(
   return `Not ready for manual reconcile review · ${
     depositMatchReadinessReasonLabels[readiness.reason]
   }`;
+}
+
+export function describePaymentImportReconciliationReasonDetails(
+  record: BillingPaymentImportReviewSummary,
+): string | undefined {
+  const details = record.reconciliationReadiness?.reasonDetails;
+  if (!details?.length) return undefined;
+  return `Readiness details: ${details
+    .map((detail) => `${detail.label} ${detail.status}`)
+    .join(" · ")}`;
 }
 
 export function summarizePaymentSettlementReview(

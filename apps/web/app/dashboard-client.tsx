@@ -161,6 +161,7 @@ import {
   upsertCalendarSchedulingRequest,
   upsertStandaloneCalendarEvent,
   upsertStandaloneCalendarEventReminder,
+  type CalendarSchedulingAgingReviewDecision,
   type CalendarSchedulingRequestPayload,
   type CalendarSchedulingReviewDecision,
 } from "./calendar-dashboard";
@@ -4978,6 +4979,42 @@ export default function DashboardClient({
     }
   }
 
+  async function reviewCalendarSchedulingRequestAgingDecision(
+    request: DashboardCalendarSchedulingRequest,
+    decision: CalendarSchedulingAgingReviewDecision,
+  ): Promise<void> {
+    if (!activeMatter) return;
+
+    const actionKey = `${request.id}:aging:${decision}`;
+    setReviewingCalendarSchedulingRequestKey(actionKey);
+    setCalendarSchedulingReviewStatus("Recording scheduling aging review decision...");
+
+    try {
+      const payload = await requestDashboardJson<CalendarSchedulingRequestReviewResponse>(
+        apiBaseUrl,
+        `/api/calendar/scheduling-requests/${encodeURIComponent(request.id)}/aging-review`,
+        {
+          method: "PATCH",
+          headers: devHeaders,
+          payload: {
+            matterId: activeMatter.id,
+            decision,
+          },
+        },
+      );
+      setCalendarSchedulingRequestsByMatterId((current) =>
+        upsertCalendarSchedulingRequest(current, activeMatter.id, payload.schedulingRequest),
+      );
+      setCalendarSchedulingReviewStatus("Scheduling aging review decision recorded.");
+    } catch (error) {
+      setCalendarSchedulingReviewStatus(
+        `Scheduling aging review failed: ${dashboardApiStatus(error)}`,
+      );
+    } finally {
+      setReviewingCalendarSchedulingRequestKey("");
+    }
+  }
+
   async function createCalendarSchedulingRequest(
     payload: CalendarSchedulingRequestPayload,
     options: { busyKey: string; busyMessage: string; successMessage: string },
@@ -6807,6 +6844,9 @@ export default function DashboardClient({
                   onReviewCalendarSchedulingRequest={(request, status, calendarEventId) =>
                     void reviewCalendarSchedulingRequest(request, status, calendarEventId)
                   }
+                  onReviewCalendarSchedulingRequestAgingDecision={(request, decision) =>
+                    void reviewCalendarSchedulingRequestAgingDecision(request, decision)
+                  }
                   onSetCalendarAttendeeEmail={setCalendarAttendeeEmail}
                   onSetCalendarAttendeeName={setCalendarAttendeeName}
                   onSetCalendarAttendeeRole={setCalendarAttendeeRole}
@@ -7772,6 +7812,9 @@ export default function DashboardClient({
                   }
                   onReviewCalendarSchedulingRequest={(request, status, calendarEventId) =>
                     void reviewCalendarSchedulingRequest(request, status, calendarEventId)
+                  }
+                  onReviewCalendarSchedulingRequestAgingDecision={(request, decision) =>
+                    void reviewCalendarSchedulingRequestAgingDecision(request, decision)
                   }
                   onSetCalendarAttendeeEmail={setCalendarAttendeeEmail}
                   onSetCalendarAttendeeName={setCalendarAttendeeName}

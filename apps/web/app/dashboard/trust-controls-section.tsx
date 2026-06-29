@@ -133,6 +133,22 @@ function makerCheckerReadinessReasonCue(reasons: readonly string[]): string {
   return reasons.map((reason) => reason.replaceAll("_", " ")).join(" · ") || "no policy cues";
 }
 
+function makerCheckerPolicyPreviewCellCue(
+  cell: TrustControlsDashboardResponse["makerCheckerReadiness"]["policyPreviewMatrix"]["cells"][number],
+  formatCurrency: (cents: number) => string,
+): string {
+  return (
+    [
+      `${cell.reviewCueCount} cues`,
+      cell.pendingCount > 0 ? `${cell.pendingCount} pending` : undefined,
+      cell.exceptionCount > 0 ? `${cell.exceptionCount} exceptions` : undefined,
+      cell.amountCents !== 0 ? formatCurrency(cell.amountCents) : undefined,
+    ]
+      .filter((cue): cue is string => Boolean(cue))
+      .join(" · ") || "no matter cue"
+  );
+}
+
 export function TrustControlsSection({
   activeJurisdictionTrustSummary,
   activeTrustBalanceCents,
@@ -184,6 +200,12 @@ export function TrustControlsSection({
     )
     .slice(0, 5);
   const makerCheckerReadinessMatters = makerCheckerReadiness.matters.slice(0, 5);
+  const policyPreviewMatrix = makerCheckerReadiness.policyPreviewMatrix;
+  const policyPreviewRows = policyPreviewMatrix.rows.slice(0, 5);
+  const policyPreviewColumns = policyPreviewMatrix.columns;
+  const policyPreviewCells = new Map(
+    policyPreviewMatrix.cells.map((cell) => [`${cell.matterId}:${cell.category}`, cell]),
+  );
   const reconciliationPacketReview =
     activeTrustControls.reconciliationPacketReview ?? emptyReconciliationPacketReview();
   const hasReconciliationPacketEvidence =
@@ -660,6 +682,71 @@ export function TrustControlsSection({
             No maker-checker readiness cues are present in the current controls payload.
           </p>
         ) : null}
+        <div className="party-row">
+          <span>
+            <strong>Policy preview matrix</strong>
+            <small>
+              {policyPreviewColumns.length} categories · {policyPreviewRows.length} safe matters
+            </small>
+            <small>Read-only preview over current matter-visible cues only.</small>
+          </span>
+          <em>policy disabled</em>
+        </div>
+        {policyPreviewRows.length > 0 && policyPreviewColumns.length > 0 ? (
+          <div
+            className="policy-preview-matrix-shell"
+            role="region"
+            aria-label="Policy preview matrix"
+          >
+            <table className="policy-preview-matrix">
+              <thead>
+                <tr>
+                  <th scope="col">Matter</th>
+                  {policyPreviewColumns.map((column) => (
+                    <th scope="col" key={column.category}>
+                      {column.label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {policyPreviewRows.map((row) => (
+                  <tr key={row.matterId}>
+                    <th scope="row">{row.matterId}</th>
+                    {policyPreviewColumns.map((column) => {
+                      const cell = policyPreviewCells.get(`${row.matterId}:${column.category}`) ?? {
+                        matterId: row.matterId,
+                        category: column.category,
+                        readiness: "clear" as const,
+                        reasonCodes: [],
+                        reviewCueCount: 0,
+                        pendingCount: 0,
+                        exceptionCount: 0,
+                        amountCents: 0,
+                        reviewOnly: true as const,
+                      };
+                      return (
+                        <td key={`${row.matterId}:${column.category}`}>
+                          <strong>
+                            {cell.readiness === "policy_required_if_enabled"
+                              ? "Would require"
+                              : "Clear"}
+                          </strong>
+                          <small>{makerCheckerPolicyPreviewCellCue(cell, formatCurrency)}</small>
+                          <small>{makerCheckerReadinessReasonCue(cell.reasonCodes)}</small>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="inline-empty">
+            No policy preview matrix rows are present in the current controls payload.
+          </p>
+        )}
         <div className="party-row">
           <span>
             <strong>Readiness boundary</strong>

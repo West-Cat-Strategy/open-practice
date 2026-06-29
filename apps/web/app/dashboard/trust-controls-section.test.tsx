@@ -430,6 +430,64 @@ function buildSyntheticControls(): TrustControlsDashboardResponse {
         reviewOnly: true,
       },
     ],
+    policyPreviewMatrix: {
+      generatedAt: "2026-08-15T00:00:00.000Z",
+      reviewOnly: true,
+      columns: [
+        { category: "ledger", label: "Ledger evidence", reviewOnly: true },
+        { category: "posting_request", label: "Posting request evidence", reviewOnly: true },
+        { category: "payment_import", label: "Payment import evidence", reviewOnly: true },
+      ],
+      rows: [{ matterId: "matter_synthetic", reviewOnly: true }],
+      cells: [
+        {
+          matterId: "matter_synthetic",
+          category: "ledger",
+          readiness: "policy_required_if_enabled",
+          reasonCodes: ["pending_ledger_transaction_approval", "overdrawn_trust_balance"],
+          reviewCueCount: 3,
+          pendingCount: 1,
+          exceptionCount: 1,
+          amountCents: 12500,
+          latestEvidenceAt: "2026-06-09T00:00:00.000Z",
+          reviewOnly: true,
+        },
+        {
+          matterId: "matter_synthetic",
+          category: "posting_request",
+          readiness: "policy_required_if_enabled",
+          reasonCodes: ["pending_posting_request", "rejected_posting_request"],
+          reviewCueCount: 2,
+          pendingCount: 1,
+          exceptionCount: 1,
+          amountCents: 300,
+          latestEvidenceAt: "2026-06-08T01:30:00.000Z",
+          reviewOnly: true,
+        },
+        {
+          matterId: "matter_synthetic",
+          category: "payment_import",
+          readiness: "policy_required_if_enabled",
+          reasonCodes: ["payment_import_review_required", "payment_import_conflict"],
+          reviewCueCount: 1,
+          pendingCount: 1,
+          exceptionCount: 1,
+          amountCents: 999,
+          latestEvidenceAt: "2026-06-09T01:00:00.000Z",
+          reviewOnly: true,
+        },
+      ],
+      policy: {
+        source: "existing_trust_controls_projection",
+        makerCheckerPolicyEnabled: false,
+        directPostingSemantics: "unchanged",
+        approvalMutation: false,
+        automaticTrustPosting: false,
+        settlementAutomation: false,
+        bankFeedMatching: false,
+        jurisdictionCertifiedAccounting: false,
+      },
+    },
     summary: {
       categoryCount: 3,
       categoriesRequiringPolicyCount: 3,
@@ -730,6 +788,14 @@ describe("TrustControlsSection", () => {
     expect(html).toContain("policy required if enabled");
     expect(html).toContain("pending posting request");
     expect(html).toContain("payment import conflict");
+    expect(html).toContain("Policy preview matrix");
+    expect(html).toContain("3 categories · 1 safe matters");
+    expect(html).toContain("Read-only preview over current matter-visible cues only.");
+    expect(html).toContain("Would require");
+    expect(html).toContain("$125.00");
+    expect(html).toContain("$3.00");
+    expect(html).toContain("$9.99");
+    expect(html).toContain("policy disabled");
     expect(html).toContain("Policy enabled false");
     expect(html).toContain("direct postings unchanged");
     expect(html).toContain(
@@ -785,6 +851,11 @@ describe("TrustControlsSection", () => {
     expect(html).toContain("0 categories · 0 matters");
     expect(html).toContain(
       "No maker-checker readiness cues are present in the current controls payload.",
+    );
+    expect(html).toContain("Policy preview matrix");
+    expect(html).toContain("0 categories · 0 safe matters");
+    expect(html).toContain(
+      "No policy preview matrix rows are present in the current controls payload.",
     );
     expect(html).toContain("Policy enabled false");
     expect(html).toContain("direct postings unchanged");

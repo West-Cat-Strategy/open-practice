@@ -1,4 +1,7 @@
-import type { FirmSettings } from "@open-practice/domain";
+import {
+  normalizeDocumentDispositionReviewScheduleProfile,
+  type FirmSettings,
+} from "@open-practice/domain";
 import { clone } from "../contracts.js";
 import type { FirmSettingsRepository } from "../firm-settings-contracts.js";
 
@@ -14,5 +17,14 @@ export function createMemoryFirmSettingsRepository(
 ): FirmSettingsRepository {
   return {
     getFirmSettings: async (firmId) => getMemoryFirmSettings(firmSettings(), firmId),
+    updateDispositionReviewScheduleProfile: async (input) => {
+      const settings = firmSettings().find((candidate) => candidate.firmId === input.firmId);
+      if (!settings) throw new Error(`Unknown firm settings ${input.firmId}`);
+      settings.dispositionReviewScheduleProfile = normalizeDocumentDispositionReviewScheduleProfile(
+        input.profile,
+      );
+      settings.updatedAt = new Date().toISOString();
+      return clone(settings);
+    },
   };
 }

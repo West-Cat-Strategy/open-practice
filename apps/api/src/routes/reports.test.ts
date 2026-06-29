@@ -107,6 +107,46 @@ describe("staff reporting routes", () => {
           includesRawReportBody: false,
         }),
       ]),
+      exportProfileAlignment: expect.objectContaining({
+        status: "read_only_metadata_alignment",
+        staffReportProfiles: expect.arrayContaining([
+          expect.objectContaining({
+            id: "summary_json",
+            manualDownloadOnly: true,
+            scheduledEmailDelivery: false,
+            includesRawReportBody: false,
+          }),
+          expect.objectContaining({ id: "review_csv", format: "csv" }),
+        ]),
+        financialFieldProfiles: expect.arrayContaining([
+          expect.objectContaining({
+            id: "billing_operational_records_json",
+            fieldKeyCount: expect.any(Number),
+            manualDownloadOnly: true,
+            scheduledDelivery: false,
+            storesRawExportBody: false,
+          }),
+          expect.objectContaining({ id: "jurisdictional_trust_summary_json" }),
+        ]),
+        differences: expect.arrayContaining([
+          expect.objectContaining({ key: "purpose" }),
+          expect.objectContaining({ key: "field_key_behavior" }),
+          expect.objectContaining({ key: "download_body_behavior" }),
+        ]),
+        sharedSafeguards: expect.objectContaining({
+          customSql: false,
+          biEmbeds: false,
+          scheduledExecution: false,
+          scheduledDelivery: false,
+          rawBodyStorage: false,
+          paymentProcessorExposure: false,
+          paymentCreation: false,
+          paymentAllocation: false,
+          invoiceMutation: false,
+          trustPosting: false,
+          certificationClaims: false,
+        }),
+      }),
       reports: expect.arrayContaining([
         expect.objectContaining({
           definitionKey: "invoice_aging",
@@ -168,9 +208,14 @@ describe("staff reporting routes", () => {
         scheduledDeliveryJobs: false,
       }),
     });
+    for (const profile of payload.exportProfileAlignment.financialFieldProfiles) {
+      expect(profile.sampleFieldKeys.length).toBeLessThanOrEqual(6);
+      expect(profile.sampleFieldKeys.length).toBeLessThanOrEqual(profile.fieldKeyCount);
+    }
     expect(JSON.stringify(payload)).not.toContain("Synthetic private productivity");
     expect(JSON.stringify(payload)).not.toContain("ada@example.test");
-  });
+    expect(JSON.stringify(payload)).not.toContain("rawExportBody");
+  }, 10_000);
 
   it("queues report exports, gates downloads, and keeps job metadata bounded", async () => {
     const repository = new InMemoryOpenPracticeRepository();

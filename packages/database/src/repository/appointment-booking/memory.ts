@@ -6,6 +6,7 @@ import type {
 import { clone } from "../contracts.js";
 import type {
   AppointmentBookingProfileListOptions,
+  AppointmentBookingAgingReviewInput,
   AppointmentBookingRequestListOptions,
   AppointmentBookingReviewInput,
   AppointmentBookingReviewResult,
@@ -209,4 +210,25 @@ export function reviewMemoryAppointmentBookingRequest(
     request: clone(nextRequest),
     event: clone(nextEvent),
   };
+}
+
+export function recordMemoryAppointmentBookingAgingReviewDecision(
+  store: MemoryAppointmentBookingStore,
+  input: AppointmentBookingAgingReviewInput,
+): AppointmentBookingRequestRecord | undefined {
+  const requestIndex = store.appointmentBookingRequests.findIndex(
+    (request) => request.firmId === input.firmId && request.id === input.requestId,
+  );
+  if (requestIndex < 0) return undefined;
+  const request = store.appointmentBookingRequests[requestIndex]!;
+  const nextRequest: AppointmentBookingRequestRecord = {
+    ...request,
+    reviewAgingDecision: input.decision,
+    reviewAgingDecidedAt: input.decidedAt,
+    reviewAgingDecidedByUserId: input.decidedByUserId,
+    reviewAgingCueStatus: input.cueStatus,
+    reviewAgingAgeHours: input.ageHours,
+  };
+  store.appointmentBookingRequests[requestIndex] = clone(nextRequest);
+  return clone(nextRequest);
 }

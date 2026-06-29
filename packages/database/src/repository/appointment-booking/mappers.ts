@@ -117,6 +117,11 @@ export function mapAppointmentBookingRequestRow(
     reviewedAt: dateToIso(row.reviewedAt),
     reviewedByUserId: row.reviewedByUserId ?? undefined,
     dismissedReason: row.dismissedReason ?? undefined,
+    reviewAgingDecision: row.reviewAgingDecision ?? undefined,
+    reviewAgingDecidedAt: dateToIso(row.reviewAgingDecidedAt),
+    reviewAgingDecidedByUserId: row.reviewAgingDecidedByUserId ?? undefined,
+    reviewAgingCueStatus: row.reviewAgingCueStatus ?? undefined,
+    reviewAgingAgeHours: row.reviewAgingAgeHours ?? undefined,
     metadata: row.metadata,
   };
 }
@@ -144,6 +149,13 @@ export function appointmentBookingRequestInsert(
     reviewedAt: request.reviewedAt ? new Date(request.reviewedAt) : null,
     reviewedByUserId: request.reviewedByUserId ?? null,
     dismissedReason: request.dismissedReason ?? null,
+    reviewAgingDecision: request.reviewAgingDecision ?? null,
+    reviewAgingDecidedAt: request.reviewAgingDecidedAt
+      ? new Date(request.reviewAgingDecidedAt)
+      : null,
+    reviewAgingDecidedByUserId: request.reviewAgingDecidedByUserId ?? null,
+    reviewAgingCueStatus: request.reviewAgingCueStatus ?? null,
+    reviewAgingAgeHours: request.reviewAgingAgeHours ?? null,
     metadata: request.metadata,
   };
 }

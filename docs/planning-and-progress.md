@@ -10,8 +10,8 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 | Snapshot              | Value                                                                |
 | --------------------- | -------------------------------------------------------------------- |
-| Current focus         | 2026-06-29 mainline consolidation publication and prune closeout.    |
-| Next recommended pick | Publish validated `main`, then prune only clean merged worktrees.    |
+| Current focus         | 2026-06-29 active-lane mainline consolidation validation/publish.    |
+| Next recommended pick | Finish selector proof, merge to main, push, and prune clean lanes.   |
 | Ready rows            | 0                                                                    |
 | Candidate rows        | 0                                                                    |
 | In progress rows      | 0                                                                    |
@@ -30,6 +30,23 @@ would require policy if maker-checker were later enabled. Policy remains disable
 semantics stay unchanged, and the branch does not approve, reject, auto-post, settle, match bank
 feeds, or claim jurisdiction-certified accounting. Proof is recorded in
 [Trust Controls maker-checker readiness proof](validation/OP_TRUST_CONTROLS_MAKER_CHECKER_READINESS_PROOF_2026-06-28.md).
+The 2026-06-29 `feat/trust-controls-policy-preview-matrix-20260629` follow-up adds a read-only
+policy preview matrix under the same readiness payload. The matrix cross-tabs existing Trust
+Controls categories against safe matter IDs that already appear in readiness rows; account- or
+firm-level cues remain category-only unless current matter-bearing evidence supports a safe cell.
+Policy remains disabled, direct posting semantics stay unchanged, and the branch does not approve,
+reject, post, settle, auto-match, connect bank feeds, or claim certified accounting. Proof is
+recorded in
+[Trust Controls policy preview matrix proof](validation/OP_TRUST_CONTROLS_POLICY_PREVIEW_MATRIX_PROOF_2026-06-29.md).
+
+The 2026-06-29 `integrate/mainline-consolidation-20260629-active-lanes` branch consolidates the
+current active report export alignment, scheduling aging decisions, document disposition schedule
+profile, email template compare, OP-T162 readiness reasons, payment-import authorization fixtures,
+refund/chargeback decisions, semantic readiness, Trust Controls policy preview matrix, and
+proof-reconcile lanes. Calendar aging remains migration `0075`, document disposition schedule
+profile is migration `0076`, and refund/chargeback decisions are migration `0077`; the combined
+proof records selector validation, `main` publication, and clean-lane prune evidence in
+[2026-06-29 active-lane mainline proof](validation/OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-29.md).
 
 The 2026-06-29 `integrate/mainline-consolidation-20260629` branch consolidates the currently active
 local lanes for legal-research action descriptors, document disposition metadata, OP-T158 email
@@ -37,7 +54,7 @@ template publish/version history, Trust Controls maker-checker readiness, and th
 communications aggregation closeout. Provider-status and self-host operations-readiness residue
 remains preserved separately in targeted stashes and is not part of this closeout. The row counters
 remain zero because no candidate table rows are open; final publication and prune evidence is
-recorded in the closeout response after `main` is pushed. Evidence is recorded in
+recorded in the proof note. Evidence is recorded in
 [2026-06-28/2026-06-29 mainline consolidation proof](validation/OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-28.md).
 
 The 2026-06-27 `feat/provider-document-conversion-review-decision-20260627` branch promotes the
@@ -57,6 +74,14 @@ decision/timestamp/posture flags in Documents and Research without artifact meta
 text, Markdown, annotations, chunks, embeddings, prompts, provider payloads, storage keys, object
 bodies, or generated summaries. Proof is recorded in
 [provider document conversion review cues proof](validation/OP_PROVIDER_DOCUMENT_CONVERSION_REVIEW_CUES_PROOF_2026-06-29.md).
+The 2026-06-29 semantic-readiness follow-up keeps semantic review non-executing and metadata-only
+by adding `conversionReview.semanticReviewReadiness` to the existing safe conversion-review
+summary. It is ready only for same-matter `ready_for_review` or `reviewed`
+`document_analysis_status` artifacts and blocked for rejected, queued, failed, not-requested,
+missing, draft, or otherwise not-ready states. The packet carries only IDs, counts/lengths,
+statuses, and fixed no-provider/no-raw-text/no-Markdown/no-annotation/no-chunk/no-embedding/
+no-prompt/no-payload/no-storage/no-summary/no-downstream-mutation flags. Proof is recorded in
+[provider document conversion semantic-review readiness proof](validation/OP_PROVIDER_DOCUMENT_CONVERSION_SEMANTIC_REVIEW_READINESS_PROOF_2026-06-29.md).
 
 The 2026-06-29 legal-research artifact review action-descriptor follow-up keeps those review
 commands and provider/document-processing boundaries unchanged while moving the existing Research
@@ -68,10 +93,11 @@ The 2026-06-27 `feat/deposit-match-review-command-boundary-20260627` branch impl
 the next safe payment import/deposit matching runtime slice after OP-T160. It adds staff-only,
 provider-neutral, append-only deposit-match reviewer decisions over normalized payment import
 review records, with idempotent replay, same-matter candidate validation, Billing dashboard latest
-decision cues, read-only manual-reconcile readiness cues, and safe audit metadata. The slice remains
-evidence-only: it does not reconcile manual payments, mutate invoice balances, clear deposits, call
-providers, notify clients, handle refunds or chargebacks, post trust entries, or retain raw provider
-payloads. Proof is recorded in
+decision cues, read-only manual-reconcile readiness cues, structured safe reason details for
+supported rows that are still eligible or have drifted ineligible, and safe audit metadata. The
+slice remains evidence-only: it does not reconcile manual payments, mutate invoice balances, clear
+deposits, call providers, notify clients, handle refunds or chargebacks, post trust entries, or
+retain raw provider payloads. Proof is recorded in
 [OP-T162 deposit-match review command boundary proof](validation/OP-T162_DEPOSIT_MATCH_REVIEW_COMMAND_BOUNDARY_PROOF_2026-06-27.md).
 
 The 2026-06-28 refund/chargeback review cue surface stays on the same provider-neutral payment
@@ -82,12 +108,29 @@ calls, dispute packets, ledger reversals, invoice mutations, client notification
 or trust posting. Proof is recorded in
 [refund/chargeback review cue proof](validation/OP_REFUND_CHARGEBACK_REVIEW_CUES_PROOF_2026-06-28.md).
 
+The 2026-06-29 `feat/refund-chargeback-review-decisions-20260629` branch adds the smallest
+staff-only decision layer over those refund/chargeback cues. Only existing payment import review
+records with `eventFamily=payment` and `eventStatus=refund_observed` or
+`eventStatus=chargeback_observed` can receive enum decisions. The slice stores safe IDs, derived
+category, enum decision/reason, idempotency posture, reviewer metadata, and explicit no-side-effect
+flags only; it does not call providers, store refund/dispute artifacts or notes, mutate invoices,
+reverse ledgers, post trust entries, notify clients, or move funds. Proof is recorded in
+[refund/chargeback review decisions proof](validation/OP_REFUND_CHARGEBACK_REVIEW_DECISIONS_PROOF_2026-06-29.md).
+
 The 2026-06-28 review-only calendar aging cue follow-up adds staff-only fresh/aging/stale metadata
 for open appointment booking tentative holds and open calendar scheduling requests. The cues are
 derived from existing `submittedAt`/`createdAt` timestamps, display in Calendar/dashboard review
 surfaces only, and preserve no automatic final confirmation, auto-expiry, provider sync, public
 room URLs, native media, chat, recordings, or matter creation. Proof is recorded in
 [calendar aging review cues proof](validation/OP_CALENDAR_AGING_REVIEW_CUES_PROOF_2026-06-28.md).
+The 2026-06-29 `feat/calendar-aging-review-decisions-20260629` follow-up adds the staff-only,
+enum-only triage decision layer for those aging/stale records. Appointment holds can record
+`acknowledged`, `follow_up_required`, or `defer_review` only while still `tentative_hold`; calendar
+scheduling requests can record the same decisions only while still `needs_review` and matter-access
+authorized. Decisions update latest row metadata plus safe audit events and dashboard row controls
+without confirming, scheduling, expiring, syncing providers, creating public rooms, adding native
+media/chat/recording, queueing reminders, creating tasks, or creating matters. Proof is recorded in
+[calendar aging review decisions proof](validation/OP_CALENDAR_AGING_REVIEW_DECISIONS_PROOF_2026-06-29.md).
 
 The 2026-06-26 active-lane mainline closeout integrates the features/capabilities parity audit and
 remediation, appointment booking tentative holds, structured task management V3, calendar tickler
@@ -280,6 +323,17 @@ no-delete/no-deadline/no-hold-release/no-raw-payload/no-compliance-claim flags. 
 route, command, migration, audit write, provider payload retention, object deletion, or compliance
 claim. Proof is recorded in
 [document disposition metadata proof](validation/OP_DOCUMENT_DISPOSITION_METADATA_PROOF_2026-06-29.md).
+
+The 2026-06-29 `feat/document-disposition-schedule-profile-20260629` branch in
+`/Users/bryan/projects/open-practice-disposition-schedule-profile-20260629` adds the smallest
+firm-configured disposition review schedule profile slice. A nullable, bounded default profile is
+stored in firm settings behind staff-only read and `firm:update` write routes, then projected
+read-only into the existing workbench `retentionHoldReview.dispositionMetadata.scheduleProfile`
+with fixed no-destructive-action/no-deadline/no-compliance flags. The Documents dashboard renders
+the profile as reviewer context only. It does not delete objects, enforce retention deadlines,
+override legal holds, retain raw/export bodies, add public/client controls, or make compliance
+claims. Proof is recorded in
+[document disposition schedule profile proof](validation/OP_DOCUMENT_DISPOSITION_SCHEDULE_PROFILE_PROOF_2026-06-29.md).
 
 The 2026-06-20 `recovery/inbound-email-operator-replay-20260620` branch adds the smallest
 operator-reviewed inbound-email recovery action: owner-only
@@ -527,6 +581,14 @@ bounded status/count fields. The slice keeps existing export serialization, rege
 behavior, no retained export body, no live settlement, no automatic trust posting, and no
 provider/object-storage side effects. Proof is recorded in
 [financial export field profiles proof](validation/OP_FINANCIAL_EXPORT_FIELD_PROFILES_PROOF_2026-06-17.md).
+The 2026-06-29 follow-up adds a read-only staff reporting export-profile alignment view to
+`GET /api/reports/workspace` and the Reports dashboard. Staff can compare manual report export
+profiles with financial export field profiles by profile metadata, purpose/scope differences,
+field-key counts, bounded field-key samples, and disabled-safeguard flags only. It adds no custom
+SQL, BI embeds, scheduled execution/email, raw report-body storage, payment processor exposure,
+payment creation/allocation, invoice mutation, trust posting, or certification claims. Proof is
+recorded in
+[report export profile alignment proof](validation/OP_REPORT_EXPORT_PROFILE_ALIGNMENT_PROOF_2026-06-29.md).
 
 The 2026-06-17 inbound email recovery metadata branch deepens the existing Mailgun/IMAP inbound
 replay-recovery posture with owner-reviewed metadata only. Parser and IMAP poll lifecycle records
@@ -583,6 +645,12 @@ The slice adds immutable published versions beside mutable drafts, firm-scoped p
 routes, compact dashboard publish/history controls, redacted publish audit metadata, and route
 authorization coverage while preserving render-only `/api/email/previews`, provider-neutral draft
 storage, and no campaign, bulk-send, subscription, delivery-provider, queue, or send-job behavior.
+The later 2026-06-29 compare follow-up adds a read-only staff dashboard compare surface between
+persisted saved drafts and selected immutable published versions in
+[OP-T158 email template compare proof](validation/OP-T158_EMAIL_TEMPLATE_COMPARE_PROOF_2026-06-29.md).
+It uses already-loaded draft/version data, keeps previews render-only, and adds no API route,
+database, migration, route-catalog, provider-delivery, queue, send-job, campaign, bulk-send, or
+subscription behavior.
 
 The 2026-06-16 financial command approval journal branch adds a read-only `financialCommandJournal`
 projection to the existing trust controls payload. It normalizes existing audit metadata for
@@ -752,8 +820,9 @@ reviewer decisions over those normalized deposit/manual-payment candidates. It a
 support/reject/needs-more-evidence decisions, idempotent replay, candidate-supported guardrails, and
 Billing latest-decision cues. The 2026-06-29 readiness follow-up adds read-only Billing cues for
 supported decisions that still appear eligible for the existing manual-payment reconcile review
-workflow while preserving no live settlement, provider commands, raw provider payload retention,
-invoice-balance mutation, reconciliation automation, refund/chargeback workflow, client
+workflow and structured per-row reason details for supported decisions that are still eligible or
+now ineligible while preserving no live settlement, provider commands, raw provider payload
+retention, invoice-balance mutation, reconciliation automation, refund/chargeback workflow, client
 notifications, trust transfers, or trust posting. Proof is recorded in
 [OP-T162 deposit-match review command boundary proof](validation/OP-T162_DEPOSIT_MATCH_REVIEW_COMMAND_BOUNDARY_PROOF_2026-06-27.md).
 
@@ -763,6 +832,14 @@ records with `eventStatus=refund_observed` or `eventStatus=chargeback_observed`.
 surface only, with no provider calls, dispute packet storage, invoice mutation, ledger reversal,
 client notification, trust transfer, or trust posting. Proof is recorded in
 [refund/chargeback review cue proof](validation/OP_REFUND_CHARGEBACK_REVIEW_CUES_PROOF_2026-06-28.md).
+
+The 2026-06-29 refund/chargeback review decision follow-up records staff-only enum decisions over
+those existing payment import exception cues. It enforces reason/category matching for confirmed
+exceptions, idempotent replay, strict request fields, safe audit metadata, dashboard decision counts,
+and latest-decision visibility while preserving no provider calls, refund/dispute artifacts, invoice
+mutation, ledger reversal, client notification, trust posting, or funds movement. Proof is recorded
+in
+[refund/chargeback review decisions proof](validation/OP_REFUND_CHARGEBACK_REVIEW_DECISIONS_PROOF_2026-06-29.md).
 
 The 2026-06-16 Signature Request Envelope Metadata branch adds OP-authored signer-order and
 field-placement metadata directly to existing signature requests. Domain validation stays

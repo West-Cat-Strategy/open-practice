@@ -17,6 +17,7 @@ import type {
 import {
   canShareDocumentThroughPortal,
   clientTrustBalanceByMatter,
+  normalizeDocumentDispositionReviewScheduleProfile,
   type AiOperationalProposalRecord,
   type AccessLogRecord,
   type ActivityTimelineEntry,
@@ -88,6 +89,7 @@ import {
   type MatterParty,
   type PaymentAllocationRecord,
   type PaymentImportDepositMatchReviewRecord,
+  type PaymentImportRefundChargebackReviewRecord,
   type PaymentImportReviewRecord,
   type PortalGrant,
   type PortalDocumentAccess,
@@ -388,6 +390,11 @@ export function mapCalendarSchedulingRequestRow(
     updatedByUserId: row.updatedByUserId,
     reviewedAt: dateToIso(row.reviewedAt),
     reviewedByUserId: row.reviewedByUserId ?? undefined,
+    reviewAgingDecision: row.reviewAgingDecision ?? undefined,
+    reviewAgingDecidedAt: dateToIso(row.reviewAgingDecidedAt),
+    reviewAgingDecidedByUserId: row.reviewAgingDecidedByUserId ?? undefined,
+    reviewAgingCueStatus: row.reviewAgingCueStatus ?? undefined,
+    reviewAgingAgeHours: row.reviewAgingAgeHours ?? undefined,
   };
 }
 
@@ -649,6 +656,9 @@ export function mapFirmSettingsRow(row: typeof schema.firmSettings.$inferSelect)
     website: row.website ?? undefined,
     description: row.description ?? undefined,
     businessNumber: row.businessNumber ?? undefined,
+    dispositionReviewScheduleProfile: normalizeDocumentDispositionReviewScheduleProfile(
+      row.dispositionReviewScheduleProfile,
+    ),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -3345,6 +3355,37 @@ export function mapPaymentImportDepositMatchReviewRow(
 export function paymentImportDepositMatchReviewInsert(
   record: PaymentImportDepositMatchReviewRecord,
 ): typeof schema.paymentImportDepositMatchReviews.$inferInsert {
+  return {
+    ...record,
+    reviewedAt: new Date(record.reviewedAt),
+    createdAt: new Date(record.createdAt),
+  };
+}
+
+export function mapPaymentImportRefundChargebackReviewRow(
+  row: typeof schema.paymentImportRefundChargebackReviews.$inferSelect,
+): PaymentImportRefundChargebackReviewRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    matterId: row.matterId,
+    paymentImportReviewRecordId: row.paymentImportReviewRecordId,
+    category: row.category,
+    decision: row.decision,
+    reason: row.reason,
+    reviewerEvidencePresent: true,
+    idempotencyKey: row.idempotencyKey,
+    decisionFingerprint: row.decisionFingerprint,
+    boundaries: row.boundaries,
+    reviewedByUserId: row.reviewedByUserId,
+    reviewedAt: row.reviewedAt.toISOString(),
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+export function paymentImportRefundChargebackReviewInsert(
+  record: PaymentImportRefundChargebackReviewRecord,
+): typeof schema.paymentImportRefundChargebackReviews.$inferInsert {
   return {
     ...record,
     reviewedAt: new Date(record.reviewedAt),

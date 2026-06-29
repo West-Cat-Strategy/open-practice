@@ -39,6 +39,10 @@ function metricSummary(metrics: Record<string, string | number | boolean>): stri
     .join(" · ");
 }
 
+function profileSummary(profile: { label: string; format: string }): string {
+  return `${profile.label} (${profile.format.toUpperCase()})`;
+}
+
 function metadataText(
   metadata: StaffReportProjectionRow["metadata"],
   key: string,
@@ -197,6 +201,57 @@ export function ReportsSection({
           </span>
           <span>No custom SQL · No BI embeds · No raw report bodies</span>
         </div>
+      </div>
+
+      <div className="section-title">
+        <h3>Export profile alignment</h3>
+        <span>read-only comparison · bounded field samples</span>
+      </div>
+      <div className="activity-grid two-column">
+        <div className="activity-card">
+          <Download size={18} />
+          <strong>Manual report export profiles</strong>
+          <span>
+            {reportingWorkspace.exportProfileAlignment.staffReportProfiles
+              .map(profileSummary)
+              .join(" · ") || "No manual report profiles"}
+          </span>
+          <span>Manual downloads only · No raw report bodies</span>
+        </div>
+        <div className="activity-card">
+          <SlidersHorizontal size={18} />
+          <strong>Financial export field profiles</strong>
+          <span>
+            {reportingWorkspace.exportProfileAlignment.financialFieldProfiles
+              .map((profile) => `${profile.label} (${profile.fieldKeyCount} keys)`)
+              .join(" · ") || "No financial field profiles"}
+          </span>
+          <span>
+            {reportingWorkspace.exportProfileAlignment.financialFieldProfiles
+              .flatMap((profile) => profile.sampleFieldKeys.slice(0, 2))
+              .map(compactReportText)
+              .join(", ") || "No field-key samples"}
+          </span>
+        </div>
+      </div>
+      <p className="inline-empty">
+        No custom SQL · No BI embeds · No scheduled delivery · No raw export bodies · No payment
+        processor exposure · No invoice mutation · No trust posting · No certification claims
+      </p>
+      <div className="party-list">
+        {reportingWorkspace.exportProfileAlignment.differences.map((difference) => (
+          <div className="party-row" key={difference.key}>
+            <span>
+              <strong>{difference.label}</strong>
+              <small>Reports: {difference.staffReporting}</small>
+              <small>Financial fields: {difference.financialFieldProfiles}</small>
+            </span>
+            <em>read only</em>
+          </div>
+        ))}
+        {reportingWorkspace.exportProfileAlignment.differences.length === 0 ? (
+          <p className="inline-empty">No export profile alignment metadata is available.</p>
+        ) : null}
       </div>
 
       <div className="section-title">

@@ -206,6 +206,41 @@ export interface PaymentImportRefundChargebackReviewCue {
   clientNotification: "none";
 }
 
+export const paymentImportRefundChargebackReviewDecisions = [
+  "exception_confirmed",
+  "exception_rejected",
+  "needs_more_evidence",
+] as const;
+
+export type PaymentImportRefundChargebackReviewDecision =
+  (typeof paymentImportRefundChargebackReviewDecisions)[number];
+
+export const paymentImportRefundChargebackReviewReasons = [
+  "refund_observed",
+  "chargeback_observed",
+  "duplicate_or_conflict",
+  "candidate_reference_mismatch",
+  "missing_reviewer_evidence",
+  "status_unclear",
+] as const;
+
+export type PaymentImportRefundChargebackReviewReason =
+  (typeof paymentImportRefundChargebackReviewReasons)[number];
+
+export interface PaymentImportRefundChargebackReviewBoundary {
+  rawProviderPayloadRetained: false;
+  refundArtifactRetained: false;
+  disputeArtifactRetained: false;
+  invoiceBalanceMutation: "none";
+  ledgerReversal: "none";
+  trustPosting: "none";
+  providerCommand: "none";
+  clientNotification: "none";
+  fundsMovement: "none";
+  refundHandling: "review_decision_only";
+  chargebackHandling: "review_decision_only";
+}
+
 export const paymentImportDepositMatchReviewDecisions = [
   "candidate_supported",
   "candidate_rejected",
@@ -254,9 +289,27 @@ export type PaymentImportDepositMatchReconciliationReadinessReason =
   | "invoice_candidate_mismatch"
   | "invoice_balance_insufficient";
 
+export type PaymentImportDepositMatchReconciliationReadinessDetailCode =
+  | "latest_supported_decision"
+  | "no_duplicate_or_conflict_cue"
+  | "manual_payment_candidate_matches"
+  | "manual_payment_found"
+  | "manual_payment_pending"
+  | "amounts_match"
+  | "invoice_found"
+  | "invoice_candidate_matches"
+  | "invoice_balance_covers_payment";
+
+export interface PaymentImportDepositMatchReconciliationReadinessDetail {
+  code: PaymentImportDepositMatchReconciliationReadinessDetailCode;
+  status: "satisfied" | "blocked";
+  label: string;
+}
+
 export interface PaymentImportDepositMatchReconciliationReadiness {
   eligible: boolean;
   reason: PaymentImportDepositMatchReconciliationReadinessReason;
+  reasonDetails: PaymentImportDepositMatchReconciliationReadinessDetail[];
   reviewAction: "manual_payment_reconcile_review";
   candidateManualPaymentId?: string;
   candidateInvoiceId?: string;
@@ -563,6 +616,23 @@ export interface PaymentImportDepositMatchReviewRecord {
   createdAt: string;
 }
 
+export interface PaymentImportRefundChargebackReviewRecord {
+  id: string;
+  firmId: string;
+  matterId: string;
+  paymentImportReviewRecordId: string;
+  category: PaymentImportRefundChargebackReviewCategory;
+  decision: PaymentImportRefundChargebackReviewDecision;
+  reason: PaymentImportRefundChargebackReviewReason;
+  reviewerEvidencePresent: true;
+  idempotencyKey: string;
+  decisionFingerprint: string;
+  boundaries: PaymentImportRefundChargebackReviewBoundary;
+  reviewedByUserId: string;
+  reviewedAt: string;
+  createdAt: string;
+}
+
 export interface TrustTransferRequestRecord {
   id: string;
   firmId: string;
@@ -751,6 +821,22 @@ export function defaultPaymentImportDepositMatchReviewBoundary(): PaymentImportD
   };
 }
 
+export function defaultPaymentImportRefundChargebackReviewBoundary(): PaymentImportRefundChargebackReviewBoundary {
+  return {
+    rawProviderPayloadRetained: false,
+    refundArtifactRetained: false,
+    disputeArtifactRetained: false,
+    invoiceBalanceMutation: "none",
+    ledgerReversal: "none",
+    trustPosting: "none",
+    providerCommand: "none",
+    clientNotification: "none",
+    fundsMovement: "none",
+    refundHandling: "review_decision_only",
+    chargebackHandling: "review_decision_only",
+  };
+}
+
 export function paymentImportReviewHasConflict(
   record: Pick<PaymentImportReviewRecord, "conflictReason" | "duplicateOfRecordId">,
 ): boolean {
@@ -769,16 +855,44 @@ export function paymentImportReviewDepositMatchCue(
   };
 }
 
+const paymentImportDepositMatchReconciliationReadinessDetailLabels: Record<
+  PaymentImportDepositMatchReconciliationReadinessDetailCode,
+  string
+> = {
+  latest_supported_decision: "Latest decision supports candidate",
+  no_duplicate_or_conflict_cue: "No duplicate or conflict cue",
+  manual_payment_candidate_matches: "Manual payment candidate still matches",
+  manual_payment_found: "Manual payment evidence found",
+  manual_payment_pending: "Manual payment remains pending",
+  amounts_match: "Import and manual payment amounts match",
+  invoice_found: "Candidate invoice found",
+  invoice_candidate_matches: "Invoice candidate still matches",
+  invoice_balance_covers_payment: "Invoice balance covers payment",
+};
+
+function paymentImportDepositMatchReadinessDetail(
+  code: PaymentImportDepositMatchReconciliationReadinessDetailCode,
+  status: PaymentImportDepositMatchReconciliationReadinessDetail["status"],
+): PaymentImportDepositMatchReconciliationReadinessDetail {
+  return {
+    code,
+    status,
+    label: paymentImportDepositMatchReconciliationReadinessDetailLabels[code],
+  };
+}
+
 function paymentImportDepositMatchReadiness(
   reason: PaymentImportDepositMatchReconciliationReadinessReason,
   details: Pick<
     PaymentImportDepositMatchReconciliationReadiness,
     "candidateManualPaymentId" | "candidateInvoiceId" | "amountCents"
   > = {},
+  reasonDetails: PaymentImportDepositMatchReconciliationReadinessDetail[] = [],
 ): PaymentImportDepositMatchReconciliationReadiness {
   const readiness: PaymentImportDepositMatchReconciliationReadiness = {
     eligible: reason === "supported_candidate_ready",
     reason,
+    reasonDetails,
     reviewAction: "manual_payment_reconcile_review",
     mutation: "none",
   };
@@ -817,7 +931,11 @@ export function paymentImportDepositMatchReconciliationReadiness(input: {
   invoice?: Pick<InvoiceRecord, "id" | "matterId" | "balanceDueCents">;
 }): PaymentImportDepositMatchReconciliationReadiness {
   const { importRecord, latestReview, manualPayment, invoice } = input;
-  if (!latestReview) return paymentImportDepositMatchReadiness("no_supported_decision");
+  if (!latestReview) {
+    return paymentImportDepositMatchReadiness("no_supported_decision", {}, [
+      paymentImportDepositMatchReadinessDetail("latest_supported_decision", "blocked"),
+    ]);
+  }
   const details = {
     candidateManualPaymentId: latestReview.candidateManualPaymentId,
     candidateInvoiceId:
@@ -826,54 +944,108 @@ export function paymentImportDepositMatchReconciliationReadiness(input: {
       manualPayment?.invoiceId,
     amountCents: latestReview.manualPaymentAmountCents,
   };
+  const reasonDetails: PaymentImportDepositMatchReconciliationReadinessDetail[] = [];
   if (
     latestReview.decision !== "candidate_supported" ||
     latestReview.reason !== "candidate_evidence_matches"
   ) {
-    return paymentImportDepositMatchReadiness("candidate_not_supported", details);
+    return paymentImportDepositMatchReadiness("candidate_not_supported", details, [
+      paymentImportDepositMatchReadinessDetail("latest_supported_decision", "blocked"),
+    ]);
   }
+  reasonDetails.push(
+    paymentImportDepositMatchReadinessDetail("latest_supported_decision", "satisfied"),
+  );
   if (paymentImportReviewHasConflict(importRecord)) {
-    return paymentImportDepositMatchReadiness("import_record_conflict", details);
+    return paymentImportDepositMatchReadiness("import_record_conflict", details, [
+      ...reasonDetails,
+      paymentImportDepositMatchReadinessDetail("no_duplicate_or_conflict_cue", "blocked"),
+    ]);
   }
+  reasonDetails.push(
+    paymentImportDepositMatchReadinessDetail("no_duplicate_or_conflict_cue", "satisfied"),
+  );
   if (
     !importRecord.candidateManualPaymentId ||
     importRecord.candidateManualPaymentId !== latestReview.candidateManualPaymentId
   ) {
-    return paymentImportDepositMatchReadiness("candidate_manual_payment_mismatch", details);
+    return paymentImportDepositMatchReadiness("candidate_manual_payment_mismatch", details, [
+      ...reasonDetails,
+      paymentImportDepositMatchReadinessDetail("manual_payment_candidate_matches", "blocked"),
+    ]);
   }
+  reasonDetails.push(
+    paymentImportDepositMatchReadinessDetail("manual_payment_candidate_matches", "satisfied"),
+  );
   if (!manualPayment || manualPayment.id !== latestReview.candidateManualPaymentId) {
-    return paymentImportDepositMatchReadiness("manual_payment_not_found", details);
+    return paymentImportDepositMatchReadiness("manual_payment_not_found", details, [
+      ...reasonDetails,
+      paymentImportDepositMatchReadinessDetail("manual_payment_found", "blocked"),
+    ]);
   }
+  reasonDetails.push(paymentImportDepositMatchReadinessDetail("manual_payment_found", "satisfied"));
   if (
     manualPayment.matterId !== importRecord.matterId ||
     latestReview.matterId !== importRecord.matterId
   ) {
-    return paymentImportDepositMatchReadiness("candidate_manual_payment_mismatch", details);
+    return paymentImportDepositMatchReadiness("candidate_manual_payment_mismatch", details, [
+      ...reasonDetails.slice(0, 2),
+      paymentImportDepositMatchReadinessDetail("manual_payment_candidate_matches", "blocked"),
+    ]);
   }
   if (manualPayment.status !== "pending_reconciliation") {
-    return paymentImportDepositMatchReadiness("manual_payment_not_pending", details);
+    return paymentImportDepositMatchReadiness("manual_payment_not_pending", details, [
+      ...reasonDetails,
+      paymentImportDepositMatchReadinessDetail("manual_payment_pending", "blocked"),
+    ]);
   }
+  reasonDetails.push(
+    paymentImportDepositMatchReadinessDetail("manual_payment_pending", "satisfied"),
+  );
   if (
     manualPayment.amountCents !== latestReview.manualPaymentAmountCents ||
     importRecord.amountCents !== latestReview.importAmountCents ||
     latestReview.importAmountCents !== latestReview.manualPaymentAmountCents
   ) {
-    return paymentImportDepositMatchReadiness("amount_mismatch", details);
+    return paymentImportDepositMatchReadiness("amount_mismatch", details, [
+      ...reasonDetails,
+      paymentImportDepositMatchReadinessDetail("amounts_match", "blocked"),
+    ]);
   }
+  reasonDetails.push(paymentImportDepositMatchReadinessDetail("amounts_match", "satisfied"));
   const candidateInvoiceId = latestReview.candidateInvoiceId ?? importRecord.candidateInvoiceId;
   if (!manualPayment.invoiceId || !candidateInvoiceId || !invoice) {
-    return paymentImportDepositMatchReadiness("invoice_not_found", details);
+    return paymentImportDepositMatchReadiness("invoice_not_found", details, [
+      ...reasonDetails,
+      paymentImportDepositMatchReadinessDetail("invoice_found", "blocked"),
+    ]);
   }
+  reasonDetails.push(paymentImportDepositMatchReadinessDetail("invoice_found", "satisfied"));
   if (manualPayment.invoiceId !== candidateInvoiceId || invoice.id !== candidateInvoiceId) {
-    return paymentImportDepositMatchReadiness("invoice_candidate_mismatch", details);
+    return paymentImportDepositMatchReadiness("invoice_candidate_mismatch", details, [
+      ...reasonDetails,
+      paymentImportDepositMatchReadinessDetail("invoice_candidate_matches", "blocked"),
+    ]);
   }
   if (invoice.matterId !== importRecord.matterId || invoice.matterId !== manualPayment.matterId) {
-    return paymentImportDepositMatchReadiness("invoice_candidate_mismatch", details);
+    return paymentImportDepositMatchReadiness("invoice_candidate_mismatch", details, [
+      ...reasonDetails,
+      paymentImportDepositMatchReadinessDetail("invoice_candidate_matches", "blocked"),
+    ]);
   }
+  reasonDetails.push(
+    paymentImportDepositMatchReadinessDetail("invoice_candidate_matches", "satisfied"),
+  );
   if (manualPayment.amountCents > invoice.balanceDueCents) {
-    return paymentImportDepositMatchReadiness("invoice_balance_insufficient", details);
+    return paymentImportDepositMatchReadiness("invoice_balance_insufficient", details, [
+      ...reasonDetails,
+      paymentImportDepositMatchReadinessDetail("invoice_balance_covers_payment", "blocked"),
+    ]);
   }
-  return paymentImportDepositMatchReadiness("supported_candidate_ready", details);
+  reasonDetails.push(
+    paymentImportDepositMatchReadinessDetail("invoice_balance_covers_payment", "satisfied"),
+  );
+  return paymentImportDepositMatchReadiness("supported_candidate_ready", details, reasonDetails);
 }
 
 export function paymentImportRefundChargebackReviewCue(
@@ -901,6 +1073,16 @@ export function paymentImportRefundChargebackReviewCue(
     providerCommand: "none",
     clientNotification: "none",
   };
+}
+
+export function paymentImportRefundChargebackReviewDecisionMatchesCue(
+  input: Pick<PaymentImportRefundChargebackReviewRecord, "category" | "decision" | "reason">,
+): boolean {
+  if (input.decision !== "exception_confirmed") return true;
+  return (
+    (input.category === "refund" && input.reason === "refund_observed") ||
+    (input.category === "chargeback" && input.reason === "chargeback_observed")
+  );
 }
 
 export function hostedPaymentRequestPath(requestId: string): string {

@@ -182,6 +182,68 @@ describe("calendar scheduling request summaries", () => {
       })[0],
     ).not.toHaveProperty("reviewAging");
   });
+
+  it("projects latest aging review decisions only while scheduling requests stay open", () => {
+    const request: CalendarSchedulingRequestRecord = {
+      id: "calendar-scheduling-request-aging-001",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      kind: "event_scheduling",
+      status: "needs_review",
+      title: "Review synthetic meeting",
+      sourceType: "manual",
+      sourceLabel: "Synthetic source",
+      requestedStartsAt: "2026-05-01T19:00:00.000Z",
+      requestedEndsAt: "2026-05-01T19:30:00.000Z",
+      reminderPosture: "none",
+      privacy: "staff_only",
+      timeCaptureCue: {
+        posture: "none",
+        existingTimeEntryCount: 0,
+        billable: false,
+      },
+      createdAt: "2026-04-30T12:00:00.000Z",
+      updatedAt: "2026-04-30T12:00:00.000Z",
+      createdByUserId: "user-licensee",
+      updatedByUserId: "user-licensee",
+      reviewAgingDecision: "defer_review",
+      reviewAgingDecidedAt: "2026-05-03T12:10:00.000Z",
+      reviewAgingDecidedByUserId: "user-licensee",
+      reviewAgingCueStatus: "stale",
+      reviewAgingAgeHours: 72,
+    };
+
+    expect(
+      buildCalendarSchedulingRequestSummaries({
+        requests: [request],
+        includeTimeCapture: false,
+        now: "2026-05-03T12:15:00.000Z",
+      })[0],
+    ).toMatchObject({
+      reviewAgingDecision: {
+        decision: "defer_review",
+        decidedAt: "2026-05-03T12:10:00.000Z",
+        decidedByUserId: "user-licensee",
+        cueStatus: "stale",
+        ageHours: 72,
+        automaticFinalConfirmation: false,
+        autoExpires: false,
+        providerSync: false,
+        publicRoomCreated: false,
+        nativeMediaCreated: false,
+        chatCreated: false,
+        recordingCreated: false,
+        matterCreated: false,
+      },
+    });
+    expect(
+      buildCalendarSchedulingRequestSummaries({
+        requests: [{ ...request, status: "reviewed" }],
+        includeTimeCapture: false,
+        now: "2026-05-03T12:15:00.000Z",
+      })[0],
+    ).not.toHaveProperty("reviewAgingDecision");
+  });
 });
 
 describe("iCalendar feed serialization", () => {

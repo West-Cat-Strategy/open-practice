@@ -1,0 +1,1 @@
+ALTER TABLE "firm_settings" ADD COLUMN "disposition_review_schedule_profile" jsonb;

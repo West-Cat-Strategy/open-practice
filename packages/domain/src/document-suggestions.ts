@@ -1,11 +1,13 @@
-import type {
-  Contact,
-  DocumentClassification,
-  DocumentRecord,
-  DocumentScanStatus,
-  DocumentUploadReviewStatus,
-  Matter,
-  MatterParty,
+import {
+  documentDispositionReviewCadences,
+  type Contact,
+  type DocumentClassification,
+  type DocumentDispositionReviewScheduleProfile,
+  type DocumentRecord,
+  type DocumentScanStatus,
+  type DocumentUploadReviewStatus,
+  type Matter,
+  type MatterParty,
 } from "./models.js";
 import type { DocumentTextExtractionRecord } from "./operations.js";
 
@@ -79,6 +81,13 @@ export type DocumentDispositionCandidateState =
   | "reviewed_keep"
   | "reviewed_superseded";
 
+export interface DocumentDispositionScheduleProfileProjection extends DocumentDispositionReviewScheduleProfile {
+  source: "firm_settings";
+  destructiveAction: false;
+  retentionDeadlineEnforced: false;
+  complianceClaim: false;
+}
+
 export interface DocumentDispositionMetadata {
   candidateState: DocumentDispositionCandidateState;
   readyForReviewerPacket: boolean;
@@ -91,6 +100,7 @@ export interface DocumentDispositionMetadata {
   sourceCueCounts: Record<DocumentReviewSuggestionGroup | "total", number>;
   reviewAfter?: string;
   minimumRetainThrough?: string;
+  scheduleProfile?: DocumentDispositionScheduleProfileProjection;
   destructiveAction: false;
   objectDeletion: false;
   retentionDeadlineEnforced: false;
@@ -376,6 +386,12 @@ function metadataString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value : undefined;
 }
 
+function metadataPositiveInteger(value: unknown, maximum?: number): number | undefined {
+  if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) return undefined;
+  if (maximum && value > maximum) return undefined;
+  return value;
+}
+
 function metadataCueCounts(
   value: unknown,
 ): Record<DocumentReviewSuggestionGroup | "total", number> {
@@ -389,6 +405,34 @@ function metadataCueCounts(
     counts[key] = typeof raw === "number" && Number.isFinite(raw) ? raw : 0;
   }
   return counts;
+}
+
+export function normalizeDocumentDispositionReviewScheduleProfile(
+  value: unknown,
+): DocumentDispositionReviewScheduleProfile | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const record = value as Record<string, unknown>;
+  const label = metadataString(record.label)?.trim();
+  const rawReviewCadence = record.reviewCadence;
+  if (
+    !label ||
+    label.length > 120 ||
+    typeof rawReviewCadence !== "string" ||
+    !documentDispositionReviewCadences.includes(
+      rawReviewCadence as DocumentDispositionReviewScheduleProfile["reviewCadence"],
+    )
+  ) {
+    return undefined;
+  }
+  const reviewAfterDays = metadataPositiveInteger(record.reviewAfterDays, 36500);
+  const minimumRetainDays = metadataPositiveInteger(record.minimumRetainDays, 36500);
+  return {
+    profileKey: "default",
+    label,
+    reviewCadence: rawReviewCadence as DocumentDispositionReviewScheduleProfile["reviewCadence"],
+    ...(reviewAfterDays ? { reviewAfterDays } : {}),
+    ...(minimumRetainDays ? { minimumRetainDays } : {}),
+  };
 }
 
 export function retentionHoldReviewMetadata(
@@ -420,6 +464,7 @@ export function retentionHoldReviewMetadata(
 export function buildDocumentRetentionHoldReview(input: {
   document: DocumentRecord;
   reviewSuggestions?: DocumentReviewSuggestions;
+  dispositionReviewScheduleProfile?: DocumentDispositionReviewScheduleProfile;
 }): DocumentRetentionHoldReview {
   const sourceCueCounts = input.reviewSuggestions?.summaryCounts ?? emptyCueCounts();
   const blockers: string[] = [];
@@ -455,6 +500,9 @@ export function buildDocumentRetentionHoldReview(input: {
           latestDecision?.decision === "reviewed_superseded"
         ? latestDecision.decision
         : "not_ready";
+  const scheduleProfile = normalizeDocumentDispositionReviewScheduleProfile(
+    input.dispositionReviewScheduleProfile,
+  );
 
   return {
     reviewerOnly: true,
@@ -484,6 +532,17 @@ export function buildDocumentRetentionHoldReview(input: {
       sourceCueCounts,
       reviewAfter: latestDecision?.reviewAfter,
       minimumRetainThrough: latestDecision?.minimumRetainThrough,
+      ...(scheduleProfile
+        ? {
+            scheduleProfile: {
+              ...scheduleProfile,
+              source: "firm_settings",
+              destructiveAction: false,
+              retentionDeadlineEnforced: false,
+              complianceClaim: false,
+            },
+          }
+        : {}),
       destructiveAction: false,
       objectDeletion: false,
       retentionDeadlineEnforced: false,

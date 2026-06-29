@@ -274,6 +274,43 @@ export interface DocumentConversionReviewDecisionCue {
   rawOcrTextReturned: false;
 }
 
+export interface DocumentConversionReviewSemanticReviewReadiness {
+  documentId: string;
+  artifactId?: string;
+  jobId?: string;
+  counts?: DocumentConversionReviewCounts;
+  posture: "ready" | "blocked";
+  conversionReviewStatus:
+    | "blocked"
+    | "not_requested"
+    | "queued"
+    | "ready_for_review"
+    | "reviewed"
+    | "rejected"
+    | "failed"
+    | string;
+  artifactStatus: string;
+  staffReviewRequired: true;
+  reviewOnly: true;
+  metadataOnly: true;
+  providerActivated: false;
+  downstreamMutation: false;
+  providerEvidenceStored: false;
+  rawOcrTextReturned: false;
+  rawOcrTextStoredInMetadata: false;
+  rawMarkdownStored: false;
+  convertedMarkdownStored: false;
+  annotationBodiesStored: false;
+  annotationSpansStored: false;
+  chunksStored: false;
+  embeddingsStored: false;
+  promptsStored: false;
+  providerPayloadsStored: false;
+  storageKeysStored: false;
+  objectBodiesStored: false;
+  generatedSummariesStored: false;
+}
+
 export interface DocumentConversionReviewSummary {
   posture:
     | "blocked"
@@ -292,6 +329,7 @@ export interface DocumentConversionReviewSummary {
   counts?: DocumentConversionReviewCounts;
   policy: DocumentConversionReviewPolicy;
   reviewReadiness?: DocumentConversionReviewReadiness;
+  semanticReviewReadiness?: DocumentConversionReviewSemanticReviewReadiness;
   latestDecision?: DocumentConversionReviewDecisionCue;
   decisionHistory: DocumentConversionReviewDecisionCue[];
 }
@@ -359,6 +397,20 @@ export type DocumentDispositionCandidateState =
   | "reviewed_keep"
   | "reviewed_superseded";
 
+export type DocumentDispositionReviewCadence = "manual_review" | "monthly" | "quarterly" | "annual";
+
+export interface DocumentDispositionScheduleProfileProjection {
+  source: "firm_settings";
+  profileKey: "default";
+  label: string;
+  reviewCadence: DocumentDispositionReviewCadence;
+  reviewAfterDays?: number;
+  minimumRetainDays?: number;
+  destructiveAction: false;
+  retentionDeadlineEnforced: false;
+  complianceClaim: false;
+}
+
 export interface DocumentDispositionMetadata {
   candidateState: DocumentDispositionCandidateState;
   readyForReviewerPacket: boolean;
@@ -371,6 +423,7 @@ export interface DocumentDispositionMetadata {
   sourceCueCounts: Record<DocumentReviewSuggestionGroup | "total", number>;
   reviewAfter?: string;
   minimumRetainThrough?: string;
+  scheduleProfile?: DocumentDispositionScheduleProfileProjection;
   destructiveAction: false;
   objectDeletion: false;
   retentionDeadlineEnforced: false;

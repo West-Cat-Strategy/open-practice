@@ -148,20 +148,25 @@ surface.
 - **Private document conversion and annotation research spike**
   - **Status:** Metadata-only conversion review shipped on 2026-06-16; the 2026-06-27
     follow-up runtime depth is the review-decision command over existing conversion-review
-    artifacts. The 2026-06-17 provider-backed boundary proof still records the reviewed design
+    artifacts. The 2026-06-29 semantic-readiness packet now marks only existing same-matter
+    `ready_for_review` or `reviewed` conversion-review artifacts as ready for later reviewer-only
+    semantic-review work; rejected, queued, failed, missing, draft, and not-requested states remain
+    blocked. The 2026-06-17 provider-backed boundary proof still records the reviewed design
     guardrails for future conversion, annotation, chunking, embedding, and semantic-review slices.
-    Provider conversion remains a separate future implementation.
+    Provider conversion and semantic-review execution remain separate future implementations.
   - **Shipped boundary:** Open Practice now queues `document_conversion_review` jobs after verified
     upload, safe scan posture, and completed OCR extraction, then surfaces posture in Documents and
     Research through `document_analysis_status` artifacts. Staff can now mark an existing ready
     artifact `reviewed` or `rejected` through an explicit matter-scoped API command; Documents and
     Research now show only safe latest-decision/history cues derived from terminal artifact review
-    fields. Retained state is limited to OP-authored redacted posture,
-    `summaryPosture: op_authored_metadata_only`, counts, lengths, statuses, policy flags, and
-    review metadata; raw client text, raw converted Markdown, raw annotations, provider payloads,
-    prompts, sensitive chunks, embeddings, storage keys, object bodies, free-form generated
-    summaries, and private excerpts must not enter job metadata, audit metadata, API posture,
-    artifacts, projections, or proof notes.
+    fields, plus a safe `semanticReviewReadiness` packet with only IDs, counts/lengths, statuses,
+    and fixed no-provider/no-raw-text/no-Markdown/no-annotation/no-chunk/no-embedding/no-prompt/
+    no-payload/no-storage/no-summary/no-downstream-mutation flags. Retained state is limited to
+    OP-authored redacted posture, `summaryPosture: op_authored_metadata_only`, counts, lengths,
+    statuses, policy flags, and review metadata; raw client text, raw converted Markdown, raw
+    annotations, provider payloads, prompts, sensitive chunks, embeddings, storage keys, object
+    bodies, free-form generated summaries, and private excerpts must not enter job metadata, audit
+    metadata, API posture, artifacts, projections, or proof notes.
   - **Remaining boundary:** Provider-backed conversion, annotation bodies, chunk storage,
     embeddings, retained Markdown, provider payload retention, and external semantic-review
     providers remain out of scope until a later runtime slice proves the same metadata-only,
@@ -182,7 +187,9 @@ surface.
     preview snapshots into dashboard resources and removes the unused empty preview placeholder. The
     2026-06-29 follow-up adds staff publish/version-history affordances with immutable published
     versions, firm-scoped publish/list routes, redacted publish audit metadata, and no delivery
-    side effects.
+    side effects. The later 2026-06-29 compare follow-up adds a read-only dashboard comparison
+    between saved drafts and selected immutable published versions without adding routes,
+    persistence, provider, queue, or delivery behavior.
   - **Remaining gap / future boundary:** Campaign automation, bulk sends, subscription management,
     provider delivery side effects, queue/send jobs, and live delivery from template management
     remain future work. `/api/email/previews` stays render-only.
@@ -359,7 +366,10 @@ surface.
     labels, busy/disabled state, accessible labels, and action keys from domain-owned descriptors.
     The 2026-06-28 readiness follow-up adds read-only Trust Controls indicators for categories and
     safe matter IDs that would require maker-checker policy if enabled later; it does not enable
-    policy, add actions, or change posting behavior.
+    policy, add actions, or change posting behavior. The 2026-06-29 policy-preview follow-up adds
+    a read-only category-by-safe-matter matrix over those same cues without introducing policy
+    activation, direct-posting changes, settlement, bank-feed matching, auto-match, or accounting
+    certification.
   - **Remaining boundary:** Direct trust transactions still post immediately for non-selected
     postings. The posting-request commands reuse the existing ledger transaction posting path at
     approval time, stay separate from the shipped trust-transfer approve/reject/link flow, and do not
@@ -414,28 +424,38 @@ surface.
     support is still evidence-only and requires pending manual-payment status, amount/currency
     match, and no duplicate/conflict cues. The 2026-06-29 readiness follow-up adds read-only Billing
     cues for supported decisions that still appear eligible for the existing manual-payment
-    reconcile review workflow; the cue does not reconcile payments, mutate invoices, clear deposits,
-    call providers, or post trust entries.
+    reconcile review workflow and structured reason details for supported rows that are still
+    eligible or have drifted ineligible; the cue does not reconcile payments, mutate invoices, clear
+    deposits, call providers, or post trust entries.
   - **Shipped refund/chargeback cue surface:** The 2026-06-28 follow-up adds provider-neutral
     reviewer cue counts and row metadata for existing payment import records with
     `eventStatus=refund_observed` or `eventStatus=chargeback_observed`. The surface is metadata
     only and preserves no provider calls, dispute packets, invoice mutation, ledger reversals,
     client notifications, trust transfers, or trust posting.
+  - **Shipped refund/chargeback decision slice:** The 2026-06-29 follow-up adds staff-only,
+    provider-neutral enum decisions over those derived refund/chargeback cues. It stores only safe
+    IDs, derived category, enum decision/reason, idempotency posture, reviewer metadata, and
+    explicit no-side-effect flags; it does not store amounts, external payment IDs, notes, provider
+    payloads, refund artifacts, dispute packets, invoice mutations, ledger reversals, client
+    notifications, trust postings, provider commands, or funds movement.
   - **Remaining boundary:** Deposit matching automation, refund and chargeback command workflows,
     settlement automation, provider webhook/replay behavior, provider commands, trust posting, and
-    any funds movement remain separate future work after the cue surface.
+    any funds movement remain separate future work after the cue and decision surfaces.
   - **References:** `opencollective__opencollective-api` settlement/reconciliation concepts and
     `blnkfinance__blnk` reconciliation boundaries.
   - **Reuse and snippets:** Open Collective is MIT but architecture-only in this corpus; Blnk is
     Apache-2.0/adopt-selectively. No direct snippets recommended.
 
 - **Financial export field profiles**
-  - **Status:** Shipped first slice on 2026-06-17; keep future work focused on reviewed UI
-    affordances or true format negotiation only after comparing against this profile metadata.
+  - **Status:** Shipped first slice on 2026-06-17, with a read-only staff reporting alignment view
+    added on 2026-06-29; keep future work focused on true format negotiation only after comparing
+    against this profile metadata.
   - **Shipped boundary:** Billing and jurisdictional trust downloads now include OP-authored
     reusable field-profile metadata with allowlisted generated-projection keys. Job lifecycle,
     queue, and audit metadata carry profile IDs only, and downloads still regenerate current local
-    projections without retained export bodies or serialization rewrites.
+    projections without retained export bodies or serialization rewrites. The Reports workspace now
+    compares manual report export profiles with financial field profiles using metadata, counts,
+    bounded field-key samples, and disabled-safeguard flags only.
   - **References:** `opencollective__opencollective-api` export-request patterns and
     `kimai__kimai` spreadsheet column vocabulary.
   - **Reuse and snippets:** Open Collective is MIT/architecture-only; Kimai is AGPL/reference-only.

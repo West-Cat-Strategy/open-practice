@@ -1,5 +1,10 @@
 import type { BillingRateSnapshot, BillingStatus } from "./billing.js";
-import type { ReviewAgingCue } from "./review-aging.js";
+import type {
+  ReviewAgingCue,
+  ReviewAgingDecision,
+  ReviewAgingDecisionRecord,
+  ReviewAgingStatus,
+} from "./review-aging.js";
 
 export type Province = "BC" | "ON" | "CANADA" | "OTHER";
 
@@ -140,6 +145,23 @@ export interface FirmBusinessAddress {
   country: string;
 }
 
+export const documentDispositionReviewCadences = [
+  "manual_review",
+  "monthly",
+  "quarterly",
+  "annual",
+] as const;
+
+export type DocumentDispositionReviewCadence = (typeof documentDispositionReviewCadences)[number];
+
+export interface DocumentDispositionReviewScheduleProfile {
+  profileKey: "default";
+  label: string;
+  reviewCadence: DocumentDispositionReviewCadence;
+  reviewAfterDays?: number;
+  minimumRetainDays?: number;
+}
+
 export interface FirmSettings {
   firmId: string;
   businessAddress: FirmBusinessAddress;
@@ -154,6 +176,7 @@ export interface FirmSettings {
   website?: string;
   description?: string;
   businessNumber?: string;
+  dispositionReviewScheduleProfile?: DocumentDispositionReviewScheduleProfile;
   createdAt: string;
   updatedAt: string;
 }
@@ -714,6 +737,11 @@ export interface CalendarSchedulingRequestRecord {
   updatedByUserId: string;
   reviewedAt?: string;
   reviewedByUserId?: string;
+  reviewAgingDecision?: ReviewAgingDecision;
+  reviewAgingDecidedAt?: string;
+  reviewAgingDecidedByUserId?: string;
+  reviewAgingCueStatus?: ReviewAgingStatus;
+  reviewAgingAgeHours?: number;
 }
 
 export interface CalendarSchedulingRequestSummary {
@@ -759,6 +787,7 @@ export interface CalendarSchedulingRequestSummary {
     approvalCreatesTimeEntry: false;
   };
   reviewAging?: ReviewAgingCue;
+  reviewAgingDecision?: ReviewAgingDecisionRecord;
   reviewedAt?: string;
   reviewedByUserId?: string;
 }

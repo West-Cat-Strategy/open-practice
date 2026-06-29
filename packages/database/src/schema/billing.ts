@@ -16,6 +16,7 @@ import type {
   HostedPaymentRequestRecord,
   ManualPaymentStatus,
   PaymentImportDepositMatchReviewRecord,
+  PaymentImportRefundChargebackReviewRecord,
   PaymentImportReviewRecord,
   Province,
 } from "@open-practice/domain";
@@ -525,6 +526,89 @@ export const paymentImportDepositMatchReviews = pgTable(
     ),
     idempotencyKeyFormat: check(
       "payment_import_deposit_match_reviews_idempotency_key_format",
+      sql`${table.idempotencyKey} ~ '^[A-Za-z0-9_.:-]+$'`,
+    ),
+  }),
+);
+
+export const paymentImportRefundChargebackReviews = pgTable(
+  "payment_import_refund_chargeback_reviews",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    matterId: text("matter_id")
+      .notNull()
+      .references(() => matters.id),
+    paymentImportReviewRecordId: text("payment_import_review_record_id")
+      .notNull()
+      .references(() => paymentImportReviewRecords.id),
+    category: text("category")
+      .$type<PaymentImportRefundChargebackReviewRecord["category"]>()
+      .notNull(),
+    decision: text("decision")
+      .$type<PaymentImportRefundChargebackReviewRecord["decision"]>()
+      .notNull(),
+    reason: text("reason").$type<PaymentImportRefundChargebackReviewRecord["reason"]>().notNull(),
+    reviewerEvidencePresent: boolean("reviewer_evidence_present").notNull().default(true),
+    idempotencyKey: text("idempotency_key").notNull(),
+    decisionFingerprint: text("decision_fingerprint").notNull(),
+    boundaries: jsonb("boundaries")
+      .$type<PaymentImportRefundChargebackReviewRecord["boundaries"]>()
+      .notNull()
+      .default({
+        rawProviderPayloadRetained: false,
+        refundArtifactRetained: false,
+        disputeArtifactRetained: false,
+        invoiceBalanceMutation: "none",
+        ledgerReversal: "none",
+        trustPosting: "none",
+        providerCommand: "none",
+        clientNotification: "none",
+        fundsMovement: "none",
+        refundHandling: "review_decision_only",
+        chargebackHandling: "review_decision_only",
+      }),
+    reviewedByUserId: text("reviewed_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    firmMatterReviewed: index("payment_import_rc_reviews_firm_matter_reviewed_idx").on(
+      table.firmId,
+      table.matterId,
+      table.reviewedAt,
+    ),
+    firmImportRecord: index("payment_import_rc_reviews_firm_import_record_idx").on(
+      table.firmId,
+      table.paymentImportReviewRecordId,
+    ),
+    firmReviewIdempotency: uniqueIndex("payment_import_rc_reviews_firm_record_idempotency_idx").on(
+      table.firmId,
+      table.paymentImportReviewRecordId,
+      table.idempotencyKey,
+    ),
+    categoryValue: check(
+      "payment_import_rc_reviews_category_value",
+      sql`${table.category} in ('refund', 'chargeback')`,
+    ),
+    decisionValue: check(
+      "payment_import_rc_reviews_decision_value",
+      sql`${table.decision} in ('exception_confirmed', 'exception_rejected', 'needs_more_evidence')`,
+    ),
+    reasonValue: check(
+      "payment_import_rc_reviews_reason_value",
+      sql`${table.reason} in ('refund_observed', 'chargeback_observed', 'duplicate_or_conflict', 'candidate_reference_mismatch', 'missing_reviewer_evidence', 'status_unclear')`,
+    ),
+    reviewerEvidenceRequired: check(
+      "payment_import_rc_reviews_reviewer_evidence_required",
+      sql`${table.reviewerEvidencePresent} = true`,
+    ),
+    idempotencyKeyFormat: check(
+      "payment_import_rc_reviews_idempotency_key_format",
       sql`${table.idempotencyKey} ~ '^[A-Za-z0-9_.:-]+$'`,
     ),
   }),

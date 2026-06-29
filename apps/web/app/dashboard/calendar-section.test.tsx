@@ -178,6 +178,7 @@ function matterlessCalendarMarkup(
       onRescheduleCalendarEvent: noop,
       onRevokeCalendarCredential: noop,
       onReviewCalendarSchedulingRequest: noop,
+      onReviewCalendarSchedulingRequestAgingDecision: noop,
       onSetCalendarAttendeeEmail: noop,
       onSetCalendarAttendeeName: noop,
       onSetCalendarAttendeeRole: noop,
@@ -288,6 +289,7 @@ describe("CalendarSection", () => {
         onRescheduleCalendarEvent: noop,
         onRevokeCalendarCredential: noop,
         onReviewCalendarSchedulingRequest: noop,
+        onReviewCalendarSchedulingRequestAgingDecision: noop,
         onSetCalendarAttendeeEmail: noop,
         onSetCalendarAttendeeName: noop,
         onSetCalendarAttendeeRole: noop,
@@ -434,6 +436,9 @@ describe("CalendarSection", () => {
     expect(html).toContain("matterless calendars stay display-only");
     expect(html).not.toContain("Link scheduling request to an existing event");
     expect(html).not.toContain("Mark scheduling request reviewed");
+    expect(html).not.toContain("Acknowledge scheduling request aging review");
+    expect(html).not.toContain("Mark scheduling request follow-up required");
+    expect(html).not.toContain("Defer scheduling request aging review");
   });
 
   it("renders scheduling request aging cues without automatic finalization", () => {
@@ -454,6 +459,21 @@ describe("CalendarSection", () => {
               automaticFinalConfirmation: false,
               autoExpires: false,
             },
+            reviewAgingDecision: {
+              decision: "acknowledged",
+              decidedAt: "2035-06-06T16:00:00.000Z",
+              decidedByUserId: "user_synthetic",
+              cueStatus: "stale",
+              ageHours: 72,
+              automaticFinalConfirmation: false,
+              autoExpires: false,
+              providerSync: false,
+              publicRoomCreated: false,
+              nativeMediaCreated: false,
+              chatCreated: false,
+              recordingCreated: false,
+              matterCreated: false,
+            },
           },
         ],
       },
@@ -464,6 +484,13 @@ describe("CalendarSection", () => {
     expect(html).toContain("stale review");
     expect(html).toContain("72h waiting since 2035-06-03T16:00:00.000Z");
     expect(html).toContain("manual review only, no auto-confirm, auto-expiry, or provider sync");
+    expect(html).toContain("acknowledged");
+    expect(html).toContain(
+      "review-only decision, no auto-confirm, auto-expiry, provider sync, public room, media, chat, recording, or matter",
+    );
+    expect(html).toContain("Acknowledge");
+    expect(html).toContain("Follow up");
+    expect(html).toContain("Defer");
     expect(html).toContain("no public booking page or event creation runs");
   });
 

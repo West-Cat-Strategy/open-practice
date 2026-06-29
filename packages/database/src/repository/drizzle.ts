@@ -50,6 +50,7 @@ import {
   getDrizzleAppointmentBookingRequest,
   listDrizzleAppointmentBookingProfiles,
   listDrizzleAppointmentBookingRequests,
+  recordDrizzleAppointmentBookingAgingReviewDecision,
   reviewDrizzleAppointmentBookingRequest,
   upsertDrizzleAppointmentBookingProfile,
 } from "./appointment-booking/drizzle.js";
@@ -85,6 +86,7 @@ import {
   listDrizzleCalendarGuestLinks,
   listDrizzleCalendarMeetingSessions,
   listDrizzleCalendarSchedulingRequests,
+  recordDrizzleCalendarSchedulingRequestAgingReviewDecision,
   replaceDrizzleCalendarEventAttendees,
   revokeDrizzleCalendarGuestLink,
   updateDrizzleCalendarGuestLinkStatus,
@@ -173,9 +175,11 @@ import {
 } from "./hosted-payment-requests/drizzle.js";
 import {
   createDrizzlePaymentImportDepositMatchReview,
+  createDrizzlePaymentImportRefundChargebackReview,
   createDrizzlePaymentImportReviewRecord,
   getDrizzlePaymentImportReviewRecord,
   listDrizzlePaymentImportDepositMatchReviews,
+  listDrizzlePaymentImportRefundChargebackReviews,
   listDrizzlePaymentImportReviewRecords,
 } from "./payment-import-review-records/drizzle.js";
 import {
@@ -516,6 +520,7 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
   declare listEmailTemplatePublishedVersions: EmailTemplateDraftRepository["listEmailTemplatePublishedVersions"];
   declare getLatestEmailTemplatePublishedVersion: EmailTemplateDraftRepository["getLatestEmailTemplatePublishedVersion"];
   declare getFirmSettings: FirmSettingsRepository["getFirmSettings"];
+  declare updateDispositionReviewScheduleProfile: FirmSettingsRepository["updateDispositionReviewScheduleProfile"];
   declare listProviderSettings: ProviderSettingsRepository["listProviderSettings"];
   declare upsertProviderSetting: ProviderSettingsRepository["upsertProviderSetting"];
 
@@ -1150,6 +1155,14 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     return updateDrizzleCalendarSchedulingRequestReview(this.db, input);
   }
 
+  async recordCalendarSchedulingRequestAgingReviewDecision(
+    input: Parameters<
+      OpenPracticeRepository["recordCalendarSchedulingRequestAgingReviewDecision"]
+    >[0],
+  ): ReturnType<OpenPracticeRepository["recordCalendarSchedulingRequestAgingReviewDecision"]> {
+    return recordDrizzleCalendarSchedulingRequestAgingReviewDecision(this.db, input);
+  }
+
   async listCalendarSchedulingRequests(
     firmId: string,
     options: Parameters<OpenPracticeRepository["listCalendarSchedulingRequests"]>[1] = {},
@@ -1213,6 +1226,12 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     input: Parameters<OpenPracticeRepository["reviewAppointmentBookingRequest"]>[0],
   ): ReturnType<OpenPracticeRepository["reviewAppointmentBookingRequest"]> {
     return reviewDrizzleAppointmentBookingRequest(this.db, input);
+  }
+
+  async recordAppointmentBookingAgingReviewDecision(
+    input: Parameters<OpenPracticeRepository["recordAppointmentBookingAgingReviewDecision"]>[0],
+  ): ReturnType<OpenPracticeRepository["recordAppointmentBookingAgingReviewDecision"]> {
+    return recordDrizzleAppointmentBookingAgingReviewDecision(this.db, input);
   }
 
   async deleteCalendarEventReminder(
@@ -2439,6 +2458,19 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     options: Parameters<OpenPracticeRepository["listPaymentImportDepositMatchReviews"]>[1] = {},
   ): ReturnType<OpenPracticeRepository["listPaymentImportDepositMatchReviews"]> {
     return listDrizzlePaymentImportDepositMatchReviews(this.db, firmId, options);
+  }
+
+  async createPaymentImportRefundChargebackReview(
+    record: Parameters<OpenPracticeRepository["createPaymentImportRefundChargebackReview"]>[0],
+  ): ReturnType<OpenPracticeRepository["createPaymentImportRefundChargebackReview"]> {
+    return createDrizzlePaymentImportRefundChargebackReview(this.db, record);
+  }
+
+  async listPaymentImportRefundChargebackReviews(
+    firmId: string,
+    options: Parameters<OpenPracticeRepository["listPaymentImportRefundChargebackReviews"]>[1] = {},
+  ): ReturnType<OpenPracticeRepository["listPaymentImportRefundChargebackReviews"]> {
+    return listDrizzlePaymentImportRefundChargebackReviews(this.db, firmId, options);
   }
 
   async createTrustTransferRequest(

@@ -1,5 +1,11 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
+import {
+  compareEmailTemplateDraftWithPublishedVersion,
+  type EmailTemplateComparisonField,
+  type EmailTemplateDraftPublishedVersionComparison,
+} from "@open-practice/domain/email-template-draft-comparison";
 import type {
   EmailTemplateDraftItem,
   EmailTemplatePublishedVersionItem,
@@ -46,6 +52,24 @@ function compactDate(value: string): string {
   }).format(new Date(value));
 }
 
+function newestPublishedVersion(
+  versions: EmailTemplatePublishedVersionItem[],
+): EmailTemplatePublishedVersionItem | undefined {
+  return versions.reduce<EmailTemplatePublishedVersionItem | undefined>((latest, version) => {
+    if (!latest) return version;
+    if (version.version !== latest.version) {
+      return version.version > latest.version ? version : latest;
+    }
+    return Date.parse(version.publishedAt) > Date.parse(latest.publishedAt) ? version : latest;
+  }, undefined);
+}
+
+function compareValueLabel(value: EmailTemplateComparisonField["draftValue"]): string {
+  if (Array.isArray(value)) return value.length > 0 ? value.join(", ") : "(none)";
+  if (value === undefined || value.trim().length === 0) return "(empty)";
+  return value;
+}
+
 export function EmailTemplateDraftsPanel({
   activeMatterId,
   templateDrafts,
@@ -64,12 +88,31 @@ export function EmailTemplateDraftsPanel({
   onCreatePreviewSnapshot,
   onPublishDraft,
 }: EmailTemplateDraftsPanelProps) {
+  const [selectedPublishedVersionId, setSelectedPublishedVersionId] = useState("");
   const selectedDraft = templateDrafts.find((draft) => draft.id === selectedTemplateDraftId);
+  const matchingPublishedVersions = selectedDraft
+    ? publishedVersions.filter(
+        (version) =>
+          version.firmId === selectedDraft.firmId && version.templateDraftId === selectedDraft.id,
+      )
+    : [];
+  const latestPublishedVersion = newestPublishedVersion(matchingPublishedVersions);
+  const selectedPublishedVersion =
+    matchingPublishedVersions.find((version) => version.id === selectedPublishedVersionId) ??
+    latestPublishedVersion;
+  const comparison = useMemo<EmailTemplateDraftPublishedVersionComparison | undefined>(() => {
+    if (!selectedDraft || !selectedPublishedVersion) return undefined;
+    return compareEmailTemplateDraftWithPublishedVersion(selectedDraft, selectedPublishedVersion);
+  }, [selectedDraft, selectedPublishedVersion]);
   const canSave =
     form.name.trim().length > 0 &&
     form.templateKey.trim().length > 0 &&
     form.subject.trim().length > 0 &&
     (form.textBody.trim().length > 0 || form.htmlBody.trim().length > 0);
+
+  useEffect(() => {
+    setSelectedPublishedVersionId(latestPublishedVersion?.id ?? "");
+  }, [latestPublishedVersion?.id, selectedDraft?.id]);
 
   return (
     <section className="activity-card email-template-drafts-panel" aria-label="Email templates">
@@ -194,10 +237,10 @@ export function EmailTemplateDraftsPanel({
 
       <div className="section-title">
         <h3>Version history</h3>
-        <span>{publishedVersions.length} published</span>
+        <span>{matchingPublishedVersions.length} published</span>
       </div>
       <div className="party-list">
-        {publishedVersions.map((version) => (
+        {matchingPublishedVersions.map((version) => (
           <div className="party-row" key={version.id}>
             <span>
               <strong>
@@ -215,6 +258,64 @@ export function EmailTemplateDraftsPanel({
           <p className="inline-empty">No published template versions.</p>
         ) : null}
       </div>
+
+      <div className="section-title">
+        <h3>Compare saved draft</h3>
+        <span>
+          {comparison
+            ? `draft v${comparison.draftVersion} vs published v${comparison.publishedVersion}`
+            : "No published version selected"}
+        </span>
+      </div>
+      {selectedDraft && matchingPublishedVersions.length > 0 ? (
+        <div className="email-template-compare">
+          <label className="search-field compact">
+            <span>Compare version</span>
+            <select
+              onChange={(event) => setSelectedPublishedVersionId(event.target.value)}
+              value={selectedPublishedVersion?.id ?? ""}
+            >
+              {matchingPublishedVersions.map((version) => (
+                <option key={version.id} value={version.id}>
+                  v{version.version} published {compactDate(version.publishedAt)}
+                </option>
+              ))}
+            </select>
+          </label>
+          {comparison ? (
+            <>
+              <div className="party-row email-template-compare-summary">
+                <span>
+                  <strong>{comparison.changedFieldCount} changed fields</strong>
+                  <small>
+                    Saved draft v{comparison.draftVersion} compared with immutable published v
+                    {comparison.publishedVersion}.
+                  </small>
+                </span>
+                <em>{comparison.changedFieldCount === 0 ? "Same" : "Changed"}</em>
+              </div>
+              <div className="email-template-compare-grid">
+                {comparison.fields.map((field) => (
+                  <div className="party-row email-template-compare-row" key={field.field}>
+                    <span>
+                      <strong>{field.label}</strong>
+                      <small>Saved draft</small>
+                      <pre>{compareValueLabel(field.draftValue)}</pre>
+                      <small>Published version</small>
+                      <pre>{compareValueLabel(field.publishedValue)}</pre>
+                    </span>
+                    <em>{field.changed ? "Changed" : "Same"}</em>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : null}
+        </div>
+      ) : (
+        <p className="inline-empty">
+          Publish a template version to compare against the saved draft.
+        </p>
+      )}
 
       <div className="section-title">
         <h3>Preview snapshots</h3>

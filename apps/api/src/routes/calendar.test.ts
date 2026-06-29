@@ -373,6 +373,129 @@ describe("calendar routes", () => {
     expect(serializedAudit).not.toContain("linkedEventId");
   });
 
+  it("records stale scheduling aging review decisions without scheduling or exposing private metadata", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-06-01T12:00:00.000Z"));
+    const repository = new AuditRecordingRepository();
+    const server = testServer(user("licensee", ["matter-001"]), repository);
+
+    const created = await server.inject({
+      method: "POST",
+      url: "/api/calendar/scheduling-requests",
+      payload: {
+        matterId: "matter-001",
+        kind: "event_scheduling",
+        title: "Private stale scheduling title",
+        sourceType: "manual",
+        sourceLabel: "Private stale source",
+        requestedStartsAt: "2026-05-09T17:00:00.000Z",
+        requestedEndsAt: "2026-05-09T17:30:00.000Z",
+        privacy: "staff_only",
+      },
+    });
+    expect(created.statusCode).toBe(201);
+    const requestId = created.json().schedulingRequest.id as string;
+
+    const freshDecision = await server.inject({
+      method: "PATCH",
+      url: `/api/calendar/scheduling-requests/${requestId}/aging-review`,
+      payload: { matterId: "matter-001", decision: "acknowledged" },
+    });
+    expect(freshDecision.statusCode).toBe(409);
+    expect(freshDecision.json()).toMatchObject({
+      code: "CALENDAR_SCHEDULING_REQUEST_AGING_REVIEW_NOT_AGING",
+    });
+
+    const crossMatter = await testServer(user("licensee", ["matter-002"]), repository).inject({
+      method: "PATCH",
+      url: `/api/calendar/scheduling-requests/${requestId}/aging-review`,
+      payload: { matterId: "matter-001", decision: "acknowledged" },
+    });
+    expect(crossMatter.statusCode).toBe(403);
+
+    vi.setSystemTime(new Date("2026-06-04T12:00:00.000Z"));
+    const invalidDecision = await server.inject({
+      method: "PATCH",
+      url: `/api/calendar/scheduling-requests/${requestId}/aging-review`,
+      payload: { matterId: "matter-001", decision: "schedule" },
+    });
+    expect(invalidDecision.statusCode).toBe(400);
+
+    const reviewed = await server.inject({
+      method: "PATCH",
+      url: `/api/calendar/scheduling-requests/${requestId}/aging-review`,
+      payload: { matterId: "matter-001", decision: "defer_review" },
+    });
+
+    expect(reviewed.statusCode).toBe(200);
+    expect(reviewed.json().schedulingRequest).toMatchObject({
+      id: requestId,
+      matterId: "matter-001",
+      status: "needs_review",
+      reviewAging: {
+        status: "stale",
+        ageHours: 72,
+        automaticFinalConfirmation: false,
+        autoExpires: false,
+      },
+      reviewAgingDecision: {
+        decision: "defer_review",
+        decidedByUserId: "user-licensee",
+        cueStatus: "stale",
+        ageHours: 72,
+        automaticFinalConfirmation: false,
+        autoExpires: false,
+        providerSync: false,
+        publicRoomCreated: false,
+        nativeMediaCreated: false,
+        chatCreated: false,
+        recordingCreated: false,
+        matterCreated: false,
+      },
+    });
+
+    const stored = await repository.getCalendarSchedulingRequest(
+      "firm-west-legal",
+      "matter-001",
+      requestId,
+    );
+    expect(stored).toMatchObject({
+      status: "needs_review",
+      calendarEventId: undefined,
+      reviewAgingDecision: "defer_review",
+      reviewAgingCueStatus: "stale",
+      reviewAgingAgeHours: 72,
+    });
+    const audit = repository.recordedAuditEvents.find(
+      (event) => event.action === "calendar.scheduling_request.aging_review_recorded",
+    );
+    expect(audit?.metadata).toMatchObject({
+      matterId: "matter-001",
+      requestId,
+      decision: "defer_review",
+      cueStatus: "stale",
+      ageHours: 72,
+      automaticFinalConfirmation: false,
+      autoExpires: false,
+      providerSync: false,
+      publicRoomCreated: false,
+      nativeMediaCreated: false,
+      chatCreated: false,
+      recordingCreated: false,
+      matterCreated: false,
+      taskCreated: false,
+      eventCreated: false,
+      eventRescheduled: false,
+      reminderCancelled: false,
+    });
+    const serializedAudit = JSON.stringify(audit);
+    expect(serializedAudit).not.toContain("Private stale scheduling title");
+    expect(serializedAudit).not.toContain("Private stale source");
+    expect(serializedAudit).not.toContain("2026-05-09T17:00:00.000Z");
+    expect(serializedAudit).not.toContain("calendarEventId");
+    expect(serializedAudit).not.toContain("meeting");
+  });
+
   it("requires calendarEventId before linking a reminder scheduling request", async () => {
     const server = testServer(user("licensee", ["matter-001"]));
 

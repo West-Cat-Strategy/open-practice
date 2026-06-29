@@ -63,6 +63,18 @@ export const BILLING_ROUTE_AUTHORIZATION_MANIFEST = [
     "create",
     "derived",
   ),
+  paymentRoute(
+    "GET",
+    "/api/billing/payment-import-review-records/:recordId/refund-chargeback-reviews",
+    "read",
+    "derived",
+  ),
+  paymentRoute(
+    "POST",
+    "/api/billing/payment-import-review-records/:recordId/refund-chargeback-reviews",
+    "create",
+    "derived",
+  ),
   paymentRoute("GET", "/api/billing/payment-requests", "read", "optional"),
   paymentRoute("POST", "/api/billing/payment-requests", "create", "required"),
   paymentRoute("PATCH", "/api/billing/payment-requests/:id", "update", "derived"),

@@ -15,6 +15,7 @@ import {
   defaultBillingExpenseCategoriesForFirm,
   defaultHostedPaymentProcessorState,
   defaultPaymentImportDepositMatchReviewBoundary,
+  defaultPaymentImportRefundChargebackReviewBoundary,
   defaultPaymentImportReviewBoundary,
   defaultPaymentPlanPlaceholder,
   buildPaymentSettlementReview,
@@ -28,6 +29,7 @@ import {
   paymentImportDepositMatchReconciliationReadiness,
   paymentImportReviewDepositMatchCue,
   paymentImportReviewHasConflict,
+  paymentImportRefundChargebackReviewDecisionMatchesCue,
   paymentImportRefundChargebackReviewCue,
   resolveBillingRateRule,
   summarizeTrustTransferLedgerLink,
@@ -38,6 +40,7 @@ import {
   type InvoiceRecord,
   type ManualPaymentRecord,
   type PaymentImportDepositMatchReviewRecord,
+  type PaymentImportRefundChargebackReviewRecord,
   type PaymentImportReviewRecord,
 } from "./billing.js";
 import {
@@ -483,6 +486,54 @@ describe("billing period locks and rate rules", () => {
     });
   });
 
+  it("keeps refund and chargeback review decisions enum-only and side-effect free", () => {
+    expect(defaultPaymentImportRefundChargebackReviewBoundary()).toEqual({
+      rawProviderPayloadRetained: false,
+      refundArtifactRetained: false,
+      disputeArtifactRetained: false,
+      invoiceBalanceMutation: "none",
+      ledgerReversal: "none",
+      trustPosting: "none",
+      providerCommand: "none",
+      clientNotification: "none",
+      fundsMovement: "none",
+      refundHandling: "review_decision_only",
+      chargebackHandling: "review_decision_only",
+    });
+
+    const refundReview = {
+      id: "refund-chargeback-review-domain",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      paymentImportReviewRecordId: "payment-import-review-domain",
+      category: "refund",
+      decision: "exception_confirmed",
+      reason: "refund_observed",
+      reviewerEvidencePresent: true,
+      idempotencyKey: "synthetic-refund-review",
+      decisionFingerprint: "synthetic-fingerprint",
+      boundaries: defaultPaymentImportRefundChargebackReviewBoundary(),
+      reviewedByUserId: "user-licensee",
+      reviewedAt: "2026-06-29T12:00:00.000Z",
+      createdAt: "2026-06-29T12:00:00.000Z",
+    } satisfies PaymentImportRefundChargebackReviewRecord;
+
+    expect(paymentImportRefundChargebackReviewDecisionMatchesCue(refundReview)).toBe(true);
+    expect(
+      paymentImportRefundChargebackReviewDecisionMatchesCue({
+        ...refundReview,
+        reason: "chargeback_observed",
+      }),
+    ).toBe(false);
+    expect(
+      paymentImportRefundChargebackReviewDecisionMatchesCue({
+        ...refundReview,
+        decision: "needs_more_evidence",
+        reason: "status_unclear",
+      }),
+    ).toBe(true);
+  });
+
   it("classifies OP-T162 deposit-match decisions as read-only manual reconcile cues", () => {
     const importRecord = {
       id: "payment-import-review-domain",
@@ -550,6 +601,33 @@ describe("billing period locks and rate rules", () => {
       paidCents: 0,
       balanceDueCents: 10000,
     } satisfies InvoiceRecord;
+    const readinessDetailLabels = {
+      latest_supported_decision: "Latest decision supports candidate",
+      no_duplicate_or_conflict_cue: "No duplicate or conflict cue",
+      manual_payment_candidate_matches: "Manual payment candidate still matches",
+      manual_payment_found: "Manual payment evidence found",
+      manual_payment_pending: "Manual payment remains pending",
+      amounts_match: "Import and manual payment amounts match",
+      invoice_found: "Candidate invoice found",
+      invoice_candidate_matches: "Invoice candidate still matches",
+      invoice_balance_covers_payment: "Invoice balance covers payment",
+    } as const;
+    const detail = (code: keyof typeof readinessDetailLabels, status: "satisfied" | "blocked") => ({
+      code,
+      status,
+      label: readinessDetailLabels[code],
+    });
+    const supportedSatisfiedDetails = [
+      detail("latest_supported_decision", "satisfied"),
+      detail("no_duplicate_or_conflict_cue", "satisfied"),
+      detail("manual_payment_candidate_matches", "satisfied"),
+      detail("manual_payment_found", "satisfied"),
+      detail("manual_payment_pending", "satisfied"),
+      detail("amounts_match", "satisfied"),
+      detail("invoice_found", "satisfied"),
+      detail("invoice_candidate_matches", "satisfied"),
+      detail("invoice_balance_covers_payment", "satisfied"),
+    ];
 
     expect(
       paymentImportDepositMatchReconciliationReadiness({
@@ -565,12 +643,17 @@ describe("billing period locks and rate rules", () => {
       candidateManualPaymentId: "payment-001",
       candidateInvoiceId: "invoice-001",
       amountCents: 5000,
+      reasonDetails: supportedSatisfiedDetails,
       mutation: "none",
     });
 
     expect(
       paymentImportDepositMatchReconciliationReadiness({ importRecord, manualPayment, invoice }),
-    ).toMatchObject({ eligible: false, reason: "no_supported_decision" });
+    ).toMatchObject({
+      eligible: false,
+      reason: "no_supported_decision",
+      reasonDetails: [detail("latest_supported_decision", "blocked")],
+    });
     expect(
       paymentImportDepositMatchReconciliationReadiness({
         importRecord,
@@ -582,7 +665,11 @@ describe("billing period locks and rate rules", () => {
         manualPayment,
         invoice,
       }),
-    ).toMatchObject({ eligible: false, reason: "candidate_not_supported" });
+    ).toMatchObject({
+      eligible: false,
+      reason: "candidate_not_supported",
+      reasonDetails: [detail("latest_supported_decision", "blocked")],
+    });
     expect(
       paymentImportDepositMatchReconciliationReadiness({
         importRecord: { ...importRecord, conflictReason: "duplicate" },
@@ -590,7 +677,14 @@ describe("billing period locks and rate rules", () => {
         manualPayment,
         invoice,
       }),
-    ).toMatchObject({ eligible: false, reason: "import_record_conflict" });
+    ).toMatchObject({
+      eligible: false,
+      reason: "import_record_conflict",
+      reasonDetails: [
+        detail("latest_supported_decision", "satisfied"),
+        detail("no_duplicate_or_conflict_cue", "blocked"),
+      ],
+    });
     expect(
       paymentImportDepositMatchReconciliationReadiness({
         importRecord: { ...importRecord, candidateManualPaymentId: "payment-other" },
@@ -598,14 +692,31 @@ describe("billing period locks and rate rules", () => {
         manualPayment,
         invoice,
       }),
-    ).toMatchObject({ eligible: false, reason: "candidate_manual_payment_mismatch" });
+    ).toMatchObject({
+      eligible: false,
+      reason: "candidate_manual_payment_mismatch",
+      reasonDetails: [
+        detail("latest_supported_decision", "satisfied"),
+        detail("no_duplicate_or_conflict_cue", "satisfied"),
+        detail("manual_payment_candidate_matches", "blocked"),
+      ],
+    });
     expect(
       paymentImportDepositMatchReconciliationReadiness({
         importRecord,
         latestReview: supportedReview,
         invoice,
       }),
-    ).toMatchObject({ eligible: false, reason: "manual_payment_not_found" });
+    ).toMatchObject({
+      eligible: false,
+      reason: "manual_payment_not_found",
+      reasonDetails: [
+        detail("latest_supported_decision", "satisfied"),
+        detail("no_duplicate_or_conflict_cue", "satisfied"),
+        detail("manual_payment_candidate_matches", "satisfied"),
+        detail("manual_payment_found", "blocked"),
+      ],
+    });
     expect(
       paymentImportDepositMatchReconciliationReadiness({
         importRecord,
@@ -613,7 +724,17 @@ describe("billing period locks and rate rules", () => {
         manualPayment: { ...manualPayment, status: "received" },
         invoice,
       }),
-    ).toMatchObject({ eligible: false, reason: "manual_payment_not_pending" });
+    ).toMatchObject({
+      eligible: false,
+      reason: "manual_payment_not_pending",
+      reasonDetails: [
+        detail("latest_supported_decision", "satisfied"),
+        detail("no_duplicate_or_conflict_cue", "satisfied"),
+        detail("manual_payment_candidate_matches", "satisfied"),
+        detail("manual_payment_found", "satisfied"),
+        detail("manual_payment_pending", "blocked"),
+      ],
+    });
     expect(
       paymentImportDepositMatchReconciliationReadiness({
         importRecord,
@@ -621,14 +742,37 @@ describe("billing period locks and rate rules", () => {
         manualPayment: { ...manualPayment, amountCents: 4900 },
         invoice,
       }),
-    ).toMatchObject({ eligible: false, reason: "amount_mismatch" });
+    ).toMatchObject({
+      eligible: false,
+      reason: "amount_mismatch",
+      reasonDetails: [
+        detail("latest_supported_decision", "satisfied"),
+        detail("no_duplicate_or_conflict_cue", "satisfied"),
+        detail("manual_payment_candidate_matches", "satisfied"),
+        detail("manual_payment_found", "satisfied"),
+        detail("manual_payment_pending", "satisfied"),
+        detail("amounts_match", "blocked"),
+      ],
+    });
     expect(
       paymentImportDepositMatchReconciliationReadiness({
         importRecord,
         latestReview: supportedReview,
         manualPayment,
       }),
-    ).toMatchObject({ eligible: false, reason: "invoice_not_found" });
+    ).toMatchObject({
+      eligible: false,
+      reason: "invoice_not_found",
+      reasonDetails: [
+        detail("latest_supported_decision", "satisfied"),
+        detail("no_duplicate_or_conflict_cue", "satisfied"),
+        detail("manual_payment_candidate_matches", "satisfied"),
+        detail("manual_payment_found", "satisfied"),
+        detail("manual_payment_pending", "satisfied"),
+        detail("amounts_match", "satisfied"),
+        detail("invoice_found", "blocked"),
+      ],
+    });
     expect(
       paymentImportDepositMatchReconciliationReadiness({
         importRecord,
@@ -636,7 +780,20 @@ describe("billing period locks and rate rules", () => {
         manualPayment,
         invoice: { ...invoice, matterId: "matter-002" },
       }),
-    ).toMatchObject({ eligible: false, reason: "invoice_candidate_mismatch" });
+    ).toMatchObject({
+      eligible: false,
+      reason: "invoice_candidate_mismatch",
+      reasonDetails: [
+        detail("latest_supported_decision", "satisfied"),
+        detail("no_duplicate_or_conflict_cue", "satisfied"),
+        detail("manual_payment_candidate_matches", "satisfied"),
+        detail("manual_payment_found", "satisfied"),
+        detail("manual_payment_pending", "satisfied"),
+        detail("amounts_match", "satisfied"),
+        detail("invoice_found", "satisfied"),
+        detail("invoice_candidate_matches", "blocked"),
+      ],
+    });
     expect(
       paymentImportDepositMatchReconciliationReadiness({
         importRecord,
@@ -644,7 +801,21 @@ describe("billing period locks and rate rules", () => {
         manualPayment,
         invoice: { ...invoice, balanceDueCents: 4000 },
       }),
-    ).toMatchObject({ eligible: false, reason: "invoice_balance_insufficient" });
+    ).toMatchObject({
+      eligible: false,
+      reason: "invoice_balance_insufficient",
+      reasonDetails: [
+        detail("latest_supported_decision", "satisfied"),
+        detail("no_duplicate_or_conflict_cue", "satisfied"),
+        detail("manual_payment_candidate_matches", "satisfied"),
+        detail("manual_payment_found", "satisfied"),
+        detail("manual_payment_pending", "satisfied"),
+        detail("amounts_match", "satisfied"),
+        detail("invoice_found", "satisfied"),
+        detail("invoice_candidate_matches", "satisfied"),
+        detail("invoice_balance_covers_payment", "blocked"),
+      ],
+    });
   });
 });
 
