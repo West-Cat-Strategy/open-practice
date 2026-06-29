@@ -2,6 +2,7 @@ import { apiGetOptional } from "../../_shared/server-api";
 import type {
   EmailTemplateDashboardResponse,
   EmailTemplateDraftListResponse,
+  EmailTemplatePublishedVersionListResponse,
   EmailTemplatePreviewSnapshotListResponse,
 } from "./models";
 import type { MatterSummary } from "../../types";
@@ -20,16 +21,28 @@ export function buildEmailTemplatePreviewSnapshotsPath(
   )}/preview-snapshots?matterId=${encodeURIComponent(matterId)}&limit=${limit}`;
 }
 
+export function buildEmailTemplatePublishedVersionsPath(
+  templateDraftId: string,
+  limit = 5,
+): string {
+  return `/api/email/template-drafts/${encodeURIComponent(templateDraftId)}/versions?limit=${limit}`;
+}
+
 export async function loadEmailTemplateDashboardData(input: {
   listTemplateDrafts: () => Promise<EmailTemplateDraftListResponse>;
   listPreviewSnapshots?: (
     templateDraftId: string,
     matterId: string,
   ) => Promise<EmailTemplatePreviewSnapshotListResponse>;
+  listPublishedVersions?: (
+    templateDraftId: string,
+  ) => Promise<EmailTemplatePublishedVersionListResponse>;
   recentMatterIds?: string[];
 }): Promise<EmailTemplateDashboardResponse> {
   const response = await input.listTemplateDrafts();
   const previewSnapshotsByMatterId: EmailTemplateDashboardResponse["previewSnapshotsByMatterId"] =
+    {};
+  const publishedVersionsByTemplateDraftId: EmailTemplateDashboardResponse["publishedVersionsByTemplateDraftId"] =
     {};
   const draftIds = response.templateDrafts
     .filter((draft) => draft.status !== "archived")
@@ -53,9 +66,19 @@ export async function loadEmailTemplateDashboardData(input: {
     );
   }
 
+  if (input.listPublishedVersions && draftIds.length > 0) {
+    await Promise.all(
+      draftIds.map(async (draftId) => {
+        const versionResponse = await input.listPublishedVersions!(draftId);
+        publishedVersionsByTemplateDraftId[draftId] = versionResponse.publishedVersions.slice(0, 5);
+      }),
+    );
+  }
+
   return {
     templateDrafts: response.templateDrafts,
     previewSnapshotsByMatterId,
+    publishedVersionsByTemplateDraftId,
   };
 }
 
@@ -78,6 +101,13 @@ export async function loadEmailTemplateDashboardResources(input: {
         { previewSnapshots: [] },
         input.headers,
         { previewSnapshots: [] },
+      ),
+    listPublishedVersions: (templateDraftId) =>
+      apiGetOptional<EmailTemplatePublishedVersionListResponse>(
+        buildEmailTemplatePublishedVersionsPath(templateDraftId),
+        { publishedVersions: [] },
+        input.headers,
+        { publishedVersions: [] },
       ),
   });
 }

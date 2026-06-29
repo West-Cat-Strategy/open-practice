@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildEmailTemplateDraftsPath,
+  buildEmailTemplatePublishedVersionsPath,
   buildEmailTemplatePreviewSnapshotsPath,
   loadEmailTemplateDashboardData,
 } from "./server-resources";
@@ -10,6 +11,9 @@ describe("email template server resources", () => {
     expect(buildEmailTemplateDraftsPath()).toBe("/api/email/template-drafts");
     expect(buildEmailTemplatePreviewSnapshotsPath("draft 1", "matter/001", 3)).toBe(
       "/api/email/template-drafts/draft%201/preview-snapshots?matterId=matter%2F001&limit=3",
+    );
+    expect(buildEmailTemplatePublishedVersionsPath("draft 1", 4)).toBe(
+      "/api/email/template-drafts/draft%201/versions?limit=4",
     );
   });
 
@@ -42,6 +46,7 @@ describe("email template server resources", () => {
     ).resolves.toMatchObject({
       templateDrafts: [expect.objectContaining({ id: "template-draft-001" })],
       previewSnapshotsByMatterId: {},
+      publishedVersionsByTemplateDraftId: {},
     });
   });
 
@@ -101,6 +106,60 @@ describe("email template server resources", () => {
     ).resolves.toMatchObject({
       previewSnapshotsByMatterId: {
         "matter-001": [expect.objectContaining({ id: "preview-snapshot-001" })],
+      },
+    });
+  });
+
+  it("hydrates published version history by visible template draft", async () => {
+    await expect(
+      loadEmailTemplateDashboardData({
+        listTemplateDrafts: async () => ({
+          templateDrafts: [
+            {
+              id: "template-draft-001",
+              firmId: "firm-west-legal",
+              name: "Matter update",
+              category: "matter_update",
+              templateKey: "matter.update",
+              from: "Open Practice <no-reply@open-practice.local>",
+              subject: "Matter update",
+              textBody: "Synthetic body",
+              htmlBody: "",
+              recipientHints: [],
+              status: "draft",
+              version: 2,
+              createdByUserId: "user-admin",
+              updatedByUserId: "user-admin",
+              createdAt: "2026-06-16T10:00:00.000Z",
+              updatedAt: "2026-06-16T10:10:00.000Z",
+            },
+          ],
+        }),
+        listPublishedVersions: async (templateDraftId) => ({
+          publishedVersions: [
+            {
+              id: "published-version-001",
+              firmId: "firm-west-legal",
+              templateDraftId,
+              version: 1,
+              draftVersion: 2,
+              name: "Matter update",
+              category: "matter_update",
+              templateKey: "matter.update",
+              from: "Open Practice <no-reply@open-practice.local>",
+              subject: "Matter update",
+              textBody: "Synthetic body",
+              htmlBody: "",
+              recipientHints: [],
+              publishedByUserId: "user-admin",
+              publishedAt: "2026-06-16T10:15:00.000Z",
+            },
+          ],
+        }),
+      }),
+    ).resolves.toMatchObject({
+      publishedVersionsByTemplateDraftId: {
+        "template-draft-001": [expect.objectContaining({ id: "published-version-001" })],
       },
     });
   });

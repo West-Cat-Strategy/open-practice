@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildLedgerMakerCheckerReadiness,
   buildLedgerBalanceSnapshotComparison,
   buildLedgerReconciliationExceptionResolutionStatementRow,
   buildJurisdictionalTrustReport,
@@ -474,6 +475,352 @@ describe("ledger controls diagnostics", () => {
     expect(diagnostics.exceptionReconciliationIds).toEqual([]);
     expect(diagnostics.pendingApprovalTransactionIds).toEqual(["tx-pending"]);
     expect(diagnostics.rejectedApprovalTransactionIds).toEqual(["tx-rejected"]);
+  });
+
+  it("returns zero maker-checker readiness cues for empty controls input", () => {
+    const diagnostics = ledgerControlsDiagnostics({
+      ledger: { accounts: [], entries: [], trustBalances: {} },
+      approvals: [],
+      reconciliations: [],
+    });
+    const reconciliationPacketReview = ledgerReconciliationPacketReview({
+      ledger: { accounts: [], entries: [], trustBalances: {} },
+      approvals: [],
+      postingRequests: [],
+      reconciliations: [],
+      importBatches: [],
+      exceptionResolutions: [],
+      trustTransferRequests: [],
+      paymentImportReviewRecords: [],
+      diagnostics,
+      generatedAt: "2026-06-28T12:00:00.000Z",
+    });
+
+    const readiness = buildLedgerMakerCheckerReadiness({
+      ledger: { accounts: [], entries: [], trustBalances: {} },
+      postingRequests: [],
+      trustTransferRequests: [],
+      paymentImportReviewRecords: [],
+      diagnostics,
+      reconciliationPacketReview,
+    });
+
+    expect(readiness).toMatchObject({
+      generatedAt: "2026-06-28T12:00:00.000Z",
+      reviewOnly: true,
+      matters: [],
+      summary: {
+        categoryCount: 6,
+        categoriesRequiringPolicyCount: 0,
+        matterCount: 0,
+        mattersRequiringPolicyCount: 0,
+        reviewCueCount: 0,
+        pendingCount: 0,
+        exceptionCount: 0,
+        amountCents: 0,
+        reviewOnly: true,
+      },
+      policy: {
+        source: "existing_trust_controls_projection",
+        makerCheckerPolicyEnabled: false,
+        directPostingSemantics: "unchanged",
+        approvalMutation: false,
+        automaticTrustPosting: false,
+        settlementAutomation: false,
+        bankFeedMatching: false,
+        jurisdictionCertifiedAccounting: false,
+      },
+    });
+    expect(readiness.categories).toHaveLength(6);
+    expect(readiness.categories.every((category) => category.readiness === "clear")).toBe(true);
+    expect(readiness.categories.every((category) => category.reasonCodes.length === 0)).toBe(true);
+  });
+
+  it("projects maker-checker readiness categories and matters without copying private notes", () => {
+    const postingRequests: LedgerPostingRequestRecord[] = [
+      {
+        id: "posting-request-pending",
+        firmId: "firm-west-legal",
+        transactionId: "prepared-pending",
+        idempotencyKey: "prepared-pending",
+        requestFingerprint: "synthetic:fingerprint:pending",
+        status: "pending_approval",
+        proposedPostedAt: "2026-05-02T12:00:00.000Z",
+        entries: [
+          {
+            firmId: "firm-west-legal",
+            matterId: "matter-001",
+            clientId: "contact-ada",
+            accountId: "acct-client-liability",
+            debitCents: 100,
+            creditCents: 0,
+            memo: "Synthetic prepared debit",
+          },
+          {
+            firmId: "firm-west-legal",
+            matterId: "matter-001",
+            clientId: "contact-ada",
+            accountId: "acct-trust-bank",
+            debitCents: 0,
+            creditCents: 100,
+            memo: "Synthetic prepared credit",
+          },
+        ],
+        matterIds: ["matter-001"],
+        clientIds: ["contact-ada"],
+        accountIds: ["acct-client-liability", "acct-trust-bank"],
+        preparedByUserId: "user-preparer",
+        preparedAt: "2026-05-02T12:00:00.000Z",
+        preparationNotes: "Synthetic prepared posting note must stay out of readiness.",
+      },
+      {
+        id: "posting-request-rejected",
+        firmId: "firm-west-legal",
+        transactionId: "prepared-rejected",
+        idempotencyKey: "prepared-rejected",
+        requestFingerprint: "synthetic:fingerprint:rejected",
+        status: "rejected",
+        proposedPostedAt: "2026-05-02T13:00:00.000Z",
+        entries: [
+          {
+            firmId: "firm-west-legal",
+            matterId: "matter-001",
+            clientId: "contact-ada",
+            accountId: "acct-client-liability",
+            debitCents: 200,
+            creditCents: 0,
+            memo: "Synthetic rejected debit",
+          },
+          {
+            firmId: "firm-west-legal",
+            matterId: "matter-001",
+            clientId: "contact-ada",
+            accountId: "acct-trust-bank",
+            debitCents: 0,
+            creditCents: 200,
+            memo: "Synthetic rejected credit",
+          },
+        ],
+        matterIds: ["matter-001"],
+        clientIds: ["contact-ada"],
+        accountIds: ["acct-client-liability", "acct-trust-bank"],
+        preparedByUserId: "user-preparer",
+        preparedAt: "2026-05-02T13:00:00.000Z",
+        reviewedByUserId: "user-checker",
+        reviewedAt: "2026-05-02T13:30:00.000Z",
+        rejectionReason: "Synthetic rejected posting reason must stay out of readiness.",
+      },
+    ];
+    const trustTransferRequests: TrustTransferRequestRecord[] = [
+      {
+        id: "trust-transfer-pending",
+        firmId: "firm-west-legal",
+        matterId: "matter-001",
+        clientContactId: "contact-ada",
+        invoiceId: "invoice-001",
+        requestedByUserId: "user-admin",
+        amountCents: 2500,
+        status: "pending_approval",
+        reason: "Synthetic transfer reason must stay out of readiness.",
+        requestedAt: "2026-05-02T16:00:00.000Z",
+        evidence: { privateNote: "Synthetic private trust evidence" },
+      },
+      {
+        id: "trust-transfer-approved-unlinked",
+        firmId: "firm-west-legal",
+        matterId: "matter-001",
+        invoiceId: "invoice-002",
+        requestedByUserId: "user-admin",
+        amountCents: 3500,
+        status: "approved",
+        requestedAt: "2026-05-02T17:00:00.000Z",
+        reviewedByUserId: "user-checker",
+        reviewedAt: "2026-05-02T17:30:00.000Z",
+      },
+      {
+        id: "trust-transfer-rejected",
+        firmId: "firm-west-legal",
+        matterId: "matter-002",
+        invoiceId: "invoice-003",
+        requestedByUserId: "user-admin",
+        amountCents: 1500,
+        status: "rejected",
+        requestedAt: "2026-05-02T18:00:00.000Z",
+        reviewedByUserId: "user-checker",
+        reviewedAt: "2026-05-02T18:30:00.000Z",
+      },
+    ];
+    const paymentImportReviewRecords: PaymentImportReviewRecord[] = [
+      {
+        id: "payment-import-review",
+        firmId: "firm-west-legal",
+        matterId: "matter-001",
+        providerLabel: "Synthetic provider",
+        eventFamily: "payment",
+        eventStatus: "succeeded",
+        externalEventId: "evt-synthetic",
+        externalPaymentId: "pay-synthetic",
+        amountCents: 4000,
+        currency: "CAD",
+        importedAt: "2026-05-02T18:00:00.000Z",
+        importedByUserId: "user-admin",
+        candidateInvoiceId: "invoice-001",
+        conflictReason: "candidate_mismatch",
+        reviewState: "needs_review",
+        normalizedEvidenceFingerprint: "fingerprint-synthetic",
+        boundaries: defaultPaymentImportReviewBoundary(),
+        updatedAt: "2026-05-02T18:30:00.000Z",
+      },
+    ];
+    const diagnostics = ledgerControlsDiagnostics({
+      ledger: {
+        accounts,
+        entries,
+        trustBalances: {
+          "contact-ada:matter-001": 5000,
+          "contact-northstar:matter-002": -1000,
+        },
+      },
+      approvals,
+      reconciliations,
+    });
+    const reconciliationPacketReview = ledgerReconciliationPacketReview({
+      ledger: {
+        accounts,
+        entries,
+        trustBalances: {
+          "contact-ada:matter-001": 5000,
+          "contact-northstar:matter-002": -1000,
+        },
+      },
+      approvals,
+      postingRequests,
+      reconciliations,
+      importBatches: [
+        {
+          id: "statement-import-batch-review",
+          firmId: "firm-west-legal",
+          accountId: "acct-trust-bank",
+          sourceLabel: "Synthetic May trust statement",
+          checksumSha256: "a".repeat(64),
+          importedStatementRowCount: 12,
+          duplicateStatementRowCount: 2,
+          status: "review_ready",
+          matchingProfileId: "statement-match-profile-standard-trust",
+          createdByUserId: "user-admin",
+          createdAt: "2026-05-31T18:15:00.000Z",
+        },
+      ],
+      exceptionResolutions: [],
+      trustTransferRequests,
+      paymentImportReviewRecords,
+      diagnostics,
+      generatedAt: "2026-06-28T12:00:00.000Z",
+    });
+
+    const readiness = buildLedgerMakerCheckerReadiness({
+      ledger: {
+        accounts,
+        entries,
+        trustBalances: {
+          "contact-ada:matter-001": 5000,
+          "contact-northstar:matter-002": -1000,
+        },
+      },
+      postingRequests,
+      trustTransferRequests,
+      paymentImportReviewRecords,
+      diagnostics,
+      reconciliationPacketReview,
+    });
+
+    expect(readiness.summary).toMatchObject({
+      categoryCount: 6,
+      categoriesRequiringPolicyCount: 6,
+      matterCount: 2,
+      mattersRequiringPolicyCount: 2,
+      reviewOnly: true,
+    });
+    expect(readiness.policy).toEqual({
+      source: "existing_trust_controls_projection",
+      makerCheckerPolicyEnabled: false,
+      directPostingSemantics: "unchanged",
+      approvalMutation: false,
+      automaticTrustPosting: false,
+      settlementAutomation: false,
+      bankFeedMatching: false,
+      jurisdictionCertifiedAccounting: false,
+    });
+    expect(readiness.categories).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          category: "ledger",
+          readiness: "policy_required_if_enabled",
+          reasonCodes: [
+            "pending_ledger_transaction_approval",
+            "rejected_ledger_transaction_approval",
+            "overdrawn_trust_balance",
+          ],
+          reviewOnly: true,
+        }),
+        expect.objectContaining({
+          category: "posting_request",
+          reasonCodes: ["pending_posting_request", "rejected_posting_request"],
+        }),
+        expect.objectContaining({
+          category: "trust_transfer",
+          reasonCodes: [
+            "pending_trust_transfer_request",
+            "approved_unlinked_trust_transfer_request",
+            "rejected_trust_transfer_request",
+          ],
+        }),
+        expect.objectContaining({
+          category: "payment_import",
+          conflictCount: 1,
+          reasonCodes: ["payment_import_review_required", "payment_import_conflict"],
+        }),
+      ]),
+    );
+    expect(readiness.matters).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          matterId: "matter-001",
+          categoryKeys: ["ledger", "payment_import", "posting_request", "trust_transfer"],
+          reasonCodes: expect.arrayContaining([
+            "pending_ledger_transaction_approval",
+            "pending_posting_request",
+            "pending_trust_transfer_request",
+            "approved_unlinked_trust_transfer_request",
+            "payment_import_conflict",
+          ]),
+          reviewCueCount: 6,
+          pendingCount: 4,
+          exceptionCount: 2,
+          amountCents: 15300,
+          reviewOnly: true,
+        }),
+        expect.objectContaining({
+          matterId: "matter-002",
+          categoryKeys: ["ledger", "trust_transfer"],
+          reasonCodes: expect.arrayContaining([
+            "overdrawn_trust_balance",
+            "rejected_ledger_transaction_approval",
+            "rejected_trust_transfer_request",
+          ]),
+          pendingCount: 0,
+          exceptionCount: 3,
+          amountCents: 3500,
+          reviewOnly: true,
+        }),
+      ]),
+    );
+    const serialized = JSON.stringify(readiness);
+    expect(serialized).not.toContain("Synthetic prepared posting note");
+    expect(serialized).not.toContain("Synthetic rejected posting reason");
+    expect(serialized).not.toContain("Synthetic transfer reason");
+    expect(serialized).not.toContain("Synthetic private trust evidence");
+    expect(serialized).not.toContain("fingerprint-synthetic");
   });
 
   it("projects reconciliation freshness rows without mutating ledger state", () => {

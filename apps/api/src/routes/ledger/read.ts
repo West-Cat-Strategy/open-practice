@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import {
   buildLedgerBalanceSnapshotComparison,
+  buildLedgerMakerCheckerReadiness,
   ledgerAccountingReviewSummary,
   ledgerBankFeedReconciliationReviewSummary,
   buildFinancialCommandJournal,
@@ -95,6 +96,18 @@ export function registerLedgerReadRoutes(
       includeReconciliationDiagnostics: hasFirmWideAccess,
     });
     const generatedAt = new Date().toISOString();
+    const reconciliationPacketReview = ledgerReconciliationPacketReview({
+      ledger,
+      approvals,
+      postingRequests,
+      reconciliations,
+      importBatches,
+      exceptionResolutions,
+      trustTransferRequests,
+      paymentImportReviewRecords,
+      diagnostics,
+      generatedAt,
+    });
 
     return {
       ledger,
@@ -113,16 +126,14 @@ export function registerLedgerReadRoutes(
         reconciliations: hasFirmWideAccess ? reconciliations : [],
         generatedAt,
       }),
-      reconciliationPacketReview: ledgerReconciliationPacketReview({
+      reconciliationPacketReview,
+      makerCheckerReadiness: buildLedgerMakerCheckerReadiness({
         ledger,
-        approvals,
         postingRequests,
-        reconciliations,
-        importBatches,
-        exceptionResolutions,
         trustTransferRequests,
         paymentImportReviewRecords,
         diagnostics,
+        reconciliationPacketReview,
         generatedAt,
       }),
       diagnostics,

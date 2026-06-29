@@ -179,7 +179,10 @@ surface.
 - **Structured email template drafts**
   - **Shipped slice:** OP-T158 adds provider-neutral firm-scoped saved email template drafts and
     matter-scoped persisted preview snapshots. The 2026-06-16 parity closure hydrates recent matter
-    preview snapshots into dashboard resources and removes the unused empty preview placeholder.
+    preview snapshots into dashboard resources and removes the unused empty preview placeholder. The
+    2026-06-29 follow-up adds staff publish/version-history affordances with immutable published
+    versions, firm-scoped publish/list routes, redacted publish audit metadata, and no delivery
+    side effects.
   - **Remaining gap / future boundary:** Campaign automation, bulk sends, subscription management,
     provider delivery side effects, queue/send jobs, and live delivery from template management
     remain future work. `/api/email/previews` stays render-only.
@@ -303,6 +306,12 @@ surface.
     non-destructive posture flags in the workbench and Documents UI, blocks reviewer-packet readiness
     while a legal hold or integrity blocker is active, and audits only IDs, enum labels, cue counts,
     and posture flags.
+  - **Shipped disposition metadata slice:** The 2026-06-29 follow-up derives read-only
+    `dispositionMetadata` in the document-processing workbench from the existing retention/hold
+    posture: candidate state, safe blocker counts, source cue counts, optional review schedule
+    fields, and fixed no-delete/no-deadline/no-hold-release/no-raw-payload/no-compliance-claim
+    flags. It adds no command, schema, migration, audit write, provider payload retention, or
+    object-deletion path.
   - **Docs-first design:** The
     [document retention and hold workflow design](document-retention-hold-workflow-design.md) now
     records practice-configured review schedules, hold-blocking rules, deletion-review gates, and
@@ -348,6 +357,9 @@ surface.
     approve/reject UI actions without changing posting semantics. The 2026-06-17 action-descriptor
     follow-up keeps those command semantics unchanged while deriving the Trust Controls button
     labels, busy/disabled state, accessible labels, and action keys from domain-owned descriptors.
+    The 2026-06-28 readiness follow-up adds read-only Trust Controls indicators for categories and
+    safe matter IDs that would require maker-checker policy if enabled later; it does not enable
+    policy, add actions, or change posting behavior.
   - **Remaining boundary:** Direct trust transactions still post immediately for non-selected
     postings. The posting-request commands reuse the existing ledger transaction posting path at
     approval time, stay separate from the shipped trust-transfer approve/reject/link flow, and do not

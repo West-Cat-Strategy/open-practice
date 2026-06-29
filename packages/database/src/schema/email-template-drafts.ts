@@ -1,5 +1,14 @@
 import { sql } from "drizzle-orm";
-import { check, index, integer, jsonb, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import {
+  check,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+} from "drizzle-orm/pg-core";
 import type {
   EmailTemplatePreviewSnapshotRecord,
   EmailTemplateRecipientSummary,
@@ -100,6 +109,56 @@ export const emailTemplatePreviewSnapshots = pgTable(
       table.firmId,
       table.matterId,
       table.createdAt,
+    ),
+  }),
+);
+
+export const emailTemplatePublishedVersions = pgTable(
+  "email_template_published_versions",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    templateDraftId: text("template_draft_id")
+      .notNull()
+      .references(() => emailTemplateDrafts.id),
+    version: integer("version").notNull(),
+    draftVersion: integer("draft_version").notNull(),
+    name: text("name").notNull(),
+    description: text("description"),
+    category: text("category").notNull().default("general"),
+    templateKey: text("template_key").notNull(),
+    from: text("from_address").notNull(),
+    subject: text("subject").notNull(),
+    textBody: text("text_body").notNull().default(""),
+    htmlBody: text("html_body").notNull().default(""),
+    recipientHints: jsonb("recipient_hints").$type<string[]>().notNull().default([]),
+    relatedResourceType: text("related_resource_type"),
+    publishedByUserId: text("published_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    publishedAt: timestamp("published_at", { withTimezone: true }).notNull().defaultNow(),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+  },
+  (table) => ({
+    firmTemplateVersion: uniqueIndex("email_template_published_versions_template_version_idx").on(
+      table.firmId,
+      table.templateDraftId,
+      table.version,
+    ),
+    firmTemplatePublished: index("email_template_published_versions_template_published_idx").on(
+      table.firmId,
+      table.templateDraftId,
+      table.publishedAt,
+    ),
+    positiveVersion: check(
+      "email_template_published_versions_positive_version",
+      sql`${table.version} > 0`,
+    ),
+    positiveDraftVersion: check(
+      "email_template_published_versions_positive_draft_version",
+      sql`${table.draftVersion} > 0`,
     ),
   }),
 );

@@ -373,6 +373,85 @@ function buildSyntheticControls(): TrustControlsDashboardResponse {
       publicExposure: false,
     },
   };
+  controls.makerCheckerReadiness = {
+    generatedAt: "2026-08-15T00:00:00.000Z",
+    reviewOnly: true,
+    categories: [
+      {
+        category: "ledger",
+        label: "Ledger evidence",
+        evidenceCount: 2,
+        reviewCueCount: 3,
+        pendingCount: 1,
+        exceptionCount: 1,
+        conflictCount: 0,
+        amountCents: 12500,
+        readiness: "policy_required_if_enabled",
+        reasonCodes: ["pending_ledger_transaction_approval", "overdrawn_trust_balance"],
+        reviewOnly: true,
+      },
+      {
+        category: "posting_request",
+        label: "Posting request evidence",
+        evidenceCount: 2,
+        reviewCueCount: 2,
+        pendingCount: 1,
+        exceptionCount: 1,
+        conflictCount: 0,
+        amountCents: 300,
+        readiness: "policy_required_if_enabled",
+        reasonCodes: ["pending_posting_request", "rejected_posting_request"],
+        reviewOnly: true,
+      },
+      {
+        category: "payment_import",
+        label: "Payment import evidence",
+        evidenceCount: 1,
+        reviewCueCount: 1,
+        pendingCount: 1,
+        exceptionCount: 0,
+        conflictCount: 1,
+        amountCents: 999,
+        readiness: "policy_required_if_enabled",
+        reasonCodes: ["payment_import_review_required", "payment_import_conflict"],
+        reviewOnly: true,
+      },
+    ],
+    matters: [
+      {
+        matterId: "matter_synthetic",
+        categoryKeys: ["ledger", "posting_request", "payment_import"],
+        reasonCodes: ["pending_posting_request", "payment_import_conflict"],
+        reviewCueCount: 4,
+        pendingCount: 3,
+        exceptionCount: 1,
+        amountCents: 13799,
+        latestEvidenceAt: "2026-06-09T01:00:00.000Z",
+        reviewOnly: true,
+      },
+    ],
+    summary: {
+      categoryCount: 3,
+      categoriesRequiringPolicyCount: 3,
+      matterCount: 1,
+      mattersRequiringPolicyCount: 1,
+      reviewCueCount: 6,
+      pendingCount: 3,
+      exceptionCount: 2,
+      amountCents: 13799,
+      reviewOnly: true,
+    },
+    policy: {
+      source: "existing_trust_controls_projection",
+      makerCheckerPolicyEnabled: false,
+      directPostingSemantics: "unchanged",
+      approvalMutation: false,
+      automaticTrustPosting: false,
+      settlementAutomation: false,
+      bankFeedMatching: false,
+      jurisdictionCertifiedAccounting: false,
+    },
+  };
   controls.accountingReview.matchRuleProfiles = [
     {
       id: "match_profile_synthetic",
@@ -646,6 +725,17 @@ describe("TrustControlsSection", () => {
     expect(html).toContain("Payment import evidence");
     expect(html).toContain("Invoice mutation explicit command only");
     expect(html).toContain("No live settlement · no provider commands · no public exposure");
+    expect(html).toContain("Maker-checker readiness");
+    expect(html).toContain("3 categories · 1 matters");
+    expect(html).toContain("policy required if enabled");
+    expect(html).toContain("pending posting request");
+    expect(html).toContain("payment import conflict");
+    expect(html).toContain("Policy enabled false");
+    expect(html).toContain("direct postings unchanged");
+    expect(html).toContain(
+      "No approval mutation · no auto-posting · no settlement or bank-feed matching",
+    );
+    expect(html).toContain("readiness only");
     expect(html).toContain("metadata only · manual review required");
     expect(html).toContain("No auto-match · no ledger posting · no live feed");
     expect(html).toContain("operator review only · not jurisdiction-certified");
@@ -691,6 +781,13 @@ describe("TrustControlsSection", () => {
 
     expect(html).toContain("0 accounts");
     expect(html).toContain("No financial command journal entries are present");
+    expect(html).toContain("Maker-checker readiness");
+    expect(html).toContain("0 categories · 0 matters");
+    expect(html).toContain(
+      "No maker-checker readiness cues are present in the current controls payload.",
+    );
+    expect(html).toContain("Policy enabled false");
+    expect(html).toContain("direct postings unchanged");
     expect(html).toContain("Reconciliation packet summaries");
     expect(html).toContain("No reconciliation evidence");
     expect(html).toContain("0 packets");

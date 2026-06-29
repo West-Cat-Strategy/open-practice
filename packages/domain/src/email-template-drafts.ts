@@ -61,6 +61,27 @@ export interface EmailTemplatePreviewSnapshotRecord {
   metadata: Record<string, unknown>;
 }
 
+export interface EmailTemplatePublishedVersionRecord {
+  id: string;
+  firmId: string;
+  templateDraftId: string;
+  version: number;
+  draftVersion: number;
+  name: string;
+  description?: string;
+  category: string;
+  templateKey: string;
+  from: string;
+  subject: string;
+  textBody: string;
+  htmlBody: string;
+  recipientHints: string[];
+  relatedResourceType?: string;
+  publishedByUserId: string;
+  publishedAt: string;
+  metadata: Record<string, unknown>;
+}
+
 export const emailTemplatePreviewTextMaxLength = 1200;
 export const emailTemplatePreviewHtmlMaxLength = 1600;
 
@@ -177,6 +198,53 @@ export function buildEmailTemplatePreviewSnapshot(input: {
       warningCount: warnings.length,
       persisted: true,
       queued: false,
+      ...(input.metadata ?? {}),
+    },
+  };
+}
+
+export function buildEmailTemplatePublishedVersion(input: {
+  id: string;
+  firmId: string;
+  templateDraft: EmailTemplateDraftRecord;
+  version: number;
+  publishedByUserId: string;
+  publishedAt: string;
+  metadata?: Record<string, unknown>;
+}): EmailTemplatePublishedVersionRecord {
+  return {
+    id: input.id,
+    firmId: input.firmId,
+    templateDraftId: input.templateDraft.id,
+    version: input.version,
+    draftVersion: input.templateDraft.version,
+    name: input.templateDraft.name,
+    description: input.templateDraft.description,
+    category: input.templateDraft.category,
+    templateKey: input.templateDraft.templateKey,
+    from: input.templateDraft.from,
+    subject: input.templateDraft.subject,
+    textBody: input.templateDraft.textBody,
+    htmlBody: input.templateDraft.htmlBody,
+    recipientHints: [...input.templateDraft.recipientHints],
+    relatedResourceType: input.templateDraft.relatedResourceType,
+    publishedByUserId: input.publishedByUserId,
+    publishedAt: input.publishedAt,
+    metadata: {
+      publishedVersionId: input.id,
+      templateDraftId: input.templateDraft.id,
+      publishedVersion: input.version,
+      draftVersion: input.templateDraft.version,
+      publishedAt: input.publishedAt,
+      subjectLength: input.templateDraft.subject.length,
+      textLength: input.templateDraft.textBody.length,
+      htmlLength: input.templateDraft.htmlBody.length,
+      recipientHintCount: input.templateDraft.recipientHints.length,
+      providerNeutral: true,
+      deliveryQueued: false,
+      providerDeliverySideEffect: false,
+      campaignAutomation: false,
+      bulkSend: false,
       ...(input.metadata ?? {}),
     },
   };

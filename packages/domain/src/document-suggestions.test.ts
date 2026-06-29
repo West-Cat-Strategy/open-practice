@@ -293,6 +293,21 @@ describe("document review suggestions", () => {
       retainedExportBody: false,
       status: "blocked_by_hold",
       blockers: ["legal_hold"],
+      dispositionMetadata: {
+        candidateState: "blocked_by_hold",
+        readyForReviewerPacket: false,
+        blockerCounts: { total: 1, legalHold: 1, uploadIntegrity: 0, reviewState: 0 },
+        sourceCueCounts: { retention_review: 1, total: 1 },
+        reviewAfter: "2026-07-01T00:00:00.000Z",
+        minimumRetainThrough: "2026-08-01T00:00:00.000Z",
+        destructiveAction: false,
+        objectDeletion: false,
+        retentionDeadlineEnforced: false,
+        legalHoldReleaseCommand: false,
+        retainedExportBody: false,
+        rawPayloadRetention: false,
+        complianceClaim: false,
+      },
       latestDecision: {
         decision: "ready_for_reviewer_packet",
         reason: "legal_hold",
@@ -303,6 +318,98 @@ describe("document review suggestions", () => {
     expect(JSON.stringify(posture)).not.toContain("Synthetic private");
     expect(JSON.stringify(posture)).not.toContain("storageKey");
     expect(JSON.stringify(posture)).not.toContain("private.pdf");
+  });
+
+  it("derives non-destructive disposition candidate states from reviewer metadata", () => {
+    const decisionMetadata = {
+      reason: "practice_review" as const,
+      recordedByUserId: "user-licensee",
+      recordedAt: "2026-06-20T10:00:00.000Z",
+      sourceCueCounts: {
+        classification: 0,
+        duplicate_or_supersession: 0,
+        matter_contact: 0,
+        missing_metadata: 0,
+        retention_review: 0,
+        total: 0,
+      },
+    };
+    const decisions = [
+      {
+        decision: "ready_for_reviewer_packet" as const,
+        candidateState: "ready_for_reviewer_packet",
+        readyForReviewerPacket: true,
+      },
+      {
+        decision: "reviewed_keep" as const,
+        candidateState: "reviewed_keep",
+        readyForReviewerPacket: false,
+      },
+      {
+        decision: "reviewed_superseded" as const,
+        candidateState: "reviewed_superseded",
+        readyForReviewerPacket: false,
+      },
+    ];
+
+    for (const decision of decisions) {
+      const posture = buildDocumentRetentionHoldReview({
+        document: {
+          ...baseDocument,
+          reviewMetadata: {
+            privateReviewerNote: "Synthetic disposition note must stay private.",
+            providerPayload: { private: true },
+            retentionHoldReview: {
+              ...decisionMetadata,
+              decision: decision.decision,
+              reviewAfter: "2026-07-01T00:00:00.000Z",
+              minimumRetainThrough: "2026-08-01T00:00:00.000Z",
+            },
+          },
+        },
+        reviewSuggestions: buildDocumentReviewSuggestions({
+          document: baseDocument,
+          sameMatterDocuments: [baseDocument],
+        }),
+      });
+
+      expect(posture.dispositionMetadata).toMatchObject({
+        candidateState: decision.candidateState,
+        readyForReviewerPacket: decision.readyForReviewerPacket,
+        blockerCounts: { total: 0, legalHold: 0, uploadIntegrity: 0, reviewState: 0 },
+        reviewAfter: "2026-07-01T00:00:00.000Z",
+        minimumRetainThrough: "2026-08-01T00:00:00.000Z",
+        destructiveAction: false,
+        objectDeletion: false,
+        retentionDeadlineEnforced: false,
+        legalHoldReleaseCommand: false,
+        retainedExportBody: false,
+        rawPayloadRetention: false,
+        complianceClaim: false,
+      });
+      expect(JSON.stringify(posture.dispositionMetadata)).not.toContain("Synthetic disposition");
+      expect(JSON.stringify(posture.dispositionMetadata)).not.toContain("providerPayload");
+    }
+
+    const noDecision = buildDocumentRetentionHoldReview({
+      document: baseDocument,
+      reviewSuggestions: buildDocumentReviewSuggestions({
+        document: baseDocument,
+        sameMatterDocuments: [baseDocument],
+      }),
+    });
+    expect(noDecision.dispositionMetadata).toMatchObject({
+      candidateState: "not_ready",
+      readyForReviewerPacket: false,
+      blockerCounts: { total: 0, legalHold: 0, uploadIntegrity: 0, reviewState: 0 },
+      destructiveAction: false,
+      objectDeletion: false,
+      retentionDeadlineEnforced: false,
+      legalHoldReleaseCommand: false,
+      retainedExportBody: false,
+      rawPayloadRetention: false,
+      complianceClaim: false,
+    });
   });
 
   it("builds metadata-only tags and search summaries without OCR body text", () => {

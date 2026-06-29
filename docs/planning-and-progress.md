@@ -10,8 +10,8 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 | Snapshot              | Value                                                                |
 | --------------------- | -------------------------------------------------------------------- |
-| Current focus         | Current dirty branch integration and validation reconciliation.      |
-| Next recommended pick | Finish validation/proof reconciliation before opening new rows.      |
+| Current focus         | 2026-06-29 mainline consolidation publication and prune closeout.    |
+| Next recommended pick | Publish validated `main`, then prune only clean merged worktrees.    |
 | Ready rows            | 0                                                                    |
 | Candidate rows        | 0                                                                    |
 | In progress rows      | 0                                                                    |
@@ -22,16 +22,23 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 ## Current Handoff Notes
 
-The current dirty branch is integrating provider document conversion review decisions, OP-T162
-deposit-match reviewer decisions, provider document conversion latest-decision/history cues, a
-metadata-only refund/chargeback cue surface, and the adopted closed/archived matter lifecycle
-reopen boundary.
-Provider-status and self-host operations-readiness residue was preserved separately in targeted
-stashes and is not part of this closeout. This is branch validation work, not final `main`
-publication evidence yet. The row counters remain zero because no candidate table rows are open;
-active validation state is tracked in these handoff notes and the draft proof until selector output,
-command results, and proof reconciliation are current. Evidence is being recorded in
-[2026-06-28/2026-06-29 branch integration validation draft](validation/OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-28.md).
+The 2026-06-28 `feat/trust-controls-maker-checker-readiness-20260628` branch adds read-only
+Trust Controls maker-checker readiness indicators to the existing controls payload and dashboard.
+The indicators reuse ledger controls, reconciliation packet, posting-request, trust-transfer,
+payment-import, diagnostics, and safe matter-ID projections to show which categories or matters
+would require policy if maker-checker were later enabled. Policy remains disabled, direct posting
+semantics stay unchanged, and the branch does not approve, reject, auto-post, settle, match bank
+feeds, or claim jurisdiction-certified accounting. Proof is recorded in
+[Trust Controls maker-checker readiness proof](validation/OP_TRUST_CONTROLS_MAKER_CHECKER_READINESS_PROOF_2026-06-28.md).
+
+The 2026-06-29 `integrate/mainline-consolidation-20260629` branch consolidates the currently active
+local lanes for legal-research action descriptors, document disposition metadata, OP-T158 email
+template publish/version history, Trust Controls maker-checker readiness, and the proof-only inbound
+communications aggregation closeout. Provider-status and self-host operations-readiness residue
+remains preserved separately in targeted stashes and is not part of this closeout. The row counters
+remain zero because no candidate table rows are open; final publication and prune evidence is
+recorded in the closeout response after `main` is pushed. Evidence is recorded in
+[2026-06-28/2026-06-29 mainline consolidation proof](validation/OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-28.md).
 
 The 2026-06-27 `feat/provider-document-conversion-review-decision-20260627` branch promotes the
 next provider document conversion runtime slice as an explicit metadata-only review decision
@@ -264,6 +271,16 @@ export bodies, persist raw OCR/provider payloads or free-form notes, or claim ju
 compliance. Proof is being recorded in
 [staff document retention/hold review surface proof](validation/OP_DOCUMENT_RETENTION_HOLD_REVIEW_SURFACE_PROOF_2026-06-20.md).
 
+The 2026-06-29 `feat/document-disposition-metadata-20260629` branch in
+`/Users/bryan/projects/open-practice-document-disposition-metadata-20260629` adds the smallest
+non-destructive document disposition metadata slice on top of that posture. The document-processing
+workbench now derives read-only `dispositionMetadata` inside `retentionHoldReview`, including
+candidate state, blocker counts, source cue counts, optional review schedule fields, and fixed
+no-delete/no-deadline/no-hold-release/no-raw-payload/no-compliance-claim flags. It adds no new
+route, command, migration, audit write, provider payload retention, object deletion, or compliance
+claim. Proof is recorded in
+[document disposition metadata proof](validation/OP_DOCUMENT_DISPOSITION_METADATA_PROOF_2026-06-29.md).
+
 The 2026-06-20 `recovery/inbound-email-operator-replay-20260620` branch adds the smallest
 operator-reviewed inbound-email recovery action: owner-only
 `POST /api/inbound-email/parser-jobs/:jobId/replay-request` marks failed/dead-letter parser jobs
@@ -488,10 +505,10 @@ The 2026-06-17 document retention and hold workflow design is recorded in
 proof in
 [document retention and hold workflow design proof](validation/OP_DOCUMENT_RETENTION_HOLD_WORKFLOW_DESIGN_PROOF_2026-06-17.md).
 It defines practice-configured review schedules, hold-blocking rules, deletion-review gates, and
-records-disposition wording for future reviewed planning. This is docs-first only: current runtime
-document-processing remains limited to non-mutating retention-review hints and metadata-only review
-posture, with no deletion automation, retention-deadline enforcement, legal-hold override command,
-object deletion, or jurisdiction-certified compliance claim.
+records-disposition wording for reviewed planning. Current runtime document-processing remains
+limited to non-mutating retention-review hints, bounded retention/hold reviewer posture, and
+metadata-only disposition posture, with no deletion automation, retention-deadline enforcement,
+legal-hold release command, object deletion, or jurisdiction-certified compliance claim.
 
 The 2026-06-17 firm-managed expense category registry branch adds persisted
 `billing_expense_categories`, nullable `expense_entries.category_code`, Billing controls category
@@ -559,6 +576,13 @@ domain/database/API contracts, and a compact matter-workspace panel near email d
 It preserves SMTP/IMAP settings, render-only `/api/email/previews`, confirmation-gated
 `/api/mail/outbox`, worker/provider delivery behavior, and explicit no-campaign/no-bulk-send/no
 provider-side-effect boundaries.
+
+The 2026-06-29 OP-T158 follow-up ships explicit staff publish/version-history affordances in
+[OP-T158 email template publish history proof](validation/OP-T158_EMAIL_TEMPLATE_PUBLISH_HISTORY_PROOF_2026-06-29.md).
+The slice adds immutable published versions beside mutable drafts, firm-scoped publish/history API
+routes, compact dashboard publish/history controls, redacted publish audit metadata, and route
+authorization coverage while preserving render-only `/api/email/previews`, provider-neutral draft
+storage, and no campaign, bulk-send, subscription, delivery-provider, queue, or send-job behavior.
 
 The 2026-06-16 financial command approval journal branch adds a read-only `financialCommandJournal`
 projection to the existing trust controls payload. It normalizes existing audit metadata for
