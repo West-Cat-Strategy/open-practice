@@ -1,6 +1,7 @@
 import type {
   CalendarEventAttendeeRecord,
   CalendarEventRecord,
+  AppointmentBookingRequestRecord,
   PublicConsultationIntakeRecord,
 } from "@open-practice/domain";
 import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
@@ -9,6 +10,7 @@ import * as schema from "../../schema.js";
 import {
   AppointmentBookingLinkUnavailableError,
   AppointmentBookingSlotUnavailableError,
+  type AppointmentBookingAgingReviewInput,
   type AppointmentBookingProfileListOptions,
   type AppointmentBookingRequestListOptions,
   type AppointmentBookingReviewInput,
@@ -399,4 +401,27 @@ export async function reviewDrizzleAppointmentBookingRequest(
       event: mapCalendarEventRow(eventRow),
     };
   });
+}
+
+export async function recordDrizzleAppointmentBookingAgingReviewDecision(
+  db: OpenPracticeDatabase,
+  input: AppointmentBookingAgingReviewInput,
+): Promise<AppointmentBookingRequestRecord | undefined> {
+  const [row] = await db
+    .update(schema.appointmentBookingRequests)
+    .set({
+      reviewAgingDecision: input.decision,
+      reviewAgingDecidedAt: new Date(input.decidedAt),
+      reviewAgingDecidedByUserId: input.decidedByUserId,
+      reviewAgingCueStatus: input.cueStatus,
+      reviewAgingAgeHours: input.ageHours,
+    })
+    .where(
+      and(
+        eq(schema.appointmentBookingRequests.firmId, input.firmId),
+        eq(schema.appointmentBookingRequests.id, input.requestId),
+      ),
+    )
+    .returning();
+  return row ? mapAppointmentBookingRequestRow(row) : undefined;
 }

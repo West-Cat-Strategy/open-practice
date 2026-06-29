@@ -26,6 +26,7 @@ import {
   type CalendarMeetingSessionCreateInput,
   type CalendarMeetingSessionListOptions,
   type CalendarMeetingSessionStatusUpdateInput,
+  type CalendarSchedulingRequestAgingReviewInput,
   type CalendarSchedulingRequestListOptions,
   type CalendarSchedulingRequestUpdateInput,
 } from "../calendar-events-contracts.js";
@@ -402,6 +403,29 @@ export function updateMemoryCalendarSchedulingRequestReview(
     reviewedByUserId: input.reviewedByUserId,
     updatedAt: input.reviewedAt,
     updatedByUserId: input.reviewedByUserId,
+  });
+  return clone(store.calendarSchedulingRequests[index]);
+}
+
+export function recordMemoryCalendarSchedulingRequestAgingReviewDecision(
+  store: MemoryCalendarEventStore,
+  input: CalendarSchedulingRequestAgingReviewInput,
+): CalendarSchedulingRequestRecord | undefined {
+  const index = store.calendarSchedulingRequests.findIndex(
+    (request) =>
+      request.firmId === input.firmId &&
+      request.matterId === input.matterId &&
+      request.id === input.requestId,
+  );
+  if (index < 0) return undefined;
+  const existing = store.calendarSchedulingRequests[index]!;
+  store.calendarSchedulingRequests[index] = clone({
+    ...existing,
+    reviewAgingDecision: input.decision,
+    reviewAgingDecidedAt: input.decidedAt,
+    reviewAgingDecidedByUserId: input.decidedByUserId,
+    reviewAgingCueStatus: input.cueStatus,
+    reviewAgingAgeHours: input.ageHours,
   });
   return clone(store.calendarSchedulingRequests[index]);
 }

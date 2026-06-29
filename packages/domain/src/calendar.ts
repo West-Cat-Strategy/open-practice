@@ -13,7 +13,7 @@ import type {
   CalendarSchedulingRequestRecord,
   CalendarSchedulingRequestSummary,
 } from "./models.js";
-import { buildReviewAgingCue } from "./review-aging.js";
+import { buildReviewAgingCue, buildReviewAgingDecisionRecord } from "./review-aging.js";
 
 const DEFAULT_PRODUCT_ID = "-//Open Practice//Matter Calendar//EN";
 const DEFAULT_DTSTAMP = "1970-01-01T00:00:00.000Z";
@@ -278,6 +278,16 @@ export function buildCalendarSchedulingRequestSummaries(input: {
         eventsById.get(request.calendarEventId)?.matterId === request.matterId
           ? eventsById.get(request.calendarEventId)
           : undefined;
+      const reviewAgingDecision =
+        request.status === "needs_review"
+          ? buildReviewAgingDecisionRecord({
+              decision: request.reviewAgingDecision,
+              decidedAt: request.reviewAgingDecidedAt,
+              decidedByUserId: request.reviewAgingDecidedByUserId,
+              cueStatus: request.reviewAgingCueStatus,
+              ageHours: request.reviewAgingAgeHours,
+            })
+          : undefined;
 
       return {
         id: request.id,
@@ -319,6 +329,7 @@ export function buildCalendarSchedulingRequestSummaries(input: {
               }),
             }
           : {}),
+        ...(reviewAgingDecision ? { reviewAgingDecision } : {}),
         reviewedAt: request.reviewedAt,
         reviewedByUserId: request.reviewedByUserId,
       };

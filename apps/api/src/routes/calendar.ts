@@ -2,7 +2,9 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import {
   assertValidCalendarEventRange,
+  buildReviewAgingCue,
   buildCalendarSchedulingRequestSummaries,
+  reviewAgingDecisionValues,
 } from "@open-practice/domain";
 import type { CalendarEventRecord, CalendarSchedulingRequestRecord } from "@open-practice/domain";
 import { requireAccess, requireStaffAccess } from "../http/auth-guards.js";
@@ -140,6 +142,11 @@ const calendarSchedulingReviewBodySchema = z
     message: "Only scheduled requests may link calendarEventId",
     path: ["calendarEventId"],
   });
+
+const calendarSchedulingAgingReviewBodySchema = z.object({
+  matterId: z.string().min(1),
+  decision: z.enum(reviewAgingDecisionValues),
+});
 
 function canReadTimeCapture(context: ApiAuthContext, matterId: string): boolean {
   return requireAccess(context, {
@@ -629,6 +636,101 @@ export function registerCalendarRoutes(
       }),
     };
   });
+
+  server.patch(
+    "/api/calendar/scheduling-requests/:requestId/aging-review",
+    async (request, reply) => {
+      const staffAccess = requireStaffAccess(request.auth);
+      if (!staffAccess.ok) throw staffAccess.error;
+      const params = parseRequestPart(
+        calendarSchedulingRequestParamsSchema,
+        request.params,
+        "params",
+      );
+      const body = parseRequestPart(calendarSchedulingAgingReviewBodySchema, request.body, "body");
+      await assertCalendarScopeAccess(
+        repository,
+        request.auth,
+        calendarScopeTarget({ scope: "matter", matterId: body.matterId }),
+        "update",
+      );
+      const existing = await repository.getCalendarSchedulingRequest(
+        request.auth.firmId,
+        body.matterId,
+        params.requestId,
+      );
+      if (!existing) {
+        return reply.code(404).send({ error: "NotFound", message: "Scheduling request not found" });
+      }
+      if (existing.status !== "needs_review") {
+        throw new ApiHttpError(
+          409,
+          "CALENDAR_SCHEDULING_REQUEST_AGING_REVIEW_CLOSED",
+          "Scheduling request is no longer open for review",
+        );
+      }
+      const now = new Date().toISOString();
+      const cue = buildReviewAgingCue({ referenceAt: existing.createdAt, now });
+      if (cue.status === "fresh") {
+        throw new ApiHttpError(
+          409,
+          "CALENDAR_SCHEDULING_REQUEST_AGING_REVIEW_NOT_AGING",
+          "Scheduling request is not aging or stale yet",
+        );
+      }
+      const updated = await repository.recordCalendarSchedulingRequestAgingReviewDecision({
+        firmId: request.auth.firmId,
+        matterId: body.matterId,
+        requestId: existing.id,
+        decision: body.decision,
+        decidedAt: now,
+        decidedByUserId: request.auth.user.id,
+        cueStatus: cue.status,
+        ageHours: cue.ageHours,
+      });
+      if (!updated) {
+        return reply.code(404).send({ error: "NotFound", message: "Scheduling request not found" });
+      }
+      await recordCalendarAuditEvent(repository, {
+        firmId: request.auth.firmId,
+        actorId: request.auth.user.id,
+        action: "calendar.scheduling_request.aging_review_recorded",
+        resourceType: "calendar_scheduling_request",
+        resourceId: updated.id,
+        occurredAt: now,
+        metadata: {
+          matterId: updated.matterId,
+          requestId: updated.id,
+          decision: body.decision,
+          cueStatus: cue.status,
+          ageHours: cue.ageHours,
+          automaticFinalConfirmation: false,
+          autoExpires: false,
+          providerSync: false,
+          publicRoomCreated: false,
+          nativeMediaCreated: false,
+          chatCreated: false,
+          recordingCreated: false,
+          matterCreated: false,
+          taskCreated: false,
+          eventCreated: false,
+          eventRescheduled: false,
+          reminderCancelled: false,
+        },
+      });
+      const events = await repository.listCalendarEvents(request.auth.firmId, {
+        matterId: body.matterId,
+      });
+      return {
+        schedulingRequest: await schedulingRequestSummaryForResponse({
+          request: updated,
+          events,
+          includeTimeCapture: canReadTimeCapture(request.auth, body.matterId),
+          now,
+        }),
+      };
+    },
+  );
 
   server.post("/api/calendar/events", async (request, reply) => {
     const body = parseRequestPart(calendarEventWriteBodySchema, request.body, "body");

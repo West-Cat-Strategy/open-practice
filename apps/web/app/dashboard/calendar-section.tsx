@@ -1,4 +1,13 @@
-import { AlertTriangle, CalendarDays, Clock3, Link2, Plus, X } from "lucide-react";
+import {
+  AlertTriangle,
+  Bell,
+  CalendarDays,
+  CheckCircle2,
+  Clock3,
+  Link2,
+  Plus,
+  X,
+} from "lucide-react";
 import type { ReactNode } from "react";
 import type { CalendarMeetingLinkMode } from "@open-practice/domain/calendar-models";
 import {
@@ -8,6 +17,7 @@ import {
   describeCalendarEventTiming,
   describeCalendarGuestSessionStatus,
   describeReviewAgingCue,
+  describeReviewAgingDecision,
   describeCalendarSchedulingReviewNextStep,
   describeCalendarSchedulingRequestHandoff,
   describeMeetingInvitationBoundary,
@@ -15,6 +25,7 @@ import {
   sortCalendarGuestSessionGuests,
   sortCalendarSchedulingRequests,
   type CalendarRadarBuckets,
+  type CalendarSchedulingAgingReviewDecision,
   type CalendarSchedulingReviewDecision,
 } from "../calendar-dashboard";
 import { compactDate, compactStatus } from "../_features/dashboard/formatters";
@@ -129,6 +140,10 @@ export interface CalendarSectionProps {
     request: CalendarSchedulingRequest,
     status: CalendarSchedulingReviewDecision,
     calendarEventId?: string,
+  ) => void;
+  onReviewCalendarSchedulingRequestAgingDecision: (
+    request: CalendarSchedulingRequest,
+    decision: CalendarSchedulingAgingReviewDecision,
   ) => void;
   onSetCalendarAttendeeEmail: (value: string) => void;
   onSetCalendarAttendeeName: (value: string) => void;
@@ -268,6 +283,7 @@ export function CalendarSection({
   onRescheduleCalendarEvent,
   onRevokeCalendarCredential,
   onReviewCalendarSchedulingRequest,
+  onReviewCalendarSchedulingRequestAgingDecision,
   onSetCalendarAttendeeEmail,
   onSetCalendarAttendeeName,
   onSetCalendarAttendeeRole,
@@ -433,6 +449,10 @@ export function CalendarSection({
             selectedEventId: selectedReviewEventId,
           });
           const agingCue = describeReviewAgingCue(request.reviewAging);
+          const agingDecision = describeReviewAgingDecision(request.reviewAgingDecision);
+          const agingDecisionAvailable =
+            request.status === "needs_review" &&
+            (request.reviewAging?.status === "aging" || request.reviewAging?.status === "stale");
           const busyPrefix = `${request.id}:`;
           const reviewBusy = reviewingCalendarSchedulingRequestKey.startsWith(busyPrefix);
           return (
@@ -465,11 +485,59 @@ export function CalendarSection({
                     {agingCue.label}: {agingCue.detail}
                   </small>
                 ) : null}
+                {agingDecision ? (
+                  <small>
+                    {agingDecision.label}: {agingDecision.detail}
+                  </small>
+                ) : null}
                 <small>
                   {reviewNextStep.label}: {reviewNextStep.detail}
                 </small>
                 {matterCalendarControlsEnabled && request.status === "needs_review" ? (
                   <div className="calendar-meeting-link-form">
+                    {agingDecisionAvailable ? (
+                      <>
+                        <button
+                          aria-label="Acknowledge scheduling request aging review"
+                          className="secondary-button compact-button row-button"
+                          disabled={reviewBusy}
+                          onClick={() =>
+                            onReviewCalendarSchedulingRequestAgingDecision(request, "acknowledged")
+                          }
+                          type="button"
+                        >
+                          <CheckCircle2 size={15} />
+                          Acknowledge
+                        </button>
+                        <button
+                          aria-label="Mark scheduling request follow-up required"
+                          className="secondary-button compact-button row-button"
+                          disabled={reviewBusy}
+                          onClick={() =>
+                            onReviewCalendarSchedulingRequestAgingDecision(
+                              request,
+                              "follow_up_required",
+                            )
+                          }
+                          type="button"
+                        >
+                          <Bell size={15} />
+                          Follow up
+                        </button>
+                        <button
+                          aria-label="Defer scheduling request aging review"
+                          className="secondary-button compact-button row-button"
+                          disabled={reviewBusy}
+                          onClick={() =>
+                            onReviewCalendarSchedulingRequestAgingDecision(request, "defer_review")
+                          }
+                          type="button"
+                        >
+                          <Clock3 size={15} />
+                          Defer
+                        </button>
+                      </>
+                    ) : null}
                     <label>
                       <span className="field-label">Existing event</span>
                       <select

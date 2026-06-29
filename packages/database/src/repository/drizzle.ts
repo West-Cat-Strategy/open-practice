@@ -50,6 +50,7 @@ import {
   getDrizzleAppointmentBookingRequest,
   listDrizzleAppointmentBookingProfiles,
   listDrizzleAppointmentBookingRequests,
+  recordDrizzleAppointmentBookingAgingReviewDecision,
   reviewDrizzleAppointmentBookingRequest,
   upsertDrizzleAppointmentBookingProfile,
 } from "./appointment-booking/drizzle.js";
@@ -85,6 +86,7 @@ import {
   listDrizzleCalendarGuestLinks,
   listDrizzleCalendarMeetingSessions,
   listDrizzleCalendarSchedulingRequests,
+  recordDrizzleCalendarSchedulingRequestAgingReviewDecision,
   replaceDrizzleCalendarEventAttendees,
   revokeDrizzleCalendarGuestLink,
   updateDrizzleCalendarGuestLinkStatus,
@@ -1151,6 +1153,14 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     return updateDrizzleCalendarSchedulingRequestReview(this.db, input);
   }
 
+  async recordCalendarSchedulingRequestAgingReviewDecision(
+    input: Parameters<
+      OpenPracticeRepository["recordCalendarSchedulingRequestAgingReviewDecision"]
+    >[0],
+  ): ReturnType<OpenPracticeRepository["recordCalendarSchedulingRequestAgingReviewDecision"]> {
+    return recordDrizzleCalendarSchedulingRequestAgingReviewDecision(this.db, input);
+  }
+
   async listCalendarSchedulingRequests(
     firmId: string,
     options: Parameters<OpenPracticeRepository["listCalendarSchedulingRequests"]>[1] = {},
@@ -1214,6 +1224,12 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     input: Parameters<OpenPracticeRepository["reviewAppointmentBookingRequest"]>[0],
   ): ReturnType<OpenPracticeRepository["reviewAppointmentBookingRequest"]> {
     return reviewDrizzleAppointmentBookingRequest(this.db, input);
+  }
+
+  async recordAppointmentBookingAgingReviewDecision(
+    input: Parameters<OpenPracticeRepository["recordAppointmentBookingAgingReviewDecision"]>[0],
+  ): ReturnType<OpenPracticeRepository["recordAppointmentBookingAgingReviewDecision"]> {
+    return recordDrizzleAppointmentBookingAgingReviewDecision(this.db, input);
   }
 
   async deleteCalendarEventReminder(

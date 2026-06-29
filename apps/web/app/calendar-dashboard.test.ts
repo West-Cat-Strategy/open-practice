@@ -7,6 +7,7 @@ import {
   buildCalendarSchedulingRequestPayload,
   describeCalendarEventHandoff,
   describeReviewAgingCue,
+  describeReviewAgingDecision,
   describeCalendarSchedulingRequestHandoff,
 } from "./calendar-dashboard";
 
@@ -147,6 +148,30 @@ describe("calendar staff handoff helpers", () => {
         autoExpires: false,
       }),
     ).toMatchObject({ label: "stale review", tone: "risk" });
+  });
+
+  it("describes aging-review decisions as review-only staff triage", () => {
+    expect(
+      describeReviewAgingDecision({
+        decision: "defer_review",
+        decidedAt: "2026-06-04T12:00:00.000Z",
+        decidedByUserId: "user-licensee",
+        cueStatus: "stale",
+        ageHours: 72,
+        automaticFinalConfirmation: false,
+        autoExpires: false,
+        providerSync: false,
+        publicRoomCreated: false,
+        nativeMediaCreated: false,
+        chatCreated: false,
+        recordingCreated: false,
+        matterCreated: false,
+      }),
+    ).toEqual({
+      label: "deferred",
+      detail:
+        "stale at 72h by user-licensee; review-only decision, no auto-confirm, auto-expiry, provider sync, public room, media, chat, recording, or matter.",
+    });
   });
 
   it("builds tickler scheduling-request payloads from existing tasks and reminders", () => {

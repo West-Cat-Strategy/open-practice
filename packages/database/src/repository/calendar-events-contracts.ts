@@ -73,6 +73,17 @@ export interface CalendarSchedulingRequestUpdateInput {
   calendarEventId?: string | null;
 }
 
+export interface CalendarSchedulingRequestAgingReviewInput {
+  firmId: string;
+  matterId: string;
+  requestId: string;
+  decision: NonNullable<CalendarSchedulingRequestRecord["reviewAgingDecision"]>;
+  decidedAt: string;
+  decidedByUserId: string;
+  cueStatus: NonNullable<CalendarSchedulingRequestRecord["reviewAgingCueStatus"]>;
+  ageHours: number;
+}
+
 export interface CalendarEventReminderDeleteInput {
   firmId: string;
   scope?: CalendarEventScope;
@@ -184,6 +195,9 @@ export interface CalendarEventsRepository {
   ): Promise<CalendarSchedulingRequestRecord | undefined>;
   updateCalendarSchedulingRequestReview(
     input: CalendarSchedulingRequestUpdateInput,
+  ): Promise<CalendarSchedulingRequestRecord | undefined>;
+  recordCalendarSchedulingRequestAgingReviewDecision(
+    input: CalendarSchedulingRequestAgingReviewInput,
   ): Promise<CalendarSchedulingRequestRecord | undefined>;
   listCalendarSchedulingRequests(
     firmId: string,

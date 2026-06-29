@@ -144,6 +144,51 @@ describe("appointment booking domain", () => {
     ).not.toHaveProperty("reviewAging");
   });
 
+  it("projects latest aging review decisions only for open tentative-hold staff summaries", () => {
+    const reviewedHold: AppointmentBookingRequestRecord = {
+      ...bookingRequest,
+      reviewAgingDecision: "follow_up_required",
+      reviewAgingDecidedAt: "2026-06-04T15:05:00.000Z",
+      reviewAgingDecidedByUserId: "user-licensee",
+      reviewAgingCueStatus: "stale",
+      reviewAgingAgeHours: 72,
+    };
+
+    expect(
+      summarizeAppointmentBookingRequest({
+        request: reviewedHold,
+        profile,
+        now: "2026-06-04T15:10:00.000Z",
+      }),
+    ).toMatchObject({
+      reviewAgingDecision: {
+        decision: "follow_up_required",
+        decidedAt: "2026-06-04T15:05:00.000Z",
+        decidedByUserId: "user-licensee",
+        cueStatus: "stale",
+        ageHours: 72,
+        automaticFinalConfirmation: false,
+        autoExpires: false,
+        providerSync: false,
+        publicRoomCreated: false,
+        nativeMediaCreated: false,
+        chatCreated: false,
+        recordingCreated: false,
+        matterCreated: false,
+      },
+    });
+    expect(
+      summarizeAppointmentBookingRequest({
+        request: { ...reviewedHold, status: "dismissed" },
+        profile,
+        now: "2026-06-04T15:10:00.000Z",
+      }),
+    ).not.toHaveProperty("reviewAgingDecision");
+    expect(
+      appointmentBookingPublicRequestResponse({ request: reviewedHold, profile }),
+    ).not.toHaveProperty("reviewAgingDecision");
+  });
+
   it("tracks direct link lifecycle from token-hash only fields", () => {
     expect(
       appointmentBookingLinkStatus(

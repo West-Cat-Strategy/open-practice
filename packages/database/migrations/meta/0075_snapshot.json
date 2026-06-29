@@ -1,5 +1,5 @@
 {
-  "id": "c4c98dc8-91a4-4051-98a3-a3d9c943003e",
+  "id": "095cab4c-6c80-4f22-9f95-48faaf8db74f",
   "prevId": "4bccbc56-7497-431d-9d15-a0ee99d4a60d",
   "version": "7",
   "dialect": "postgresql",
@@ -1588,6 +1588,36 @@
           "primaryKey": false,
           "notNull": false
         },
+        "review_aging_decision": {
+          "name": "review_aging_decision",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "review_aging_decided_at": {
+          "name": "review_aging_decided_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "review_aging_decided_by_user_id": {
+          "name": "review_aging_decided_by_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "review_aging_cue_status": {
+          "name": "review_aging_cue_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "review_aging_age_hours": {
+          "name": "review_aging_age_hours",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
         "metadata": {
           "name": "metadata",
           "type": "jsonb",
@@ -1739,6 +1769,15 @@
           "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
+        },
+        "appointment_booking_requests_review_aging_decided_by_user_id_users_id_fk": {
+          "name": "appointment_booking_requests_review_aging_decided_by_user_id_users_id_fk",
+          "tableFrom": "appointment_booking_requests",
+          "tableTo": "users",
+          "columnsFrom": ["review_aging_decided_by_user_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1752,6 +1791,22 @@
         "appointment_booking_requests_status_value": {
           "name": "appointment_booking_requests_status_value",
           "value": "\"appointment_booking_requests\".\"status\" in ('tentative_hold', 'confirmed', 'dismissed')"
+        },
+        "appointment_booking_requests_review_aging_decision_value": {
+          "name": "appointment_booking_requests_review_aging_decision_value",
+          "value": "\"appointment_booking_requests\".\"review_aging_decision\" is null or \"appointment_booking_requests\".\"review_aging_decision\" in ('acknowledged', 'follow_up_required', 'defer_review')"
+        },
+        "appointment_booking_requests_review_aging_cue_status_value": {
+          "name": "appointment_booking_requests_review_aging_cue_status_value",
+          "value": "\"appointment_booking_requests\".\"review_aging_cue_status\" is null or \"appointment_booking_requests\".\"review_aging_cue_status\" in ('aging', 'stale')"
+        },
+        "appointment_booking_requests_review_aging_age_nonnegative": {
+          "name": "appointment_booking_requests_review_aging_age_nonnegative",
+          "value": "\"appointment_booking_requests\".\"review_aging_age_hours\" is null or \"appointment_booking_requests\".\"review_aging_age_hours\" >= 0"
+        },
+        "appointment_booking_requests_review_aging_decision_complete": {
+          "name": "appointment_booking_requests_review_aging_decision_complete",
+          "value": "(\"appointment_booking_requests\".\"review_aging_decision\" is null and \"appointment_booking_requests\".\"review_aging_decided_at\" is null and \"appointment_booking_requests\".\"review_aging_decided_by_user_id\" is null and \"appointment_booking_requests\".\"review_aging_cue_status\" is null and \"appointment_booking_requests\".\"review_aging_age_hours\" is null) or (\"appointment_booking_requests\".\"review_aging_decision\" is not null and \"appointment_booking_requests\".\"review_aging_decided_at\" is not null and \"appointment_booking_requests\".\"review_aging_decided_by_user_id\" is not null and \"appointment_booking_requests\".\"review_aging_cue_status\" is not null and \"appointment_booking_requests\".\"review_aging_age_hours\" is not null)"
         },
         "appointment_booking_requests_requester_name_present": {
           "name": "appointment_booking_requests_requester_name_present",
@@ -7027,6 +7082,36 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
+        },
+        "review_aging_decision": {
+          "name": "review_aging_decision",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "review_aging_decided_at": {
+          "name": "review_aging_decided_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "review_aging_decided_by_user_id": {
+          "name": "review_aging_decided_by_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "review_aging_cue_status": {
+          "name": "review_aging_cue_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "review_aging_age_hours": {
+          "name": "review_aging_age_hours",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
@@ -7166,6 +7251,15 @@
           "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
+        },
+        "calendar_scheduling_requests_review_aging_decided_by_user_id_users_id_fk": {
+          "name": "calendar_scheduling_requests_review_aging_decided_by_user_id_users_id_fk",
+          "tableFrom": "calendar_scheduling_requests",
+          "tableTo": "users",
+          "columnsFrom": ["review_aging_decided_by_user_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -7179,6 +7273,22 @@
         "calendar_scheduling_requests_status_value": {
           "name": "calendar_scheduling_requests_status_value",
           "value": "\"calendar_scheduling_requests\".\"status\" in ('needs_review', 'reviewed', 'scheduled', 'dismissed')"
+        },
+        "calendar_scheduling_requests_review_aging_decision_value": {
+          "name": "calendar_scheduling_requests_review_aging_decision_value",
+          "value": "\"calendar_scheduling_requests\".\"review_aging_decision\" is null or \"calendar_scheduling_requests\".\"review_aging_decision\" in ('acknowledged', 'follow_up_required', 'defer_review')"
+        },
+        "calendar_scheduling_requests_review_aging_cue_status_value": {
+          "name": "calendar_scheduling_requests_review_aging_cue_status_value",
+          "value": "\"calendar_scheduling_requests\".\"review_aging_cue_status\" is null or \"calendar_scheduling_requests\".\"review_aging_cue_status\" in ('aging', 'stale')"
+        },
+        "calendar_scheduling_requests_review_aging_age_nonnegative": {
+          "name": "calendar_scheduling_requests_review_aging_age_nonnegative",
+          "value": "\"calendar_scheduling_requests\".\"review_aging_age_hours\" is null or \"calendar_scheduling_requests\".\"review_aging_age_hours\" >= 0"
+        },
+        "calendar_scheduling_requests_review_aging_decision_complete": {
+          "name": "calendar_scheduling_requests_review_aging_decision_complete",
+          "value": "(\"calendar_scheduling_requests\".\"review_aging_decision\" is null and \"calendar_scheduling_requests\".\"review_aging_decided_at\" is null and \"calendar_scheduling_requests\".\"review_aging_decided_by_user_id\" is null and \"calendar_scheduling_requests\".\"review_aging_cue_status\" is null and \"calendar_scheduling_requests\".\"review_aging_age_hours\" is null) or (\"calendar_scheduling_requests\".\"review_aging_decision\" is not null and \"calendar_scheduling_requests\".\"review_aging_decided_at\" is not null and \"calendar_scheduling_requests\".\"review_aging_decided_by_user_id\" is not null and \"calendar_scheduling_requests\".\"review_aging_cue_status\" is not null and \"calendar_scheduling_requests\".\"review_aging_age_hours\" is not null)"
         },
         "calendar_scheduling_requests_source_type_value": {
           "name": "calendar_scheduling_requests_source_type_value",
@@ -12917,12 +13027,6 @@
         "business_number": {
           "name": "business_number",
           "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "disposition_review_schedule_profile": {
-          "name": "disposition_review_schedule_profile",
-          "type": "jsonb",
           "primaryKey": false,
           "notNull": false
         },

@@ -1,5 +1,12 @@
 import type { CalendarEventRecord } from "./models.js";
-import { buildReviewAgingCue, type ReviewAgingCue } from "./review-aging.js";
+import {
+  buildReviewAgingCue,
+  buildReviewAgingDecisionRecord,
+  type ReviewAgingCue,
+  type ReviewAgingDecision,
+  type ReviewAgingDecisionRecord,
+  type ReviewAgingStatus,
+} from "./review-aging.js";
 
 export type AppointmentBookingProfileStatus = "active" | "paused";
 export type AppointmentBookingRequestStatus = "tentative_hold" | "confirmed" | "dismissed";
@@ -68,6 +75,11 @@ export interface AppointmentBookingRequestRecord {
   reviewedAt?: string;
   reviewedByUserId?: string;
   dismissedReason?: string;
+  reviewAgingDecision?: ReviewAgingDecision;
+  reviewAgingDecidedAt?: string;
+  reviewAgingDecidedByUserId?: string;
+  reviewAgingCueStatus?: ReviewAgingStatus;
+  reviewAgingAgeHours?: number;
   metadata: Record<string, unknown>;
 }
 
@@ -122,6 +134,7 @@ export interface AppointmentBookingRequestSummary {
   requestedEndsAt: string;
   submittedAt: string;
   reviewAging?: ReviewAgingCue;
+  reviewAgingDecision?: ReviewAgingDecisionRecord;
   reviewedAt?: string;
   reviewedByUserId?: string;
   dismissedReason?: string;
@@ -324,6 +337,16 @@ export function summarizeAppointmentBookingRequest(input: {
   profile?: AppointmentBookingProfileRecord;
   now?: string;
 }): AppointmentBookingRequestSummary {
+  const reviewAgingDecision =
+    input.request.status === "tentative_hold"
+      ? buildReviewAgingDecisionRecord({
+          decision: input.request.reviewAgingDecision,
+          decidedAt: input.request.reviewAgingDecidedAt,
+          decidedByUserId: input.request.reviewAgingDecidedByUserId,
+          cueStatus: input.request.reviewAgingCueStatus,
+          ageHours: input.request.reviewAgingAgeHours,
+        })
+      : undefined;
   return {
     id: input.request.id,
     profileId: input.request.profileId,
@@ -349,6 +372,7 @@ export function summarizeAppointmentBookingRequest(input: {
           }),
         }
       : {}),
+    ...(reviewAgingDecision ? { reviewAgingDecision } : {}),
     reviewedAt: input.request.reviewedAt,
     reviewedByUserId: input.request.reviewedByUserId,
     dismissedReason: input.request.dismissedReason,

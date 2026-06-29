@@ -179,6 +179,7 @@ import {
   getMemoryAppointmentBookingRequest,
   listMemoryAppointmentBookingProfiles,
   listMemoryAppointmentBookingRequests,
+  recordMemoryAppointmentBookingAgingReviewDecision,
   reviewMemoryAppointmentBookingRequest,
   upsertMemoryAppointmentBookingProfile,
   type MemoryAppointmentBookingStore,
@@ -225,6 +226,7 @@ import {
   listMemoryCalendarGuestLinks,
   listMemoryCalendarMeetingSessions,
   listMemoryCalendarSchedulingRequests,
+  recordMemoryCalendarSchedulingRequestAgingReviewDecision,
   replaceMemoryCalendarEventAttendees,
   revokeMemoryCalendarGuestLink,
   updateMemoryCalendarGuestLinkStatus,
@@ -2317,6 +2319,16 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     );
   }
 
+  async recordCalendarSchedulingRequestAgingReviewDecision(
+    input: Parameters<
+      OpenPracticeRepository["recordCalendarSchedulingRequestAgingReviewDecision"]
+    >[0],
+  ): ReturnType<OpenPracticeRepository["recordCalendarSchedulingRequestAgingReviewDecision"]> {
+    return Promise.resolve(
+      recordMemoryCalendarSchedulingRequestAgingReviewDecision(this.calendarEventStore, input),
+    );
+  }
+
   async listCalendarSchedulingRequests(
     firmId: string,
     options: Parameters<OpenPracticeRepository["listCalendarSchedulingRequests"]>[1] = {},
@@ -2406,6 +2418,14 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
         this.calendarEventStore,
         input,
       ),
+    );
+  }
+
+  async recordAppointmentBookingAgingReviewDecision(
+    input: Parameters<OpenPracticeRepository["recordAppointmentBookingAgingReviewDecision"]>[0],
+  ): ReturnType<OpenPracticeRepository["recordAppointmentBookingAgingReviewDecision"]> {
+    return Promise.resolve(
+      recordMemoryAppointmentBookingAgingReviewDecision(this.appointmentBookingStore, input),
     );
   }
 
