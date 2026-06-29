@@ -414,8 +414,9 @@ surface.
     support is still evidence-only and requires pending manual-payment status, amount/currency
     match, and no duplicate/conflict cues. The 2026-06-29 readiness follow-up adds read-only Billing
     cues for supported decisions that still appear eligible for the existing manual-payment
-    reconcile review workflow; the cue does not reconcile payments, mutate invoices, clear deposits,
-    call providers, or post trust entries.
+    reconcile review workflow and structured reason details for supported rows that are still
+    eligible or have drifted ineligible; the cue does not reconcile payments, mutate invoices, clear
+    deposits, call providers, or post trust entries.
   - **Shipped refund/chargeback cue surface:** The 2026-06-28 follow-up adds provider-neutral
     reviewer cue counts and row metadata for existing payment import records with
     `eventStatus=refund_observed` or `eventStatus=chargeback_observed`. The surface is metadata

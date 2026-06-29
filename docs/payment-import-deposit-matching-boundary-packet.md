@@ -82,10 +82,11 @@ OP-T162 implements the second runtime slice under this packet:
   creates no matching, reconciliation, ledger, payment, refund, chargeback, notification, provider
   command, trust transfer, or trust posting action.
 - The 2026-06-29 readiness follow-up adds Billing dashboard cues for latest `candidate_supported`
-  decisions that still appear eligible for the existing manual-payment reconcile review workflow.
-  Eligibility is read from current manual-payment and invoice state, remains advisory, and does not
-  invoke `POST /api/payments/:paymentId/reconcile`, allocate funds, clear deposits, mutate invoices,
-  or post trust entries.
+  decisions that still appear eligible for the existing manual-payment reconcile review workflow,
+  plus structured per-row reason details when supported candidates are still eligible or have drifted
+  ineligible. Eligibility is read from current manual-payment and invoice state, remains advisory,
+  and does not invoke `POST /api/payments/:paymentId/reconcile`, allocate funds, clear deposits,
+  mutate invoices, or post trust entries.
 
 ## Refund And Chargeback Cue Surface
 
@@ -189,8 +190,9 @@ Invoice balances can change only through explicit Open Practice workflows with r
 - Manual-payment evidence must still pass through `POST /api/payments/:paymentId/reconcile` before
   it creates an effective allocation and recalculates invoice paid/balance status.
 - Deposit-match readiness cues may identify supported candidates for that existing manual-payment
-  review workflow, but the cue itself is read-only and performs no reconciliation, allocation,
-  deposit clearing, invoice mutation, provider command, or trust posting.
+  review workflow and explain eligible or ineligible rows with structured safe reason details, but
+  the cue itself is read-only and performs no reconciliation, allocation, deposit clearing, invoice
+  mutation, provider command, or trust posting.
 - Hosted payment requests, processor imports, settlement-event review, deposit-match proposals,
   refunds, and chargeback cues must not independently mutate `paidCents`, `balanceDueCents`, invoice
   lifecycle status, source-entry billing state, or trust-transfer state.

@@ -2,6 +2,7 @@ import { CheckCircle2, Clock3, FileText, Plus, Save } from "lucide-react";
 import type { BillingExpenseCategoryRecord } from "@open-practice/domain";
 
 import {
+  describePaymentImportReconciliationReasonDetails,
   describePaymentImportReconciliationReadiness,
   describePaymentImportReview,
   describePaymentSettlementReview,
@@ -844,7 +845,12 @@ export function BillingSection({
                 </small>
               ) : null}
               {record.reconciliationReadiness ? (
-                <small>{describePaymentImportReconciliationReadiness(record)}</small>
+                <>
+                  <small>{describePaymentImportReconciliationReadiness(record)}</small>
+                  {describePaymentImportReconciliationReasonDetails(record) ? (
+                    <small>{describePaymentImportReconciliationReasonDetails(record)}</small>
+                  ) : null}
+                </>
               ) : null}
               {record.refundChargebackReviewCue ? (
                 <small>

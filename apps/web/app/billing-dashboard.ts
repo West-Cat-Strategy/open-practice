@@ -193,6 +193,16 @@ export function describePaymentImportReconciliationReadiness(
   }`;
 }
 
+export function describePaymentImportReconciliationReasonDetails(
+  record: BillingPaymentImportReviewSummary,
+): string | undefined {
+  const details = record.reconciliationReadiness?.reasonDetails;
+  if (!details?.length) return undefined;
+  return `Readiness details: ${details
+    .map((detail) => `${detail.label} ${detail.status}`)
+    .join(" · ")}`;
+}
+
 export function summarizePaymentSettlementReview(
   requests: BillingPaymentRequestSummary[],
 ): PaymentSettlementReviewSummary {
