@@ -2626,6 +2626,19 @@ describe("billing routes", () => {
     expect(unsupportedDepositReview.json()).toMatchObject({
       code: "PAYMENT_IMPORT_DEPOSIT_MATCH_REVIEW_UNSUPPORTED",
     });
+    const unsupportedRefundChargebackReview = await server.inject({
+      method: "POST",
+      url: "/api/billing/payment-import-review-records/payment-import-review-payment-only/refund-chargeback-reviews",
+      payload: {
+        decision: "needs_more_evidence",
+        reason: "status_unclear",
+        idempotencyKey: "synthetic-payment-only-refund-chargeback-review",
+      },
+    });
+    expect(unsupportedRefundChargebackReview.statusCode).toBe(409);
+    expect(unsupportedRefundChargebackReview.json()).toMatchObject({
+      code: "PAYMENT_IMPORT_REFUND_CHARGEBACK_REVIEW_UNSUPPORTED",
+    });
 
     const refundCueRecord = await server.inject({
       method: "POST",
@@ -2659,6 +2672,100 @@ describe("billing routes", () => {
           trustPosting: "none",
         }),
       },
+    });
+    const refundChargebackReview = await server.inject({
+      method: "POST",
+      url: "/api/billing/payment-import-review-records/payment-import-review-refund-cue/refund-chargeback-reviews",
+      payload: {
+        id: "refund-chargeback-review-route-test",
+        decision: "exception_confirmed",
+        reason: "refund_observed",
+        idempotencyKey: "synthetic-refund-chargeback-review-key",
+      },
+    });
+    expect(refundChargebackReview.statusCode).toBe(200);
+    expect(refundChargebackReview.json()).toMatchObject({
+      review: {
+        id: "refund-chargeback-review-route-test",
+        paymentImportReviewRecordId: "payment-import-review-refund-cue",
+        category: "refund",
+        decision: "exception_confirmed",
+        reason: "refund_observed",
+        reviewerEvidencePresent: true,
+        boundaries: {
+          rawProviderPayloadRetained: false,
+          refundArtifactRetained: false,
+          disputeArtifactRetained: false,
+          invoiceBalanceMutation: "none",
+          ledgerReversal: "none",
+          trustPosting: "none",
+          providerCommand: "none",
+          clientNotification: "none",
+          fundsMovement: "none",
+          refundHandling: "review_decision_only",
+          chargebackHandling: "review_decision_only",
+        },
+      },
+    });
+    const repeatedRefundChargebackReview = await server.inject({
+      method: "POST",
+      url: "/api/billing/payment-import-review-records/payment-import-review-refund-cue/refund-chargeback-reviews",
+      payload: {
+        id: "refund-chargeback-review-route-retry",
+        decision: "exception_confirmed",
+        reason: "refund_observed",
+        idempotencyKey: "synthetic-refund-chargeback-review-key",
+      },
+    });
+    expect(repeatedRefundChargebackReview.statusCode).toBe(200);
+    expect(repeatedRefundChargebackReview.json()).toMatchObject({
+      review: { id: "refund-chargeback-review-route-test" },
+    });
+    const conflictingRefundChargebackReview = await server.inject({
+      method: "POST",
+      url: "/api/billing/payment-import-review-records/payment-import-review-refund-cue/refund-chargeback-reviews",
+      payload: {
+        decision: "needs_more_evidence",
+        reason: "status_unclear",
+        idempotencyKey: "synthetic-refund-chargeback-review-key",
+      },
+    });
+    expect(conflictingRefundChargebackReview.statusCode).toBe(409);
+    expect(conflictingRefundChargebackReview.json()).toMatchObject({
+      code: "IDEMPOTENCY_KEY_CONFLICT",
+    });
+    const refundReasonMismatch = await server.inject({
+      method: "POST",
+      url: "/api/billing/payment-import-review-records/payment-import-review-refund-cue/refund-chargeback-reviews",
+      payload: {
+        decision: "exception_confirmed",
+        reason: "chargeback_observed",
+        idempotencyKey: "synthetic-refund-reason-mismatch",
+      },
+    });
+    expect(refundReasonMismatch.statusCode).toBe(409);
+    expect(refundReasonMismatch.json()).toMatchObject({
+      code: "PAYMENT_IMPORT_REFUND_CHARGEBACK_REVIEW_REASON_MISMATCH",
+    });
+    const rawRefundChargebackReviewRejected = await server.inject({
+      method: "POST",
+      url: "/api/billing/payment-import-review-records/payment-import-review-refund-cue/refund-chargeback-reviews",
+      payload: {
+        decision: "needs_more_evidence",
+        reason: "missing_reviewer_evidence",
+        idempotencyKey: "synthetic-raw-refund-chargeback-review",
+        disputePacket: { private: "Synthetic private dispute packet" },
+      },
+    });
+    expect(rawRefundChargebackReviewRejected.statusCode).toBe(400);
+    const listedRefundChargebackReviews = await server.inject({
+      method: "GET",
+      url: "/api/billing/payment-import-review-records/payment-import-review-refund-cue/refund-chargeback-reviews",
+    });
+    expect(listedRefundChargebackReviews.statusCode).toBe(200);
+    expect(listedRefundChargebackReviews.json()).toMatchObject({
+      reviewOnly: true,
+      reviews: [expect.objectContaining({ id: "refund-chargeback-review-route-test" })],
     });
     const refundDepositReview = await server.inject({
       method: "POST",
@@ -2699,6 +2806,32 @@ describe("billing routes", () => {
         eventStatus: "chargeback_observed",
       },
     });
+    const chargebackReview = await server.inject({
+      method: "POST",
+      url: "/api/billing/payment-import-review-records/payment-import-review-chargeback-cue/refund-chargeback-reviews",
+      payload: {
+        id: "chargeback-review-route-test",
+        decision: "needs_more_evidence",
+        reason: "status_unclear",
+        idempotencyKey: "synthetic-chargeback-review-key",
+      },
+    });
+    expect(chargebackReview.statusCode).toBe(200);
+    expect(chargebackReview.json()).toMatchObject({
+      review: {
+        id: "chargeback-review-route-test",
+        category: "chargeback",
+        decision: "needs_more_evidence",
+        reason: "status_unclear",
+        boundaries: expect.objectContaining({
+          rawProviderPayloadRetained: false,
+          disputeArtifactRetained: false,
+          providerCommand: "none",
+          fundsMovement: "none",
+          trustPosting: "none",
+        }),
+      },
+    });
 
     const depositWithoutCandidateRecord = await server.inject({
       method: "POST",
@@ -2728,6 +2861,19 @@ describe("billing routes", () => {
     expect(missingCandidateDepositReview.statusCode).toBe(409);
     expect(missingCandidateDepositReview.json()).toMatchObject({
       code: "PAYMENT_IMPORT_DEPOSIT_MATCH_CANDIDATE_REQUIRED",
+    });
+    const depositRefundChargebackReview = await server.inject({
+      method: "POST",
+      url: "/api/billing/payment-import-review-records/payment-import-review-route-test/refund-chargeback-reviews",
+      payload: {
+        decision: "needs_more_evidence",
+        reason: "status_unclear",
+        idempotencyKey: "synthetic-deposit-refund-chargeback-review",
+      },
+    });
+    expect(depositRefundChargebackReview.statusCode).toBe(409);
+    expect(depositRefundChargebackReview.json()).toMatchObject({
+      code: "PAYMENT_IMPORT_REFUND_CHARGEBACK_REVIEW_UNSUPPORTED",
     });
 
     const conflictRecord = await server.inject({
@@ -2811,6 +2957,15 @@ describe("billing routes", () => {
       },
     });
     expect(crossMatterDepositReview.statusCode).toBe(403);
+    const crossMatterRefundChargebackReview = await server.inject({
+      method: "GET",
+      url: "/api/billing/payment-import-review-records/payment-import-review-refund-cue/refund-chargeback-reviews",
+      headers: {
+        "x-open-practice-user-id": "user-other-licensee",
+        "x-open-practice-firm-id": "firm-west-legal",
+      },
+    });
+    expect(crossMatterRefundChargebackReview.statusCode).toBe(403);
 
     await repository.createPayment({
       payment: {
@@ -2897,6 +3052,7 @@ describe("billing routes", () => {
           refundReviewCueCount: number;
           chargebackReviewCueCount: number;
           refundChargebackReviewCueCount: number;
+          refundChargebackReviewDecisionCount: number;
         };
         matters: Array<{
           matterId: string;
@@ -2919,6 +3075,7 @@ describe("billing routes", () => {
       refundReviewCueCount: 1,
       chargebackReviewCueCount: 1,
       refundChargebackReviewCueCount: 2,
+      refundChargebackReviewDecisionCount: 2,
     });
     expect(
       dashboard
@@ -2934,6 +3091,13 @@ describe("billing routes", () => {
                 category: string;
                 status: string;
                 reviewAction: string;
+              };
+              refundChargebackReviewDecisionCount?: number;
+              latestRefundChargebackReview?: {
+                category: string;
+                decision: string;
+                reason: string;
+                boundaries: { providerCommand: string; fundsMovement: string };
               };
               reconciliationReadiness?: {
                 eligible: boolean;
@@ -3010,6 +3174,16 @@ describe("billing routes", () => {
             status: "needs_review",
             reviewAction: "staff_refund_chargeback_review_required",
           }),
+          refundChargebackReviewDecisionCount: 1,
+          latestRefundChargebackReview: expect.objectContaining({
+            category: "refund",
+            decision: "exception_confirmed",
+            reason: "refund_observed",
+            boundaries: expect.objectContaining({
+              providerCommand: "none",
+              fundsMovement: "none",
+            }),
+          }),
           boundaries: expect.objectContaining({
             rawProviderPayloadRetained: false,
             trustPosting: "none",
@@ -3020,6 +3194,12 @@ describe("billing routes", () => {
           refundChargebackReviewCue: expect.objectContaining({
             category: "chargeback",
             status: "needs_review",
+          }),
+          refundChargebackReviewDecisionCount: 1,
+          latestRefundChargebackReview: expect.objectContaining({
+            category: "chargeback",
+            decision: "needs_more_evidence",
+            reason: "status_unclear",
           }),
         }),
       ]),
@@ -3080,6 +3260,31 @@ describe("billing routes", () => {
         trustPosting: "none",
       }),
     });
+    const refundChargebackAudit = (await auditEvents(repository)).find(
+      (event) => event.action === "payment_import_refund_chargeback_review.recorded",
+    );
+    expect(refundChargebackAudit).toMatchObject({
+      resourceType: "payment_import_refund_chargeback_review",
+      resourceId: "refund-chargeback-review-route-test",
+      metadata: expect.objectContaining({
+        paymentImportRefundChargebackReviewId: "refund-chargeback-review-route-test",
+        paymentImportReviewRecordId: "payment-import-review-refund-cue",
+        category: "refund",
+        decision: "exception_confirmed",
+        reason: "refund_observed",
+        reviewerEvidencePresent: true,
+        idempotencyKeyPresent: true,
+        rawProviderPayloadRetained: false,
+        refundArtifactRetained: false,
+        disputeArtifactRetained: false,
+        invoiceBalanceMutation: "none",
+        ledgerReversal: "none",
+        providerCommand: "none",
+        clientNotification: "none",
+        fundsMovement: "none",
+        trustPosting: "none",
+      }),
+    });
     const depositMatchAudit = (await auditEvents(repository)).find(
       (event) => event.action === "payment_import_deposit_match_review.recorded",
     );
@@ -3108,6 +3313,9 @@ describe("billing routes", () => {
     });
     expect(JSON.stringify(await auditEvents(repository))).not.toContain(
       "synthetic-deposit-match-review-key",
+    );
+    expect(JSON.stringify(await auditEvents(repository))).not.toContain(
+      "synthetic-refund-chargeback-review-key",
     );
     expect(JSON.stringify(await auditEvents(repository))).not.toContain(
       "Synthetic private raw provider payload",

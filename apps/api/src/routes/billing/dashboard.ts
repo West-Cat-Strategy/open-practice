@@ -31,6 +31,7 @@ export function registerBillingDashboardRoutes(
       paymentRequests,
       paymentImportReviewRecords,
       paymentImportDepositMatchReviews,
+      paymentImportRefundChargebackReviews,
       periodLocks,
       rateRules,
       expenseCategories,
@@ -42,6 +43,7 @@ export function registerBillingDashboardRoutes(
       repository.listHostedPaymentRequests(request.auth.firmId),
       repository.listPaymentImportReviewRecords(request.auth.firmId),
       repository.listPaymentImportDepositMatchReviews(request.auth.firmId),
+      repository.listPaymentImportRefundChargebackReviews(request.auth.firmId),
       repository.listBillingPeriodLocks(request.auth.firmId),
       repository.listBillingRateRules(request.auth.firmId),
       repository.listBillingExpenseCategories(request.auth.firmId),
@@ -177,6 +179,10 @@ export function registerBillingDashboardRoutes(
               .filter((review) => review.paymentImportReviewRecordId === record.id)
               .sort((left, right) => Date.parse(right.reviewedAt) - Date.parse(left.reviewedAt));
             const latestReview = recordDepositMatchReviews[0];
+            const recordRefundChargebackReviews = paymentImportRefundChargebackReviews
+              .filter((review) => review.paymentImportReviewRecordId === record.id)
+              .sort((left, right) => Date.parse(right.reviewedAt) - Date.parse(left.reviewedAt));
+            const latestRefundChargebackReview = recordRefundChargebackReviews[0];
             const currentManualPayment = latestReview
               ? payments.find((payment) => payment.id === latestReview.candidateManualPaymentId)
               : undefined;
@@ -208,6 +214,18 @@ export function registerBillingDashboardRoutes(
               reviewState: record.reviewState,
               boundaries: record.boundaries,
               refundChargebackReviewCue: paymentImportRefundChargebackReviewCue(record),
+              refundChargebackReviewDecisionCount: recordRefundChargebackReviews.length,
+              latestRefundChargebackReview: latestRefundChargebackReview
+                ? {
+                    id: latestRefundChargebackReview.id,
+                    category: latestRefundChargebackReview.category,
+                    decision: latestRefundChargebackReview.decision,
+                    reason: latestRefundChargebackReview.reason,
+                    reviewerEvidencePresent: latestRefundChargebackReview.reviewerEvidencePresent,
+                    reviewedAt: latestRefundChargebackReview.reviewedAt,
+                    boundaries: latestRefundChargebackReview.boundaries,
+                  }
+                : undefined,
               depositMatchReviewCount: recordDepositMatchReviews.length,
               latestDepositMatchReview: latestReview
                 ? {
@@ -298,6 +316,10 @@ export function registerBillingDashboardRoutes(
         refundChargebackReviewCueCount: visiblePaymentImportReviewRecords.filter(
           (record) => record.refundChargebackReviewCue,
         ).length,
+        refundChargebackReviewDecisionCount: visiblePaymentImportReviewRecords.reduce(
+          (count, record) => count + (record.refundChargebackReviewDecisionCount ?? 0),
+          0,
+        ),
       },
       periodLocks,
       rateRules,

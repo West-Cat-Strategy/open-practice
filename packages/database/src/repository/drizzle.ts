@@ -175,9 +175,11 @@ import {
 } from "./hosted-payment-requests/drizzle.js";
 import {
   createDrizzlePaymentImportDepositMatchReview,
+  createDrizzlePaymentImportRefundChargebackReview,
   createDrizzlePaymentImportReviewRecord,
   getDrizzlePaymentImportReviewRecord,
   listDrizzlePaymentImportDepositMatchReviews,
+  listDrizzlePaymentImportRefundChargebackReviews,
   listDrizzlePaymentImportReviewRecords,
 } from "./payment-import-review-records/drizzle.js";
 import {
@@ -2456,6 +2458,19 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     options: Parameters<OpenPracticeRepository["listPaymentImportDepositMatchReviews"]>[1] = {},
   ): ReturnType<OpenPracticeRepository["listPaymentImportDepositMatchReviews"]> {
     return listDrizzlePaymentImportDepositMatchReviews(this.db, firmId, options);
+  }
+
+  async createPaymentImportRefundChargebackReview(
+    record: Parameters<OpenPracticeRepository["createPaymentImportRefundChargebackReview"]>[0],
+  ): ReturnType<OpenPracticeRepository["createPaymentImportRefundChargebackReview"]> {
+    return createDrizzlePaymentImportRefundChargebackReview(this.db, record);
+  }
+
+  async listPaymentImportRefundChargebackReviews(
+    firmId: string,
+    options: Parameters<OpenPracticeRepository["listPaymentImportRefundChargebackReviews"]>[1] = {},
+  ): ReturnType<OpenPracticeRepository["listPaymentImportRefundChargebackReviews"]> {
+    return listDrizzlePaymentImportRefundChargebackReviews(this.db, firmId, options);
   }
 
   async createTrustTransferRequest(

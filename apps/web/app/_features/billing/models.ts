@@ -191,6 +191,36 @@ export interface BillingPaymentImportRefundChargebackReviewCue {
   clientNotification: "none";
 }
 
+export interface PaymentImportRefundChargebackReviewBoundary {
+  rawProviderPayloadRetained: false;
+  refundArtifactRetained: false;
+  disputeArtifactRetained: false;
+  invoiceBalanceMutation: "none";
+  ledgerReversal: "none";
+  trustPosting: "none";
+  providerCommand: "none";
+  clientNotification: "none";
+  fundsMovement: "none";
+  refundHandling: "review_decision_only";
+  chargebackHandling: "review_decision_only";
+}
+
+export interface BillingPaymentImportRefundChargebackReviewSummary {
+  id: string;
+  category: "refund" | "chargeback";
+  decision: "exception_confirmed" | "exception_rejected" | "needs_more_evidence";
+  reason:
+    | "refund_observed"
+    | "chargeback_observed"
+    | "duplicate_or_conflict"
+    | "candidate_reference_mismatch"
+    | "missing_reviewer_evidence"
+    | "status_unclear";
+  reviewerEvidencePresent: true;
+  reviewedAt: string;
+  boundaries: PaymentImportRefundChargebackReviewBoundary;
+}
+
 export interface BillingPaymentImportReviewSummary {
   id: string;
   matterId: string;
@@ -212,6 +242,8 @@ export interface BillingPaymentImportReviewSummary {
   reviewState: "needs_review";
   boundaries: PaymentImportReviewBoundary;
   refundChargebackReviewCue?: BillingPaymentImportRefundChargebackReviewCue;
+  refundChargebackReviewDecisionCount?: number;
+  latestRefundChargebackReview?: BillingPaymentImportRefundChargebackReviewSummary;
   depositMatchReviewCount?: number;
   latestDepositMatchReview?: BillingPaymentImportDepositMatchReviewSummary;
   reconciliationReadiness?: BillingPaymentImportDepositMatchReconciliationReadiness;
@@ -248,6 +280,7 @@ export interface BillingDashboardResponse {
     refundReviewCueCount?: number;
     chargebackReviewCueCount?: number;
     refundChargebackReviewCueCount?: number;
+    refundChargebackReviewDecisionCount?: number;
   };
   periodLocks: BillingPeriodLockRecord[];
   rateRules: BillingRateRuleRecord[];

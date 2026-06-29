@@ -810,6 +810,10 @@ export function BillingSection({
           <strong>{activePaymentImportReviewSummary.refundChargebackReviewCueCount}</strong>
         </div>
         <div>
+          <span className="field-label">Exception decisions</span>
+          <strong>{activePaymentImportReviewSummary.refundChargebackReviewDecisionCount}</strong>
+        </div>
+        <div>
           <span className="field-label">Refund cues</span>
           <strong>{activePaymentImportReviewSummary.refundReviewCueCount}</strong>
         </div>
@@ -857,6 +861,15 @@ export function BillingSection({
                   Refund/chargeback review: {record.refundChargebackReviewCue.category} ·{" "}
                   {record.refundChargebackReviewCue.status.replaceAll("_", " ")} · No provider
                   command
+                </small>
+              ) : null}
+              {record.latestRefundChargebackReview ? (
+                <small>
+                  Latest exception decision:{" "}
+                  {record.latestRefundChargebackReview.category.replaceAll("_", " ")} ·{" "}
+                  {record.latestRefundChargebackReview.decision.replaceAll("_", " ")} ·{" "}
+                  {record.latestRefundChargebackReview.reason.replaceAll("_", " ")} · No funds
+                  movement
                 </small>
               ) : null}
             </span>

@@ -15,6 +15,7 @@ import {
   defaultBillingExpenseCategoriesForFirm,
   defaultHostedPaymentProcessorState,
   defaultPaymentImportDepositMatchReviewBoundary,
+  defaultPaymentImportRefundChargebackReviewBoundary,
   defaultPaymentImportReviewBoundary,
   defaultPaymentPlanPlaceholder,
   buildPaymentSettlementReview,
@@ -28,6 +29,7 @@ import {
   paymentImportDepositMatchReconciliationReadiness,
   paymentImportReviewDepositMatchCue,
   paymentImportReviewHasConflict,
+  paymentImportRefundChargebackReviewDecisionMatchesCue,
   paymentImportRefundChargebackReviewCue,
   resolveBillingRateRule,
   summarizeTrustTransferLedgerLink,
@@ -38,6 +40,7 @@ import {
   type InvoiceRecord,
   type ManualPaymentRecord,
   type PaymentImportDepositMatchReviewRecord,
+  type PaymentImportRefundChargebackReviewRecord,
   type PaymentImportReviewRecord,
 } from "./billing.js";
 import {
@@ -481,6 +484,54 @@ describe("billing period locks and rate rules", () => {
       clientNotification: "none",
       depositMatching: "review_decision_only",
     });
+  });
+
+  it("keeps refund and chargeback review decisions enum-only and side-effect free", () => {
+    expect(defaultPaymentImportRefundChargebackReviewBoundary()).toEqual({
+      rawProviderPayloadRetained: false,
+      refundArtifactRetained: false,
+      disputeArtifactRetained: false,
+      invoiceBalanceMutation: "none",
+      ledgerReversal: "none",
+      trustPosting: "none",
+      providerCommand: "none",
+      clientNotification: "none",
+      fundsMovement: "none",
+      refundHandling: "review_decision_only",
+      chargebackHandling: "review_decision_only",
+    });
+
+    const refundReview = {
+      id: "refund-chargeback-review-domain",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      paymentImportReviewRecordId: "payment-import-review-domain",
+      category: "refund",
+      decision: "exception_confirmed",
+      reason: "refund_observed",
+      reviewerEvidencePresent: true,
+      idempotencyKey: "synthetic-refund-review",
+      decisionFingerprint: "synthetic-fingerprint",
+      boundaries: defaultPaymentImportRefundChargebackReviewBoundary(),
+      reviewedByUserId: "user-licensee",
+      reviewedAt: "2026-06-29T12:00:00.000Z",
+      createdAt: "2026-06-29T12:00:00.000Z",
+    } satisfies PaymentImportRefundChargebackReviewRecord;
+
+    expect(paymentImportRefundChargebackReviewDecisionMatchesCue(refundReview)).toBe(true);
+    expect(
+      paymentImportRefundChargebackReviewDecisionMatchesCue({
+        ...refundReview,
+        reason: "chargeback_observed",
+      }),
+    ).toBe(false);
+    expect(
+      paymentImportRefundChargebackReviewDecisionMatchesCue({
+        ...refundReview,
+        decision: "needs_more_evidence",
+        reason: "status_unclear",
+      }),
+    ).toBe(true);
   });
 
   it("classifies OP-T162 deposit-match decisions as read-only manual reconcile cues", () => {

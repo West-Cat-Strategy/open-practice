@@ -429,9 +429,15 @@ surface.
     `eventStatus=refund_observed` or `eventStatus=chargeback_observed`. The surface is metadata
     only and preserves no provider calls, dispute packets, invoice mutation, ledger reversals,
     client notifications, trust transfers, or trust posting.
+  - **Shipped refund/chargeback decision slice:** The 2026-06-29 follow-up adds staff-only,
+    provider-neutral enum decisions over those derived refund/chargeback cues. It stores only safe
+    IDs, derived category, enum decision/reason, idempotency posture, reviewer metadata, and
+    explicit no-side-effect flags; it does not store amounts, external payment IDs, notes, provider
+    payloads, refund artifacts, dispute packets, invoice mutations, ledger reversals, client
+    notifications, trust postings, provider commands, or funds movement.
   - **Remaining boundary:** Deposit matching automation, refund and chargeback command workflows,
     settlement automation, provider webhook/replay behavior, provider commands, trust posting, and
-    any funds movement remain separate future work after the cue surface.
+    any funds movement remain separate future work after the cue and decision surfaces.
   - **References:** `opencollective__opencollective-api` settlement/reconciliation concepts and
     `blnkfinance__blnk` reconciliation boundaries.
   - **Reuse and snippets:** Open Collective is MIT but architecture-only in this corpus; Blnk is

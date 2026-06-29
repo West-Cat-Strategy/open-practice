@@ -1,15 +1,19 @@
 import { describe, expect, it } from "vitest";
 import {
   defaultPaymentImportDepositMatchReviewBoundary,
+  defaultPaymentImportRefundChargebackReviewBoundary,
   defaultPaymentImportReviewBoundary,
   type PaymentImportDepositMatchReviewRecord,
+  type PaymentImportRefundChargebackReviewRecord,
   type PaymentImportReviewRecord,
 } from "@open-practice/domain";
 import {
   createDrizzlePaymentImportDepositMatchReview,
+  createDrizzlePaymentImportRefundChargebackReview,
   createDrizzlePaymentImportReviewRecord,
   getDrizzlePaymentImportReviewRecord,
   listDrizzlePaymentImportDepositMatchReviews,
+  listDrizzlePaymentImportRefundChargebackReviews,
   listDrizzlePaymentImportReviewRecords,
 } from "../src/repository/payment-import-review-records/drizzle.js";
 import { InMemoryOpenPracticeRepository } from "../src/repository/memory.js";
@@ -124,6 +128,47 @@ function rowFromDepositMatchReview(record: PaymentImportDepositMatchReviewRecord
   } satisfies typeof schema.paymentImportDepositMatchReviews.$inferSelect;
 }
 
+function refundChargebackReviewRecord(
+  overrides: Partial<PaymentImportRefundChargebackReviewRecord> = {},
+): PaymentImportRefundChargebackReviewRecord {
+  return {
+    id: "refund-chargeback-review-test",
+    firmId: "firm-west-legal",
+    matterId: "matter-001",
+    paymentImportReviewRecordId: "payment-import-review-test",
+    category: "refund",
+    decision: "exception_confirmed",
+    reason: "refund_observed",
+    reviewerEvidencePresent: true,
+    idempotencyKey: "synthetic-refund-chargeback-review-key",
+    decisionFingerprint: "synthetic-refund-chargeback-review-fingerprint",
+    boundaries: defaultPaymentImportRefundChargebackReviewBoundary(),
+    reviewedByUserId: "user-licensee",
+    reviewedAt: "2026-06-29T16:10:00.000Z",
+    createdAt: "2026-06-29T16:10:00.000Z",
+    ...overrides,
+  };
+}
+
+function rowFromRefundChargebackReview(record: PaymentImportRefundChargebackReviewRecord) {
+  return {
+    id: record.id,
+    firmId: record.firmId,
+    matterId: record.matterId,
+    paymentImportReviewRecordId: record.paymentImportReviewRecordId,
+    category: record.category,
+    decision: record.decision,
+    reason: record.reason,
+    reviewerEvidencePresent: record.reviewerEvidencePresent,
+    idempotencyKey: record.idempotencyKey,
+    decisionFingerprint: record.decisionFingerprint,
+    boundaries: record.boundaries,
+    reviewedByUserId: record.reviewedByUserId,
+    reviewedAt: new Date(record.reviewedAt),
+    createdAt: new Date(record.createdAt),
+  } satisfies typeof schema.paymentImportRefundChargebackReviews.$inferSelect;
+}
+
 function drizzleRowsDb(rows: Array<typeof schema.paymentImportReviewRecords.$inferSelect>) {
   const db = {
     select: () => ({
@@ -165,6 +210,34 @@ function drizzleExistingDb(row: typeof schema.paymentImportReviewRecords.$inferS
 
 function drizzleExistingDepositMatchDb(
   row: typeof schema.paymentImportDepositMatchReviews.$inferSelect,
+) {
+  const db = {
+    select: () => ({
+      from: () => ({
+        where: async () => [row],
+      }),
+    }),
+  } as unknown as OpenPracticeDatabase;
+  return db;
+}
+
+function drizzleRefundChargebackRowsDb(
+  rows: Array<typeof schema.paymentImportRefundChargebackReviews.$inferSelect>,
+) {
+  const db = {
+    select: () => ({
+      from: () => ({
+        where: () => ({
+          orderBy: async () => rows,
+        }),
+      }),
+    }),
+  } as unknown as OpenPracticeDatabase;
+  return db;
+}
+
+function drizzleExistingRefundChargebackDb(
+  row: typeof schema.paymentImportRefundChargebackReviews.$inferSelect,
 ) {
   const db = {
     select: () => ({
@@ -269,6 +342,48 @@ describe("payment import review record repositories", () => {
     });
   });
 
+  it("stores append-only memory refund and chargeback reviews without mutating invoices", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const record = paymentImportReviewRecord({
+      eventStatus: "refund_observed",
+    });
+    const review = refundChargebackReviewRecord();
+    const invoiceBefore = await repository.getInvoice("firm-west-legal", "invoice-001");
+
+    await repository.createPaymentImportReviewRecord(record);
+    await expect(repository.createPaymentImportRefundChargebackReview(review)).resolves.toEqual(
+      review,
+    );
+    await expect(
+      repository.createPaymentImportRefundChargebackReview({
+        ...review,
+        id: "refund-chargeback-review-retry",
+      }),
+    ).resolves.toEqual(review);
+    await expect(
+      repository.createPaymentImportRefundChargebackReview({
+        ...review,
+        decisionFingerprint: "changed-refund-chargeback-fingerprint",
+      }),
+    ).rejects.toBeInstanceOf(IdempotencyKeyConflictError);
+    await expect(
+      repository.listPaymentImportRefundChargebackReviews("firm-west-legal", {
+        paymentImportReviewRecordId: record.id,
+      }),
+    ).resolves.toEqual([review]);
+    await expect(
+      repository.listPaymentImportRefundChargebackReviews("firm-west-legal", {
+        category: "refund",
+        decision: "exception_confirmed",
+      }),
+    ).resolves.toEqual([review]);
+    await expect(repository.getInvoice("firm-west-legal", "invoice-001")).resolves.toMatchObject({
+      paidCents: invoiceBefore?.paidCents,
+      balanceDueCents: invoiceBefore?.balanceDueCents,
+      status: invoiceBefore?.status,
+    });
+  });
+
   it("reuses identical Drizzle rows and rejects conflicting evidence before insert", async () => {
     const record = paymentImportReviewRecord();
     const db = drizzleExistingDb(rowFromRecord(record));
@@ -294,6 +409,21 @@ describe("payment import review record repositories", () => {
       createDrizzlePaymentImportDepositMatchReview(db, {
         ...review,
         decisionFingerprint: "changed-review-fingerprint",
+      }),
+    ).rejects.toBeInstanceOf(IdempotencyKeyConflictError);
+  });
+
+  it("reuses identical Drizzle refund and chargeback reviews and rejects changed replay", async () => {
+    const review = refundChargebackReviewRecord();
+    const db = drizzleExistingRefundChargebackDb(rowFromRefundChargebackReview(review));
+
+    await expect(createDrizzlePaymentImportRefundChargebackReview(db, review)).resolves.toEqual(
+      review,
+    );
+    await expect(
+      createDrizzlePaymentImportRefundChargebackReview(db, {
+        ...review,
+        decisionFingerprint: "changed-refund-chargeback-fingerprint",
       }),
     ).rejects.toBeInstanceOf(IdempotencyKeyConflictError);
   });
@@ -353,5 +483,38 @@ describe("payment import review record repositories", () => {
         decision: "candidate_supported",
       }),
     ).resolves.toEqual([supportedReview]);
+  });
+
+  it("lists Drizzle refund and chargeback review rows through normalized repository options", async () => {
+    const confirmedReview = refundChargebackReviewRecord({
+      id: "refund-chargeback-review-later",
+      reviewedAt: "2026-06-29T16:15:00.000Z",
+    });
+    const needsEvidenceReview = refundChargebackReviewRecord({
+      id: "refund-chargeback-review-earlier",
+      category: "chargeback",
+      decision: "needs_more_evidence",
+      reason: "status_unclear",
+      idempotencyKey: "synthetic-chargeback-review-key",
+      decisionFingerprint: "synthetic-chargeback-review-fingerprint",
+      reviewedAt: "2026-06-29T16:05:00.000Z",
+    });
+    const reviews = [confirmedReview, needsEvidenceReview];
+    const db = drizzleRefundChargebackRowsDb(reviews.map(rowFromRefundChargebackReview));
+
+    await expect(
+      listDrizzlePaymentImportRefundChargebackReviews(db, "firm-west-legal", {
+        paymentImportReviewRecordId: "payment-import-review-test",
+      }),
+    ).resolves.toEqual(reviews);
+    const confirmedOnlyDb = drizzleRefundChargebackRowsDb([
+      rowFromRefundChargebackReview(confirmedReview),
+    ]);
+    await expect(
+      listDrizzlePaymentImportRefundChargebackReviews(confirmedOnlyDb, "firm-west-legal", {
+        category: "refund",
+        decision: "exception_confirmed",
+      }),
+    ).resolves.toEqual([confirmedReview]);
   });
 });

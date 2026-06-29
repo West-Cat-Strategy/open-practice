@@ -1203,6 +1203,72 @@ describe("audit event taxonomy", () => {
     expect(depositMatchReviewClassification.metadataHints.resource).not.toEqual(
       expect.arrayContaining(["idempotencyKey", "rawPayload"]),
     );
+
+    const refundChargebackReviewClassification = classifyAuditEvent(
+      auditEvent({
+        action: "payment_import_refund_chargeback_review.recorded",
+        resourceType: "payment_import_refund_chargeback_review",
+        resourceId: "refund-chargeback-review-001",
+        metadata: {
+          matterId: "matter-001",
+          paymentImportRefundChargebackReviewId: "refund-chargeback-review-001",
+          paymentImportReviewRecordId: "payment-import-review-001",
+          category: "refund",
+          decision: "exception_confirmed",
+          reason: "refund_observed",
+          reviewerEvidencePresent: true,
+          idempotencyKeyPresent: true,
+          idempotencyKey: "synthetic-private-key",
+          externalEventId: "evt_synthetic_private",
+          disputePacket: { private: "synthetic private dispute packet" },
+          refundArtifact: { private: "synthetic private refund artifact" },
+          rawProviderPayloadRetained: false,
+          refundArtifactRetained: false,
+          disputeArtifactRetained: false,
+          invoiceBalanceMutation: "none",
+          ledgerReversal: "none",
+          trustPosting: "none",
+          providerCommand: "none",
+          clientNotification: "none",
+          fundsMovement: "none",
+          refundHandling: "review_decision_only",
+          chargebackHandling: "review_decision_only",
+        },
+      }),
+    );
+    expect(refundChargebackReviewClassification).toMatchObject({
+      category: "billing",
+      known: true,
+      matterScope: "matter",
+      resourceTypeMatches: true,
+    });
+    expect(refundChargebackReviewClassification.metadataHints.resource).toEqual(
+      expect.arrayContaining([
+        "paymentImportRefundChargebackReviewId",
+        "paymentImportReviewRecordId",
+        "category",
+        "decision",
+        "reason",
+        "reviewerEvidencePresent",
+        "idempotencyKeyPresent",
+        "rawProviderPayloadRetained",
+        "refundArtifactRetained",
+        "disputeArtifactRetained",
+        "invoiceBalanceMutation",
+        "ledgerReversal",
+        "providerCommand",
+        "clientNotification",
+        "fundsMovement",
+      ]),
+    );
+    expect(refundChargebackReviewClassification.metadataHints.resource).not.toEqual(
+      expect.arrayContaining([
+        "idempotencyKey",
+        "externalEventId",
+        "disputePacket",
+        "refundArtifact",
+      ]),
+    );
   });
 
   it("classifies reconciliation exception resolution events without statement detail hints", () => {

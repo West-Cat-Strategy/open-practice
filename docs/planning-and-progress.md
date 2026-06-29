@@ -10,8 +10,8 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 | Snapshot              | Value                                                                |
 | --------------------- | -------------------------------------------------------------------- |
-| Current focus         | 2026-06-29 mainline consolidation publication and prune closeout.    |
-| Next recommended pick | Publish validated `main`, then prune only clean merged worktrees.    |
+| Current focus         | Staff refund/chargeback review decisions over payment import cues.   |
+| Next recommended pick | Finish selector proof, then prepare merge/release handoff.           |
 | Ready rows            | 0                                                                    |
 | Candidate rows        | 0                                                                    |
 | In progress rows      | 0                                                                    |
@@ -90,6 +90,15 @@ row cue metadata, and allowlisted audit metadata. The surface is metadata-only a
 calls, dispute packets, ledger reversals, invoice mutations, client notifications, trust transfers,
 or trust posting. Proof is recorded in
 [refund/chargeback review cue proof](validation/OP_REFUND_CHARGEBACK_REVIEW_CUES_PROOF_2026-06-28.md).
+
+The 2026-06-29 `feat/refund-chargeback-review-decisions-20260629` branch adds the smallest
+staff-only decision layer over those refund/chargeback cues. Only existing payment import review
+records with `eventFamily=payment` and `eventStatus=refund_observed` or
+`eventStatus=chargeback_observed` can receive enum decisions. The slice stores safe IDs, derived
+category, enum decision/reason, idempotency posture, reviewer metadata, and explicit no-side-effect
+flags only; it does not call providers, store refund/dispute artifacts or notes, mutate invoices,
+reverse ledgers, post trust entries, notify clients, or move funds. Proof is recorded in
+[refund/chargeback review decisions proof](validation/OP_REFUND_CHARGEBACK_REVIEW_DECISIONS_PROOF_2026-06-29.md).
 
 The 2026-06-28 review-only calendar aging cue follow-up adds staff-only fresh/aging/stale metadata
 for open appointment booking tentative holds and open calendar scheduling requests. The cues are
@@ -806,6 +815,14 @@ records with `eventStatus=refund_observed` or `eventStatus=chargeback_observed`.
 surface only, with no provider calls, dispute packet storage, invoice mutation, ledger reversal,
 client notification, trust transfer, or trust posting. Proof is recorded in
 [refund/chargeback review cue proof](validation/OP_REFUND_CHARGEBACK_REVIEW_CUES_PROOF_2026-06-28.md).
+
+The 2026-06-29 refund/chargeback review decision follow-up records staff-only enum decisions over
+those existing payment import exception cues. It enforces reason/category matching for confirmed
+exceptions, idempotent replay, strict request fields, safe audit metadata, dashboard decision counts,
+and latest-decision visibility while preserving no provider calls, refund/dispute artifacts, invoice
+mutation, ledger reversal, client notification, trust posting, or funds movement. Proof is recorded
+in
+[refund/chargeback review decisions proof](validation/OP_REFUND_CHARGEBACK_REVIEW_DECISIONS_PROOF_2026-06-29.md).
 
 The 2026-06-16 Signature Request Envelope Metadata branch adds OP-authored signer-order and
 field-placement metadata directly to existing signature requests. Domain validation stays
