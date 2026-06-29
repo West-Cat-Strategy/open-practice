@@ -182,7 +182,9 @@ surface.
     preview snapshots into dashboard resources and removes the unused empty preview placeholder. The
     2026-06-29 follow-up adds staff publish/version-history affordances with immutable published
     versions, firm-scoped publish/list routes, redacted publish audit metadata, and no delivery
-    side effects.
+    side effects. The later 2026-06-29 compare follow-up adds a read-only dashboard comparison
+    between saved drafts and selected immutable published versions without adding routes,
+    persistence, provider, queue, or delivery behavior.
   - **Remaining gap / future boundary:** Campaign automation, bulk sends, subscription management,
     provider delivery side effects, queue/send jobs, and live delivery from template management
     remain future work. `/api/email/previews` stays render-only.

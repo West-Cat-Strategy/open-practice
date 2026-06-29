@@ -583,6 +583,12 @@ The slice adds immutable published versions beside mutable drafts, firm-scoped p
 routes, compact dashboard publish/history controls, redacted publish audit metadata, and route
 authorization coverage while preserving render-only `/api/email/previews`, provider-neutral draft
 storage, and no campaign, bulk-send, subscription, delivery-provider, queue, or send-job behavior.
+The later 2026-06-29 compare follow-up adds a read-only staff dashboard compare surface between
+persisted saved drafts and selected immutable published versions in
+[OP-T158 email template compare proof](validation/OP-T158_EMAIL_TEMPLATE_COMPARE_PROOF_2026-06-29.md).
+It uses already-loaded draft/version data, keeps previews render-only, and adds no API route,
+database, migration, route-catalog, provider-delivery, queue, send-job, campaign, bulk-send, or
+subscription behavior.
 
 The 2026-06-16 financial command approval journal branch adds a read-only `financialCommandJournal`
 projection to the existing trust controls payload. It normalizes existing audit metadata for

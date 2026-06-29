@@ -31,6 +31,10 @@
       "types": "./dist/contact-models.d.ts",
       "default": "./dist/contact-models.js"
     },
+    "./email-template-draft-comparison": {
+      "types": "./dist/email-template-draft-comparison.d.ts",
+      "default": "./dist/email-template-draft-comparison.js"
+    },
     "./practice-presets": {
       "types": "./dist/practice-presets.d.ts",
       "default": "./dist/practice-presets.js"

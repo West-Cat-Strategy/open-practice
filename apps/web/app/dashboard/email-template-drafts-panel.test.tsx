@@ -16,15 +16,17 @@ describe("EmailTemplateDraftsPanel", () => {
             id: "template-draft-001",
             firmId: "firm-west-legal",
             name: "Matter update",
+            description: "Saved draft text",
             category: "matter_update",
             templateKey: "matter.update",
             from: "Open Practice <no-reply@open-practice.local>",
-            subject: "Matter update",
-            textBody: "Synthetic body",
-            htmlBody: "",
-            recipientHints: ["primary_client"],
+            subject: "Updated synthetic subject",
+            textBody: "Updated synthetic body",
+            htmlBody: "<p>Updated synthetic body</p>",
+            recipientHints: ["primary_client", "assistant"],
+            relatedResourceType: "document",
             status: "draft",
-            version: 1,
+            version: 3,
             createdByUserId: "user-admin",
             updatedByUserId: "user-admin",
             createdAt: "2026-06-16T10:00:00.000Z",
@@ -38,10 +40,10 @@ describe("EmailTemplateDraftsPanel", () => {
           category: "matter_update",
           templateKey: "matter.update",
           from: "Open Practice <no-reply@open-practice.local>",
-          subject: "Matter update",
-          textBody: "Synthetic body",
-          htmlBody: "",
-          recipientHints: "primary_client",
+          subject: "Updated synthetic subject",
+          textBody: "Updated synthetic body",
+          htmlBody: "<p>Updated synthetic body</p>",
+          recipientHints: "primary_client, assistant",
         },
         previewSnapshots: [
           {
@@ -70,15 +72,34 @@ describe("EmailTemplateDraftsPanel", () => {
             version: 1,
             draftVersion: 1,
             name: "Matter update",
+            description: "Original published text",
             category: "matter_update",
             templateKey: "matter.update",
             from: "Open Practice <no-reply@open-practice.local>",
-            subject: "Matter update",
-            textBody: "Synthetic body",
-            htmlBody: "",
+            subject: "Original synthetic subject",
+            textBody: "Original synthetic body",
+            htmlBody: "<p>Original synthetic body</p>",
             recipientHints: ["primary_client"],
             publishedByUserId: "user-admin",
             publishedAt: "2026-06-16T10:06:00.000Z",
+          },
+          {
+            id: "published-version-002",
+            firmId: "firm-west-legal",
+            templateDraftId: "template-draft-001",
+            version: 2,
+            draftVersion: 2,
+            name: "Matter update",
+            description: "Published draft text",
+            category: "matter_update",
+            templateKey: "matter.update",
+            from: "Open Practice <no-reply@open-practice.local>",
+            subject: "Published synthetic subject",
+            textBody: "Published synthetic body",
+            htmlBody: "<p>Published synthetic body</p>",
+            recipientHints: ["primary_client"],
+            publishedByUserId: "user-admin",
+            publishedAt: "2026-06-16T10:08:00.000Z",
           },
         ],
         status: "Saved",
@@ -100,8 +121,22 @@ describe("EmailTemplateDraftsPanel", () => {
     expect(html).toContain("Save snapshot");
     expect(html).toContain("Publish version");
     expect(html).toContain("Version history");
+    expect(html).toContain("Compare saved draft");
+    expect(html).toContain("draft v3 vs published v2");
+    expect(html).toContain("6 changed fields");
+    expect(html).toContain("Updated synthetic subject");
+    expect(html).toContain("Published synthetic subject");
+    expect(html).toContain("&lt;p&gt;Updated synthetic body&lt;/p&gt;");
+    expect(html).toContain("&lt;p&gt;Published synthetic body&lt;/p&gt;");
+    expect(html).toContain("Same");
+    expect(html).toContain("Changed");
     expect(html).toContain("Preview snapshots");
     expect(html).not.toContain("Confirm and send");
     expect(html).not.toContain("campaign");
+    expect(html).not.toContain("Bulk send");
+    expect(html).not.toContain("Provider delivery");
+    expect(html).not.toContain("Queue job");
+    expect(html).not.toContain("Send job");
+    expect(html).not.toContain("Subscription");
   });
 });
