@@ -52,6 +52,23 @@ function sampleUser(id: string): User {
   return match;
 }
 
+function fixtureSubject(item: ReturnType<typeof fixtureCase>): User {
+  if (item.subjectId === "client-ada") {
+    return {
+      id: "client-ada",
+      firmId: sampleFirm.id,
+      displayName: "Synthetic Portal Client",
+      email: "ada@example.test",
+      role: "client_external",
+      assignedMatterIds: [],
+      mfaEnabled: true,
+    };
+  }
+  const subject = sampleUser(item.subjectId);
+  if (item.relation === "firm_wide_reviewer") return { ...subject, assignedMatterIds: [] };
+  return subject;
+}
+
 function jobRecord(input: {
   id: string;
   matterId?: string;
@@ -111,6 +128,22 @@ describe("authorization fixture catalogue", () => {
       "ai-proposal:assigned:list-visible",
       "ai-proposal:unassigned:list-hidden",
       "ai-proposal:portal-client:staff-list-denied",
+      "payment-import-review:firm-wide:list-all",
+      "payment-import-review:assigned:list-visible",
+      "payment-import-review:unassigned:list-hidden",
+      "payment-import-review:portal-client:staff-list-denied",
+      "payment-import-review:firm-wide:create",
+      "payment-import-review:assigned:create",
+      "payment-import-review:unassigned:create-denied",
+      "payment-import-review:portal-client:create-denied",
+      "deposit-match-review:firm-wide:list-all",
+      "deposit-match-review:assigned:list-visible",
+      "deposit-match-review:unassigned:list-hidden",
+      "deposit-match-review:portal-client:staff-list-denied",
+      "deposit-match-review:firm-wide:create",
+      "deposit-match-review:assigned:create",
+      "deposit-match-review:unassigned:create-denied",
+      "deposit-match-review:portal-client:create-denied",
       "portal-link:public-share:metadata-visible",
       "portal-link:expired-share:hidden",
       "portal-link:revoked-share:hidden",
@@ -260,6 +293,25 @@ describe("authorization fixture catalogue", () => {
       expect(
         canAccess({
           user: subject,
+          firmId: sampleFirm.id,
+          resource: item.resource,
+          action: item.action,
+          matterId: item.matterId,
+          contactId: item.contactId,
+        }),
+      ).toBe(item.expectedDecision === "allow");
+    }
+  });
+
+  it("keeps payment import review fixtures aligned with billing RBAC and matter scope", () => {
+    for (const item of authorizationFixtureCases.filter(
+      (candidate) =>
+        candidate.family === "payment_import_review" ||
+        candidate.family === "payment_import_deposit_match_review",
+    )) {
+      expect(
+        canAccess({
+          user: fixtureSubject(item),
           firmId: sampleFirm.id,
           resource: item.resource,
           action: item.action,
