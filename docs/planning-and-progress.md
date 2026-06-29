@@ -264,6 +264,16 @@ export bodies, persist raw OCR/provider payloads or free-form notes, or claim ju
 compliance. Proof is being recorded in
 [staff document retention/hold review surface proof](validation/OP_DOCUMENT_RETENTION_HOLD_REVIEW_SURFACE_PROOF_2026-06-20.md).
 
+The 2026-06-29 `feat/document-disposition-metadata-20260629` branch in
+`/Users/bryan/projects/open-practice-document-disposition-metadata-20260629` adds the smallest
+non-destructive document disposition metadata slice on top of that posture. The document-processing
+workbench now derives read-only `dispositionMetadata` inside `retentionHoldReview`, including
+candidate state, blocker counts, source cue counts, optional review schedule fields, and fixed
+no-delete/no-deadline/no-hold-release/no-raw-payload/no-compliance-claim flags. It adds no new
+route, command, migration, audit write, provider payload retention, object deletion, or compliance
+claim. Proof is recorded in
+[document disposition metadata proof](validation/OP_DOCUMENT_DISPOSITION_METADATA_PROOF_2026-06-29.md).
+
 The 2026-06-20 `recovery/inbound-email-operator-replay-20260620` branch adds the smallest
 operator-reviewed inbound-email recovery action: owner-only
 `POST /api/inbound-email/parser-jobs/:jobId/replay-request` marks failed/dead-letter parser jobs
@@ -488,10 +498,10 @@ The 2026-06-17 document retention and hold workflow design is recorded in
 proof in
 [document retention and hold workflow design proof](validation/OP_DOCUMENT_RETENTION_HOLD_WORKFLOW_DESIGN_PROOF_2026-06-17.md).
 It defines practice-configured review schedules, hold-blocking rules, deletion-review gates, and
-records-disposition wording for future reviewed planning. This is docs-first only: current runtime
-document-processing remains limited to non-mutating retention-review hints and metadata-only review
-posture, with no deletion automation, retention-deadline enforcement, legal-hold override command,
-object deletion, or jurisdiction-certified compliance claim.
+records-disposition wording for reviewed planning. Current runtime document-processing remains
+limited to non-mutating retention-review hints, bounded retention/hold reviewer posture, and
+metadata-only disposition posture, with no deletion automation, retention-deadline enforcement,
+legal-hold release command, object deletion, or jurisdiction-certified compliance claim.
 
 The 2026-06-17 firm-managed expense category registry branch adds persisted
 `billing_expense_categories`, nullable `expense_entries.category_code`, Billing controls category

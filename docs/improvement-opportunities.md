@@ -303,6 +303,12 @@ surface.
     non-destructive posture flags in the workbench and Documents UI, blocks reviewer-packet readiness
     while a legal hold or integrity blocker is active, and audits only IDs, enum labels, cue counts,
     and posture flags.
+  - **Shipped disposition metadata slice:** The 2026-06-29 follow-up derives read-only
+    `dispositionMetadata` in the document-processing workbench from the existing retention/hold
+    posture: candidate state, safe blocker counts, source cue counts, optional review schedule
+    fields, and fixed no-delete/no-deadline/no-hold-release/no-raw-payload/no-compliance-claim
+    flags. It adds no command, schema, migration, audit write, provider payload retention, or
+    object-deletion path.
   - **Docs-first design:** The
     [document retention and hold workflow design](document-retention-hold-workflow-design.md) now
     records practice-configured review schedules, hold-blocking rules, deletion-review gates, and

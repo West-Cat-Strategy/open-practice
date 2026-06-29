@@ -1,10 +1,10 @@
 # Document Retention And Hold Workflow Design
 
-This docs-first design records how Open Practice should talk about future document retention,
-hold review, and records-disposition support. It does not add runtime behavior. Current document
-processing remains limited to non-mutating retention-review hints and metadata-only review posture;
-there is no deletion automation, retention-deadline enforcement, legal-hold override command,
-records-disposition workflow, or jurisdiction-certified compliance claim.
+This design records how Open Practice should talk about document retention, hold review, and
+records-disposition support. Current runtime support remains limited to non-mutating
+retention-review hints, bounded retention/hold reviewer metadata, and metadata-only disposition
+posture; there is no deletion automation, retention-deadline enforcement, legal-hold release
+command, destructive records-disposition workflow, or jurisdiction-certified compliance claim.
 
 Use this design as the review packet for later implementation planning. Product, privacy, legal,
 and deployment reviewers still need to approve any runtime retention, deletion, or disposition
@@ -17,6 +17,11 @@ Open Practice has these relevant foundations:
 - OP-T120 added read-only retention-review hints in the matter-scoped document-processing
   workbench. The hints are derived from legal hold, supersession, upload/checksum/scan state, and
   review state. They do not decide policy eligibility or delete records.
+- A follow-up document-processing workbench slice now derives read-only disposition metadata from
+  the existing retention/hold review posture: candidate state, safe blocker counts, source cue
+  counts, optional `reviewAfter` and `minimumRetainThrough` fields, and fixed non-destructive flags.
+  It does not add a command, audit write, schema, migration, deadline enforcement, object deletion,
+  legal-hold release, raw payload retention, or compliance claim.
 - Contact-history export work uses transient or regenerated export bodies and stores only bounded
   request/link metadata. Its retention language explicitly avoids retained export bodies,
   retention deadlines, deletion automation, legal-hold overrides, and compliance claims.
@@ -133,12 +138,12 @@ role/province rules.
 
 ## Future Implementation Boundary
 
-The next runtime slice should be non-destructive unless reviewers explicitly approve more. A safe
-first implementation would expose read-only policy posture, blocked-by-hold counts, and
-ready-for-review packet metadata derived from existing authorized projections. It should not add
-retention-deadline enforcement, background purge jobs, object deletion, legal-hold release commands,
-public/client disposition controls, broad export packages, provider payload storage, new compliance
-claims, or reference-derived source.
+Future runtime slices should remain non-destructive unless reviewers explicitly approve more. The
+first metadata implementation exposes only read-only disposition posture, blocked-by-hold counts,
+and ready-for-review packet metadata derived from existing authorized projections. Later work should
+not add retention-deadline enforcement, background purge jobs, object deletion, legal-hold release
+commands, public/client disposition controls, broad export packages, provider payload storage, new
+compliance claims, or reference-derived source without separate review.
 
 Reference systems such as ArkCase, Nextcloud, and paperless-ngx may inform vocabulary and workflow
 shape only under the existing clean-room policy. Do not copy implementation code, schemas,
