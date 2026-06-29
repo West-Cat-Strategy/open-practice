@@ -1,5 +1,6 @@
 import type {
   EmailTemplateDraftRecord,
+  EmailTemplatePublishedVersionRecord,
   EmailTemplatePreviewSnapshotRecord,
 } from "@open-practice/domain";
 import { and, desc, eq } from "drizzle-orm";
@@ -8,8 +9,10 @@ import * as schema from "../../schema.js";
 import type { EmailTemplateDraftRepository } from "../email-template-drafts-contracts.js";
 import {
   emailTemplateDraftInsert,
+  emailTemplatePublishedVersionInsert,
   emailTemplatePreviewSnapshotInsert,
   mapEmailTemplateDraftRow,
+  mapEmailTemplatePublishedVersionRow,
   mapEmailTemplatePreviewSnapshotRow,
 } from "../drizzle-mappers.js";
 
@@ -134,6 +137,56 @@ export async function listDrizzleEmailTemplatePreviewSnapshots(
   return rows.map(mapEmailTemplatePreviewSnapshotRow);
 }
 
+export async function createDrizzleEmailTemplatePublishedVersion(
+  db: OpenPracticeDatabase,
+  record: EmailTemplatePublishedVersionRecord,
+): Promise<EmailTemplatePublishedVersionRecord> {
+  const [row] = await db
+    .insert(schema.emailTemplatePublishedVersions)
+    .values(emailTemplatePublishedVersionInsert(record))
+    .returning();
+  return mapEmailTemplatePublishedVersionRow(row);
+}
+
+export async function listDrizzleEmailTemplatePublishedVersions(
+  db: OpenPracticeDatabase,
+  firmId: string,
+  templateDraftId: string,
+  options: { limit?: number } = {},
+): Promise<EmailTemplatePublishedVersionRecord[]> {
+  const rows = await db
+    .select()
+    .from(schema.emailTemplatePublishedVersions)
+    .where(
+      and(
+        eq(schema.emailTemplatePublishedVersions.firmId, firmId),
+        eq(schema.emailTemplatePublishedVersions.templateDraftId, templateDraftId),
+      ),
+    )
+    .orderBy(desc(schema.emailTemplatePublishedVersions.version))
+    .limit(options.limit ?? 25);
+  return rows.map(mapEmailTemplatePublishedVersionRow);
+}
+
+export async function getLatestDrizzleEmailTemplatePublishedVersion(
+  db: OpenPracticeDatabase,
+  firmId: string,
+  templateDraftId: string,
+): Promise<EmailTemplatePublishedVersionRecord | undefined> {
+  const [row] = await db
+    .select()
+    .from(schema.emailTemplatePublishedVersions)
+    .where(
+      and(
+        eq(schema.emailTemplatePublishedVersions.firmId, firmId),
+        eq(schema.emailTemplatePublishedVersions.templateDraftId, templateDraftId),
+      ),
+    )
+    .orderBy(desc(schema.emailTemplatePublishedVersions.version))
+    .limit(1);
+  return row ? mapEmailTemplatePublishedVersionRow(row) : undefined;
+}
+
 export function createDrizzleEmailTemplateDraftRepository(
   db: OpenPracticeDatabase,
 ): EmailTemplateDraftRepository {
@@ -149,5 +202,11 @@ export function createDrizzleEmailTemplateDraftRepository(
       createDrizzleEmailTemplatePreviewSnapshot(db, record),
     listEmailTemplatePreviewSnapshots: (firmId, templateDraftId, options) =>
       listDrizzleEmailTemplatePreviewSnapshots(db, firmId, templateDraftId, options),
+    createEmailTemplatePublishedVersion: (record) =>
+      createDrizzleEmailTemplatePublishedVersion(db, record),
+    listEmailTemplatePublishedVersions: (firmId, templateDraftId, options) =>
+      listDrizzleEmailTemplatePublishedVersions(db, firmId, templateDraftId, options),
+    getLatestEmailTemplatePublishedVersion: (firmId, templateDraftId) =>
+      getLatestDrizzleEmailTemplatePublishedVersion(db, firmId, templateDraftId),
   };
 }

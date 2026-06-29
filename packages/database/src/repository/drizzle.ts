@@ -509,6 +509,9 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
   declare updateEmailTemplateDraft: EmailTemplateDraftRepository["updateEmailTemplateDraft"];
   declare createEmailTemplatePreviewSnapshot: EmailTemplateDraftRepository["createEmailTemplatePreviewSnapshot"];
   declare listEmailTemplatePreviewSnapshots: EmailTemplateDraftRepository["listEmailTemplatePreviewSnapshots"];
+  declare createEmailTemplatePublishedVersion: EmailTemplateDraftRepository["createEmailTemplatePublishedVersion"];
+  declare listEmailTemplatePublishedVersions: EmailTemplateDraftRepository["listEmailTemplatePublishedVersions"];
+  declare getLatestEmailTemplatePublishedVersion: EmailTemplateDraftRepository["getLatestEmailTemplatePublishedVersion"];
   declare getFirmSettings: FirmSettingsRepository["getFirmSettings"];
   declare listProviderSettings: ProviderSettingsRepository["listProviderSettings"];
   declare upsertProviderSetting: ProviderSettingsRepository["upsertProviderSetting"];

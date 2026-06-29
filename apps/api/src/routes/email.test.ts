@@ -371,6 +371,156 @@ describe("email routes", () => {
     await expect(repository.listJobLifecycleRecords("firm-west-legal")).resolves.toEqual([]);
   });
 
+  it("publishes immutable template versions with safe audit metadata and no delivery side effects", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({
+      repository,
+      authUser: user("owner_admin", ["matter-001", "matter-002"]),
+    });
+
+    const created = await server.inject({
+      method: "POST",
+      url: "/api/email/template-drafts",
+      payload: {
+        name: "Matter update",
+        category: "matter_update",
+        templateKey: "matter.update",
+        from: "Open Practice <notice@example.test>",
+        subject: "Synthetic private v1 subject",
+        textBody: "Synthetic private v1 body.",
+        htmlBody: "<p>Synthetic private v1 body.</p>",
+        recipientHints: ["primary_client"],
+      },
+    });
+    const templateDraftId = created.json().templateDraft.id;
+
+    const firstPublish = await server.inject({
+      method: "POST",
+      url: `/api/email/template-drafts/${templateDraftId}/publish`,
+    });
+    expect(firstPublish.statusCode).toBe(201);
+    expect(firstPublish.json().publishedVersion).toMatchObject({
+      id: expect.any(String),
+      templateDraftId,
+      version: 1,
+      draftVersion: 1,
+      subject: "Synthetic private v1 subject",
+      textBody: "Synthetic private v1 body.",
+      publishedByUserId: "user-owner_admin",
+      metadata: expect.objectContaining({
+        publishedVersionId: expect.any(String),
+        templateDraftId,
+        publishedVersion: 1,
+        draftVersion: 1,
+        publishedAt: expect.any(String),
+        providerNeutral: true,
+        deliveryQueued: false,
+        providerDeliverySideEffect: false,
+        campaignAutomation: false,
+        bulkSend: false,
+      }),
+    });
+
+    await server.inject({
+      method: "PATCH",
+      url: `/api/email/template-drafts/${templateDraftId}`,
+      payload: {
+        subject: "Synthetic private v2 subject",
+        textBody: "Synthetic private v2 body.",
+      },
+    });
+    const secondPublish = await server.inject({
+      method: "POST",
+      url: `/api/email/template-drafts/${templateDraftId}/publish`,
+    });
+    expect(secondPublish.statusCode).toBe(201);
+    expect(secondPublish.json().publishedVersion).toMatchObject({
+      version: 2,
+      draftVersion: 2,
+      subject: "Synthetic private v2 subject",
+    });
+
+    const listed = await server.inject({
+      method: "GET",
+      url: `/api/email/template-drafts/${templateDraftId}/versions`,
+    });
+    expect(listed.statusCode).toBe(200);
+    expect(listed.json().publishedVersions).toMatchObject([
+      { version: 2, draftVersion: 2, subject: "Synthetic private v2 subject" },
+      { version: 1, draftVersion: 1, subject: "Synthetic private v1 subject" },
+    ]);
+
+    await expect(repository.listEmailOutbox("firm-west-legal")).resolves.toEqual([]);
+    await expect(repository.listJobLifecycleRecords("firm-west-legal")).resolves.toEqual([]);
+    const audit = await repository.listAuditEvents("firm-west-legal");
+    const serializedAudit = JSON.stringify(audit.events);
+    expect(audit.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          action: "email_template_published_version.created",
+          resourceType: "email_template_published_version",
+          metadata: expect.objectContaining({
+            publishedVersionId: expect.any(String),
+            templateDraftId,
+            version: 2,
+            draftVersion: 2,
+            publishedAt: expect.any(String),
+            deliveryQueued: false,
+            providerDeliverySideEffect: false,
+            campaignAutomation: false,
+            bulkSend: false,
+          }),
+        }),
+      ]),
+    );
+    expect(serializedAudit).not.toContain("Synthetic private v1 subject");
+    expect(serializedAudit).not.toContain("Synthetic private v2 subject");
+    expect(serializedAudit).not.toContain("Synthetic private v1 body");
+    expect(serializedAudit).not.toContain("Synthetic private v2 body");
+    expect(serializedAudit).not.toContain("notice@example.test");
+  });
+
+  it("requires firm-scoped email access for template publish history", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const ownerServer = testServer({
+      repository,
+      authUser: user("owner_admin", ["matter-001", "matter-002"]),
+    });
+    const created = await ownerServer.inject({
+      method: "POST",
+      url: "/api/email/template-drafts",
+      payload: {
+        name: "Matter update",
+        category: "matter_update",
+        templateKey: "matter.update",
+        subject: "Matter update",
+        textBody: "Preview only.",
+      },
+    });
+
+    const clientServer = testServer({
+      repository,
+      authUser: user("client_external", ["matter-001"]),
+    });
+    const publish = await clientServer.inject({
+      method: "POST",
+      url: `/api/email/template-drafts/${created.json().templateDraft.id}/publish`,
+    });
+    const history = await clientServer.inject({
+      method: "GET",
+      url: `/api/email/template-drafts/${created.json().templateDraft.id}/versions`,
+    });
+
+    expect(publish.statusCode).toBe(403);
+    expect(history.statusCode).toBe(403);
+    await expect(
+      repository.listEmailTemplatePublishedVersions(
+        "firm-west-legal",
+        created.json().templateDraft.id,
+      ),
+    ).resolves.toEqual([]);
+  });
+
   it("persists template preview snapshots without provider, outbox, or job side effects", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const server = testServer({

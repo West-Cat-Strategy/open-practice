@@ -497,6 +497,13 @@ It preserves SMTP/IMAP settings, render-only `/api/email/previews`, confirmation
 `/api/mail/outbox`, worker/provider delivery behavior, and explicit no-campaign/no-bulk-send/no
 provider-side-effect boundaries.
 
+The 2026-06-29 OP-T158 follow-up ships explicit staff publish/version-history affordances in
+[OP-T158 email template publish history proof](validation/OP-T158_EMAIL_TEMPLATE_PUBLISH_HISTORY_PROOF_2026-06-29.md).
+The slice adds immutable published versions beside mutable drafts, firm-scoped publish/history API
+routes, compact dashboard publish/history controls, redacted publish audit metadata, and route
+authorization coverage while preserving render-only `/api/email/previews`, provider-neutral draft
+storage, and no campaign, bulk-send, subscription, delivery-provider, queue, or send-job behavior.
+
 The 2026-06-16 financial command approval journal branch adds a read-only `financialCommandJournal`
 projection to the existing trust controls payload. It normalizes existing audit metadata for
 trust-transfer review/link decisions, ledger transaction approval decisions, invoice approvals,

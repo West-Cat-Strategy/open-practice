@@ -67,6 +67,63 @@ describe("audit event taxonomy", () => {
     expect(classification.metadataHints.matter).toEqual(["matterId"]);
   });
 
+  it("classifies email template publish metadata without raw template content", () => {
+    const classification = classifyAuditEvent(
+      auditEvent({
+        action: "email_template_published_version.created",
+        resourceType: "email_template_published_version",
+        resourceId: "email-template-version-001",
+        metadata: {
+          publishedVersionId: "email-template-version-001",
+          templateDraftId: "template-draft-001",
+          version: 2,
+          draftVersion: 3,
+          publishedAt: "2026-06-29T10:30:00.000Z",
+          subjectLength: 32,
+          textLength: 120,
+          htmlLength: 180,
+          recipientHintCount: 1,
+          subject: "Synthetic private subject should not be a hint",
+          textBody: "Synthetic private body should not be a hint",
+          recipientEmail: "client@example.test",
+          providerNeutral: true,
+          deliveryQueued: false,
+          providerDeliverySideEffect: false,
+          campaignAutomation: false,
+          bulkSend: false,
+        },
+      }),
+    );
+
+    expect(classification).toMatchObject({
+      category: "communications",
+      known: true,
+      matterScope: "firm",
+      resourceTypeMatches: true,
+    });
+    expect(classification.metadataHints.resource).toEqual(
+      expect.arrayContaining([
+        "publishedVersionId",
+        "templateDraftId",
+        "version",
+        "draftVersion",
+        "publishedAt",
+        "subjectLength",
+        "textLength",
+        "htmlLength",
+        "recipientHintCount",
+        "providerNeutral",
+        "deliveryQueued",
+        "providerDeliverySideEffect",
+        "campaignAutomation",
+        "bulkSend",
+      ]),
+    );
+    expect(classification.metadataHints.resource).not.toEqual(
+      expect.arrayContaining(["category", "subject", "textBody", "htmlBody", "recipientEmail"]),
+    );
+  });
+
   it("classifies document retention and hold review audit metadata as review-only", () => {
     const classification = classifyAuditEvent(
       auditEvent({

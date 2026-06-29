@@ -49,6 +49,7 @@ import {
   type EmailOutboxRecord,
   type EmailReceiptTokenRecord,
   type EmailTemplateDraftRecord,
+  type EmailTemplatePublishedVersionRecord,
   type EmailTemplatePreviewSnapshotRecord,
   type ExpenseEntry,
   type ExternalUploadLinkRecord,
@@ -926,6 +927,42 @@ export function emailTemplatePreviewSnapshotInsert(
     delivery: record.delivery,
     createdAt: new Date(record.createdAt),
     metadata: record.metadata,
+  };
+}
+
+export function mapEmailTemplatePublishedVersionRow(
+  row: typeof schema.emailTemplatePublishedVersions.$inferSelect,
+): EmailTemplatePublishedVersionRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    templateDraftId: row.templateDraftId,
+    version: row.version,
+    draftVersion: row.draftVersion,
+    name: row.name,
+    description: row.description ?? undefined,
+    category: row.category,
+    templateKey: row.templateKey,
+    from: row.from,
+    subject: row.subject,
+    textBody: row.textBody,
+    htmlBody: row.htmlBody,
+    recipientHints: row.recipientHints,
+    relatedResourceType: row.relatedResourceType ?? undefined,
+    publishedByUserId: row.publishedByUserId,
+    publishedAt: row.publishedAt.toISOString(),
+    metadata: row.metadata,
+  };
+}
+
+export function emailTemplatePublishedVersionInsert(
+  record: EmailTemplatePublishedVersionRecord,
+): typeof schema.emailTemplatePublishedVersions.$inferInsert {
+  return {
+    ...record,
+    description: record.description ?? null,
+    relatedResourceType: record.relatedResourceType ?? null,
+    publishedAt: new Date(record.publishedAt),
   };
 }
 

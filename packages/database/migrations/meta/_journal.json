@@ -512,6 +512,13 @@
       "when": 1782515627167,
       "tag": "0072_structured_task_management",
       "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1782706127141,
+      "tag": "0073_email_template_published_versions",
+      "breakpoints": true
     }
   ]
 }

@@ -1,5 +1,6 @@
 import type {
   EmailTemplateDraftRecord,
+  EmailTemplatePublishedVersionRecord,
   EmailTemplatePreviewSnapshotRecord,
 } from "@open-practice/domain";
 import { clone } from "../contracts.js";
@@ -8,6 +9,7 @@ import type { EmailTemplateDraftRepository } from "../email-template-drafts-cont
 export interface MemoryEmailTemplateDraftStore {
   emailTemplateDrafts: EmailTemplateDraftRecord[];
   emailTemplatePreviewSnapshots: EmailTemplatePreviewSnapshotRecord[];
+  emailTemplatePublishedVersions: EmailTemplatePublishedVersionRecord[];
 }
 
 export function listMemoryEmailTemplateDrafts(
@@ -114,6 +116,52 @@ export function listMemoryEmailTemplatePreviewSnapshots(
   );
 }
 
+export function createMemoryEmailTemplatePublishedVersion(
+  store: MemoryEmailTemplateDraftStore,
+  record: EmailTemplatePublishedVersionRecord,
+): EmailTemplatePublishedVersionRecord {
+  if (store.emailTemplatePublishedVersions.some((existing) => existing.id === record.id)) {
+    throw new Error(`Email template published version ${record.id} already exists`);
+  }
+  if (
+    store.emailTemplatePublishedVersions.some(
+      (existing) =>
+        existing.firmId === record.firmId &&
+        existing.templateDraftId === record.templateDraftId &&
+        existing.version === record.version,
+    )
+  ) {
+    throw new Error(
+      `Email template draft ${record.templateDraftId} published version ${record.version} already exists`,
+    );
+  }
+  store.emailTemplatePublishedVersions.push(clone(record));
+  return clone(record);
+}
+
+export function listMemoryEmailTemplatePublishedVersions(
+  store: MemoryEmailTemplateDraftStore,
+  firmId: string,
+  templateDraftId: string,
+  options: { limit?: number } = {},
+): EmailTemplatePublishedVersionRecord[] {
+  const limit = options.limit ?? 25;
+  return clone(
+    store.emailTemplatePublishedVersions
+      .filter((version) => version.firmId === firmId && version.templateDraftId === templateDraftId)
+      .sort((left, right) => right.version - left.version)
+      .slice(0, limit),
+  );
+}
+
+export function getLatestMemoryEmailTemplatePublishedVersion(
+  store: MemoryEmailTemplateDraftStore,
+  firmId: string,
+  templateDraftId: string,
+): EmailTemplatePublishedVersionRecord | undefined {
+  return listMemoryEmailTemplatePublishedVersions(store, firmId, templateDraftId, { limit: 1 })[0];
+}
+
 export function createMemoryEmailTemplateDraftRepository(
   store: MemoryEmailTemplateDraftStore,
 ): EmailTemplateDraftRepository {
@@ -132,5 +180,13 @@ export function createMemoryEmailTemplateDraftRepository(
       Promise.resolve(
         listMemoryEmailTemplatePreviewSnapshots(store, firmId, templateDraftId, options),
       ),
+    createEmailTemplatePublishedVersion: (record) =>
+      Promise.resolve(createMemoryEmailTemplatePublishedVersion(store, record)),
+    listEmailTemplatePublishedVersions: (firmId, templateDraftId, options) =>
+      Promise.resolve(
+        listMemoryEmailTemplatePublishedVersions(store, firmId, templateDraftId, options),
+      ),
+    getLatestEmailTemplatePublishedVersion: (firmId, templateDraftId) =>
+      Promise.resolve(getLatestMemoryEmailTemplatePublishedVersion(store, firmId, templateDraftId)),
   };
 }

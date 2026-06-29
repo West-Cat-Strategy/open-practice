@@ -53,6 +53,26 @@ export interface EmailTemplatePreviewSnapshotItem {
   createdAt: string;
 }
 
+export interface EmailTemplatePublishedVersionItem {
+  id: string;
+  firmId: string;
+  templateDraftId: string;
+  version: number;
+  draftVersion: number;
+  name: string;
+  description?: string;
+  category: string;
+  templateKey: string;
+  from: string;
+  subject: string;
+  textBody: string;
+  htmlBody: string;
+  recipientHints: string[];
+  relatedResourceType?: string;
+  publishedByUserId: string;
+  publishedAt: string;
+}
+
 export interface EmailTemplateDraftListResponse {
   templateDrafts: EmailTemplateDraftItem[];
 }
@@ -71,7 +91,16 @@ export interface EmailTemplatePreviewSnapshotMutationResponse {
   previewSnapshot: EmailTemplatePreviewSnapshotItem;
 }
 
+export interface EmailTemplatePublishedVersionListResponse {
+  publishedVersions: EmailTemplatePublishedVersionItem[];
+}
+
+export interface EmailTemplatePublishResponse {
+  publishedVersion: EmailTemplatePublishedVersionItem;
+}
+
 export interface EmailTemplateDashboardResponse {
   templateDrafts: EmailTemplateDraftItem[];
   previewSnapshotsByMatterId: Record<string, EmailTemplatePreviewSnapshotItem[]>;
+  publishedVersionsByTemplateDraftId: Record<string, EmailTemplatePublishedVersionItem[]>;
 }

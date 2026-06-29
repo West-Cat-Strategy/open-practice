@@ -62,14 +62,35 @@ describe("EmailTemplateDraftsPanel", () => {
             createdAt: "2026-06-16T10:05:00.000Z",
           },
         ],
+        publishedVersions: [
+          {
+            id: "published-version-001",
+            firmId: "firm-west-legal",
+            templateDraftId: "template-draft-001",
+            version: 1,
+            draftVersion: 1,
+            name: "Matter update",
+            category: "matter_update",
+            templateKey: "matter.update",
+            from: "Open Practice <no-reply@open-practice.local>",
+            subject: "Matter update",
+            textBody: "Synthetic body",
+            htmlBody: "",
+            recipientHints: ["primary_client"],
+            publishedByUserId: "user-admin",
+            publishedAt: "2026-06-16T10:06:00.000Z",
+          },
+        ],
         status: "Saved",
         saving: false,
         previewing: false,
+        publishing: false,
         onSelectDraft: noop,
         onNewDraft: noop,
         onFieldChange: noop,
         onSaveDraft: noop,
         onCreatePreviewSnapshot: noop,
+        onPublishDraft: noop,
       }),
     );
 
@@ -77,6 +98,8 @@ describe("EmailTemplateDraftsPanel", () => {
     expect(html).toContain("Matter update");
     expect(html).toContain("Save draft");
     expect(html).toContain("Save snapshot");
+    expect(html).toContain("Publish version");
+    expect(html).toContain("Version history");
     expect(html).toContain("Preview snapshots");
     expect(html).not.toContain("Confirm and send");
     expect(html).not.toContain("campaign");
