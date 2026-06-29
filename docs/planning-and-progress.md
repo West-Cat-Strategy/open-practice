@@ -39,6 +39,15 @@ reject, post, settle, auto-match, connect bank feeds, or claim certified account
 recorded in
 [Trust Controls policy preview matrix proof](validation/OP_TRUST_CONTROLS_POLICY_PREVIEW_MATRIX_PROOF_2026-06-29.md).
 
+The 2026-06-29 `integrate/mainline-consolidation-20260629-active-lanes` branch consolidates the
+current active report export alignment, scheduling aging decisions, document disposition schedule
+profile, email template compare, OP-T162 readiness reasons, payment-import authorization fixtures,
+refund/chargeback decisions, semantic readiness, Trust Controls policy preview matrix, and
+proof-reconcile lanes. Calendar aging remains migration `0075`, document disposition schedule
+profile is migration `0076`, and refund/chargeback decisions are migration `0077`; the combined
+proof records selector validation, `main` publication, and clean-lane prune evidence in
+[2026-06-29 active-lane mainline proof](validation/OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-29.md).
+
 The 2026-06-29 `integrate/mainline-consolidation-20260629` branch consolidates the currently active
 local lanes for legal-research action descriptors, document disposition metadata, OP-T158 email
 template publish/version history, Trust Controls maker-checker readiness, and the proof-only inbound
