@@ -3,10 +3,10 @@
 Date: 2026-06-28/2026-06-29
 Integration branch: `integrate/mainline-consolidation-20260629`
 Base: `origin/main` at `da5628863a8dbf27d9303fac3cd5448ef2d390f7`
-Status: Integration validation complete before publication. `pnpm policy:check` is blocked by
-known unrelated central reference-index lock drift after earlier policy subchecks pass. Final
-`main` publication, push parity, and branch/worktree prune evidence are recorded in the closeout
-response after publication.
+Status: Published on `main` at `0d850772d7053f38b9d139a50dff871126b2eadf` (`Merge 2026-06-29
+active lanes`) with local/origin parity confirmed by `git rev-list --left-right --count
+main...origin/main` returning `0 0`. `pnpm policy:check` is blocked by known unrelated central
+reference-index lock drift after earlier policy subchecks pass.
 
 ## Scope
 
@@ -159,7 +159,13 @@ reference lock pins drift from `/Users/bryan/projects/reference-repos/docs/index
 This closeout does not add dependencies, vendored assets, copied excerpts, copied reference-derived
 code, or dependency lockfile changes, so the reference-lock refresh remains out of scope.
 
-## Publication And Prune Gate
+## Publication And Prune Evidence
 
-This proof records pre-publication validation. Final branch-first publication, local/origin `main`
-parity, and local branch/worktree pruning are reported in the closeout response after publication.
+Final branch-first publication is complete: `main` and `origin/main` both point at
+`0d850772d7053f38b9d139a50dff871126b2eadf` (`Merge 2026-06-29 active lanes`), and `main...origin/main`
+returns `0 0`.
+
+The consolidation pruned its completed integration/feature lanes before this docs-only
+reconciliation. Later unrelated local worktrees and the docs-only proof-reconciliation branch are
+outside this closeout and were left untouched. Stash count remains `70`, preserving provider-status,
+self-host operations-readiness, and other unrelated residue outside this closeout.
