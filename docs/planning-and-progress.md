@@ -10,8 +10,8 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 | Snapshot              | Value                                                                |
 | --------------------- | -------------------------------------------------------------------- |
-| Current focus         | Current dirty branch integration and validation reconciliation.      |
-| Next recommended pick | Finish validation/proof reconciliation before opening new rows.      |
+| Current focus         | 2026-06-29 mainline consolidation publication and prune closeout.    |
+| Next recommended pick | Publish validated `main`, then prune only clean merged worktrees.    |
 | Ready rows            | 0                                                                    |
 | Candidate rows        | 0                                                                    |
 | In progress rows      | 0                                                                    |
@@ -31,16 +31,14 @@ semantics stay unchanged, and the branch does not approve, reject, auto-post, se
 feeds, or claim jurisdiction-certified accounting. Proof is recorded in
 [Trust Controls maker-checker readiness proof](validation/OP_TRUST_CONTROLS_MAKER_CHECKER_READINESS_PROOF_2026-06-28.md).
 
-The current dirty branch is integrating provider document conversion review decisions, OP-T162
-deposit-match reviewer decisions, provider document conversion latest-decision/history cues, a
-metadata-only refund/chargeback cue surface, and the adopted closed/archived matter lifecycle
-reopen boundary.
-Provider-status and self-host operations-readiness residue was preserved separately in targeted
-stashes and is not part of this closeout. This is branch validation work, not final `main`
-publication evidence yet. The row counters remain zero because no candidate table rows are open;
-active validation state is tracked in these handoff notes and the draft proof until selector output,
-command results, and proof reconciliation are current. Evidence is being recorded in
-[2026-06-28/2026-06-29 branch integration validation draft](validation/OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-28.md).
+The 2026-06-29 `integrate/mainline-consolidation-20260629` branch consolidates the currently active
+local lanes for legal-research action descriptors, document disposition metadata, OP-T158 email
+template publish/version history, Trust Controls maker-checker readiness, and the proof-only inbound
+communications aggregation closeout. Provider-status and self-host operations-readiness residue
+remains preserved separately in targeted stashes and is not part of this closeout. The row counters
+remain zero because no candidate table rows are open; final publication and prune evidence is
+recorded in the closeout response after `main` is pushed. Evidence is recorded in
+[2026-06-28/2026-06-29 mainline consolidation proof](validation/OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-28.md).
 
 The 2026-06-27 `feat/provider-document-conversion-review-decision-20260627` branch promotes the
 next provider document conversion runtime slice as an explicit metadata-only review decision
