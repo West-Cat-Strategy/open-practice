@@ -527,6 +527,14 @@ bounded status/count fields. The slice keeps existing export serialization, rege
 behavior, no retained export body, no live settlement, no automatic trust posting, and no
 provider/object-storage side effects. Proof is recorded in
 [financial export field profiles proof](validation/OP_FINANCIAL_EXPORT_FIELD_PROFILES_PROOF_2026-06-17.md).
+The 2026-06-29 follow-up adds a read-only staff reporting export-profile alignment view to
+`GET /api/reports/workspace` and the Reports dashboard. Staff can compare manual report export
+profiles with financial export field profiles by profile metadata, purpose/scope differences,
+field-key counts, bounded field-key samples, and disabled-safeguard flags only. It adds no custom
+SQL, BI embeds, scheduled execution/email, raw report-body storage, payment processor exposure,
+payment creation/allocation, invoice mutation, trust posting, or certification claims. Proof is
+recorded in
+[report export profile alignment proof](validation/OP_REPORT_EXPORT_PROFILE_ALIGNMENT_PROOF_2026-06-29.md).
 
 The 2026-06-17 inbound email recovery metadata branch deepens the existing Mailgun/IMAP inbound
 replay-recovery posture with owner-reviewed metadata only. Parser and IMAP poll lifecycle records

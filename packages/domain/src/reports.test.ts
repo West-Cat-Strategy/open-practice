@@ -119,6 +119,61 @@ describe("staff reporting workspace", () => {
         }),
       ]),
     );
+    expect(workspace.exportProfileAlignment).toMatchObject({
+      status: "read_only_metadata_alignment",
+      staffReportProfiles: expect.arrayContaining([
+        expect.objectContaining({
+          id: "summary_json",
+          format: "json",
+          detailLevel: "summary",
+          manualDownloadOnly: true,
+          scheduledEmailDelivery: false,
+          includesRawReportBody: false,
+        }),
+        expect.objectContaining({
+          id: "review_csv",
+          format: "csv",
+          detailLevel: "row_summary",
+        }),
+      ]),
+      financialFieldProfiles: expect.arrayContaining([
+        expect.objectContaining({
+          id: "billing_operational_records_json",
+          fieldKeyCount: expect.any(Number),
+          manualDownloadOnly: true,
+          scheduledDelivery: false,
+          storesRawExportBody: false,
+        }),
+        expect.objectContaining({
+          id: "jurisdictional_trust_summary_json",
+          fieldKeyCount: expect.any(Number),
+        }),
+      ]),
+      differences: expect.arrayContaining([
+        expect.objectContaining({ key: "field_key_behavior" }),
+        expect.objectContaining({ key: "queue_job_metadata" }),
+        expect.objectContaining({ key: "download_body_behavior" }),
+      ]),
+      sharedSafeguards: {
+        customSql: false,
+        biEmbeds: false,
+        scheduledExecution: false,
+        scheduledDelivery: false,
+        rawBodyStorage: false,
+        paymentProcessorExposure: false,
+        paymentCreation: false,
+        paymentAllocation: false,
+        invoiceMutation: false,
+        trustPosting: false,
+        certificationClaims: false,
+      },
+    });
+    for (const profile of workspace.exportProfileAlignment.financialFieldProfiles) {
+      expect(profile.fieldKeyCount).toBeGreaterThan(0);
+      expect(profile.sampleFieldKeys.length).toBeGreaterThan(0);
+      expect(profile.sampleFieldKeys.length).toBeLessThanOrEqual(6);
+      expect(profile.sampleFieldKeys.length).toBeLessThanOrEqual(profile.fieldKeyCount);
+    }
     expect(workspace.workspacePolicy).toMatchObject({
       customSql: false,
       biEmbeds: false,
