@@ -1138,6 +1138,23 @@ function trustControls(
       reviewOnly: true,
       categories: [],
       matters: [],
+      policyPreviewMatrix: {
+        generatedAt: "2026-05-01T13:00:00.000Z",
+        reviewOnly: true,
+        columns: [],
+        rows: [],
+        cells: [],
+        policy: {
+          source: "existing_trust_controls_projection",
+          makerCheckerPolicyEnabled: false,
+          directPostingSemantics: "unchanged",
+          approvalMutation: false,
+          automaticTrustPosting: false,
+          settlementAutomation: false,
+          bankFeedMatching: false,
+          jurisdictionCertifiedAccounting: false,
+        },
+      },
       summary: {
         categoryCount: 0,
         categoriesRequiringPolicyCount: 0,

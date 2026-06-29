@@ -479,11 +479,56 @@ export interface LedgerMakerCheckerReadinessMatterRow {
   reviewOnly: true;
 }
 
+export interface LedgerMakerCheckerReadinessPolicy {
+  source: "existing_trust_controls_projection";
+  makerCheckerPolicyEnabled: false;
+  directPostingSemantics: "unchanged";
+  approvalMutation: false;
+  automaticTrustPosting: false;
+  settlementAutomation: false;
+  bankFeedMatching: false;
+  jurisdictionCertifiedAccounting: false;
+}
+
+export interface LedgerMakerCheckerPolicyPreviewMatrixColumn {
+  category: LedgerReconciliationPacketKind;
+  label: string;
+  reviewOnly: true;
+}
+
+export interface LedgerMakerCheckerPolicyPreviewMatrixRow {
+  matterId: string;
+  reviewOnly: true;
+}
+
+export interface LedgerMakerCheckerPolicyPreviewMatrixCell {
+  matterId: string;
+  category: LedgerReconciliationPacketKind;
+  readiness: "policy_required_if_enabled" | "clear";
+  reasonCodes: LedgerMakerCheckerReadinessReason[];
+  reviewCueCount: number;
+  pendingCount: number;
+  exceptionCount: number;
+  amountCents: number;
+  latestEvidenceAt?: string;
+  reviewOnly: true;
+}
+
+export interface LedgerMakerCheckerPolicyPreviewMatrix {
+  generatedAt: string;
+  reviewOnly: true;
+  columns: LedgerMakerCheckerPolicyPreviewMatrixColumn[];
+  rows: LedgerMakerCheckerPolicyPreviewMatrixRow[];
+  cells: LedgerMakerCheckerPolicyPreviewMatrixCell[];
+  policy: LedgerMakerCheckerReadinessPolicy;
+}
+
 export interface LedgerMakerCheckerReadiness {
   generatedAt: string;
   reviewOnly: true;
   categories: LedgerMakerCheckerReadinessCategoryRow[];
   matters: LedgerMakerCheckerReadinessMatterRow[];
+  policyPreviewMatrix: LedgerMakerCheckerPolicyPreviewMatrix;
   summary: {
     categoryCount: number;
     categoriesRequiringPolicyCount: number;
@@ -495,16 +540,7 @@ export interface LedgerMakerCheckerReadiness {
     amountCents: number;
     reviewOnly: true;
   };
-  policy: {
-    source: "existing_trust_controls_projection";
-    makerCheckerPolicyEnabled: false;
-    directPostingSemantics: "unchanged";
-    approvalMutation: false;
-    automaticTrustPosting: false;
-    settlementAutomation: false;
-    bankFeedMatching: false;
-    jurisdictionCertifiedAccounting: false;
-  };
+  policy: LedgerMakerCheckerReadinessPolicy;
 }
 
 export type LedgerBalanceSnapshotReviewReason =
@@ -1569,6 +1605,7 @@ interface LedgerMakerCheckerReadinessMatterAccumulator {
   matterId: string;
   categoryKeys: Set<LedgerReconciliationPacketKind>;
   reasonCodes: Set<LedgerMakerCheckerReadinessReason>;
+  categoryCells: Map<LedgerReconciliationPacketKind, LedgerMakerCheckerPolicyPreviewMatrixCell>;
   reviewCueCount: number;
   pendingCount: number;
   exceptionCount: number;
@@ -1592,6 +1629,10 @@ function addMatterReadinessCue(
     matterId: input.matterId,
     categoryKeys: new Set<LedgerReconciliationPacketKind>(),
     reasonCodes: new Set<LedgerMakerCheckerReadinessReason>(),
+    categoryCells: new Map<
+      LedgerReconciliationPacketKind,
+      LedgerMakerCheckerPolicyPreviewMatrixCell
+    >(),
     reviewCueCount: 0,
     pendingCount: 0,
     exceptionCount: 0,
@@ -1604,6 +1645,36 @@ function addMatterReadinessCue(
   current.exceptionCount += input.exceptionCount ?? 0;
   current.amountCents += input.amountCents ?? 0;
   current.latestEvidenceAt = latestIso([current.latestEvidenceAt, input.latestEvidenceAt]);
+
+  const cell: LedgerMakerCheckerPolicyPreviewMatrixCell = current.categoryCells.get(
+    input.category,
+  ) ?? {
+    matterId: input.matterId,
+    category: input.category,
+    readiness: "clear",
+    reasonCodes: [],
+    reviewCueCount: 0,
+    pendingCount: 0,
+    exceptionCount: 0,
+    amountCents: 0,
+    reviewOnly: true,
+  };
+  const cellReasonCodes = new Set(cell.reasonCodes);
+  for (const reason of input.reasonCodes) cellReasonCodes.add(reason);
+  cell.reasonCodes = [...cellReasonCodes].sort();
+  cell.reviewCueCount += 1;
+  cell.pendingCount += input.pendingCount ?? 0;
+  cell.exceptionCount += input.exceptionCount ?? 0;
+  cell.amountCents += input.amountCents ?? 0;
+  cell.latestEvidenceAt = latestIso([cell.latestEvidenceAt, input.latestEvidenceAt]);
+  cell.readiness =
+    cell.reasonCodes.length > 0 ||
+    cell.reviewCueCount > 0 ||
+    cell.pendingCount > 0 ||
+    cell.exceptionCount > 0
+      ? "policy_required_if_enabled"
+      : "clear";
+  current.categoryCells.set(input.category, cell);
   matters.set(input.matterId, current);
 }
 
@@ -1628,6 +1699,63 @@ function matterRowsFromReadinessAccumulators(
         right.exceptionCount - left.exceptionCount ||
         left.matterId.localeCompare(right.matterId),
     );
+}
+
+function makerCheckerReadinessPolicy(): LedgerMakerCheckerReadinessPolicy {
+  return {
+    source: "existing_trust_controls_projection",
+    makerCheckerPolicyEnabled: false,
+    directPostingSemantics: "unchanged",
+    approvalMutation: false,
+    automaticTrustPosting: false,
+    settlementAutomation: false,
+    bankFeedMatching: false,
+    jurisdictionCertifiedAccounting: false,
+  };
+}
+
+function buildLedgerMakerCheckerPolicyPreviewMatrix(input: {
+  generatedAt: string;
+  categories: LedgerMakerCheckerReadinessCategoryRow[];
+  matterRows: LedgerMakerCheckerReadinessMatterRow[];
+  matterAccumulators: Map<string, LedgerMakerCheckerReadinessMatterAccumulator>;
+}): LedgerMakerCheckerPolicyPreviewMatrix {
+  const columns = input.categories.map((category) => ({
+    category: category.category,
+    label: category.label,
+    reviewOnly: true as const,
+  }));
+  const rows = input.matterRows.map((matter) => ({
+    matterId: matter.matterId,
+    reviewOnly: true as const,
+  }));
+  const cells = rows.flatMap((row) => {
+    const accumulator = input.matterAccumulators.get(row.matterId);
+    return columns.map((column) => {
+      const cell = accumulator?.categoryCells.get(column.category);
+      if (cell) return cell;
+      return {
+        matterId: row.matterId,
+        category: column.category,
+        readiness: "clear",
+        reasonCodes: [],
+        reviewCueCount: 0,
+        pendingCount: 0,
+        exceptionCount: 0,
+        amountCents: 0,
+        reviewOnly: true,
+      } satisfies LedgerMakerCheckerPolicyPreviewMatrixCell;
+    });
+  });
+
+  return {
+    generatedAt: input.generatedAt,
+    reviewOnly: true,
+    columns,
+    rows,
+    cells,
+    policy: makerCheckerReadinessPolicy(),
+  };
 }
 
 export function buildLedgerMakerCheckerReadiness(input: {
@@ -1763,12 +1891,19 @@ export function buildLedgerMakerCheckerReadiness(input: {
   }
 
   const matterRows = matterRowsFromReadinessAccumulators(matters);
+  const policyPreviewMatrix = buildLedgerMakerCheckerPolicyPreviewMatrix({
+    generatedAt,
+    categories,
+    matterRows,
+    matterAccumulators: matters,
+  });
 
   return {
     generatedAt,
     reviewOnly: true,
     categories,
     matters: matterRows,
+    policyPreviewMatrix,
     summary: {
       categoryCount: categories.length,
       categoriesRequiringPolicyCount: categories.filter(
@@ -1782,16 +1917,7 @@ export function buildLedgerMakerCheckerReadiness(input: {
       amountCents: categories.reduce((sum, category) => sum + category.amountCents, 0),
       reviewOnly: true,
     },
-    policy: {
-      source: "existing_trust_controls_projection",
-      makerCheckerPolicyEnabled: false,
-      directPostingSemantics: "unchanged",
-      approvalMutation: false,
-      automaticTrustPosting: false,
-      settlementAutomation: false,
-      bankFeedMatching: false,
-      jurisdictionCertifiedAccounting: false,
-    },
+    policy: makerCheckerReadinessPolicy(),
   };
 }
 

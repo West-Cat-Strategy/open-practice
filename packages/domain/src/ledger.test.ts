@@ -534,6 +534,21 @@ describe("ledger controls diagnostics", () => {
     expect(readiness.categories).toHaveLength(6);
     expect(readiness.categories.every((category) => category.readiness === "clear")).toBe(true);
     expect(readiness.categories.every((category) => category.reasonCodes.length === 0)).toBe(true);
+    expect(readiness.policyPreviewMatrix).toMatchObject({
+      generatedAt: "2026-06-28T12:00:00.000Z",
+      reviewOnly: true,
+      rows: [],
+      cells: [],
+      policy: readiness.policy,
+    });
+    expect(readiness.policyPreviewMatrix.columns.map((column) => column.category)).toEqual([
+      "ledger",
+      "statement_import",
+      "exception",
+      "trust_transfer",
+      "posting_request",
+      "payment_import",
+    ]);
   });
 
   it("projects maker-checker readiness categories and matters without copying private notes", () => {
@@ -815,6 +830,103 @@ describe("ledger controls diagnostics", () => {
         }),
       ]),
     );
+    expect(readiness.policyPreviewMatrix).toMatchObject({
+      generatedAt: "2026-06-28T12:00:00.000Z",
+      reviewOnly: true,
+      rows: [
+        { matterId: "matter-001", reviewOnly: true },
+        { matterId: "matter-002", reviewOnly: true },
+      ],
+      policy: readiness.policy,
+    });
+    expect(readiness.policyPreviewMatrix.columns.map((column) => column.category)).toEqual([
+      "ledger",
+      "statement_import",
+      "exception",
+      "trust_transfer",
+      "posting_request",
+      "payment_import",
+    ]);
+    expect(
+      readiness.policyPreviewMatrix.cells.map((cell) => `${cell.matterId}:${cell.category}`),
+    ).toEqual([
+      "matter-001:ledger",
+      "matter-001:statement_import",
+      "matter-001:exception",
+      "matter-001:trust_transfer",
+      "matter-001:posting_request",
+      "matter-001:payment_import",
+      "matter-002:ledger",
+      "matter-002:statement_import",
+      "matter-002:exception",
+      "matter-002:trust_transfer",
+      "matter-002:posting_request",
+      "matter-002:payment_import",
+    ]);
+    const cellsByMatterAndCategory = new Map(
+      readiness.policyPreviewMatrix.cells.map((cell) => [
+        `${cell.matterId}:${cell.category}`,
+        cell,
+      ]),
+    );
+    expect(cellsByMatterAndCategory.get("matter-001:posting_request")).toMatchObject({
+      readiness: "policy_required_if_enabled",
+      reasonCodes: ["pending_posting_request", "rejected_posting_request"],
+      reviewCueCount: 2,
+      pendingCount: 1,
+      exceptionCount: 1,
+      amountCents: 300,
+      latestEvidenceAt: "2026-05-02T13:30:00.000Z",
+      reviewOnly: true,
+    });
+    expect(cellsByMatterAndCategory.get("matter-001:trust_transfer")).toMatchObject({
+      readiness: "policy_required_if_enabled",
+      reasonCodes: ["approved_unlinked_trust_transfer_request", "pending_trust_transfer_request"],
+      reviewCueCount: 2,
+      pendingCount: 1,
+      exceptionCount: 0,
+      amountCents: 6000,
+      latestEvidenceAt: "2026-05-02T17:30:00.000Z",
+      reviewOnly: true,
+    });
+    expect(cellsByMatterAndCategory.get("matter-001:payment_import")).toMatchObject({
+      readiness: "policy_required_if_enabled",
+      reasonCodes: ["payment_import_conflict", "payment_import_review_required"],
+      reviewCueCount: 1,
+      pendingCount: 1,
+      exceptionCount: 1,
+      amountCents: 4000,
+      latestEvidenceAt: "2026-05-02T18:30:00.000Z",
+      reviewOnly: true,
+    });
+    expect(cellsByMatterAndCategory.get("matter-001:statement_import")).toMatchObject({
+      readiness: "clear",
+      reasonCodes: [],
+      reviewCueCount: 0,
+      pendingCount: 0,
+      exceptionCount: 0,
+      amountCents: 0,
+      reviewOnly: true,
+    });
+    expect(cellsByMatterAndCategory.get("matter-002:payment_import")).toMatchObject({
+      readiness: "clear",
+      reasonCodes: [],
+      reviewCueCount: 0,
+      pendingCount: 0,
+      exceptionCount: 0,
+      amountCents: 0,
+      reviewOnly: true,
+    });
+    expect(readiness.policyPreviewMatrix.policy).toEqual({
+      source: "existing_trust_controls_projection",
+      makerCheckerPolicyEnabled: false,
+      directPostingSemantics: "unchanged",
+      approvalMutation: false,
+      automaticTrustPosting: false,
+      settlementAutomation: false,
+      bankFeedMatching: false,
+      jurisdictionCertifiedAccounting: false,
+    });
     const serialized = JSON.stringify(readiness);
     expect(serialized).not.toContain("Synthetic prepared posting note");
     expect(serialized).not.toContain("Synthetic rejected posting reason");

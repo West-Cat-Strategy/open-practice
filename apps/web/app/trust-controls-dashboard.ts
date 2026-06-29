@@ -171,6 +171,23 @@ export function emptyTrustControlsDashboard(): TrustControlsDashboardResponse {
       reviewOnly: true,
       categories: [],
       matters: [],
+      policyPreviewMatrix: {
+        generatedAt: new Date(0).toISOString(),
+        reviewOnly: true,
+        columns: [],
+        rows: [],
+        cells: [],
+        policy: {
+          source: "existing_trust_controls_projection",
+          makerCheckerPolicyEnabled: false,
+          directPostingSemantics: "unchanged",
+          approvalMutation: false,
+          automaticTrustPosting: false,
+          settlementAutomation: false,
+          bankFeedMatching: false,
+          jurisdictionCertifiedAccounting: false,
+        },
+      },
       summary: {
         categoryCount: 0,
         categoriesRequiringPolicyCount: 0,
