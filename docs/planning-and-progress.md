@@ -10,8 +10,8 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 | Snapshot              | Value                                                                |
 | --------------------- | -------------------------------------------------------------------- |
-| Current focus         | 2026-06-29 active-lane mainline consolidation validation/publish.    |
-| Next recommended pick | Finish selector proof, merge to main, push, and prune clean lanes.   |
+| Current focus         | 2026-06-29 active-lane mainline consolidation published and pruned.  |
+| Next recommended pick | Pick the next small row from the candidate backlog.                  |
 | Ready rows            | 0                                                                    |
 | Candidate rows        | 0                                                                    |
 | In progress rows      | 0                                                                    |
@@ -39,13 +39,14 @@ reject, post, settle, auto-match, connect bank feeds, or claim certified account
 recorded in
 [Trust Controls policy preview matrix proof](validation/OP_TRUST_CONTROLS_POLICY_PREVIEW_MATRIX_PROOF_2026-06-29.md).
 
-The 2026-06-29 `integrate/mainline-consolidation-20260629-active-lanes` branch consolidates the
-current active report export alignment, scheduling aging decisions, document disposition schedule
-profile, email template compare, OP-T162 readiness reasons, payment-import authorization fixtures,
+The 2026-06-29 `integrate/mainline-consolidation-20260629-active-lanes` branch consolidated the
+active report export alignment, scheduling aging decisions, document disposition schedule profile,
+email template compare, OP-T162 readiness reasons, payment-import authorization fixtures,
 refund/chargeback decisions, semantic readiness, Trust Controls policy preview matrix, and
-proof-reconcile lanes. Calendar aging remains migration `0075`, document disposition schedule
-profile is migration `0076`, and refund/chargeback decisions are migration `0077`; the combined
-proof records selector validation, `main` publication, and clean-lane prune evidence in
+proof-reconcile lanes, then merged to `main` at `ac7a5992`. Calendar aging remains migration
+`0075`, document disposition schedule profile is migration `0076`, and refund/chargeback decisions
+are migration `0077`; the combined proof records selector validation, `main` publication, push
+parity, unchanged stash count, and clean-lane prune evidence in
 [2026-06-29 active-lane mainline proof](validation/OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-29.md).
 
 The 2026-06-29 `integrate/mainline-consolidation-20260629` branch consolidates the currently active
