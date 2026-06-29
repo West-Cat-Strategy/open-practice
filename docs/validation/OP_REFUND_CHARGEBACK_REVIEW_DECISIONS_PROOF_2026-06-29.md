@@ -54,8 +54,8 @@ docs/payment-import-deposit-matching-boundary-packet.md
 docs/planning-and-progress.md
 docs/validation/OP_REFUND_CHARGEBACK_REVIEW_DECISIONS_PROOF_2026-06-29.md
 docs/validation/README.md
-packages/database/migrations/0075_payment_import_refund_chargeback_reviews.sql
-packages/database/migrations/meta/0075_snapshot.json
+packages/database/migrations/0077_payment_import_refund_chargeback_reviews.sql
+packages/database/migrations/meta/0077_snapshot.json
 packages/database/migrations/meta/_journal.json
 packages/database/src/repository/drizzle-mappers.ts
 packages/database/src/repository/drizzle.ts
@@ -89,7 +89,7 @@ scripts/route-authorization/billing.mjs
 ## Selector Output
 
 ```text
-$ pnpm verify:select -- --files apps/api/src/routes/billing.test.ts apps/api/src/routes/billing/dashboard.ts apps/api/src/routes/billing/payment-import-review-records.ts apps/web/app/_features/billing/models.ts apps/web/app/_features/billing/server-resources.ts apps/web/app/billing-dashboard.ts apps/web/app/dashboard/billing-section.test.tsx apps/web/app/dashboard/billing-section.tsx docs/api-and-state-machines.md docs/improvement-opportunities.md docs/payment-import-deposit-matching-boundary-packet.md docs/planning-and-progress.md docs/validation/OP_REFUND_CHARGEBACK_REVIEW_DECISIONS_PROOF_2026-06-29.md docs/validation/README.md packages/database/migrations/0075_payment_import_refund_chargeback_reviews.sql packages/database/migrations/meta/0075_snapshot.json packages/database/migrations/meta/_journal.json packages/database/src/repository/drizzle-mappers.ts packages/database/src/repository/drizzle.ts packages/database/src/repository/memory.ts packages/database/src/repository/payment-import-review-records-contracts.ts packages/database/src/repository/payment-import-review-records/drizzle.ts packages/database/src/repository/payment-import-review-records/memory.ts packages/database/src/schema/billing.ts packages/database/test/repository.payment-import-review-records.test.ts packages/database/test/schema.test.ts packages/domain/src/audit-taxonomy.test.ts packages/domain/src/audit-taxonomy.ts packages/domain/src/billing.test.ts packages/domain/src/billing.ts scripts/route-authorization/billing.mjs
+$ pnpm verify:select -- --files apps/api/src/routes/billing.test.ts apps/api/src/routes/billing/dashboard.ts apps/api/src/routes/billing/payment-import-review-records.ts apps/web/app/_features/billing/models.ts apps/web/app/_features/billing/server-resources.ts apps/web/app/billing-dashboard.ts apps/web/app/dashboard/billing-section.test.tsx apps/web/app/dashboard/billing-section.tsx docs/api-and-state-machines.md docs/improvement-opportunities.md docs/payment-import-deposit-matching-boundary-packet.md docs/planning-and-progress.md docs/validation/OP_REFUND_CHARGEBACK_REVIEW_DECISIONS_PROOF_2026-06-29.md docs/validation/README.md packages/database/migrations/0077_payment_import_refund_chargeback_reviews.sql packages/database/migrations/meta/0077_snapshot.json packages/database/migrations/meta/_journal.json packages/database/src/repository/drizzle-mappers.ts packages/database/src/repository/drizzle.ts packages/database/src/repository/memory.ts packages/database/src/repository/payment-import-review-records-contracts.ts packages/database/src/repository/payment-import-review-records/drizzle.ts packages/database/src/repository/payment-import-review-records/memory.ts packages/database/src/schema/billing.ts packages/database/test/repository.payment-import-review-records.test.ts packages/database/test/schema.test.ts packages/domain/src/audit-taxonomy.test.ts packages/domain/src/audit-taxonomy.ts packages/domain/src/billing.test.ts packages/domain/src/billing.ts scripts/route-authorization/billing.mjs
 Recommended validation commands:
 pnpm architecture:check
 pnpm api:contract

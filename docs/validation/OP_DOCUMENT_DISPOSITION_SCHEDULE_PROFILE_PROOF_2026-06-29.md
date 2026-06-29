@@ -52,8 +52,8 @@ profile fields and drops arbitrary unknown JSON keys.
 - `docs/planning-and-progress.md`
 - `docs/validation/OP_DOCUMENT_DISPOSITION_SCHEDULE_PROFILE_PROOF_2026-06-29.md`
 - `docs/validation/README.md`
-- `packages/database/migrations/0075_document_disposition_review_schedule_profile.sql`
-- `packages/database/migrations/meta/0075_snapshot.json`
+- `packages/database/migrations/0076_document_disposition_review_schedule_profile.sql`
+- `packages/database/migrations/meta/0076_snapshot.json`
 - `packages/database/migrations/meta/_journal.json`
 - `packages/database/src/repository/drizzle-mappers.ts`
 - `packages/database/src/repository/drizzle.ts`
@@ -119,8 +119,8 @@ Selected checks:
 - `pnpm migrations:lint`
   - Passed with the selector caveat that the script only sees tracked `git diff HEAD` SQL files
     before staging and therefore reported 0 changed SQL files.
-- `node --input-type=module -e 'import { lintMigrationFiles } from "./scripts/lint-migrations.mjs"; const file = "packages/database/migrations/0075_document_disposition_review_schedule_profile.sql"; const findings = lintMigrationFiles({ files: [file] }); if (findings.length) { for (const finding of findings) console.error(`${finding.type}: ${finding.message}`); process.exit(1); } console.log(`Migration lint passed: ${file}`);'`
-  - Passed: `packages/database/migrations/0075_document_disposition_review_schedule_profile.sql`.
+- `node --input-type=module -e 'import { lintMigrationFiles } from "./scripts/lint-migrations.mjs"; const file = "packages/database/migrations/0076_document_disposition_review_schedule_profile.sql"; const findings = lintMigrationFiles({ files: [file] }); if (findings.length) { for (const finding of findings) console.error(`${finding.type}: ${finding.message}`); process.exit(1); } console.log(`Migration lint passed: ${file}`);'`
+  - Passed: `packages/database/migrations/0076_document_disposition_review_schedule_profile.sql`.
 - `pnpm --filter @open-practice/domain test`
   - Passed: 33 files, 268 tests.
 - `pnpm --filter @open-practice/domain typecheck`
