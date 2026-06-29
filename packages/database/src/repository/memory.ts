@@ -49,6 +49,7 @@ import {
   type EmailOutboxRecord,
   type EmailReceiptTokenRecord,
   type EmailTemplateDraftRecord,
+  type EmailTemplatePublishedVersionRecord,
   type EmailTemplatePreviewSnapshotRecord,
   type ExpenseEntry,
   type ExternalUploadLinkRecord,
@@ -658,6 +659,9 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   declare updateEmailTemplateDraft: EmailTemplateDraftRepository["updateEmailTemplateDraft"];
   declare createEmailTemplatePreviewSnapshot: EmailTemplateDraftRepository["createEmailTemplatePreviewSnapshot"];
   declare listEmailTemplatePreviewSnapshots: EmailTemplateDraftRepository["listEmailTemplatePreviewSnapshots"];
+  declare createEmailTemplatePublishedVersion: EmailTemplateDraftRepository["createEmailTemplatePublishedVersion"];
+  declare listEmailTemplatePublishedVersions: EmailTemplateDraftRepository["listEmailTemplatePublishedVersions"];
+  declare getLatestEmailTemplatePublishedVersion: EmailTemplateDraftRepository["getLatestEmailTemplatePublishedVersion"];
   declare getFirmSettings: FirmSettingsRepository["getFirmSettings"];
   declare listProviderSettings: ProviderSettingsRepository["listProviderSettings"];
   declare upsertProviderSetting: ProviderSettingsRepository["upsertProviderSetting"];
@@ -744,6 +748,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private emailReceiptTokens: EmailReceiptTokenRecord[] = [];
   private emailTemplateDrafts: EmailTemplateDraftRecord[] = [];
   private emailTemplatePreviewSnapshots: EmailTemplatePreviewSnapshotRecord[] = [];
+  private emailTemplatePublishedVersions: EmailTemplatePublishedVersionRecord[] = [];
   private authAccounts: AuthAccountRecord[] = [];
   private authSessions: AuthSessionRecord[] = [];
   private calendarCredentials: CalendarCredentialRecord[] = [];
@@ -1430,6 +1435,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     return {
       emailTemplateDrafts: this.emailTemplateDrafts,
       emailTemplatePreviewSnapshots: this.emailTemplatePreviewSnapshots,
+      emailTemplatePublishedVersions: this.emailTemplatePublishedVersions,
     };
   }
 

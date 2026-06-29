@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildEmailTemplatePublishedVersion,
   buildEmailTemplatePreviewSnapshot,
   normalizeEmailTemplateHtmlPreview,
   normalizeEmailTemplateTextPreview,
@@ -82,5 +83,50 @@ describe("email template drafts", () => {
     expect(metadata).not.toContain("client@example.test");
     expect(metadata).not.toContain("private@example.test");
     expect(metadata).not.toContain("Hello client");
+  });
+
+  it("builds immutable published versions with safe posture metadata", () => {
+    const publishedVersion = buildEmailTemplatePublishedVersion({
+      id: "template-published-version-001",
+      firmId: "firm-west-legal",
+      templateDraft: templateDraft({
+        version: 3,
+        subject: "Synthetic private publish subject",
+        textBody: "Synthetic private publish body.",
+        htmlBody: "<p>Synthetic private publish body.</p>",
+      }),
+      version: 2,
+      publishedByUserId: "user-admin",
+      publishedAt: "2026-06-29T10:30:00.000Z",
+    });
+
+    expect(publishedVersion).toMatchObject({
+      id: "template-published-version-001",
+      templateDraftId: "template-draft-001",
+      version: 2,
+      draftVersion: 3,
+      subject: "Synthetic private publish subject",
+      textBody: "Synthetic private publish body.",
+      publishedByUserId: "user-admin",
+    });
+    expect(publishedVersion.metadata).toMatchObject({
+      publishedVersionId: "template-published-version-001",
+      templateDraftId: "template-draft-001",
+      publishedVersion: 2,
+      draftVersion: 3,
+      publishedAt: "2026-06-29T10:30:00.000Z",
+      subjectLength: "Synthetic private publish subject".length,
+      textLength: "Synthetic private publish body.".length,
+      providerNeutral: true,
+      deliveryQueued: false,
+      providerDeliverySideEffect: false,
+      campaignAutomation: false,
+      bulkSend: false,
+    });
+
+    const metadata = JSON.stringify(publishedVersion.metadata);
+    expect(metadata).not.toContain("Synthetic private publish subject");
+    expect(metadata).not.toContain("Synthetic private publish body");
+    expect(metadata).not.toContain("retainer.follow_up");
   });
 });

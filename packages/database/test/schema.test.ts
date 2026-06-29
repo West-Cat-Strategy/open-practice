@@ -40,6 +40,7 @@ import {
   emailEvents,
   emailOutbox,
   emailTemplateDrafts,
+  emailTemplatePublishedVersions,
   emailTemplatePreviewSnapshots,
   expenseEntries,
   externalUploadLinks,
@@ -1059,6 +1060,37 @@ describe("database schema hardening", () => {
       expect.arrayContaining([
         "email_template_preview_snapshots_template_created_idx",
         "email_template_preview_snapshots_matter_created_idx",
+      ]),
+    );
+    const publishedVersionConfig = getTableConfig(emailTemplatePublishedVersions);
+    expect(publishedVersionConfig.columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining([
+        "firm_id",
+        "template_draft_id",
+        "version",
+        "draft_version",
+        "name",
+        "template_key",
+        "from_address",
+        "subject",
+        "text_body",
+        "html_body",
+        "recipient_hints",
+        "published_by_user_id",
+        "published_at",
+        "metadata",
+      ]),
+    );
+    expect(publishedVersionConfig.indexes.map((index) => index.config.name)).toEqual(
+      expect.arrayContaining([
+        "email_template_published_versions_template_version_idx",
+        "email_template_published_versions_template_published_idx",
+      ]),
+    );
+    expect(publishedVersionConfig.checks.map((check) => check.name)).toEqual(
+      expect.arrayContaining([
+        "email_template_published_versions_positive_version",
+        "email_template_published_versions_positive_draft_version",
       ]),
     );
     expect(getTableConfig(inboundEmailAddresses).columns.map((column) => column.name)).toEqual(

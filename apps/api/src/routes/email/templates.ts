@@ -1,8 +1,10 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import {
+  buildEmailTemplatePublishedVersion,
   buildEmailTemplatePreviewSnapshot,
   type EmailTemplateDraftRecord,
+  type EmailTemplatePublishedVersionRecord,
   type EmailTemplatePreviewSnapshotRecord,
 } from "@open-practice/domain";
 import { ApiHttpError } from "../../http/response.js";
@@ -103,6 +105,12 @@ function serializePreviewSnapshot(
   return snapshot;
 }
 
+function serializePublishedVersion(
+  version: EmailTemplatePublishedVersionRecord,
+): EmailTemplatePublishedVersionRecord {
+  return version;
+}
+
 function draftAuditMetadata(draft: EmailTemplateDraftRecord): Record<string, unknown> {
   return {
     templateDraftId: draft.id,
@@ -115,6 +123,27 @@ function draftAuditMetadata(draft: EmailTemplateDraftRecord): Record<string, unk
     recipientHintCount: draft.recipientHints.length,
     draftAndPreviewOnly: true,
     providerNeutral: true,
+  };
+}
+
+function publishedVersionAuditMetadata(
+  version: EmailTemplatePublishedVersionRecord,
+): Record<string, unknown> {
+  return {
+    publishedVersionId: version.id,
+    templateDraftId: version.templateDraftId,
+    version: version.version,
+    draftVersion: version.draftVersion,
+    publishedAt: version.publishedAt,
+    subjectLength: version.subject.length,
+    textLength: version.textBody.length,
+    htmlLength: version.htmlBody.length,
+    recipientHintCount: version.recipientHints.length,
+    providerNeutral: true,
+    deliveryQueued: false,
+    providerDeliverySideEffect: false,
+    campaignAutomation: false,
+    bulkSend: false,
   };
 }
 
@@ -225,6 +254,63 @@ export function registerEmailTemplateDraftRoutes(
     });
 
     return { templateDraft: serializeTemplateDraft(updated) };
+  });
+
+  server.post("/api/email/template-drafts/:templateDraftId/publish", async (request, reply) => {
+    const params = parseRequestPart(templateDraftParamsSchema, request.params, "params");
+    assertEmailAccess(request.auth, {
+      resource: "email",
+      action: "update",
+    });
+
+    const draft = await getTemplateDraftOrThrow(
+      repository,
+      request.auth.firmId,
+      params.templateDraftId,
+    );
+    const latest = await repository.getLatestEmailTemplatePublishedVersion(
+      request.auth.firmId,
+      params.templateDraftId,
+    );
+    const publishedVersion = buildEmailTemplatePublishedVersion({
+      id: crypto.randomUUID(),
+      firmId: request.auth.firmId,
+      templateDraft: draft,
+      version: (latest?.version ?? 0) + 1,
+      publishedByUserId: request.auth.user.id,
+      publishedAt: new Date().toISOString(),
+    });
+    const created = await repository.createEmailTemplatePublishedVersion(publishedVersion);
+    await appendRouteAuditEvent(repository, request.auth, {
+      action: "email_template_published_version.created",
+      resourceType: "email_template_published_version",
+      resourceId: created.id,
+      metadata: publishedVersionAuditMetadata(created),
+    });
+
+    reply.code(201);
+    return { publishedVersion: serializePublishedVersion(created) };
+  });
+
+  server.get("/api/email/template-drafts/:templateDraftId/versions", async (request) => {
+    const params = parseRequestPart(templateDraftParamsSchema, request.params, "params");
+    const query = parseRequestPart(
+      z.object({ limit: z.coerce.number().int().min(1).max(50).default(25) }),
+      request.query,
+      "query",
+    );
+    assertEmailAccess(request.auth, {
+      resource: "email",
+      action: "read",
+    });
+    await getTemplateDraftOrThrow(repository, request.auth.firmId, params.templateDraftId);
+
+    const publishedVersions = await repository.listEmailTemplatePublishedVersions(
+      request.auth.firmId,
+      params.templateDraftId,
+      { limit: query.limit },
+    );
+    return { publishedVersions: publishedVersions.map(serializePublishedVersion) };
   });
 
   server.post(

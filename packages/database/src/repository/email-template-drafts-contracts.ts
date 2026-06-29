@@ -1,5 +1,6 @@
 import type {
   EmailTemplateDraftRecord,
+  EmailTemplatePublishedVersionRecord,
   EmailTemplatePreviewSnapshotRecord,
 } from "@open-practice/domain";
 
@@ -48,4 +49,18 @@ export interface EmailTemplateDraftRepository {
       limit?: number;
     },
   ): Promise<EmailTemplatePreviewSnapshotRecord[]>;
+  createEmailTemplatePublishedVersion(
+    record: EmailTemplatePublishedVersionRecord,
+  ): Promise<EmailTemplatePublishedVersionRecord>;
+  listEmailTemplatePublishedVersions(
+    firmId: string,
+    templateDraftId: string,
+    options?: {
+      limit?: number;
+    },
+  ): Promise<EmailTemplatePublishedVersionRecord[]>;
+  getLatestEmailTemplatePublishedVersion(
+    firmId: string,
+    templateDraftId: string,
+  ): Promise<EmailTemplatePublishedVersionRecord | undefined>;
 }

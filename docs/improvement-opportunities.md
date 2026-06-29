@@ -179,7 +179,10 @@ surface.
 - **Structured email template drafts**
   - **Shipped slice:** OP-T158 adds provider-neutral firm-scoped saved email template drafts and
     matter-scoped persisted preview snapshots. The 2026-06-16 parity closure hydrates recent matter
-    preview snapshots into dashboard resources and removes the unused empty preview placeholder.
+    preview snapshots into dashboard resources and removes the unused empty preview placeholder. The
+    2026-06-29 follow-up adds staff publish/version-history affordances with immutable published
+    versions, firm-scoped publish/list routes, redacted publish audit metadata, and no delivery
+    side effects.
   - **Remaining gap / future boundary:** Campaign automation, bulk sends, subscription management,
     provider delivery side effects, queue/send jobs, and live delivery from template management
     remain future work. `/api/email/previews` stays render-only.

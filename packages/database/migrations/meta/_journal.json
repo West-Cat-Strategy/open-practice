@@ -519,6 +519,13 @@
       "when": 1782542503012,
       "tag": "0073_deposit_match_review_decisions",
       "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1782720384041,
+      "tag": "0074_email_template_published_versions",
+      "breakpoints": true
     }
   ]
 }

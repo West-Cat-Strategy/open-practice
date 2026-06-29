@@ -2,6 +2,7 @@
 
 import type {
   EmailTemplateDraftItem,
+  EmailTemplatePublishedVersionItem,
   EmailTemplatePreviewSnapshotItem,
 } from "../_features/email-templates/models";
 
@@ -23,14 +24,17 @@ export interface EmailTemplateDraftsPanelProps {
   selectedTemplateDraftId?: string;
   form: EmailTemplateDraftFormState;
   previewSnapshots: EmailTemplatePreviewSnapshotItem[];
+  publishedVersions: EmailTemplatePublishedVersionItem[];
   status?: string;
   saving: boolean;
   previewing: boolean;
+  publishing: boolean;
   onSelectDraft: (templateDraftId: string) => void;
   onNewDraft: () => void;
   onFieldChange: (field: keyof EmailTemplateDraftFormState, value: string) => void;
   onSaveDraft: () => void;
   onCreatePreviewSnapshot: () => void;
+  onPublishDraft: () => void;
 }
 
 function compactDate(value: string): string {
@@ -48,14 +52,17 @@ export function EmailTemplateDraftsPanel({
   selectedTemplateDraftId,
   form,
   previewSnapshots,
+  publishedVersions,
   status,
   saving,
   previewing,
+  publishing,
   onSelectDraft,
   onNewDraft,
   onFieldChange,
   onSaveDraft,
   onCreatePreviewSnapshot,
+  onPublishDraft,
 }: EmailTemplateDraftsPanelProps) {
   const selectedDraft = templateDrafts.find((draft) => draft.id === selectedTemplateDraftId);
   const canSave =
@@ -172,9 +179,41 @@ export function EmailTemplateDraftsPanel({
             >
               {previewing ? "Saving snapshot" : "Save snapshot"}
             </button>
+            <button
+              className="secondary-button compact-button"
+              disabled={!selectedDraft || publishing}
+              onClick={onPublishDraft}
+              type="button"
+            >
+              {publishing ? "Publishing" : "Publish version"}
+            </button>
           </div>
           {status ? <p className="inline-empty">{status}</p> : null}
         </div>
+      </div>
+
+      <div className="section-title">
+        <h3>Version history</h3>
+        <span>{publishedVersions.length} published</span>
+      </div>
+      <div className="party-list">
+        {publishedVersions.map((version) => (
+          <div className="party-row" key={version.id}>
+            <span>
+              <strong>
+                v{version.version} · {version.name}
+              </strong>
+              <small>
+                draft v{version.draftVersion} · {version.templateKey} ·{" "}
+                {compactDate(version.publishedAt)}
+              </small>
+            </span>
+            <em>published</em>
+          </div>
+        ))}
+        {publishedVersions.length === 0 ? (
+          <p className="inline-empty">No published template versions.</p>
+        ) : null}
       </div>
 
       <div className="section-title">
