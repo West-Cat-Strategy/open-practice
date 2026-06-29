@@ -210,6 +210,26 @@ function buildSyntheticDocumentProcessingWorkbench(): DocumentProcessingWorkbenc
             retention_review: 0,
             total: 2,
           },
+          dispositionMetadata: {
+            candidateState: "not_ready",
+            readyForReviewerPacket: false,
+            blockerCounts: { total: 0, legalHold: 0, uploadIntegrity: 0, reviewState: 0 },
+            sourceCueCounts: {
+              classification: 1,
+              duplicate_or_supersession: 0,
+              matter_contact: 1,
+              missing_metadata: 0,
+              retention_review: 0,
+              total: 2,
+            },
+            destructiveAction: false,
+            objectDeletion: false,
+            retentionDeadlineEnforced: false,
+            legalHoldReleaseCommand: false,
+            retainedExportBody: false,
+            rawPayloadRetention: false,
+            complianceClaim: false,
+          },
         },
         metadataTags: [
           {
@@ -348,7 +368,11 @@ describe("DocumentsSection", () => {
     expect(html).toContain("Reviewer suggestions");
     expect(html).toContain("Extraction suggests financial");
     expect(html).toContain("Retention/hold needs review");
+    expect(html).toContain(
+      "disposition not ready · 0 blockers · 0 hold · 0 integrity · 0 review · no deletion · no deadline enforcement",
+    );
     expect(html).toContain("no deletion");
+    expect(html).toContain("no deadline enforcement");
     expect(html).toContain("Queue OCR");
     expect(html).toContain("needs review");
     expect(html).toContain('data-action-key="document_retention_hold_review.record"');
@@ -402,6 +426,52 @@ describe("DocumentsSection", () => {
     expect(html).toContain("Retention/hold needs review");
     expect(html).toContain("no deletion");
     expect(html).toContain("Grant portal");
+  });
+
+  it("renders scheduled disposition reviewer-packet metadata without adding controls", () => {
+    const workbench = buildSyntheticDocumentProcessingWorkbench();
+    const firstDocument = workbench.documents[0];
+    expect(firstDocument).toBeDefined();
+    const scheduledDocument = {
+      ...firstDocument!,
+      retentionHoldReview: {
+        ...firstDocument!.retentionHoldReview!,
+        status: "ready_for_reviewer_packet" as const,
+        latestDecision: {
+          decision: "ready_for_reviewer_packet" as const,
+          reason: "practice_review" as const,
+          reviewAfter: "2026-07-01T00:00:00.000Z",
+          minimumRetainThrough: "2026-08-01T00:00:00.000Z",
+          recordedByUserId: "user_synthetic",
+          recordedAt: "2026-06-29T10:00:00.000Z",
+          sourceCueCounts: firstDocument!.retentionHoldReview!.sourceCueCounts,
+        },
+        dispositionMetadata: {
+          ...firstDocument!.retentionHoldReview!.dispositionMetadata,
+          candidateState: "ready_for_reviewer_packet" as const,
+          readyForReviewerPacket: true,
+          reviewAfter: "2026-07-01T00:00:00.000Z",
+          minimumRetainThrough: "2026-08-01T00:00:00.000Z",
+        },
+      },
+    };
+    const html = renderToStaticMarkup(
+      createElement(
+        DocumentsSection,
+        buildDocumentsSectionProps({
+          activeDocumentProcessing: { ...workbench, documents: [scheduledDocument] },
+          activeDocumentProcessingRows: [scheduledDocument],
+        }),
+      ),
+    );
+
+    expect(html).toContain("Retention/hold ready for reviewer packet");
+    expect(html).toContain("disposition ready for reviewer packet");
+    expect(html).toContain("review after 2026-07-01T00:00:00.000Z");
+    expect(html).toContain("retain through 2026-08-01T00:00:00.000Z");
+    expect(html).toContain("no deletion");
+    expect(html).toContain("no deadline enforcement");
+    expect(html.match(/data-action-key="document_retention_hold_review\.record"/g)).toHaveLength(1);
   });
 
   it("describes rejected conversion review readiness without exposing provider evidence", () => {

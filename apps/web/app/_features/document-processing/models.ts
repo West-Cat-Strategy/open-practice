@@ -334,6 +334,34 @@ export interface DocumentRetentionHoldReviewRecord {
   sourceCueCounts: Record<DocumentReviewSuggestionGroup | "total", number>;
 }
 
+export type DocumentDispositionCandidateState =
+  | "not_ready"
+  | "blocked_by_hold"
+  | "ready_for_reviewer_packet"
+  | "reviewed_keep"
+  | "reviewed_superseded";
+
+export interface DocumentDispositionMetadata {
+  candidateState: DocumentDispositionCandidateState;
+  readyForReviewerPacket: boolean;
+  blockerCounts: {
+    total: number;
+    legalHold: number;
+    uploadIntegrity: number;
+    reviewState: number;
+  };
+  sourceCueCounts: Record<DocumentReviewSuggestionGroup | "total", number>;
+  reviewAfter?: string;
+  minimumRetainThrough?: string;
+  destructiveAction: false;
+  objectDeletion: false;
+  retentionDeadlineEnforced: false;
+  legalHoldReleaseCommand: false;
+  retainedExportBody: false;
+  rawPayloadRetention: false;
+  complianceClaim: false;
+}
+
 export interface DocumentRetentionHoldReview {
   reviewerOnly: true;
   mutating: false;
@@ -345,6 +373,7 @@ export interface DocumentRetentionHoldReview {
   blockers: string[];
   sourceCueCounts: Record<DocumentReviewSuggestionGroup | "total", number>;
   latestDecision?: DocumentRetentionHoldReviewRecord;
+  dispositionMetadata: DocumentDispositionMetadata;
 }
 
 export type DocumentMetadataTagGroup =

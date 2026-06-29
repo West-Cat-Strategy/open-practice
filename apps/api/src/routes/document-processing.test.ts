@@ -1219,6 +1219,19 @@ describe("document processing routes", () => {
             status: "blocked_by_hold",
             blockers: ["legal_hold"],
             sourceCueCounts: expect.objectContaining({ retention_review: 1 }),
+            dispositionMetadata: {
+              candidateState: "blocked_by_hold",
+              readyForReviewerPacket: false,
+              blockerCounts: { total: 1, legalHold: 1, uploadIntegrity: 0, reviewState: 0 },
+              sourceCueCounts: expect.objectContaining({ retention_review: 1 }),
+              destructiveAction: false,
+              objectDeletion: false,
+              retentionDeadlineEnforced: false,
+              legalHoldReleaseCommand: false,
+              retainedExportBody: false,
+              rawPayloadRetention: false,
+              complianceClaim: false,
+            },
           },
         }),
       ],
@@ -1238,6 +1251,15 @@ describe("document processing routes", () => {
     expect(JSON.stringify(documentItem.reviewSuggestions)).not.toContain("private");
     expect(JSON.stringify(documentItem.reviewSuggestions)).not.toContain("storageKey");
     expect(JSON.stringify(documentItem.reviewSuggestions)).not.toContain("providerPayload");
+    expect(JSON.stringify(documentItem.retentionHoldReview.dispositionMetadata)).not.toContain(
+      "private",
+    );
+    expect(JSON.stringify(documentItem.retentionHoldReview.dispositionMetadata)).not.toContain(
+      "storageKey",
+    );
+    expect(JSON.stringify(documentItem.retentionHoldReview.dispositionMetadata)).not.toContain(
+      "providerPayload",
+    );
     const serialized = JSON.stringify(response.json());
     expect(serialized).not.toContain("doc-matter-002");
     expect(serialized).not.toContain("job-other-matter");

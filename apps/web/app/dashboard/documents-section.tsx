@@ -14,6 +14,7 @@ import {
   documentMetadataScanStatusOptions,
 } from "../_features/dashboard/formatters";
 import type {
+  DocumentDispositionMetadata,
   DocumentRetentionHoldReviewDecision,
   DocumentRetentionHoldReviewReason,
   DocumentMetadataTag,
@@ -86,6 +87,24 @@ function portalDocumentAccessActive(access: PortalDocumentAccessSummary, nowMs: 
 
 function compactRetentionHoldStatus(value?: string): string {
   return value ? value.replaceAll("_", " ") : "needs review";
+}
+
+function describeDispositionMetadata(metadata?: DocumentDispositionMetadata): string {
+  if (!metadata) return "no deletion/no deadline enforcement";
+  const schedule = [
+    metadata.reviewAfter ? `review after ${metadata.reviewAfter}` : null,
+    metadata.minimumRetainThrough ? `retain through ${metadata.minimumRetainThrough}` : null,
+  ].filter(Boolean);
+  return [
+    `disposition ${compactRetentionHoldStatus(metadata.candidateState)}`,
+    `${metadata.blockerCounts.total} blockers`,
+    `${metadata.blockerCounts.legalHold} hold`,
+    `${metadata.blockerCounts.uploadIntegrity} integrity`,
+    `${metadata.blockerCounts.reviewState} review`,
+    ...schedule,
+    "no deletion",
+    "no deadline enforcement",
+  ].join(" · ");
 }
 
 function suggestedRetentionHoldDecision(
@@ -505,9 +524,8 @@ export function DocumentsSection({
                       {retentionHoldReview ? (
                         <small>
                           Retention/hold {compactRetentionHoldStatus(retentionHoldReview.status)} ·{" "}
-                          {retentionHoldReview.blockers.length} blockers ·{" "}
-                          {retentionHoldReview.sourceCueCounts.retention_review} retention cues · no
-                          deletion
+                          {retentionHoldReview.sourceCueCounts.retention_review} retention cues ·{" "}
+                          {describeDispositionMetadata(retentionHoldReview.dispositionMetadata)}
                         </small>
                       ) : null}
                     </span>
