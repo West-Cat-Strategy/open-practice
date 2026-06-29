@@ -18,6 +18,7 @@ import type {
   LedgerBalanceSnapshotComparison,
   LedgerBankFeedReconciliationReviewSummary,
   LedgerEntry,
+  LedgerMakerCheckerReadiness,
   LedgerPostingRequestRecord,
   LedgerPostingRequestReviewSummary,
   LedgerReconciliationFreshnessReview,
@@ -252,6 +253,7 @@ export interface TrustControlsDashboardResponse {
   balanceSnapshotComparison: LedgerBalanceSnapshotComparison;
   reconciliationFreshness?: LedgerReconciliationFreshnessReview;
   reconciliationPacketReview?: LedgerReconciliationPacketReview;
+  makerCheckerReadiness: LedgerMakerCheckerReadiness;
   accountingReview: {
     importBatches: LedgerStatementImportBatchRecord[];
     matchRuleProfiles: LedgerStatementMatchRuleProfileRecord[];

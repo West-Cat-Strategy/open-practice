@@ -1133,6 +1133,33 @@ function trustControls(
       exceptionReconciliationIds: ["reconciliation-001"],
       overdrawnBalanceKeys: [],
     },
+    makerCheckerReadiness: {
+      generatedAt: "2026-05-01T13:00:00.000Z",
+      reviewOnly: true,
+      categories: [],
+      matters: [],
+      summary: {
+        categoryCount: 0,
+        categoriesRequiringPolicyCount: 0,
+        matterCount: 0,
+        mattersRequiringPolicyCount: 0,
+        reviewCueCount: 0,
+        pendingCount: 0,
+        exceptionCount: 0,
+        amountCents: 0,
+        reviewOnly: true,
+      },
+      policy: {
+        source: "existing_trust_controls_projection",
+        makerCheckerPolicyEnabled: false,
+        directPostingSemantics: "unchanged",
+        approvalMutation: false,
+        automaticTrustPosting: false,
+        settlementAutomation: false,
+        bankFeedMatching: false,
+        jurisdictionCertifiedAccounting: false,
+      },
+    },
     accountingReview: {
       importBatches: [
         {

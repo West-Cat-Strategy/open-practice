@@ -129,6 +129,10 @@ function financialCommandDetailCue(
   );
 }
 
+function makerCheckerReadinessReasonCue(reasons: readonly string[]): string {
+  return reasons.map((reason) => reason.replaceAll("_", " ")).join(" · ") || "no policy cues";
+}
+
 export function TrustControlsSection({
   activeJurisdictionTrustSummary,
   activeTrustBalanceCents,
@@ -168,6 +172,18 @@ export function TrustControlsSection({
   };
   const financialCommandJournal = activeTrustControls.financialCommandJournal;
   const financialCommandEntries = financialCommandJournal.entries.slice(0, 6);
+  const makerCheckerReadiness = activeTrustControls.makerCheckerReadiness;
+  const makerCheckerReadinessCategories = makerCheckerReadiness.categories
+    .filter(
+      (category) =>
+        category.readiness === "policy_required_if_enabled" ||
+        category.reviewCueCount > 0 ||
+        category.pendingCount > 0 ||
+        category.exceptionCount > 0 ||
+        category.conflictCount > 0,
+    )
+    .slice(0, 5);
+  const makerCheckerReadinessMatters = makerCheckerReadiness.matters.slice(0, 5);
   const reconciliationPacketReview =
     activeTrustControls.reconciliationPacketReview ?? emptyReconciliationPacketReview();
   const hasReconciliationPacketEvidence =
@@ -599,6 +615,61 @@ export function TrustControlsSection({
               {financialCommandJournal.summary.byFamily.reconciliation} reconciliation
             </small>
             <small>{financialCommandJournal.policy.rawMetadataValues.replaceAll("_", " ")}</small>
+          </span>
+          <em>review only</em>
+        </div>
+      </div>
+
+      <div className="section-title">
+        <h3>Maker-checker readiness</h3>
+        <span>
+          {makerCheckerReadiness.summary.categoriesRequiringPolicyCount} categories ·{" "}
+          {makerCheckerReadiness.summary.mattersRequiringPolicyCount} matters
+        </span>
+      </div>
+      <div className="party-list">
+        {makerCheckerReadinessCategories.map((category) => (
+          <div className="party-row" key={category.category}>
+            <span>
+              <strong>{category.label}</strong>
+              <small>
+                {category.reviewCueCount} cues · {category.pendingCount} pending ·{" "}
+                {category.exceptionCount + category.conflictCount} exceptions/conflicts
+              </small>
+              <small>{makerCheckerReadinessReasonCue(category.reasonCodes)}</small>
+            </span>
+            <em>{category.readiness.replaceAll("_", " ")}</em>
+          </div>
+        ))}
+        {makerCheckerReadinessMatters.map((matter) => (
+          <div className="party-row" key={matter.matterId}>
+            <span>
+              <strong>{matter.matterId}</strong>
+              <small>
+                {matter.reviewCueCount} cues · {matter.categoryKeys.join(", ")} ·{" "}
+                {formatCurrency(matter.amountCents)}
+              </small>
+              <small>{makerCheckerReadinessReasonCue(matter.reasonCodes)}</small>
+            </span>
+            <em>readiness only</em>
+          </div>
+        ))}
+        {makerCheckerReadinessCategories.length === 0 &&
+        makerCheckerReadinessMatters.length === 0 ? (
+          <p className="inline-empty">
+            No maker-checker readiness cues are present in the current controls payload.
+          </p>
+        ) : null}
+        <div className="party-row">
+          <span>
+            <strong>Readiness boundary</strong>
+            <small>
+              Policy enabled {String(makerCheckerReadiness.policy.makerCheckerPolicyEnabled)} ·
+              direct postings {makerCheckerReadiness.policy.directPostingSemantics}
+            </small>
+            <small>
+              No approval mutation · no auto-posting · no settlement or bank-feed matching
+            </small>
           </span>
           <em>review only</em>
         </div>

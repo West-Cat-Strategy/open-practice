@@ -22,6 +22,15 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 ## Current Handoff Notes
 
+The 2026-06-28 `feat/trust-controls-maker-checker-readiness-20260628` branch adds read-only
+Trust Controls maker-checker readiness indicators to the existing controls payload and dashboard.
+The indicators reuse ledger controls, reconciliation packet, posting-request, trust-transfer,
+payment-import, diagnostics, and safe matter-ID projections to show which categories or matters
+would require policy if maker-checker were later enabled. Policy remains disabled, direct posting
+semantics stay unchanged, and the branch does not approve, reject, auto-post, settle, match bank
+feeds, or claim jurisdiction-certified accounting. Proof is recorded in
+[Trust Controls maker-checker readiness proof](validation/OP_TRUST_CONTROLS_MAKER_CHECKER_READINESS_PROOF_2026-06-28.md).
+
 The current dirty branch is integrating provider document conversion review decisions, OP-T162
 deposit-match reviewer decisions, provider document conversion latest-decision/history cues, a
 metadata-only refund/chargeback cue surface, and the adopted closed/archived matter lifecycle

@@ -437,6 +437,76 @@ export interface LedgerReconciliationPacketReview {
   };
 }
 
+export type LedgerMakerCheckerReadinessReason =
+  | "pending_ledger_transaction_approval"
+  | "rejected_ledger_transaction_approval"
+  | "overdrawn_trust_balance"
+  | "statement_import_review_ready"
+  | "statement_import_duplicate_rows"
+  | "reconciliation_exception"
+  | "unmatched_statement_rows"
+  | "pending_posting_request"
+  | "rejected_posting_request"
+  | "pending_trust_transfer_request"
+  | "approved_unlinked_trust_transfer_request"
+  | "rejected_trust_transfer_request"
+  | "payment_import_review_required"
+  | "payment_import_conflict";
+
+export interface LedgerMakerCheckerReadinessCategoryRow {
+  category: LedgerReconciliationPacketKind;
+  label: string;
+  evidenceCount: number;
+  reviewCueCount: number;
+  pendingCount: number;
+  exceptionCount: number;
+  conflictCount: number;
+  amountCents: number;
+  readiness: "policy_required_if_enabled" | "clear";
+  reasonCodes: LedgerMakerCheckerReadinessReason[];
+  reviewOnly: true;
+}
+
+export interface LedgerMakerCheckerReadinessMatterRow {
+  matterId: string;
+  categoryKeys: LedgerReconciliationPacketKind[];
+  reasonCodes: LedgerMakerCheckerReadinessReason[];
+  reviewCueCount: number;
+  pendingCount: number;
+  exceptionCount: number;
+  amountCents: number;
+  latestEvidenceAt?: string;
+  reviewOnly: true;
+}
+
+export interface LedgerMakerCheckerReadiness {
+  generatedAt: string;
+  reviewOnly: true;
+  categories: LedgerMakerCheckerReadinessCategoryRow[];
+  matters: LedgerMakerCheckerReadinessMatterRow[];
+  summary: {
+    categoryCount: number;
+    categoriesRequiringPolicyCount: number;
+    matterCount: number;
+    mattersRequiringPolicyCount: number;
+    reviewCueCount: number;
+    pendingCount: number;
+    exceptionCount: number;
+    amountCents: number;
+    reviewOnly: true;
+  };
+  policy: {
+    source: "existing_trust_controls_projection";
+    makerCheckerPolicyEnabled: false;
+    directPostingSemantics: "unchanged";
+    approvalMutation: false;
+    automaticTrustPosting: false;
+    settlementAutomation: false;
+    bankFeedMatching: false;
+    jurisdictionCertifiedAccounting: false;
+  };
+}
+
 export type LedgerBalanceSnapshotReviewReason =
   | "no_trust_balances"
   | "overdrawn_trust_balance"
@@ -1382,6 +1452,345 @@ export function ledgerReconciliationPacketReview(input: {
       liveSettlement: false,
       providerCommands: false,
       publicExposure: false,
+    },
+  };
+}
+
+function categoryReadinessReasonCodes(input: {
+  category: LedgerReconciliationPacketKind;
+  packet: LedgerReconciliationPacketSummary;
+  diagnostics: LedgerControlsDiagnostics;
+  postingRequests: LedgerPostingRequestRecord[];
+  trustTransferRequests: TrustTransferRequestRecord[];
+  paymentImportReviewRecords: PaymentImportReviewRecord[];
+}): LedgerMakerCheckerReadinessReason[] {
+  const reasons = new Set<LedgerMakerCheckerReadinessReason>();
+  if (input.category === "ledger") {
+    if (input.diagnostics.pendingApprovalTransactionIds.length > 0) {
+      reasons.add("pending_ledger_transaction_approval");
+    }
+    if (input.diagnostics.rejectedApprovalTransactionIds.length > 0) {
+      reasons.add("rejected_ledger_transaction_approval");
+    }
+    if (input.diagnostics.overdrawnBalanceKeys.length > 0) {
+      reasons.add("overdrawn_trust_balance");
+    }
+  }
+  if (input.category === "statement_import") {
+    if (input.packet.pendingCount > 0) reasons.add("statement_import_review_ready");
+    if (input.packet.conflictCount > 0) reasons.add("statement_import_duplicate_rows");
+  }
+  if (input.category === "exception") {
+    if (input.packet.exceptionCount > 0) reasons.add("reconciliation_exception");
+    if (input.packet.conflictCount > 0) reasons.add("unmatched_statement_rows");
+  }
+  if (input.category === "posting_request") {
+    if (input.postingRequests.some((request) => request.status === "pending_approval")) {
+      reasons.add("pending_posting_request");
+    }
+    if (input.postingRequests.some((request) => request.status === "rejected")) {
+      reasons.add("rejected_posting_request");
+    }
+  }
+  if (input.category === "trust_transfer") {
+    if (input.trustTransferRequests.some((request) => request.status === "pending_approval")) {
+      reasons.add("pending_trust_transfer_request");
+    }
+    if (
+      input.trustTransferRequests.some(
+        (request) => request.status === "approved" && !request.ledgerTransactionId,
+      )
+    ) {
+      reasons.add("approved_unlinked_trust_transfer_request");
+    }
+    if (input.trustTransferRequests.some((request) => request.status === "rejected")) {
+      reasons.add("rejected_trust_transfer_request");
+    }
+  }
+  if (input.category === "payment_import") {
+    if (input.paymentImportReviewRecords.some((record) => record.reviewState === "needs_review")) {
+      reasons.add("payment_import_review_required");
+    }
+    if (
+      input.paymentImportReviewRecords.some(
+        (record) => record.conflictReason || record.duplicateOfRecordId,
+      )
+    ) {
+      reasons.add("payment_import_conflict");
+    }
+  }
+  return [...reasons];
+}
+
+function transactionMatterAmountCents(
+  ledger: LedgerControlsLedgerSnapshot,
+  transactionId: string,
+  matterId: string,
+): number {
+  const entries = ledger.entries.filter(
+    (entry) => entry.transactionId === transactionId && entry.matterId === matterId,
+  );
+  const debitCents = entries.reduce((sum, entry) => sum + entry.debitCents, 0);
+  const creditCents = entries.reduce((sum, entry) => sum + entry.creditCents, 0);
+  return Math.max(debitCents, creditCents);
+}
+
+function transactionMatterIds(
+  ledger: LedgerControlsLedgerSnapshot,
+  transactionId: string,
+): string[] {
+  return uniqueInOrder(
+    ledger.entries
+      .filter((entry) => entry.transactionId === transactionId)
+      .map((entry) => entry.matterId),
+  );
+}
+
+function transactionLatestEvidenceAt(
+  ledger: LedgerControlsLedgerSnapshot,
+  transactionId: string,
+): string | undefined {
+  return latestIso(
+    ledger.entries
+      .filter((entry) => entry.transactionId === transactionId)
+      .map((entry) => entry.postedAt),
+  );
+}
+
+function visibleMatterIdFromTrustBalanceKey(
+  key: string,
+  visibleMatterIds: Set<string>,
+): string | undefined {
+  const parts = key.split(":").filter(Boolean);
+  return parts.find((part) => visibleMatterIds.has(part));
+}
+
+interface LedgerMakerCheckerReadinessMatterAccumulator {
+  matterId: string;
+  categoryKeys: Set<LedgerReconciliationPacketKind>;
+  reasonCodes: Set<LedgerMakerCheckerReadinessReason>;
+  reviewCueCount: number;
+  pendingCount: number;
+  exceptionCount: number;
+  amountCents: number;
+  latestEvidenceAt?: string;
+}
+
+function addMatterReadinessCue(
+  matters: Map<string, LedgerMakerCheckerReadinessMatterAccumulator>,
+  input: {
+    matterId: string;
+    category: LedgerReconciliationPacketKind;
+    reasonCodes: LedgerMakerCheckerReadinessReason[];
+    amountCents?: number;
+    latestEvidenceAt?: string;
+    pendingCount?: number;
+    exceptionCount?: number;
+  },
+): void {
+  const current = matters.get(input.matterId) ?? {
+    matterId: input.matterId,
+    categoryKeys: new Set<LedgerReconciliationPacketKind>(),
+    reasonCodes: new Set<LedgerMakerCheckerReadinessReason>(),
+    reviewCueCount: 0,
+    pendingCount: 0,
+    exceptionCount: 0,
+    amountCents: 0,
+  };
+  current.categoryKeys.add(input.category);
+  for (const reason of input.reasonCodes) current.reasonCodes.add(reason);
+  current.reviewCueCount += 1;
+  current.pendingCount += input.pendingCount ?? 0;
+  current.exceptionCount += input.exceptionCount ?? 0;
+  current.amountCents += input.amountCents ?? 0;
+  current.latestEvidenceAt = latestIso([current.latestEvidenceAt, input.latestEvidenceAt]);
+  matters.set(input.matterId, current);
+}
+
+function matterRowsFromReadinessAccumulators(
+  matters: Map<string, LedgerMakerCheckerReadinessMatterAccumulator>,
+): LedgerMakerCheckerReadinessMatterRow[] {
+  return [...matters.values()]
+    .map((matter) => ({
+      matterId: matter.matterId,
+      categoryKeys: [...matter.categoryKeys].sort(),
+      reasonCodes: [...matter.reasonCodes].sort(),
+      reviewCueCount: matter.reviewCueCount,
+      pendingCount: matter.pendingCount,
+      exceptionCount: matter.exceptionCount,
+      amountCents: matter.amountCents,
+      latestEvidenceAt: matter.latestEvidenceAt,
+      reviewOnly: true as const,
+    }))
+    .sort(
+      (left, right) =>
+        right.reviewCueCount - left.reviewCueCount ||
+        right.exceptionCount - left.exceptionCount ||
+        left.matterId.localeCompare(right.matterId),
+    );
+}
+
+export function buildLedgerMakerCheckerReadiness(input: {
+  ledger: LedgerControlsLedgerSnapshot;
+  postingRequests: LedgerPostingRequestRecord[];
+  trustTransferRequests: TrustTransferRequestRecord[];
+  paymentImportReviewRecords: PaymentImportReviewRecord[];
+  diagnostics: LedgerControlsDiagnostics;
+  reconciliationPacketReview: LedgerReconciliationPacketReview;
+  generatedAt?: string;
+}): LedgerMakerCheckerReadiness {
+  const generatedAt = input.generatedAt ?? input.reconciliationPacketReview.generatedAt;
+  const categories = input.reconciliationPacketReview.packets.map((packet) => {
+    const reasonCodes = categoryReadinessReasonCodes({
+      category: packet.kind,
+      packet,
+      diagnostics: input.diagnostics,
+      postingRequests: input.postingRequests,
+      trustTransferRequests: input.trustTransferRequests,
+      paymentImportReviewRecords: input.paymentImportReviewRecords,
+    });
+    const readiness =
+      reasonCodes.length > 0 || packet.reviewCueCount > 0 || packet.pendingCount > 0
+        ? "policy_required_if_enabled"
+        : "clear";
+    return {
+      category: packet.kind,
+      label: packet.label,
+      evidenceCount: packet.evidenceCount,
+      reviewCueCount: packet.reviewCueCount,
+      pendingCount: packet.pendingCount,
+      exceptionCount: packet.exceptionCount,
+      conflictCount: packet.conflictCount,
+      amountCents: packet.amountCents,
+      readiness,
+      reasonCodes,
+      reviewOnly: true,
+    } satisfies LedgerMakerCheckerReadinessCategoryRow;
+  });
+
+  const matters = new Map<string, LedgerMakerCheckerReadinessMatterAccumulator>();
+  const visibleMatterIds = new Set<string>([
+    ...input.ledger.entries.map((entry) => entry.matterId),
+    ...input.postingRequests.flatMap((request) => request.matterIds),
+    ...input.trustTransferRequests.map((request) => request.matterId),
+    ...input.paymentImportReviewRecords.map((record) => record.matterId),
+  ]);
+
+  for (const transactionId of input.diagnostics.pendingApprovalTransactionIds) {
+    for (const matterId of transactionMatterIds(input.ledger, transactionId)) {
+      addMatterReadinessCue(matters, {
+        matterId,
+        category: "ledger",
+        reasonCodes: ["pending_ledger_transaction_approval"],
+        pendingCount: 1,
+        amountCents: transactionMatterAmountCents(input.ledger, transactionId, matterId),
+        latestEvidenceAt: transactionLatestEvidenceAt(input.ledger, transactionId),
+      });
+    }
+  }
+  for (const transactionId of input.diagnostics.rejectedApprovalTransactionIds) {
+    for (const matterId of transactionMatterIds(input.ledger, transactionId)) {
+      addMatterReadinessCue(matters, {
+        matterId,
+        category: "ledger",
+        reasonCodes: ["rejected_ledger_transaction_approval"],
+        exceptionCount: 1,
+        amountCents: transactionMatterAmountCents(input.ledger, transactionId, matterId),
+        latestEvidenceAt: transactionLatestEvidenceAt(input.ledger, transactionId),
+      });
+    }
+  }
+  for (const key of input.diagnostics.overdrawnBalanceKeys) {
+    const matterId = visibleMatterIdFromTrustBalanceKey(key, visibleMatterIds);
+    if (!matterId) continue;
+    addMatterReadinessCue(matters, {
+      matterId,
+      category: "ledger",
+      reasonCodes: ["overdrawn_trust_balance"],
+      exceptionCount: 1,
+      amountCents: Math.abs(input.ledger.trustBalances[key] ?? 0),
+    });
+  }
+  for (const request of input.postingRequests) {
+    if (request.status !== "pending_approval" && request.status !== "rejected") continue;
+    for (const matterId of request.matterIds) {
+      addMatterReadinessCue(matters, {
+        matterId,
+        category: "posting_request",
+        reasonCodes:
+          request.status === "pending_approval"
+            ? ["pending_posting_request"]
+            : ["rejected_posting_request"],
+        pendingCount: request.status === "pending_approval" ? 1 : 0,
+        exceptionCount: request.status === "rejected" ? 1 : 0,
+        amountCents: postingRequestAmountCents(request),
+        latestEvidenceAt: request.reviewedAt ?? request.preparedAt,
+      });
+    }
+  }
+  for (const request of input.trustTransferRequests) {
+    const reasonCodes: LedgerMakerCheckerReadinessReason[] = [];
+    if (request.status === "pending_approval") reasonCodes.push("pending_trust_transfer_request");
+    if (request.status === "approved" && !request.ledgerTransactionId) {
+      reasonCodes.push("approved_unlinked_trust_transfer_request");
+    }
+    if (request.status === "rejected") reasonCodes.push("rejected_trust_transfer_request");
+    if (reasonCodes.length === 0) continue;
+    addMatterReadinessCue(matters, {
+      matterId: request.matterId,
+      category: "trust_transfer",
+      reasonCodes,
+      pendingCount: request.status === "pending_approval" ? 1 : 0,
+      exceptionCount: request.status === "rejected" ? 1 : 0,
+      amountCents: request.amountCents,
+      latestEvidenceAt: request.reviewedAt ?? request.requestedAt,
+    });
+  }
+  for (const record of input.paymentImportReviewRecords) {
+    if (record.reviewState !== "needs_review") continue;
+    const hasConflict = Boolean(record.conflictReason || record.duplicateOfRecordId);
+    addMatterReadinessCue(matters, {
+      matterId: record.matterId,
+      category: "payment_import",
+      reasonCodes: hasConflict
+        ? ["payment_import_review_required", "payment_import_conflict"]
+        : ["payment_import_review_required"],
+      pendingCount: 1,
+      exceptionCount: hasConflict ? 1 : 0,
+      amountCents: record.amountCents,
+      latestEvidenceAt: record.updatedAt,
+    });
+  }
+
+  const matterRows = matterRowsFromReadinessAccumulators(matters);
+
+  return {
+    generatedAt,
+    reviewOnly: true,
+    categories,
+    matters: matterRows,
+    summary: {
+      categoryCount: categories.length,
+      categoriesRequiringPolicyCount: categories.filter(
+        (category) => category.readiness === "policy_required_if_enabled",
+      ).length,
+      matterCount: matterRows.length,
+      mattersRequiringPolicyCount: matterRows.filter((matter) => matter.reviewCueCount > 0).length,
+      reviewCueCount: categories.reduce((sum, category) => sum + category.reviewCueCount, 0),
+      pendingCount: categories.reduce((sum, category) => sum + category.pendingCount, 0),
+      exceptionCount: categories.reduce((sum, category) => sum + category.exceptionCount, 0),
+      amountCents: categories.reduce((sum, category) => sum + category.amountCents, 0),
+      reviewOnly: true,
+    },
+    policy: {
+      source: "existing_trust_controls_projection",
+      makerCheckerPolicyEnabled: false,
+      directPostingSemantics: "unchanged",
+      approvalMutation: false,
+      automaticTrustPosting: false,
+      settlementAutomation: false,
+      bankFeedMatching: false,
+      jurisdictionCertifiedAccounting: false,
     },
   };
 }

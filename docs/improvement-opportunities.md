@@ -357,6 +357,9 @@ surface.
     approve/reject UI actions without changing posting semantics. The 2026-06-17 action-descriptor
     follow-up keeps those command semantics unchanged while deriving the Trust Controls button
     labels, busy/disabled state, accessible labels, and action keys from domain-owned descriptors.
+    The 2026-06-28 readiness follow-up adds read-only Trust Controls indicators for categories and
+    safe matter IDs that would require maker-checker policy if enabled later; it does not enable
+    policy, add actions, or change posting behavior.
   - **Remaining boundary:** Direct trust transactions still post immediately for non-selected
     postings. The posting-request commands reuse the existing ledger transaction posting path at
     approval time, stay separate from the shipped trust-transfer approve/reject/link flow, and do not
