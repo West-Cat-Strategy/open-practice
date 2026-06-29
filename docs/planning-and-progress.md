@@ -10,8 +10,8 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 | Snapshot              | Value                                                                |
 | --------------------- | -------------------------------------------------------------------- |
-| Current focus         | Staff refund/chargeback review decisions over payment import cues.   |
-| Next recommended pick | Finish selector proof, then prepare merge/release handoff.           |
+| Current focus         | 2026-06-29 active-lane mainline consolidation validation/publish.    |
+| Next recommended pick | Finish selector proof, merge to main, push, and prune clean lanes.   |
 | Ready rows            | 0                                                                    |
 | Candidate rows        | 0                                                                    |
 | In progress rows      | 0                                                                    |
@@ -45,7 +45,7 @@ template publish/version history, Trust Controls maker-checker readiness, and th
 communications aggregation closeout. Provider-status and self-host operations-readiness residue
 remains preserved separately in targeted stashes and is not part of this closeout. The row counters
 remain zero because no candidate table rows are open; final publication and prune evidence is
-recorded in the closeout response after `main` is pushed. Evidence is recorded in
+recorded in the proof note. Evidence is recorded in
 [2026-06-28/2026-06-29 mainline consolidation proof](validation/OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-28.md).
 
 The 2026-06-27 `feat/provider-document-conversion-review-decision-20260627` branch promotes the

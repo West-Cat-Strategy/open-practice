@@ -72,7 +72,7 @@ Trust Controls maker-checker readiness, and the proof-only inbound communication
 closeout.
 Provider-status and self-host operations-readiness residue was preserved separately in targeted
 stashes and is not part of this closeout. Final `main` publication, push parity, and branch/worktree
-prune evidence are recorded in the closeout response after publication.
+prune evidence are recorded in the proof note.
 
 The 2026-06-27 provider document conversion review decision proof is recorded in
 [OP_PROVIDER_DOCUMENT_CONVERSION_REVIEW_DECISION_PROOF_2026-06-27.md](OP_PROVIDER_DOCUMENT_CONVERSION_REVIEW_DECISION_PROOF_2026-06-27.md).
