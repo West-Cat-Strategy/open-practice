@@ -588,6 +588,29 @@ function limitEmailsPerMatter(
   });
 }
 
+function sampleFirmSettingsForFirm(firm: Firm): FirmSettings {
+  return {
+    firmId: firm.id,
+    businessAddress: {
+      line1: "100 Main Street",
+      city: "Vancouver",
+      province: firm.defaultProvince,
+      postalCode: "V6B 1A1",
+      country: "Canada",
+    },
+    officeEmail: "office@example.test",
+    officePhone: "604-555-0100",
+    practiceAreas: ["General practice"],
+    invoicePrefix: firm.id === sampleFirm.id ? "WLC" : "OP",
+    defaultPaymentTermsDays: 30,
+    trustAccountLabel: "Pooled trust",
+    trustFundsCaveatAcceptedAt: "2026-05-01T00:00:00.000Z",
+    trustFundsCaveatAcceptedByUserId: "system-sample-data",
+    createdAt: "2026-05-01T00:00:00.000Z",
+    updatedAt: "2026-05-01T00:00:00.000Z",
+  };
+}
+
 export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   declare getUser: AuthRepository["getUser"];
   declare createUser: AuthRepository["createUser"];
@@ -663,6 +686,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   declare listEmailTemplatePublishedVersions: EmailTemplateDraftRepository["listEmailTemplatePublishedVersions"];
   declare getLatestEmailTemplatePublishedVersion: EmailTemplateDraftRepository["getLatestEmailTemplatePublishedVersion"];
   declare getFirmSettings: FirmSettingsRepository["getFirmSettings"];
+  declare updateDispositionReviewScheduleProfile: FirmSettingsRepository["updateDispositionReviewScheduleProfile"];
   declare listProviderSettings: ProviderSettingsRepository["listProviderSettings"];
   declare upsertProviderSetting: ProviderSettingsRepository["upsertProviderSetting"];
 
@@ -1596,6 +1620,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
         ? [clone(sampleFirm), clone(sampleMatterlessFirm)]
         : [];
     this.users = options.users ? clone(options.users) : seeded ? clone(sampleUsers) : [];
+    this.firmSettings = seeded ? this.firms.map((firm) => sampleFirmSettingsForFirm(firm)) : [];
     this.contacts = seeded ? clone(sampleContacts) : [];
     this.contactRelationships = seeded ? clone(sampleContactRelationships) : [];
     this.matters = seeded ? clone(sampleMatters) : [];

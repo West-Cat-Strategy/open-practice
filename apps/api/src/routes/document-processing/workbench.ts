@@ -86,6 +86,7 @@ export function registerDocumentProcessingWorkbenchRoutes(
     const matter = (await repository.listMattersForUser(request.auth.user)).find(
       (candidate) => candidate.id === query.matterId,
     );
+    const firmSettings = await repository.getFirmSettings(request.auth.firmId);
 
     const documentEntries = await Promise.all(
       documents.map(async (document) => {
@@ -120,6 +121,7 @@ export function registerDocumentProcessingWorkbenchRoutes(
         const retentionHoldReview = buildDocumentRetentionHoldReview({
           document,
           reviewSuggestions,
+          dispositionReviewScheduleProfile: firmSettings?.dispositionReviewScheduleProfile,
         });
         const sanitizedDocument = sanitizeDocument(document);
         const metadataTags = buildDocumentMetadataTags({

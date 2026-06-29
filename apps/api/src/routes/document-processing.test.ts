@@ -506,6 +506,110 @@ describe("document processing routes", () => {
     );
   });
 
+  it("stores a bounded disposition review schedule profile for staff workbench projection", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const ownerServer = testServer({ repository });
+
+    const initial = await ownerServer.inject({
+      method: "GET",
+      url: "/api/document-processing/disposition-review-schedule-profile",
+    });
+    const updated = await ownerServer.inject({
+      method: "PUT",
+      url: "/api/document-processing/disposition-review-schedule-profile",
+      payload: {
+        profile: {
+          profileKey: "ignored-custom-profile",
+          label: "Synthetic default disposition review",
+          reviewCadence: "quarterly",
+          reviewAfterDays: 180,
+          minimumRetainDays: 365,
+          rawPayload: "Synthetic private profile payload must stay private.",
+          exportBody: "Synthetic retained export body must stay private.",
+        },
+      },
+    });
+    const staffRead = await testServer({
+      repository,
+      authUser: user("firm_member", ["matter-001"]),
+    }).inject({
+      method: "GET",
+      url: "/api/document-processing/disposition-review-schedule-profile",
+    });
+    const writeDenied = await testServer({
+      repository,
+      authUser: user("licensee", ["matter-001"]),
+    }).inject({
+      method: "PUT",
+      url: "/api/document-processing/disposition-review-schedule-profile",
+      payload: { profile: null },
+    });
+    const readDenied = await testServer({
+      repository,
+      authUser: user("client_external", ["matter-001"]),
+    }).inject({
+      method: "GET",
+      url: "/api/document-processing/disposition-review-schedule-profile",
+    });
+    const cleared = await ownerServer.inject({
+      method: "PUT",
+      url: "/api/document-processing/disposition-review-schedule-profile",
+      payload: { profile: null },
+    });
+
+    expect(initial.statusCode).toBe(200);
+    expect(initial.json()).toEqual({ profile: null });
+    expect(updated.statusCode).toBe(200);
+    expect(updated.json()).toEqual({
+      profile: {
+        profileKey: "default",
+        label: "Synthetic default disposition review",
+        reviewCadence: "quarterly",
+        reviewAfterDays: 180,
+        minimumRetainDays: 365,
+      },
+    });
+    expect(JSON.stringify(updated.json())).not.toContain("rawPayload");
+    expect(JSON.stringify(updated.json())).not.toContain("exportBody");
+    expect(staffRead.statusCode).toBe(200);
+    expect(staffRead.json()).toEqual(updated.json());
+    expect(writeDenied.statusCode).toBe(403);
+    expect(writeDenied.json()).toMatchObject({ code: "FIRM_ACCESS_REQUIRED" });
+    expect(readDenied.statusCode).toBe(403);
+    expect(readDenied.json()).toMatchObject({ code: "STAFF_ACCESS_REQUIRED" });
+    expect(cleared.statusCode).toBe(200);
+    expect(cleared.json()).toEqual({ profile: null });
+
+    const audit = await repository.listAuditEvents(firmId);
+    expect(audit.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          action: "firm.disposition_review_schedule_profile.updated",
+          resourceType: "firm",
+          resourceId: firmId,
+          metadata: {
+            profileConfigured: true,
+            reviewCadence: "quarterly",
+            reviewAfterDaysPresent: true,
+            minimumRetainDaysPresent: true,
+            destructiveAction: false,
+            retentionDeadlineEnforced: false,
+            legalHoldOverride: false,
+            retainedExportBody: false,
+            rawPayloadRetention: false,
+            complianceClaim: false,
+          },
+        }),
+        expect.objectContaining({
+          action: "firm.disposition_review_schedule_profile.updated",
+          metadata: expect.objectContaining({ profileConfigured: false }),
+        }),
+      ]),
+    );
+    expect(JSON.stringify(audit.events)).not.toContain("Synthetic private profile payload");
+    expect(JSON.stringify(audit.events)).not.toContain("Synthetic retained export body");
+  });
+
   it("reports disabled providers, worker queue availability, and redacted job summaries", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     await repository.upsertProviderSetting({
@@ -1938,6 +2042,16 @@ describe("document processing routes", () => {
       createdAt: "2026-05-02T12:16:00.000Z",
       completedAt: "2026-05-02T12:17:00.000Z",
     });
+    await repository.updateDispositionReviewScheduleProfile({
+      firmId,
+      profile: {
+        profileKey: "default",
+        label: "Synthetic default disposition review",
+        reviewCadence: "quarterly",
+        reviewAfterDays: 180,
+        minimumRetainDays: 365,
+      },
+    });
 
     const response = await testServer({ repository, ocrJobQueue: fakeOcrQueue().queue }).inject({
       method: "GET",
@@ -2138,6 +2252,17 @@ describe("document processing routes", () => {
               readyForReviewerPacket: false,
               blockerCounts: { total: 1, legalHold: 1, uploadIntegrity: 0, reviewState: 0 },
               sourceCueCounts: expect.objectContaining({ retention_review: 1 }),
+              scheduleProfile: {
+                source: "firm_settings",
+                profileKey: "default",
+                label: "Synthetic default disposition review",
+                reviewCadence: "quarterly",
+                reviewAfterDays: 180,
+                minimumRetainDays: 365,
+                destructiveAction: false,
+                retentionDeadlineEnforced: false,
+                complianceClaim: false,
+              },
               destructiveAction: false,
               objectDeletion: false,
               retentionDeadlineEnforced: false,

@@ -140,6 +140,23 @@ export interface FirmBusinessAddress {
   country: string;
 }
 
+export const documentDispositionReviewCadences = [
+  "manual_review",
+  "monthly",
+  "quarterly",
+  "annual",
+] as const;
+
+export type DocumentDispositionReviewCadence = (typeof documentDispositionReviewCadences)[number];
+
+export interface DocumentDispositionReviewScheduleProfile {
+  profileKey: "default";
+  label: string;
+  reviewCadence: DocumentDispositionReviewCadence;
+  reviewAfterDays?: number;
+  minimumRetainDays?: number;
+}
+
 export interface FirmSettings {
   firmId: string;
   businessAddress: FirmBusinessAddress;
@@ -154,6 +171,7 @@ export interface FirmSettings {
   website?: string;
   description?: string;
   businessNumber?: string;
+  dispositionReviewScheduleProfile?: DocumentDispositionReviewScheduleProfile;
   createdAt: string;
   updatedAt: string;
 }

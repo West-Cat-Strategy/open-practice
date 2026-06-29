@@ -22,6 +22,11 @@ Open Practice has these relevant foundations:
   counts, optional `reviewAfter` and `minimumRetainThrough` fields, and fixed non-destructive flags.
   It does not add a command, audit write, schema, migration, deadline enforcement, object deletion,
   legal-hold release, raw payload retention, or compliance claim.
+- A later bounded firm-settings slice adds one default disposition review schedule profile with a
+  staff-readable, owner-admin-updatable `label`, `reviewCadence`, and optional day-offset hints.
+  The workbench projects that profile inside `retentionHoldReview.dispositionMetadata` as reviewer
+  context only. It does not compute retention deadlines, decide disposition eligibility, release
+  holds, delete objects, store raw policy/export bodies, or claim compliance.
 - Contact-history export work uses transient or regenerated export bodies and stores only bounded
   request/link metadata. Its retention language explicitly avoids retained export bodies,
   retention deadlines, deletion automation, legal-hold overrides, and compliance claims.
@@ -50,6 +55,8 @@ Future runtime work may model the following fields only after review:
   more evidence.
 - `dispositionCandidateState`: a reviewer-facing state such as `not_ready`, `blocked_by_hold`,
   `ready_for_reviewer_packet`, `reviewed_keep`, or `reviewed_superseded`.
+- `scheduleProfile`: the bounded default firm-settings profile currently projected into reviewer
+  metadata as staff context only; its day offsets are hints, not enforced deadlines.
 
 Any example duration must stay illustrative. For example, a synthetic practice policy might say
 "review dormant superseded drafts after 180 days" or "review closed-matter administrative copies
@@ -139,11 +146,12 @@ role/province rules.
 ## Future Implementation Boundary
 
 Future runtime slices should remain non-destructive unless reviewers explicitly approve more. The
-first metadata implementation exposes only read-only disposition posture, blocked-by-hold counts,
-and ready-for-review packet metadata derived from existing authorized projections. Later work should
-not add retention-deadline enforcement, background purge jobs, object deletion, legal-hold release
-commands, public/client disposition controls, broad export packages, provider payload storage, new
-compliance claims, or reference-derived source without separate review.
+current metadata implementation exposes only read-only disposition posture, blocked-by-hold counts,
+ready-for-review packet metadata, and one bounded default firm-settings schedule profile derived
+from existing authorized projections. Later work should not add retention-deadline enforcement,
+background purge jobs, object deletion, legal-hold release commands, public/client disposition
+controls, broad export packages, provider payload storage, new compliance claims, or
+reference-derived source without separate review.
 
 Reference systems such as ArkCase, Nextcloud, and paperless-ngx may inform vocabulary and workflow
 shape only under the existing clean-room policy. Do not copy implementation code, schemas,

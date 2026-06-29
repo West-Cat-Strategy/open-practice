@@ -1,5 +1,8 @@
 import { eq } from "drizzle-orm";
-import type { FirmSettings } from "@open-practice/domain";
+import {
+  normalizeDocumentDispositionReviewScheduleProfile,
+  type FirmSettings,
+} from "@open-practice/domain";
 import type { OpenPracticeDatabase } from "../../runtime.js";
 import * as schema from "../../schema.js";
 import { mapFirmSettingsRow } from "../drizzle-mappers.js";
@@ -16,10 +19,29 @@ export async function getDrizzleFirmSettings(
   return row ? mapFirmSettingsRow(row) : undefined;
 }
 
+export async function updateDrizzleDispositionReviewScheduleProfile(
+  db: OpenPracticeDatabase,
+  input: Parameters<FirmSettingsRepository["updateDispositionReviewScheduleProfile"]>[0],
+): Promise<FirmSettings> {
+  const [row] = await db
+    .update(schema.firmSettings)
+    .set({
+      dispositionReviewScheduleProfile:
+        normalizeDocumentDispositionReviewScheduleProfile(input.profile) ?? null,
+      updatedAt: new Date(),
+    })
+    .where(eq(schema.firmSettings.firmId, input.firmId))
+    .returning();
+  if (!row) throw new Error(`Unknown firm settings ${input.firmId}`);
+  return mapFirmSettingsRow(row);
+}
+
 export function createDrizzleFirmSettingsRepository(
   db: OpenPracticeDatabase,
 ): FirmSettingsRepository {
   return {
     getFirmSettings: (firmId) => getDrizzleFirmSettings(db, firmId),
+    updateDispositionReviewScheduleProfile: (input) =>
+      updateDrizzleDispositionReviewScheduleProfile(db, input),
   };
 }

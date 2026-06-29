@@ -94,6 +94,17 @@ function describeDispositionMetadata(metadata?: DocumentDispositionMetadata): st
   const schedule = [
     metadata.reviewAfter ? `review after ${metadata.reviewAfter}` : null,
     metadata.minimumRetainThrough ? `retain through ${metadata.minimumRetainThrough}` : null,
+    metadata.scheduleProfile
+      ? `profile ${metadata.scheduleProfile.label} (${compactRetentionHoldStatus(
+          metadata.scheduleProfile.reviewCadence,
+        )})`
+      : null,
+    metadata.scheduleProfile?.reviewAfterDays
+      ? `profile review after ${metadata.scheduleProfile.reviewAfterDays} days`
+      : null,
+    metadata.scheduleProfile?.minimumRetainDays
+      ? `profile retain ${metadata.scheduleProfile.minimumRetainDays} days`
+      : null,
   ].filter(Boolean);
   return [
     `disposition ${compactRetentionHoldStatus(metadata.candidateState)}`,
