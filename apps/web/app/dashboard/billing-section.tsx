@@ -2,6 +2,7 @@ import { CheckCircle2, Clock3, FileText, Plus, Save } from "lucide-react";
 import type { BillingExpenseCategoryRecord } from "@open-practice/domain";
 
 import {
+  describePaymentImportReconciliationReadiness,
   describePaymentImportReview,
   describePaymentSettlementReview,
   type PaymentImportReviewSummary,
@@ -796,6 +797,26 @@ export function BillingSection({
           <strong>{activePaymentImportReviewSummary.depositMatchReviewCount}</strong>
         </div>
         <div>
+          <span className="field-label">Review decisions</span>
+          <strong>{activePaymentImportReviewSummary.depositMatchReviewDecisionCount}</strong>
+        </div>
+        <div>
+          <span className="field-label">Ready to reconcile</span>
+          <strong>{activePaymentImportReviewSummary.depositMatchReconciliationReadyCount}</strong>
+        </div>
+        <div>
+          <span className="field-label">Exception cues</span>
+          <strong>{activePaymentImportReviewSummary.refundChargebackReviewCueCount}</strong>
+        </div>
+        <div>
+          <span className="field-label">Refund cues</span>
+          <strong>{activePaymentImportReviewSummary.refundReviewCueCount}</strong>
+        </div>
+        <div>
+          <span className="field-label">Chargeback cues</span>
+          <strong>{activePaymentImportReviewSummary.chargebackReviewCueCount}</strong>
+        </div>
+        <div>
           <span className="field-label">Conflicts</span>
           <strong>{activePaymentImportReviewSummary.conflictCount}</strong>
         </div>
@@ -814,6 +835,24 @@ export function BillingSection({
                 No raw payload · No invoice balance mutation · No reconciliation mutation · No trust
                 posting
               </small>
+              {record.latestDepositMatchReview ? (
+                <small>
+                  Latest deposit review:{" "}
+                  {record.latestDepositMatchReview.decision.replaceAll("_", " ")} ·{" "}
+                  {record.latestDepositMatchReview.reason.replaceAll("_", " ")} · No settlement
+                  command
+                </small>
+              ) : null}
+              {record.reconciliationReadiness ? (
+                <small>{describePaymentImportReconciliationReadiness(record)}</small>
+              ) : null}
+              {record.refundChargebackReviewCue ? (
+                <small>
+                  Refund/chargeback review: {record.refundChargebackReviewCue.category} ·{" "}
+                  {record.refundChargebackReviewCue.status.replaceAll("_", " ")} · No provider
+                  command
+                </small>
+              ) : null}
             </span>
             <em>{cents(record.amountCents)}</em>
           </div>

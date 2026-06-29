@@ -152,6 +152,34 @@ function buildSyntheticDocumentProcessingWorkbench(): DocumentProcessingWorkbenc
             providerEvidenceStored: false,
             rawOcrTextReturned: false,
           },
+          latestDecision: {
+            artifactId: "artifact_conversion_review_synthetic",
+            decision: "reviewed",
+            decidedAt: "2026-06-26T18:30:00.000Z",
+            decidedByUserId: "user_synthetic",
+            artifactStatus: "metadata_only",
+            reviewOnly: true,
+            metadataOnly: true,
+            terminalReview: true,
+            downstreamMutation: false,
+            providerEvidenceStored: false,
+            rawOcrTextReturned: false,
+          },
+          decisionHistory: [
+            {
+              artifactId: "artifact_conversion_review_synthetic",
+              decision: "reviewed",
+              decidedAt: "2026-06-26T18:30:00.000Z",
+              decidedByUserId: "user_synthetic",
+              artifactStatus: "metadata_only",
+              reviewOnly: true,
+              metadataOnly: true,
+              terminalReview: true,
+              downstreamMutation: false,
+              providerEvidenceStored: false,
+              rawOcrTextReturned: false,
+            },
+          ],
         },
         reviewSuggestions: {
           reviewerOnly: true,
@@ -343,7 +371,7 @@ describe("DocumentsSection", () => {
     expect(html).toContain("Revoke portal");
     expect(html).toContain("Ready to process");
     expect(html).toContain(
-      "Conversion review reviewed · 1800 chars · 260 words · 1 estimated pages · artifact metadata only · OP-authored metadata only · metadata only · readiness reviewed · reviewed 2026-06-26T18:30:00.000Z · staff review required · terminal review · review only · no downstream mutation · no provider evidence · no raw OCR returned",
+      "Conversion review reviewed · 1800 chars · 260 words · 1 estimated pages · artifact metadata only · OP-authored metadata only · metadata only · latest decision reviewed at 2026-06-26T18:30:00.000Z · reviewer user_synthetic · 1 decision cue · decision metadata only · decision review only · decision no downstream mutation · decision no provider evidence · decision no raw OCR returned · readiness reviewed · reviewed 2026-06-26T18:30:00.000Z · staff review required · terminal review · review only · no downstream mutation · no provider evidence · no raw OCR returned",
     );
     expect(html).toContain("Reviewer suggestions");
     expect(html).toContain("Extraction suggests financial");
@@ -426,6 +454,7 @@ describe("DocumentsSection", () => {
         reviewReadiness: {
           status: "rejected",
           artifactStatus: "metadata_only",
+          reviewedAt: "2026-06-26T18:35:00.000Z",
           staffReviewRequired: true,
           terminalReview: true,
           reviewOnly: true,
@@ -434,9 +463,37 @@ describe("DocumentsSection", () => {
           providerEvidenceStored: false,
           rawOcrTextReturned: false,
         },
+        latestDecision: {
+          artifactId: "artifact_conversion_review_rejected",
+          decision: "rejected",
+          decidedAt: "2026-06-26T18:35:00.000Z",
+          decidedByUserId: "user_synthetic",
+          artifactStatus: "metadata_only",
+          reviewOnly: true,
+          metadataOnly: true,
+          terminalReview: true,
+          downstreamMutation: false,
+          providerEvidenceStored: false,
+          rawOcrTextReturned: false,
+        },
+        decisionHistory: [
+          {
+            artifactId: "artifact_conversion_review_rejected",
+            decision: "rejected",
+            decidedAt: "2026-06-26T18:35:00.000Z",
+            decidedByUserId: "user_synthetic",
+            artifactStatus: "metadata_only",
+            reviewOnly: true,
+            metadataOnly: true,
+            terminalReview: true,
+            downstreamMutation: false,
+            providerEvidenceStored: false,
+            rawOcrTextReturned: false,
+          },
+        ],
       }),
     ).toBe(
-      "rejected · artifact metadata only · OP-authored metadata only · metadata only · readiness rejected · staff review required · terminal review · review only · no downstream mutation · no provider evidence · no raw OCR returned",
+      "rejected · artifact metadata only · OP-authored metadata only · metadata only · latest decision rejected at 2026-06-26T18:35:00.000Z · reviewer user_synthetic · 1 decision cue · decision metadata only · decision review only · decision no downstream mutation · decision no provider evidence · decision no raw OCR returned · readiness rejected · reviewed 2026-06-26T18:35:00.000Z · staff review required · terminal review · review only · no downstream mutation · no provider evidence · no raw OCR returned",
     );
   });
 });

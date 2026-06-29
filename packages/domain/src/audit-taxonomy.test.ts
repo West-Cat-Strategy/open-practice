@@ -312,6 +312,7 @@ describe("audit event taxonomy", () => {
           assignmentChanged: false,
           billingChanged: false,
           trustChanged: false,
+          retentionChanged: false,
           cleanupRun: false,
           reviewFirst: true,
         },
@@ -325,7 +326,12 @@ describe("audit event taxonomy", () => {
       resourceTypeMatches: true,
     });
     expect(classification.metadataHints.resource).toEqual(
-      expect.arrayContaining(["lifecycleCommand", "idempotencyKeyPresent", "cleanupRun"]),
+      expect.arrayContaining([
+        "lifecycleCommand",
+        "idempotencyKeyPresent",
+        "retentionChanged",
+        "cleanupRun",
+      ]),
     );
     expect(classification.metadataHints.actor).toEqual(
       expect.arrayContaining(["executedByUserId"]),
@@ -877,12 +883,20 @@ describe("audit event taxonomy", () => {
           externalPaymentId: "pay_private_synthetic",
           amountCents: 13230,
           candidateManualPaymentId: "payment-synthetic",
+          refundChargebackReviewCueCategory: "refund",
+          refundChargebackReviewCueStatus: "needs_review",
+          refundChargebackReviewAction: "staff_refund_chargeback_review_required",
           rawPayload: { private: "synthetic private body" },
+          disputePacket: { private: "synthetic private dispute packet" },
           rawProviderPayloadRetained: false,
           invoiceBalanceMutation: "none",
           settlementAutomation: false,
           reconciliationMutation: "none",
+          refundHandling: "review_only",
+          chargebackHandling: "review_only",
           trustPosting: "none",
+          providerCommand: "none",
+          clientNotification: "none",
         },
       }),
     );
@@ -902,15 +916,79 @@ describe("audit event taxonomy", () => {
         "externalPaymentIdPresent",
         "externalDepositIdPresent",
         "candidateManualPaymentId",
+        "refundChargebackReviewCueCategory",
+        "refundChargebackReviewCueStatus",
+        "refundChargebackReviewAction",
         "rawProviderPayloadRetained",
         "invoiceBalanceMutation",
         "settlementAutomation",
         "reconciliationMutation",
+        "refundHandling",
+        "chargebackHandling",
         "trustPosting",
+        "providerCommand",
+        "clientNotification",
       ]),
     );
     expect(paymentImportClassification.metadataHints.resource).not.toEqual(
-      expect.arrayContaining(["externalPaymentId", "rawPayload"]),
+      expect.arrayContaining(["externalPaymentId", "rawPayload", "disputePacket"]),
+    );
+
+    const depositMatchReviewClassification = classifyAuditEvent(
+      auditEvent({
+        action: "payment_import_deposit_match_review.recorded",
+        resourceType: "payment_import_deposit_match_review",
+        resourceId: "deposit-match-review-001",
+        metadata: {
+          matterId: "matter-001",
+          paymentImportDepositMatchReviewId: "deposit-match-review-001",
+          paymentImportReviewRecordId: "payment-import-review-001",
+          candidateManualPaymentId: "payment-synthetic",
+          candidateInvoiceId: "invoice-synthetic",
+          decision: "candidate_supported",
+          reason: "candidate_evidence_matches",
+          importAmountCents: 13230,
+          manualPaymentAmountCents: 13230,
+          currency: "CAD",
+          candidateManualPaymentStatus: "pending_reconciliation",
+          reviewerEvidencePresent: true,
+          idempotencyKeyPresent: true,
+          idempotencyKey: "synthetic-private-key",
+          rawProviderPayloadRetained: false,
+          invoiceBalanceMutation: "none",
+          settlementAutomation: false,
+          reconciliationMutation: "none",
+          refundHandling: "none",
+          chargebackHandling: "none",
+          trustPosting: "none",
+          providerCommand: "none",
+          clientNotification: "none",
+          depositMatching: "review_decision_only",
+        },
+      }),
+    );
+    expect(depositMatchReviewClassification).toMatchObject({
+      category: "billing",
+      known: true,
+      matterScope: "matter",
+      resourceTypeMatches: true,
+    });
+    expect(depositMatchReviewClassification.metadataHints.resource).toEqual(
+      expect.arrayContaining([
+        "paymentImportDepositMatchReviewId",
+        "paymentImportReviewRecordId",
+        "candidateManualPaymentId",
+        "decision",
+        "reason",
+        "candidateManualPaymentStatus",
+        "reviewerEvidencePresent",
+        "idempotencyKeyPresent",
+        "providerCommand",
+        "clientNotification",
+      ]),
+    );
+    expect(depositMatchReviewClassification.metadataHints.resource).not.toEqual(
+      expect.arrayContaining(["idempotencyKey", "rawPayload"]),
     );
   });
 

@@ -1,9 +1,15 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import {
+  defaultPaymentImportDepositMatchReviewBoundary,
   defaultPaymentImportReviewBoundary,
+  paymentImportDepositMatchReviewDecisions,
+  paymentImportDepositMatchReviewReasons,
   paymentImportEventFamilies,
   paymentImportReviewConflictReasons,
+  paymentImportRefundChargebackReviewCue,
+  type ManualPaymentRecord,
+  type PaymentImportDepositMatchReviewRecord,
   type PaymentImportReviewRecord,
 } from "@open-practice/domain";
 import { hasFirmWideLedgerAccess, requireStaffAccess } from "../../http/auth-guards.js";
@@ -40,6 +46,10 @@ const paymentImportReviewQuerySchema = z
   })
   .strict();
 
+const paymentImportReviewRecordParamsSchema = z.object({
+  recordId: z.string().min(1),
+});
+
 const paymentImportReviewBodySchema = z
   .object({
     id: z.string().min(1).optional(),
@@ -61,6 +71,31 @@ const paymentImportReviewBodySchema = z
   })
   .strict();
 
+const depositMatchReviewBodySchema = z
+  .object({
+    id: z.string().min(1).optional(),
+    decision: z.enum(paymentImportDepositMatchReviewDecisions),
+    reason: z.enum(paymentImportDepositMatchReviewReasons),
+    idempotencyKey: safeExternalIdSchema,
+  })
+  .strict()
+  .superRefine((body, context) => {
+    if (body.decision === "candidate_supported" && body.reason !== "candidate_evidence_matches") {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["reason"],
+        message: "candidate_supported requires candidate_evidence_matches",
+      });
+    }
+    if (body.decision !== "candidate_supported" && body.reason === "candidate_evidence_matches") {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["reason"],
+        message: "candidate_evidence_matches is only valid for candidate_supported",
+      });
+    }
+  });
+
 function compactMetadata(metadata: Record<string, unknown>): Record<string, unknown> {
   return Object.fromEntries(Object.entries(metadata).filter(([, value]) => value !== undefined));
 }
@@ -72,9 +107,10 @@ async function assertCandidateLinks(input: {
   candidateInvoiceId?: string;
   candidateHostedPaymentRequestId?: string;
   candidateManualPaymentId?: string;
-}): Promise<void> {
+}): Promise<{ candidateManualPayment?: ManualPaymentRecord }> {
   let candidateInvoiceMatterId: string | undefined;
   let candidateInvoiceId = input.candidateInvoiceId;
+  let candidateManualPayment: ManualPaymentRecord | undefined;
   if (input.candidateInvoiceId) {
     const invoice = await input.repository.getInvoice(input.firmId, input.candidateInvoiceId);
     if (!invoice) {
@@ -149,6 +185,7 @@ async function assertCandidateLinks(input: {
         "Candidate manual payment must reference the candidate invoice",
       );
     }
+    candidateManualPayment = manualPayment;
   }
 
   if (candidateInvoiceMatterId && candidateInvoiceMatterId !== input.matterId) {
@@ -156,6 +193,51 @@ async function assertCandidateLinks(input: {
       409,
       "PAYMENT_IMPORT_CANDIDATE_MATTER_MISMATCH",
       "Payment import candidate links must stay within the review matter",
+    );
+  }
+  return { candidateManualPayment };
+}
+
+function assertDepositMatchReviewRecord(record: PaymentImportReviewRecord): void {
+  if (record.eventFamily !== "deposit") {
+    throw new ApiHttpError(
+      409,
+      "PAYMENT_IMPORT_DEPOSIT_MATCH_REVIEW_UNSUPPORTED",
+      "Deposit match reviews require normalized deposit evidence",
+    );
+  }
+  if (!record.candidateManualPaymentId) {
+    throw new ApiHttpError(
+      409,
+      "PAYMENT_IMPORT_DEPOSIT_MATCH_CANDIDATE_REQUIRED",
+      "Deposit match reviews require a candidate manual payment",
+    );
+  }
+}
+
+function assertCandidateSupportedAllowed(input: {
+  record: PaymentImportReviewRecord;
+  manualPayment: ManualPaymentRecord;
+}): void {
+  if (input.record.duplicateOfRecordId || input.record.conflictReason) {
+    throw new ApiHttpError(
+      409,
+      "PAYMENT_IMPORT_DEPOSIT_MATCH_CONFLICT_REVIEW_REQUIRED",
+      "Candidate support is blocked while duplicate or conflict cues remain active",
+    );
+  }
+  if (input.manualPayment.status !== "pending_reconciliation") {
+    throw new ApiHttpError(
+      409,
+      "PAYMENT_IMPORT_DEPOSIT_MATCH_PAYMENT_NOT_PENDING",
+      "Candidate support requires a pending manual payment",
+    );
+  }
+  if (input.manualPayment.amountCents !== input.record.amountCents) {
+    throw new ApiHttpError(
+      409,
+      "PAYMENT_IMPORT_DEPOSIT_MATCH_AMOUNT_MISMATCH",
+      "Candidate support requires matching import and manual-payment amounts",
     );
   }
 }
@@ -197,6 +279,42 @@ export function registerBillingPaymentImportReviewRoutes(
     ).flat();
     return { records };
   });
+
+  server.get(
+    "/api/billing/payment-import-review-records/:recordId/deposit-match-reviews",
+    async (request) => {
+      const params = parseRequestPart(
+        paymentImportReviewRecordParamsSchema,
+        request.params,
+        "params",
+      );
+      const staffAccess = requireStaffAccess(request.auth);
+      if (!staffAccess.ok) throw staffAccess.error;
+
+      const record = await repository.getPaymentImportReviewRecord(
+        request.auth.firmId,
+        params.recordId,
+      );
+      if (!record) {
+        throw new ApiHttpError(
+          404,
+          "PAYMENT_IMPORT_REVIEW_RECORD_NOT_FOUND",
+          "Payment import review record was not found",
+        );
+      }
+      assertMatterAccess(request.auth, {
+        resource: "expense_entry",
+        action: "read",
+        matterId: record.matterId,
+      });
+      return {
+        reviewOnly: true,
+        reviews: await repository.listPaymentImportDepositMatchReviews(request.auth.firmId, {
+          paymentImportReviewRecordId: record.id,
+        }),
+      };
+    },
+  );
 
   server.post("/api/billing/payment-import-review-records", async (request) => {
     const body = parseRequestPart(paymentImportReviewBodySchema, request.body, "body");
@@ -268,6 +386,7 @@ export function registerBillingPaymentImportReviewRoutes(
       rethrowIdempotencyConflict(error);
     }
 
+    const refundChargebackReviewCue = paymentImportRefundChargebackReviewCue(created);
     await appendRouteAuditEvent(repository, request.auth, {
       action: "payment_import_review_record.created",
       resourceType: "payment_import_review_record",
@@ -289,13 +408,149 @@ export function registerBillingPaymentImportReviewRoutes(
         duplicateCuePresent: Boolean(created.duplicateOfRecordId),
         conflictReason: created.conflictReason,
         reviewState: created.reviewState,
+        refundChargebackReviewCueCategory: refundChargebackReviewCue?.category,
+        refundChargebackReviewCueStatus: refundChargebackReviewCue?.status,
+        refundChargebackReviewAction: refundChargebackReviewCue?.reviewAction,
         rawProviderPayloadRetained: created.boundaries.rawProviderPayloadRetained,
         invoiceBalanceMutation: created.boundaries.invoiceBalanceMutation,
         settlementAutomation: created.boundaries.settlementAutomation,
         reconciliationMutation: created.boundaries.reconciliationMutation,
+        refundHandling: created.boundaries.refundHandling,
+        chargebackHandling: created.boundaries.chargebackHandling,
         trustPosting: created.boundaries.trustPosting,
+        providerCommand: created.boundaries.providerCommand,
+        clientNotification: created.boundaries.clientNotification,
       }),
     });
     return { record: created };
   });
+
+  server.post(
+    "/api/billing/payment-import-review-records/:recordId/deposit-match-reviews",
+    async (request) => {
+      const params = parseRequestPart(
+        paymentImportReviewRecordParamsSchema,
+        request.params,
+        "params",
+      );
+      const body = parseRequestPart(depositMatchReviewBodySchema, request.body, "body");
+      const staffAccess = requireStaffAccess(request.auth);
+      if (!staffAccess.ok) throw staffAccess.error;
+
+      const importRecord = await repository.getPaymentImportReviewRecord(
+        request.auth.firmId,
+        params.recordId,
+      );
+      if (!importRecord) {
+        throw new ApiHttpError(
+          404,
+          "PAYMENT_IMPORT_REVIEW_RECORD_NOT_FOUND",
+          "Payment import review record was not found",
+        );
+      }
+      assertMatterAccess(request.auth, {
+        resource: "expense_entry",
+        action: "create",
+        matterId: importRecord.matterId,
+      });
+      assertDepositMatchReviewRecord(importRecord);
+      const { candidateManualPayment } = await assertCandidateLinks({
+        repository,
+        firmId: request.auth.firmId,
+        matterId: importRecord.matterId,
+        candidateInvoiceId: importRecord.candidateInvoiceId,
+        candidateHostedPaymentRequestId: importRecord.candidateHostedPaymentRequestId,
+        candidateManualPaymentId: importRecord.candidateManualPaymentId,
+      });
+      if (!candidateManualPayment) {
+        throw new ApiHttpError(
+          404,
+          "CANDIDATE_MANUAL_PAYMENT_NOT_FOUND",
+          "Candidate manual payment was not found",
+        );
+      }
+      if (body.decision === "candidate_supported") {
+        assertCandidateSupportedAllowed({
+          record: importRecord,
+          manualPayment: candidateManualPayment,
+        });
+      }
+
+      const now = new Date().toISOString();
+      const boundaries = defaultPaymentImportDepositMatchReviewBoundary();
+      const decisionFingerprint = buildIdempotencyFingerprint({
+        paymentImportReviewRecordId: importRecord.id,
+        candidateManualPaymentId: candidateManualPayment.id,
+        candidateInvoiceId: importRecord.candidateInvoiceId,
+        decision: body.decision,
+        reason: body.reason,
+        importAmountCents: importRecord.amountCents,
+        manualPaymentAmountCents: candidateManualPayment.amountCents,
+        currency: importRecord.currency,
+        candidateManualPaymentStatus: candidateManualPayment.status,
+        reviewerEvidencePresent: true,
+        boundaries,
+      });
+      const review: PaymentImportDepositMatchReviewRecord = {
+        id: body.id ?? crypto.randomUUID(),
+        firmId: request.auth.firmId,
+        matterId: importRecord.matterId,
+        paymentImportReviewRecordId: importRecord.id,
+        candidateManualPaymentId: candidateManualPayment.id,
+        candidateInvoiceId: importRecord.candidateInvoiceId,
+        decision: body.decision,
+        reason: body.reason,
+        importAmountCents: importRecord.amountCents,
+        manualPaymentAmountCents: candidateManualPayment.amountCents,
+        currency: importRecord.currency,
+        candidateManualPaymentStatus: candidateManualPayment.status,
+        reviewerEvidencePresent: true,
+        idempotencyKey: body.idempotencyKey,
+        decisionFingerprint,
+        boundaries,
+        reviewedByUserId: request.auth.user.id,
+        reviewedAt: now,
+        createdAt: now,
+      };
+
+      let created: PaymentImportDepositMatchReviewRecord;
+      try {
+        created = await repository.createPaymentImportDepositMatchReview(review);
+      } catch (error) {
+        rethrowIdempotencyConflict(error);
+      }
+
+      await appendRouteAuditEvent(repository, request.auth, {
+        action: "payment_import_deposit_match_review.recorded",
+        resourceType: "payment_import_deposit_match_review",
+        resourceId: created.id,
+        metadata: compactMetadata({
+          matterId: created.matterId,
+          paymentImportDepositMatchReviewId: created.id,
+          paymentImportReviewRecordId: created.paymentImportReviewRecordId,
+          candidateManualPaymentId: created.candidateManualPaymentId,
+          candidateInvoiceId: created.candidateInvoiceId,
+          decision: created.decision,
+          reason: created.reason,
+          importAmountCents: created.importAmountCents,
+          manualPaymentAmountCents: created.manualPaymentAmountCents,
+          currency: created.currency,
+          candidateManualPaymentStatus: created.candidateManualPaymentStatus,
+          reviewerEvidencePresent: created.reviewerEvidencePresent,
+          idempotencyKeyPresent: Boolean(created.idempotencyKey),
+          rawProviderPayloadRetained: created.boundaries.rawProviderPayloadRetained,
+          invoiceBalanceMutation: created.boundaries.invoiceBalanceMutation,
+          settlementAutomation: created.boundaries.settlementAutomation,
+          reconciliationMutation: created.boundaries.reconciliationMutation,
+          refundHandling: created.boundaries.refundHandling,
+          chargebackHandling: created.boundaries.chargebackHandling,
+          trustPosting: created.boundaries.trustPosting,
+          providerCommand: created.boundaries.providerCommand,
+          clientNotification: created.boundaries.clientNotification,
+          depositMatching: created.boundaries.depositMatching,
+        }),
+      });
+      return { review: created };
+    },
+  );
 }

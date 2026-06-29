@@ -436,6 +436,37 @@ describe("CalendarSection", () => {
     expect(html).not.toContain("Mark scheduling request reviewed");
   });
 
+  it("renders scheduling request aging cues without automatic finalization", () => {
+    const html = matterlessCalendarMarkup(
+      {
+        activeCalendarScope: "matter",
+        activeMatterNumber: "OP-2026-001",
+        matterCalendarControlsEnabled: true,
+        activeCalendarSchedulingRequests: [
+          {
+            ...syntheticSchedulingRequest,
+            reviewAging: {
+              status: "stale",
+              ageHours: 72,
+              referenceAt: "2035-06-03T16:00:00.000Z",
+              agingAfterHours: 24,
+              staleAfterHours: 72,
+              automaticFinalConfirmation: false,
+              autoExpires: false,
+            },
+          },
+        ],
+      },
+      [syntheticEvent],
+    );
+
+    expect(html).toContain("1 stale · 0 aging");
+    expect(html).toContain("stale review");
+    expect(html).toContain("72h waiting since 2035-06-03T16:00:00.000Z");
+    expect(html).toContain("manual review only, no auto-confirm, auto-expiry, or provider sync");
+    expect(html).toContain("no public booking page or event creation runs");
+  });
+
   it("renders reminder review requests only for open matter pending reminders", () => {
     const reminderEvent: DashboardCalendarEvent = {
       ...syntheticEvent,

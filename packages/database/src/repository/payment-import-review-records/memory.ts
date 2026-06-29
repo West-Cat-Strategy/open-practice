@@ -1,9 +1,16 @@
-import type { PaymentImportReviewRecord } from "@open-practice/domain";
+import type {
+  PaymentImportDepositMatchReviewRecord,
+  PaymentImportReviewRecord,
+} from "@open-practice/domain";
 import { IdempotencyKeyConflictError, clone } from "../contracts.js";
-import type { PaymentImportReviewRecordListOptions } from "../payment-import-review-records-contracts.js";
+import type {
+  PaymentImportDepositMatchReviewListOptions,
+  PaymentImportReviewRecordListOptions,
+} from "../payment-import-review-records-contracts.js";
 
 export interface MemoryPaymentImportReviewRecordStore {
   paymentImportReviewRecords: PaymentImportReviewRecord[];
+  paymentImportDepositMatchReviews: PaymentImportDepositMatchReviewRecord[];
 }
 
 function matchesOptions(
@@ -18,6 +25,20 @@ function matchesOptions(
     (!options.candidateManualPaymentId ||
       record.candidateManualPaymentId === options.candidateManualPaymentId) &&
     (!options.eventFamily || record.eventFamily === options.eventFamily)
+  );
+}
+
+function matchesDepositMatchReviewOptions(
+  record: PaymentImportDepositMatchReviewRecord,
+  options: PaymentImportDepositMatchReviewListOptions,
+): boolean {
+  return (
+    (!options.matterId || record.matterId === options.matterId) &&
+    (!options.paymentImportReviewRecordId ||
+      record.paymentImportReviewRecordId === options.paymentImportReviewRecordId) &&
+    (!options.candidateManualPaymentId ||
+      record.candidateManualPaymentId === options.candidateManualPaymentId) &&
+    (!options.decision || record.decision === options.decision)
   );
 }
 
@@ -41,6 +62,18 @@ export function createMemoryPaymentImportReviewRecord(
   return clone(record);
 }
 
+export function getMemoryPaymentImportReviewRecord(
+  store: MemoryPaymentImportReviewRecordStore,
+  firmId: string,
+  recordId: string,
+): PaymentImportReviewRecord | undefined {
+  return clone(
+    store.paymentImportReviewRecords.find(
+      (record) => record.firmId === firmId && record.id === recordId,
+    ),
+  );
+}
+
 export function listMemoryPaymentImportReviewRecords(
   store: MemoryPaymentImportReviewRecordStore,
   firmId: string,
@@ -50,5 +83,42 @@ export function listMemoryPaymentImportReviewRecords(
     store.paymentImportReviewRecords
       .filter((record) => record.firmId === firmId && matchesOptions(record, options))
       .sort((left, right) => Date.parse(right.importedAt) - Date.parse(left.importedAt)),
+  );
+}
+
+export function createMemoryPaymentImportDepositMatchReview(
+  store: MemoryPaymentImportReviewRecordStore,
+  record: PaymentImportDepositMatchReviewRecord,
+): PaymentImportDepositMatchReviewRecord {
+  const existing = store.paymentImportDepositMatchReviews.find(
+    (candidate) =>
+      candidate.firmId === record.firmId &&
+      candidate.paymentImportReviewRecordId === record.paymentImportReviewRecordId &&
+      candidate.idempotencyKey === record.idempotencyKey,
+  );
+  if (existing) {
+    if (existing.decisionFingerprint !== record.decisionFingerprint) {
+      throw new IdempotencyKeyConflictError();
+    }
+    return clone(existing);
+  }
+  store.paymentImportDepositMatchReviews = [
+    ...store.paymentImportDepositMatchReviews,
+    clone(record),
+  ];
+  return clone(record);
+}
+
+export function listMemoryPaymentImportDepositMatchReviews(
+  store: MemoryPaymentImportReviewRecordStore,
+  firmId: string,
+  options: PaymentImportDepositMatchReviewListOptions = {},
+): PaymentImportDepositMatchReviewRecord[] {
+  return clone(
+    store.paymentImportDepositMatchReviews
+      .filter(
+        (record) => record.firmId === firmId && matchesDepositMatchReviewOptions(record, options),
+      )
+      .sort((left, right) => Date.parse(right.reviewedAt) - Date.parse(left.reviewedAt)),
   );
 }

@@ -423,6 +423,26 @@ export function describeDocumentConversionReview(
     conversionReview.summaryPosture === "op_authored_metadata_only"
       ? "OP-authored metadata only"
       : compactDocumentProcessingReason(conversionReview.summaryPosture);
+  const latestDecision = conversionReview.latestDecision;
+  const decisionHistoryEntries = conversionReview.decisionHistory ?? [];
+  const latestDecisionParts = latestDecision
+    ? [
+        `latest decision ${compactDocumentProcessingReason(latestDecision.decision)} at ${
+          latestDecision.decidedAt
+        }`,
+        `reviewer ${latestDecision.decidedByUserId}`,
+        `${decisionHistoryEntries.length} decision cue${
+          decisionHistoryEntries.length === 1 ? "" : "s"
+        }`,
+        latestDecision.metadataOnly ? "decision metadata only" : undefined,
+        latestDecision.reviewOnly ? "decision review only" : undefined,
+        latestDecision.downstreamMutation === false ? "decision no downstream mutation" : undefined,
+        latestDecision.providerEvidenceStored === false
+          ? "decision no provider evidence"
+          : undefined,
+        latestDecision.rawOcrTextReturned === false ? "decision no raw OCR returned" : undefined,
+      ]
+    : [];
   const staffReview =
     readiness && readiness.staffReviewRequired ? "staff review required" : undefined;
   const readinessParts = readiness
@@ -443,6 +463,7 @@ export function describeDocumentConversionReview(
     artifact,
     summaryPosture,
     conversionReview.policy.metadataOnly ? "metadata only" : undefined,
+    ...latestDecisionParts,
     ...readinessParts,
   ]
     .filter(Boolean)

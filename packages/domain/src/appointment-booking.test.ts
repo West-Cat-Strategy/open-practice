@@ -3,6 +3,7 @@ import {
   appointmentBookingLinkStatus,
   appointmentBookingPublicRequestResponse,
   buildAppointmentBookingSlots,
+  summarizeAppointmentBookingRequest,
   type AppointmentBookingProfileRecord,
   type AppointmentBookingRequestRecord,
 } from "./appointment-booking.js";
@@ -108,6 +109,39 @@ describe("appointment booking domain", () => {
     });
     expect(JSON.stringify(response)).not.toContain("calendar-event-hold");
     expect(JSON.stringify(response)).not.toContain("client@example.test");
+    expect(response).not.toHaveProperty("reviewAging");
+  });
+
+  it("adds review-only aging cues only to open tentative-hold staff summaries", () => {
+    expect(
+      summarizeAppointmentBookingRequest({
+        request: bookingRequest,
+        profile,
+        now: "2026-06-04T15:00:00.000Z",
+      }),
+    ).toMatchObject({
+      status: "tentative_hold",
+      reviewAging: {
+        status: "stale",
+        ageHours: 72,
+        referenceAt: "2026-06-01T15:00:00.000Z",
+        agingAfterHours: 24,
+        staleAfterHours: 72,
+        automaticFinalConfirmation: false,
+        autoExpires: false,
+      },
+    });
+    expect(
+      summarizeAppointmentBookingRequest({
+        request: {
+          ...bookingRequest,
+          status: "confirmed",
+          reviewedAt: "2026-06-01T16:00:00.000Z",
+        },
+        profile,
+        now: "2026-06-04T15:00:00.000Z",
+      }),
+    ).not.toHaveProperty("reviewAging");
   });
 
   it("tracks direct link lifecycle from token-hash only fields", () => {

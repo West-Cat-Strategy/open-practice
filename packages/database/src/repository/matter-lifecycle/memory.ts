@@ -3,7 +3,7 @@ import {
   buildMatterLifecycleCommandExecution,
   buildMatterLifecycleTransitionAuditMetadata,
   buildMatterLifecycleTransitionRecord,
-  matterLifecycleCommandRequiredStatus,
+  matterLifecycleCommandRequiredStatuses,
   matterLifecycleTargetStatus,
   type AuditEvent,
   type Contact,
@@ -315,6 +315,10 @@ function commandStatusMismatch(message: string): MatterLifecycleCommandError {
   return new MatterLifecycleCommandError("MATTER_LIFECYCLE_EXPECTED_STATUS_MISMATCH", message);
 }
 
+function requiredStatusLabel(statuses: readonly string[]): string {
+  return statuses.join(", ");
+}
+
 function commandNotAvailable(command: string): MatterLifecycleCommandError {
   return new MatterLifecycleCommandError(
     "MATTER_LIFECYCLE_COMMAND_NOT_AVAILABLE",
@@ -353,10 +357,12 @@ export async function executeMemoryMatterLifecycleCommand(
   if (!actor) throw new Error(`Unknown user ${input.executedByUserId}`);
 
   const matter = store.matters[matterIndex];
-  const requiredStatus = matterLifecycleCommandRequiredStatus(input.command);
-  if (input.expectedStatus !== requiredStatus) {
+  const requiredStatuses = matterLifecycleCommandRequiredStatuses(input.command);
+  if (!requiredStatuses.includes(input.expectedStatus)) {
     throw commandStatusMismatch(
-      `Matter lifecycle command ${input.command} expected status must be ${requiredStatus}`,
+      `Matter lifecycle command ${input.command} expected status must be ${requiredStatusLabel(
+        requiredStatuses,
+      )}`,
     );
   }
   if (matter.status !== input.expectedStatus) throw commandNotAvailable(input.command);

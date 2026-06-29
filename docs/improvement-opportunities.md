@@ -146,21 +146,26 @@ surface.
     snippets without a reuse decision.
 
 - **Private document conversion and annotation research spike**
-  - **Status:** Metadata-only conversion review shipped on 2026-06-16; the 2026-06-17
-    provider-backed boundary proof records the reviewed design guardrails for future conversion,
-    annotation, chunking, embedding, and semantic-review slices. Runtime expansion remains a
-    separate future implementation.
+  - **Status:** Metadata-only conversion review shipped on 2026-06-16; the 2026-06-27
+    follow-up runtime depth is the review-decision command over existing conversion-review
+    artifacts. The 2026-06-17 provider-backed boundary proof still records the reviewed design
+    guardrails for future conversion, annotation, chunking, embedding, and semantic-review slices.
+    Provider conversion remains a separate future implementation.
   - **Shipped boundary:** Open Practice now queues `document_conversion_review` jobs after verified
     upload, safe scan posture, and completed OCR extraction, then surfaces posture in Documents and
-    Research through `document_analysis_status` artifacts. Retained state is limited to OP-authored
-    redacted posture, `summaryPosture: op_authored_metadata_only`, counts, lengths, statuses,
-    policy flags, and review metadata; raw client text, raw converted Markdown, raw annotations,
-    provider payloads, prompts, sensitive chunks, embeddings, storage keys, object bodies, free-form
-    generated summaries, and private excerpts must not enter job metadata, audit metadata, API
-    posture, artifacts, or proof notes.
+    Research through `document_analysis_status` artifacts. Staff can now mark an existing ready
+    artifact `reviewed` or `rejected` through an explicit matter-scoped API command; Documents and
+    Research now show only safe latest-decision/history cues derived from terminal artifact review
+    fields. Retained state is limited to OP-authored redacted posture,
+    `summaryPosture: op_authored_metadata_only`, counts, lengths, statuses, policy flags, and
+    review metadata; raw client text, raw converted Markdown, raw annotations, provider payloads,
+    prompts, sensitive chunks, embeddings, storage keys, object bodies, free-form generated
+    summaries, and private excerpts must not enter job metadata, audit metadata, API posture,
+    artifacts, projections, or proof notes.
   - **Remaining boundary:** Provider-backed conversion, annotation bodies, chunk storage,
-    embeddings, and external semantic-review providers remain out of scope until a later runtime
-    slice proves the same metadata-only, review-only, no-raw-text/no-provider-payload boundary.
+    embeddings, retained Markdown, provider payload retention, and external semantic-review
+    providers remain out of scope until a later runtime slice proves the same metadata-only,
+    review-only, no-raw-text/no-provider-payload boundary.
   - **References:** `unstructured-io__unstructured`, `microsoft__markitdown`,
     `getomni-ai__zerox`, `open-source-legal__opencontracts`, `paperless-ngx__paperless-ngx`, and
     `papermerge__papermerge-core`.
@@ -243,12 +248,13 @@ surface.
     boundaries.
   - **Shipped runtime slices:** OP-T160 implements review-gated
     `POST /api/matters/:matterId/lifecycle-commands` runtime paths for `pause`, `reopen`, and
-    status-only `close` plus `archive`: `open -> paused`, `paused -> open`, `open -> closed`, and
-    `closed -> archived`, gated by the latest matching ready journal evidence, with safe audit
-    metadata and no `closedOn`, portal, task, assignment, billing, trust, retention, or cleanup
-    side effects.
-  - **Remaining gap:** Future work should only add closed-or-archived reopen after a separate
-    implementation scope is approved and the side-effect proof is explicit.
+    status-only `close` plus `archive`: `open -> paused`, `paused -> open`, `closed -> open`,
+    `archived -> open`, `open -> closed`, and `closed -> archived`, gated by the latest matching
+    ready journal evidence, with safe audit metadata and no `closedOn`, portal, task, assignment,
+    billing, trust, retention, cleanup, or lifecycle-transition source-record side effects.
+  - **Remaining gap:** No closed-or-archived status-only reopen gap remains. Future work should
+    separately approve and prove any portal, cleanup, retention, billing, trust, assignment,
+    `closedOn`, or source-record automation before adding it.
   - **References:** `primeroims__primero`, `arkcase__arkcase`, and `jlawyerorg__j-lawyer-org`.
   - **Reuse and snippets:** AGPL/LGPL/reference-only; no direct snippets.
 
@@ -324,7 +330,9 @@ surface.
     document OCR queue actions; OP-T124 extended the same boundary to public consultation Intake
     review actions; OP-T126 extended it to submitted intake review load, accept, reject, and
     more-info actions; the 2026-06-17 trust posting follow-up extends the same read-only descriptor
-    boundary to Trust Controls posting-request approve/reject buttons.
+    boundary to Trust Controls posting-request approve/reject buttons; the 2026-06-29
+    legal-research artifact review follow-up extends it to the Research workspace `Review`/`Reject`
+    controls without changing legal-research or document-processing review commands.
   - **Remaining gap:** Additional dashboard actions still need candidate-by-candidate adoption
     before a broader registry is justified; future slices should pick one implemented operational
     surface and keep explanation data read-only and domain-owned.
@@ -388,9 +396,22 @@ surface.
     invoice/payment-request/manual-payment cues, and duplicate/conflict posture without raw provider
     payloads, invoice-balance mutation, settlement automation, reconciliation mutation, refund or
     chargeback handling, provider commands, client notifications, or trust posting.
-  - **Remaining boundary:** Deposit matching commands or automation, refund and chargeback
-    workflows, settlement automation, provider webhook/replay behavior, provider commands, trust
-    posting, and any funds movement remain separate future work after OP-T160.
+  - **Shipped deposit-match review decision slice:** OP-T162 adds append-only staff decisions over
+    existing normalized deposit/manual-payment candidates. Reviewers can mark a candidate supported,
+    rejected, or needing more evidence with enum-only reasons and safe audit metadata. Candidate
+    support is still evidence-only and requires pending manual-payment status, amount/currency
+    match, and no duplicate/conflict cues. The 2026-06-29 readiness follow-up adds read-only Billing
+    cues for supported decisions that still appear eligible for the existing manual-payment
+    reconcile review workflow; the cue does not reconcile payments, mutate invoices, clear deposits,
+    call providers, or post trust entries.
+  - **Shipped refund/chargeback cue surface:** The 2026-06-28 follow-up adds provider-neutral
+    reviewer cue counts and row metadata for existing payment import records with
+    `eventStatus=refund_observed` or `eventStatus=chargeback_observed`. The surface is metadata
+    only and preserves no provider calls, dispute packets, invoice mutation, ledger reversals,
+    client notifications, trust transfers, or trust posting.
+  - **Remaining boundary:** Deposit matching automation, refund and chargeback command workflows,
+    settlement automation, provider webhook/replay behavior, provider commands, trust posting, and
+    any funds movement remain separate future work after the cue surface.
   - **References:** `opencollective__opencollective-api` settlement/reconciliation concepts and
     `blnkfinance__blnk` reconciliation boundaries.
   - **Reuse and snippets:** Open Collective is MIT but architecture-only in this corpus; Blnk is

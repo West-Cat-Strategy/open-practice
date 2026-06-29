@@ -526,6 +526,7 @@ describe("matter routes", () => {
           assignmentChanged: false,
           billingChanged: false,
           trustChanged: false,
+          retentionChanged: false,
           cleanupRun: false,
         },
       },
@@ -569,6 +570,7 @@ describe("matter routes", () => {
         consequences: {
           billingChanged: false,
           trustChanged: false,
+          retentionChanged: false,
           cleanupRun: false,
         },
       },
@@ -623,6 +625,7 @@ describe("matter routes", () => {
           assignmentChanged: false,
           billingChanged: false,
           trustChanged: false,
+          retentionChanged: false,
           cleanupRun: false,
         },
       },
@@ -630,6 +633,84 @@ describe("matter routes", () => {
     expect(close.json<{ matter: MatterSummary }>().matter.closedOn).toBe(before?.closedOn);
     expect(close.json().matter.timeEntries).toHaveLength(before?.timeEntries.length ?? 0);
     expect(close.json().matter.expenses).toHaveLength(before?.expenses.length ?? 0);
+
+    const closedReopenRecord = await repository.createMatterLifecycleTransition({
+      id: "matter-lifecycle-api-ready-reopen-closed",
+      firmId,
+      matterId: "matter-001",
+      transition: "reopen",
+      readiness: "ready",
+      reason: "Synthetic closed matter reopen review is ready.",
+      reviewedByUserId: "user-licensee",
+      reviewedAt: "2026-06-19T12:30:00.000Z",
+      createdAt: "2026-06-19T12:30:00.000Z",
+      auditEventId: "audit-matter-lifecycle-api-ready-reopen-closed",
+    });
+    const closedReopen = await testServer(user("licensee", ["matter-001"]), repository).inject({
+      method: "POST",
+      url: "/api/matters/matter-001/lifecycle-commands",
+      payload: {
+        command: "reopen",
+        expectedStatus: "closed",
+        transitionRecordId: closedReopenRecord.id,
+        reason: "Synthetic operator confirmed closed matter reopen execution.",
+        idempotencyKey: "synthetic-api-closed-reopen-command-key",
+      },
+    });
+
+    expect(closedReopen.statusCode).toBe(200);
+    expect(closedReopen.json()).toMatchObject({
+      matter: {
+        id: "matter-001",
+        status: "open",
+        trustBalanceCents: before?.trustBalanceCents,
+      },
+      lifecycleCommand: {
+        command: "reopen",
+        matterId: "matter-001",
+        transitionRecordId: closedReopenRecord.id,
+        beforeStatus: "closed",
+        expectedStatus: "closed",
+        afterStatus: "open",
+        consequences: {
+          matterStatusChanged: true,
+          closedOnChanged: false,
+          portalAccessChanged: false,
+          taskChanged: false,
+          assignmentChanged: false,
+          billingChanged: false,
+          trustChanged: false,
+          retentionChanged: false,
+          cleanupRun: false,
+        },
+      },
+    });
+    expect(closedReopen.json<{ matter: MatterSummary }>().matter.closedOn).toBe(before?.closedOn);
+
+    const recloseRecord = await repository.createMatterLifecycleTransition({
+      id: "matter-lifecycle-api-ready-reclose",
+      firmId,
+      matterId: "matter-001",
+      transition: "close",
+      readiness: "ready",
+      reason: "Synthetic re-close review is ready for archive proof.",
+      reviewedByUserId: "user-licensee",
+      reviewedAt: "2026-06-19T12:40:00.000Z",
+      createdAt: "2026-06-19T12:40:00.000Z",
+      auditEventId: "audit-matter-lifecycle-api-ready-reclose",
+    });
+    const reclose = await testServer(user("licensee", ["matter-001"]), repository).inject({
+      method: "POST",
+      url: "/api/matters/matter-001/lifecycle-commands",
+      payload: {
+        command: "close",
+        expectedStatus: "open",
+        transitionRecordId: recloseRecord.id,
+        reason: "Synthetic operator confirmed re-close execution.",
+        idempotencyKey: "synthetic-api-reclose-command-key",
+      },
+    });
+    expect(reclose.statusCode).toBe(200);
 
     const archiveRecord = await repository.createMatterLifecycleTransition({
       id: "matter-lifecycle-api-ready-archive",
@@ -639,8 +720,8 @@ describe("matter routes", () => {
       readiness: "ready",
       reason: "Synthetic archive review is ready.",
       reviewedByUserId: "user-licensee",
-      reviewedAt: "2026-06-19T12:30:00.000Z",
-      createdAt: "2026-06-19T12:30:00.000Z",
+      reviewedAt: "2026-06-19T12:50:00.000Z",
+      createdAt: "2026-06-19T12:50:00.000Z",
       auditEventId: "audit-matter-lifecycle-api-ready-archive",
     });
     const archive = await testServer(user("licensee", ["matter-001"]), repository).inject({
@@ -679,6 +760,7 @@ describe("matter routes", () => {
           assignmentChanged: false,
           billingChanged: false,
           trustChanged: false,
+          retentionChanged: false,
           cleanupRun: false,
         },
       },
@@ -686,6 +768,59 @@ describe("matter routes", () => {
     expect(archive.json<{ matter: MatterSummary }>().matter.closedOn).toBe(before?.closedOn);
     expect(archive.json().matter.timeEntries).toHaveLength(before?.timeEntries.length ?? 0);
     expect(archive.json().matter.expenses).toHaveLength(before?.expenses.length ?? 0);
+
+    const archivedReopenRecord = await repository.createMatterLifecycleTransition({
+      id: "matter-lifecycle-api-ready-reopen-archived",
+      firmId,
+      matterId: "matter-001",
+      transition: "reopen",
+      readiness: "ready",
+      reason: "Synthetic archived matter reopen review is ready.",
+      reviewedByUserId: "user-licensee",
+      reviewedAt: "2026-06-19T13:00:00.000Z",
+      createdAt: "2026-06-19T13:00:00.000Z",
+      auditEventId: "audit-matter-lifecycle-api-ready-reopen-archived",
+    });
+    const archivedReopen = await testServer(user("licensee", ["matter-001"]), repository).inject({
+      method: "POST",
+      url: "/api/matters/matter-001/lifecycle-commands",
+      payload: {
+        command: "reopen",
+        expectedStatus: "archived",
+        transitionRecordId: archivedReopenRecord.id,
+        reason: "Synthetic operator confirmed archived matter reopen execution.",
+        idempotencyKey: "synthetic-api-archived-reopen-command-key",
+      },
+    });
+
+    expect(archivedReopen.statusCode).toBe(200);
+    expect(archivedReopen.json()).toMatchObject({
+      matter: {
+        id: "matter-001",
+        status: "open",
+        trustBalanceCents: before?.trustBalanceCents,
+      },
+      lifecycleCommand: {
+        command: "reopen",
+        matterId: "matter-001",
+        transitionRecordId: archivedReopenRecord.id,
+        beforeStatus: "archived",
+        expectedStatus: "archived",
+        afterStatus: "open",
+        consequences: {
+          matterStatusChanged: true,
+          closedOnChanged: false,
+          portalAccessChanged: false,
+          taskChanged: false,
+          assignmentChanged: false,
+          billingChanged: false,
+          trustChanged: false,
+          retentionChanged: false,
+          cleanupRun: false,
+        },
+      },
+    });
+    expect(archivedReopen.json<{ matter: MatterSummary }>().matter.closedOn).toBe(before?.closedOn);
 
     const audit = await repository.listAuditEvents(firmId);
     expect(audit.events).toEqual(
@@ -700,6 +835,7 @@ describe("matter routes", () => {
             idempotencyKeyPresent: true,
             billingChanged: false,
             trustChanged: false,
+            retentionChanged: false,
             cleanupRun: false,
           }),
         }),
@@ -714,6 +850,26 @@ describe("matter routes", () => {
             closedOnChanged: false,
             billingChanged: false,
             trustChanged: false,
+            retentionChanged: false,
+            cleanupRun: false,
+          }),
+        }),
+        expect.objectContaining({
+          action: "matter.lifecycle_command_executed",
+          resourceId: "matter-001",
+          metadata: expect.objectContaining({
+            transitionRecordId: closedReopenRecord.id,
+            lifecycleCommand: "reopen",
+            beforeStatus: "closed",
+            expectedStatus: "closed",
+            afterStatus: "open",
+            closedOnChanged: false,
+            portalAccessChanged: false,
+            taskChanged: false,
+            assignmentChanged: false,
+            billingChanged: false,
+            trustChanged: false,
+            retentionChanged: false,
             cleanupRun: false,
           }),
         }),
@@ -732,6 +888,26 @@ describe("matter routes", () => {
             assignmentChanged: false,
             billingChanged: false,
             trustChanged: false,
+            retentionChanged: false,
+            cleanupRun: false,
+          }),
+        }),
+        expect.objectContaining({
+          action: "matter.lifecycle_command_executed",
+          resourceId: "matter-001",
+          metadata: expect.objectContaining({
+            transitionRecordId: archivedReopenRecord.id,
+            lifecycleCommand: "reopen",
+            beforeStatus: "archived",
+            expectedStatus: "archived",
+            afterStatus: "open",
+            closedOnChanged: false,
+            portalAccessChanged: false,
+            taskChanged: false,
+            assignmentChanged: false,
+            billingChanged: false,
+            trustChanged: false,
+            retentionChanged: false,
             cleanupRun: false,
           }),
         }),
@@ -741,7 +917,10 @@ describe("matter routes", () => {
     expect(JSON.stringify(audit.events)).not.toContain("synthetic-api-pause-command-key");
     expect(JSON.stringify(audit.events)).not.toContain("synthetic-api-reopen-command-key");
     expect(JSON.stringify(audit.events)).not.toContain("synthetic-api-close-command-key");
+    expect(JSON.stringify(audit.events)).not.toContain("synthetic-api-closed-reopen-command-key");
+    expect(JSON.stringify(audit.events)).not.toContain("synthetic-api-reclose-command-key");
     expect(JSON.stringify(audit.events)).not.toContain("synthetic-api-archive-command-key");
+    expect(JSON.stringify(audit.events)).not.toContain("synthetic-api-archived-reopen-command-key");
   });
 
   it("keeps lifecycle command routes staff-only and matter-scoped", async () => {
@@ -835,9 +1014,9 @@ describe("matter routes", () => {
       url: "/api/matters/matter-001/lifecycle-commands",
       payload: {
         command: "archive",
-        expectedStatus: "archived",
+        expectedStatus: "intake",
         transitionRecordId: "matter-lifecycle-archive",
-        reason: "Synthetic archive command needs its current closed status.",
+        reason: "Synthetic archive command needs a supported expected status.",
         idempotencyKey: "synthetic-archive-command-key",
       },
     });

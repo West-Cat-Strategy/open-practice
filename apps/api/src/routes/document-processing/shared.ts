@@ -181,6 +181,20 @@ export interface DocumentConversionReviewReadiness {
   rawOcrTextReturned: false;
 }
 
+export interface DocumentConversionReviewDecisionCue {
+  artifactId: string;
+  decision: "reviewed" | "rejected";
+  decidedAt: string;
+  decidedByUserId: string;
+  artifactStatus: DocumentConversionReviewArtifactStatus;
+  reviewOnly: true;
+  metadataOnly: true;
+  terminalReview: true;
+  downstreamMutation: false;
+  providerEvidenceStored: false;
+  rawOcrTextReturned: false;
+}
+
 export interface DocumentConversionReviewCounts {
   sourceTextLength: number;
   wordCount?: number;
@@ -199,6 +213,8 @@ export interface DocumentConversionReviewSummary {
   providerStatus?: string;
   counts?: DocumentConversionReviewCounts;
   reviewReadiness: DocumentConversionReviewReadiness;
+  latestDecision?: DocumentConversionReviewDecisionCue;
+  decisionHistory: DocumentConversionReviewDecisionCue[];
   policy: typeof documentConversionReviewPolicy;
 }
 
@@ -671,9 +687,7 @@ function buildDocumentConversionReviewReadiness(input: {
   status: DocumentConversionReviewReadinessStatus;
   artifact?: LegalResearchArtifactRecord;
 }): DocumentConversionReviewReadiness {
-  const artifactStatus = input.artifact
-    ? (input.artifact.documentAnalysis?.artifactStatus ?? "metadata_only")
-    : "not_created";
+  const artifactStatus = input.artifact ? artifactStatusFromRecord(input.artifact) : "not_created";
   const status = conversionReviewReadinessStatusFromArtifact(input.artifact) ?? input.status;
   const terminalReview = status === "reviewed" || status === "rejected";
   return {
@@ -692,6 +706,12 @@ function buildDocumentConversionReviewReadiness(input: {
   };
 }
 
+function artifactStatusFromRecord(
+  artifact: LegalResearchArtifactRecord,
+): DocumentConversionReviewArtifactStatus {
+  return artifact.documentAnalysis?.artifactStatus ?? "metadata_only";
+}
+
 export function conversionReviewArtifactForDocument(
   document: DocumentRecord,
   artifacts: LegalResearchArtifactRecord[],
@@ -707,12 +727,66 @@ export function conversionReviewArtifactForDocument(
   );
 }
 
+const maxConversionReviewDecisionHistory = 5;
+
+function conversionReviewDecisionCue(
+  artifact: LegalResearchArtifactRecord,
+): DocumentConversionReviewDecisionCue | undefined {
+  const decision =
+    artifact.reviewDecision === "reviewed" || artifact.reviewDecision === "rejected"
+      ? artifact.reviewDecision
+      : artifact.status === "reviewed" || artifact.status === "rejected"
+        ? artifact.status
+        : undefined;
+  if (!decision || !artifact.reviewedAt || !artifact.reviewedByUserId) return undefined;
+  return {
+    artifactId: artifact.id,
+    decision,
+    decidedAt: artifact.reviewedAt,
+    decidedByUserId: artifact.reviewedByUserId,
+    artifactStatus: artifactStatusFromRecord(artifact),
+    reviewOnly: true,
+    metadataOnly: true,
+    terminalReview: true,
+    downstreamMutation: false,
+    providerEvidenceStored: false,
+    rawOcrTextReturned: false,
+  };
+}
+
+function conversionReviewDecisionHistory(input: {
+  document: DocumentRecord;
+  artifacts?: LegalResearchArtifactRecord[];
+}): DocumentConversionReviewDecisionCue[] {
+  return (input.artifacts ?? [])
+    .filter(
+      (artifact) =>
+        artifact.kind === "document_analysis_status" &&
+        artifact.matterId === input.document.matterId &&
+        artifact.documentAnalysis?.documentId === input.document.id &&
+        (artifact.status === "reviewed" || artifact.status === "rejected"),
+    )
+    .map(conversionReviewDecisionCue)
+    .filter((cue): cue is DocumentConversionReviewDecisionCue => Boolean(cue))
+    .sort((left, right) => right.decidedAt.localeCompare(left.decidedAt))
+    .slice(0, maxConversionReviewDecisionHistory);
+}
+
 export function buildDocumentConversionReviewSummary(input: {
   document: DocumentRecord;
   latestExtraction?: DocumentTextExtractionRecord;
   latestJob?: JobLifecycleRecord;
   artifact?: LegalResearchArtifactRecord;
+  artifacts?: LegalResearchArtifactRecord[];
 }): DocumentConversionReviewSummary {
+  const decisionHistory = conversionReviewDecisionHistory({
+    document: input.document,
+    artifacts: input.artifacts ?? (input.artifact ? [input.artifact] : []),
+  });
+  const decisionCues = {
+    ...(decisionHistory[0] ? { latestDecision: decisionHistory[0] } : {}),
+    decisionHistory,
+  };
   const artifactCounts = conversionReviewCountsFromMetadata(input.artifact?.metadata);
   if (input.artifact) {
     const reviewReadiness = buildDocumentConversionReviewReadiness({
@@ -731,6 +805,7 @@ export function buildDocumentConversionReviewSummary(input: {
       providerStatus: metadataString(input.artifact.metadata, "providerStatus"),
       counts: artifactCounts,
       reviewReadiness,
+      ...decisionCues,
       policy: documentConversionReviewPolicy,
     };
   }
@@ -744,6 +819,7 @@ export function buildDocumentConversionReviewSummary(input: {
       providerStatus: metadataString(input.latestJob.metadata, "providerStatus"),
       counts: conversionReviewCountsFromJob(input.latestJob),
       reviewReadiness: buildDocumentConversionReviewReadiness({ status: "queued" }),
+      ...decisionCues,
       policy: documentConversionReviewPolicy,
     };
   }
@@ -756,6 +832,7 @@ export function buildDocumentConversionReviewSummary(input: {
       providerStatus: metadataString(input.latestJob.metadata, "providerStatus"),
       counts: conversionReviewCountsFromJob(input.latestJob),
       reviewReadiness: buildDocumentConversionReviewReadiness({ status: "failed" }),
+      ...decisionCues,
       policy: documentConversionReviewPolicy,
     };
   }
@@ -768,6 +845,7 @@ export function buildDocumentConversionReviewSummary(input: {
       providerStatus: metadataString(input.latestJob.metadata, "providerStatus"),
       counts: conversionReviewCountsFromJob(input.latestJob),
       reviewReadiness: buildDocumentConversionReviewReadiness({ status: "ready_for_review" }),
+      ...decisionCues,
       policy: documentConversionReviewPolicy,
     };
   }
@@ -783,6 +861,7 @@ export function buildDocumentConversionReviewSummary(input: {
       posture: "blocked",
       summaryPosture: documentConversionReviewSummaryPosture,
       reviewReadiness: buildDocumentConversionReviewReadiness({ status: "blocked" }),
+      ...decisionCues,
       policy: documentConversionReviewPolicy,
     };
   }
@@ -794,6 +873,7 @@ export function buildDocumentConversionReviewSummary(input: {
       sourceTextLength: documentExtractionTextLength(input.latestExtraction),
     },
     reviewReadiness: buildDocumentConversionReviewReadiness({ status: "not_requested" }),
+    ...decisionCues,
     policy: documentConversionReviewPolicy,
   };
 }

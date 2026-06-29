@@ -6,6 +6,7 @@ import type {
 import {
   buildCalendarSchedulingRequestPayload,
   describeCalendarEventHandoff,
+  describeReviewAgingCue,
   describeCalendarSchedulingRequestHandoff,
 } from "./calendar-dashboard";
 
@@ -117,6 +118,35 @@ describe("calendar staff handoff helpers", () => {
       label: "existing event linked",
       action: "linked_existing_event",
     });
+  });
+
+  it("describes review-aging cues without enabling automatic scheduling actions", () => {
+    expect(
+      describeReviewAgingCue({
+        status: "aging",
+        ageHours: 24,
+        referenceAt: "2026-06-01T12:00:00.000Z",
+        agingAfterHours: 24,
+        staleAfterHours: 72,
+        automaticFinalConfirmation: false,
+        autoExpires: false,
+      }),
+    ).toEqual({
+      label: "aging review",
+      detail:
+        "24h waiting since 2026-06-01T12:00:00.000Z; manual review only, no auto-confirm, auto-expiry, or provider sync.",
+    });
+    expect(
+      describeReviewAgingCue({
+        status: "stale",
+        ageHours: 72,
+        referenceAt: "2026-06-01T12:00:00.000Z",
+        agingAfterHours: 24,
+        staleAfterHours: 72,
+        automaticFinalConfirmation: false,
+        autoExpires: false,
+      }),
+    ).toMatchObject({ label: "stale review", tone: "risk" });
   });
 
   it("builds tickler scheduling-request payloads from existing tasks and reminders", () => {

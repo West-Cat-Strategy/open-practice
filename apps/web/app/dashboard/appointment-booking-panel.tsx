@@ -19,6 +19,16 @@ interface AppointmentBookingProfileSummary {
   weeklyWindows: Array<{ weekday: number; startTime: string; endTime: string }>;
 }
 
+interface ReviewAgingCue {
+  status: "fresh" | "aging" | "stale";
+  ageHours: number;
+  referenceAt: string;
+  agingAfterHours: 24;
+  staleAfterHours: 72;
+  automaticFinalConfirmation: false;
+  autoExpires: false;
+}
+
 interface AppointmentBookingRequestSummary {
   id: string;
   profileId: string;
@@ -36,6 +46,7 @@ interface AppointmentBookingRequestSummary {
   requestedStartsAt: string;
   requestedEndsAt: string;
   submittedAt: string;
+  reviewAging?: ReviewAgingCue;
   reviewedAt?: string;
   dismissedReason?: string;
 }
@@ -113,6 +124,25 @@ function defaultProfilePayload(input: {
     maxLeadDays: 30,
     status: "active" as const,
     weeklyWindows: defaultWindows(),
+  };
+}
+
+export function describeAppointmentBookingHoldAging(
+  cue: AppointmentBookingRequestSummary["reviewAging"] | undefined,
+):
+  | {
+      label: string;
+      detail: string;
+      tone?: "risk";
+    }
+  | undefined {
+  if (!cue) return undefined;
+  const label =
+    cue.status === "stale" ? "stale hold" : cue.status === "aging" ? "aging hold" : "fresh hold";
+  return {
+    label,
+    detail: `${cue.ageHours}h waiting since ${cue.referenceAt}; manual review only, no auto-confirm, auto-expiry, or provider sync.`,
+    ...(cue.status === "stale" ? { tone: "risk" as const } : {}),
   };
 }
 
@@ -391,43 +421,51 @@ export function AppointmentBookingPanel({
         </div>
       ) : null}
       <div className="party-list">
-        {tentativeRequests.slice(0, 5).map((request) => (
-          <div className="party-row" key={request.id}>
-            <span>
-              <strong>
-                {request.requesterName} · {compactDate(request.requestedStartsAt)}
-              </strong>
-              <small>
-                {request.profileLabel ?? request.profileId} · {compactStatus(request.source)} ·{" "}
-                {request.requesterEmailPresent ? "email" : "no email"} ·{" "}
-                {request.requesterTelephonePresent ? "phone" : "no phone"}
-              </small>
-              <small>
-                {request.matterId ? "Matter hold" : "Firm hold"} · event {request.calendarEventId}
-              </small>
-            </span>
-            <div className="row-actions">
-              <button
-                className="secondary-button compact-button row-button"
-                disabled={reviewingRequestId === request.id}
-                onClick={() => void reviewRequest(request, "confirmed")}
-                type="button"
-              >
-                <CalendarCheck size={15} />
-                Confirm
-              </button>
-              <button
-                className="secondary-button compact-button row-button"
-                disabled={reviewingRequestId === request.id}
-                onClick={() => void reviewRequest(request, "dismissed")}
-                type="button"
-              >
-                <X size={15} />
-                Dismiss
-              </button>
+        {tentativeRequests.slice(0, 5).map((request) => {
+          const agingCue = describeAppointmentBookingHoldAging(request.reviewAging);
+          return (
+            <div className="party-row" key={request.id}>
+              <span>
+                <strong>
+                  {request.requesterName} · {compactDate(request.requestedStartsAt)}
+                </strong>
+                <small>
+                  {request.profileLabel ?? request.profileId} · {compactStatus(request.source)} ·{" "}
+                  {request.requesterEmailPresent ? "email" : "no email"} ·{" "}
+                  {request.requesterTelephonePresent ? "phone" : "no phone"}
+                </small>
+                <small>
+                  {request.matterId ? "Matter hold" : "Firm hold"} · event {request.calendarEventId}
+                </small>
+                {agingCue ? (
+                  <small>
+                    {agingCue.label}: {agingCue.detail}
+                  </small>
+                ) : null}
+              </span>
+              <div className="row-actions">
+                <button
+                  className="secondary-button compact-button row-button"
+                  disabled={reviewingRequestId === request.id}
+                  onClick={() => void reviewRequest(request, "confirmed")}
+                  type="button"
+                >
+                  <CalendarCheck size={15} />
+                  Confirm
+                </button>
+                <button
+                  className="secondary-button compact-button row-button"
+                  disabled={reviewingRequestId === request.id}
+                  onClick={() => void reviewRequest(request, "dismissed")}
+                  type="button"
+                >
+                  <X size={15} />
+                  Dismiss
+                </button>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
         {tentativeRequests.length === 0 ? (
           <p className="inline-empty">No tentative appointment holds are waiting for review.</p>
         ) : null}

@@ -172,7 +172,10 @@ import {
   updateDrizzleHostedPaymentRequest,
 } from "./hosted-payment-requests/drizzle.js";
 import {
+  createDrizzlePaymentImportDepositMatchReview,
   createDrizzlePaymentImportReviewRecord,
+  getDrizzlePaymentImportReviewRecord,
+  listDrizzlePaymentImportDepositMatchReviews,
   listDrizzlePaymentImportReviewRecords,
 } from "./payment-import-review-records/drizzle.js";
 import {
@@ -2408,11 +2411,31 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     return createDrizzlePaymentImportReviewRecord(this.db, record);
   }
 
+  async getPaymentImportReviewRecord(
+    firmId: string,
+    recordId: string,
+  ): ReturnType<OpenPracticeRepository["getPaymentImportReviewRecord"]> {
+    return getDrizzlePaymentImportReviewRecord(this.db, firmId, recordId);
+  }
+
   async listPaymentImportReviewRecords(
     firmId: string,
     options: Parameters<OpenPracticeRepository["listPaymentImportReviewRecords"]>[1] = {},
   ): ReturnType<OpenPracticeRepository["listPaymentImportReviewRecords"]> {
     return listDrizzlePaymentImportReviewRecords(this.db, firmId, options);
+  }
+
+  async createPaymentImportDepositMatchReview(
+    record: Parameters<OpenPracticeRepository["createPaymentImportDepositMatchReview"]>[0],
+  ): ReturnType<OpenPracticeRepository["createPaymentImportDepositMatchReview"]> {
+    return createDrizzlePaymentImportDepositMatchReview(this.db, record);
+  }
+
+  async listPaymentImportDepositMatchReviews(
+    firmId: string,
+    options: Parameters<OpenPracticeRepository["listPaymentImportDepositMatchReviews"]>[1] = {},
+  ): ReturnType<OpenPracticeRepository["listPaymentImportDepositMatchReviews"]> {
+    return listDrizzlePaymentImportDepositMatchReviews(this.db, firmId, options);
   }
 
   async createTrustTransferRequest(

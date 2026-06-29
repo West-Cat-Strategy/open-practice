@@ -29,8 +29,12 @@ function buildSyntheticBillingDashboard(): BillingDashboardResponse {
       lockedPeriodCount: 1,
       activeLockedPeriodCount: 1,
       activeRateRuleCount: 1,
-      paymentImportReviewCount: 1,
+      paymentImportReviewCount: 3,
       paymentImportConflictCount: 0,
+      depositMatchReconciliationReadyCount: 1,
+      refundReviewCueCount: 1,
+      chargebackReviewCueCount: 1,
+      refundChargebackReviewCueCount: 2,
     },
     periodLocks: [
       {
@@ -257,8 +261,7 @@ function buildSyntheticBillingDashboard(): BillingDashboardResponse {
             candidateInvoiceId: "invoice_synthetic",
             candidateHostedPaymentRequestId: "payment_request_synthetic",
             candidateManualPaymentId: "payment_synthetic",
-            duplicateCuePresent: true,
-            conflictReason: "duplicate",
+            duplicateCuePresent: false,
             reviewState: "needs_review",
             boundaries: {
               rawProviderPayloadRetained: false,
@@ -271,6 +274,117 @@ function buildSyntheticBillingDashboard(): BillingDashboardResponse {
               providerCommand: "none",
               clientNotification: "none",
               depositMatching: "review_cue_only",
+            },
+            depositMatchReviewCount: 1,
+            latestDepositMatchReview: {
+              id: "deposit_match_review_synthetic",
+              decision: "candidate_supported",
+              reason: "candidate_evidence_matches",
+              candidateManualPaymentId: "payment_synthetic",
+              candidateInvoiceId: "invoice_synthetic",
+              importAmountCents: 50000,
+              manualPaymentAmountCents: 50000,
+              currency: "CAD",
+              candidateManualPaymentStatus: "pending_reconciliation",
+              reviewerEvidencePresent: true,
+              reviewedAt: "2026-06-07T00:10:00.000Z",
+              boundaries: {
+                rawProviderPayloadRetained: false,
+                invoiceBalanceMutation: "none",
+                settlementAutomation: false,
+                reconciliationMutation: "none",
+                refundHandling: "none",
+                chargebackHandling: "none",
+                trustPosting: "none",
+                providerCommand: "none",
+                clientNotification: "none",
+                depositMatching: "review_decision_only",
+              },
+            },
+            reconciliationReadiness: {
+              eligible: true,
+              reason: "supported_candidate_ready",
+              reviewAction: "manual_payment_reconcile_review",
+              candidateManualPaymentId: "payment_synthetic",
+              candidateInvoiceId: "invoice_synthetic",
+              amountCents: 50000,
+              mutation: "none",
+            },
+          },
+          {
+            id: "payment_import_refund_review_synthetic",
+            matterId: "matter_synthetic",
+            providerLabel: "synthetic_processor",
+            eventFamily: "payment",
+            eventStatus: "refund_observed",
+            externalEventId: "evt_synthetic_refund_review",
+            externalPaymentIdPresent: true,
+            amountCents: 12500,
+            currency: "CAD",
+            observedAt: "2026-06-07T01:00:00.000Z",
+            importedAt: "2026-06-07T01:05:00.000Z",
+            candidateInvoiceId: "invoice_synthetic",
+            reviewState: "needs_review",
+            boundaries: {
+              rawProviderPayloadRetained: false,
+              invoiceBalanceMutation: "none",
+              settlementAutomation: false,
+              reconciliationMutation: "none",
+              refundHandling: "review_only",
+              chargebackHandling: "review_only",
+              trustPosting: "none",
+              providerCommand: "none",
+              clientNotification: "none",
+              depositMatching: "review_cue_only",
+            },
+            refundChargebackReviewCue: {
+              category: "refund",
+              status: "needs_review",
+              reviewAction: "staff_refund_chargeback_review_required",
+              rawProviderPayloadRetained: false,
+              invoiceBalanceMutation: "none",
+              ledgerReversal: "none",
+              trustPosting: "none",
+              providerCommand: "none",
+              clientNotification: "none",
+            },
+          },
+          {
+            id: "payment_import_chargeback_review_synthetic",
+            matterId: "matter_synthetic",
+            providerLabel: "synthetic_processor",
+            eventFamily: "payment",
+            eventStatus: "chargeback_observed",
+            externalEventId: "evt_synthetic_chargeback_review",
+            externalPaymentIdPresent: true,
+            amountCents: 12500,
+            currency: "CAD",
+            observedAt: "2026-06-07T01:10:00.000Z",
+            importedAt: "2026-06-07T01:15:00.000Z",
+            candidateInvoiceId: "invoice_synthetic",
+            reviewState: "needs_review",
+            boundaries: {
+              rawProviderPayloadRetained: false,
+              invoiceBalanceMutation: "none",
+              settlementAutomation: false,
+              reconciliationMutation: "none",
+              refundHandling: "review_only",
+              chargebackHandling: "review_only",
+              trustPosting: "none",
+              providerCommand: "none",
+              clientNotification: "none",
+              depositMatching: "review_cue_only",
+            },
+            refundChargebackReviewCue: {
+              category: "chargeback",
+              status: "needs_review",
+              reviewAction: "staff_refund_chargeback_review_required",
+              rawProviderPayloadRetained: false,
+              invoiceBalanceMutation: "none",
+              ledgerReversal: "none",
+              trustPosting: "none",
+              providerCommand: "none",
+              clientNotification: "none",
             },
           },
         ],
@@ -391,8 +505,25 @@ describe("BillingSection", () => {
     expect(html).toContain("synthetic_processor");
     expect(html).toContain("deposit observed");
     expect(html).toContain("Deposit match reviews");
+    expect(html).toContain("Review decisions");
+    expect(html).toContain("Ready to reconcile");
+    expect(html).toContain("Exception cues");
+    expect(html).toContain("Refund cues");
+    expect(html).toContain("Chargeback cues");
     expect(html).toContain("deposit match review");
-    expect(html).toContain("duplicate");
+    expect(html).toContain("latest review candidate supported");
+    expect(html).toContain("Latest deposit review:");
+    expect(html).toContain("candidate evidence matches");
+    expect(html).toContain("No settlement command");
+    expect(html).toContain("Ready for manual reconcile review");
+    expect(html).toContain("Read-only cue");
+    expect(html).toContain("refund observed");
+    expect(html).toContain("chargeback observed");
+    expect(html).toContain("refund review cue");
+    expect(html).toContain("chargeback review cue");
+    expect(html).toContain("Refund/chargeback review:");
+    expect(html).toContain("refund · needs review · No provider command");
+    expect(html).toContain("chargeback · needs review · No provider command");
     expect(html).toContain("No raw payload");
     expect(html).toContain("No invoice balance mutation");
     expect(html).toContain("No reconciliation mutation");

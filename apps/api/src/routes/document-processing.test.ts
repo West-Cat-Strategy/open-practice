@@ -2,7 +2,7 @@ import Fastify, { type FastifyInstance } from "fastify";
 import type { S3Client } from "@aws-sdk/client-s3";
 import { afterEach, describe, expect, it } from "vitest";
 import { InMemoryOpenPracticeRepository } from "@open-practice/database";
-import type { ProfessionalRole, User } from "@open-practice/domain";
+import type { LegalResearchArtifactStatus, ProfessionalRole, User } from "@open-practice/domain";
 import { registerDocumentProcessingRoutes } from "./document-processing.js";
 import type { ApiJobQueue } from "./types.js";
 
@@ -52,6 +52,144 @@ async function enableOcrProvider(
     encryptedConfig: "synthetic-config-not-returned",
     createdAt: "2026-05-02T12:00:00.000Z",
     updatedAt: "2026-05-02T12:00:00.000Z",
+  });
+}
+
+type ConversionReviewDecision = "reviewed" | "rejected";
+
+const unsafeConversionReviewFragments = [
+  "Synthetic conversion review decision OCR text must stay private.",
+  "# decision markdown must not survive",
+  "Synthetic provider evidence",
+  "Synthetic provider payload",
+  "Synthetic annotation body",
+  "Synthetic prompt",
+  "Synthetic chunk",
+  "Synthetic object body",
+  "Synthetic private excerpt",
+  "Synthetic generated summary",
+] as const;
+
+async function createConversionReviewArtifact(
+  repository: InMemoryOpenPracticeRepository,
+  input: {
+    id?: string;
+    documentId?: string;
+    matterId?: string;
+    status?: LegalResearchArtifactStatus;
+    decision?: ConversionReviewDecision;
+    reviewedAt?: string;
+    updatedAt?: string;
+    unsafeMetadata?: boolean;
+  } = {},
+) {
+  const status = input.status ?? "ready_for_review";
+  const decision =
+    input.decision ?? (status === "reviewed" || status === "rejected" ? status : undefined);
+  const reviewedAt = input.reviewedAt ?? "2026-06-27T13:00:00.000Z";
+  return repository.createLegalResearchArtifact({
+    id: input.id ?? `artifact-conversion-review-${input.documentId ?? "doc-001"}-${status}`,
+    firmId,
+    matterId: input.matterId ?? "matter-001",
+    kind: "document_analysis_status",
+    status,
+    title: "Document conversion review posture",
+    sourceReferences: [],
+    contextLinks: [
+      {
+        resourceType: "document",
+        resourceId: input.documentId ?? "doc-001",
+        label: "Source document",
+      },
+    ],
+    documentAnalysis: {
+      documentId: input.documentId ?? "doc-001",
+      status: status === "draft" ? "in_review" : "ready_for_review",
+      extractionStatus: "completed",
+      artifactStatus: "metadata_only",
+      sourceTextLength: 47,
+    },
+    ...(decision
+      ? {
+          reviewDecision: decision,
+          reviewedByUserId: "user-owner_admin",
+          reviewedAt,
+        }
+      : {}),
+    createdByUserId: "user-owner_admin",
+    createdAt: "2026-06-27T12:00:00.000Z",
+    updatedAt: input.updatedAt ?? (decision ? reviewedAt : "2026-06-27T12:05:00.000Z"),
+    reviewOnly: true,
+    metadata: {
+      source: "document_conversion_review",
+      jobId: "job-conversion-review-decision",
+      extractionId: "extraction-conversion-review-decision",
+      extractionEngine: "tesseract",
+      extractionStatus: "completed",
+      provider: "local-document-conversion-metadata",
+      providerStatus: "metadata_only",
+      counts: { sourceTextLength: 47, wordCount: 6, lineCount: 2, nonEmptyLineCount: 2 },
+      policy: {
+        metadataOnly: true,
+        reviewOnly: true,
+        internalExtractedTextStored: true,
+        rawOcrTextStored: false,
+        rawOcrTextStoredInMetadata: false,
+        rawOcrTextReturned: false,
+        rawMarkdownStored: false,
+        annotationBodiesStored: false,
+        chunksStored: false,
+        embeddingsStored: false,
+        providerPayloadsStored: false,
+      },
+      conversionReviewPosture: "ready_for_review",
+      summaryPosture: "op_authored_metadata_only",
+      ...(input.unsafeMetadata === false
+        ? {}
+        : {
+            rawOcrText: "Synthetic conversion review decision OCR text must stay private.",
+            convertedMarkdown: "# decision markdown must not survive",
+            rawMarkdown: "# decision markdown must not survive",
+            providerEvidence: { private: "Synthetic provider evidence" },
+            providerPayload: { private: "Synthetic provider payload" },
+            providerPayloads: [{ private: "Synthetic provider payload" }],
+            annotationSpans: [{ start: 0, end: 12, body: "Synthetic annotation body" }],
+            annotations: [{ body: "Synthetic annotation body" }],
+            prompt: "Synthetic prompt",
+            chunks: ["Synthetic chunk"],
+            embeddings: [[0.1, 0.2]],
+            storageKey: "matters/matter-001/private-conversion.md",
+            objectKey: "matters/matter-001/private-object",
+            objectBody: "Synthetic object body",
+            privateExcerpt: "Synthetic private excerpt",
+            generatedSummary: "Synthetic generated summary",
+          }),
+    },
+  });
+}
+
+async function conversionReviewMutationSnapshot(
+  repository: InMemoryOpenPracticeRepository,
+): Promise<string> {
+  return JSON.stringify({
+    document: await repository.getDocument(firmId, "doc-001"),
+    jobs: await repository.listJobLifecycleRecords(firmId, { queueName: "ocr" }),
+    drafts: await repository.listDrafts(firmId, { matterId: "matter-001" }),
+    tasks: await repository.listTaskDeadlines(firmId, {
+      matterId: "matter-001",
+      includeCompleted: true,
+    }),
+    calendarEvents: await repository.listCalendarEvents(firmId, { matterId: "matter-001" }),
+    calendarRequests: await repository.listCalendarSchedulingRequests(firmId, {
+      matterId: "matter-001",
+    }),
+    ledgerPostingRequests: await repository.listLedgerPostingRequests(firmId, {
+      matterId: "matter-001",
+    }),
+    portalGrants: await repository.listPortalGrants(firmId),
+    portalDocumentAccess: await repository.listPortalDocumentAccess(firmId, {
+      matterId: "matter-001",
+    }),
   });
 }
 
@@ -918,6 +1056,427 @@ describe("document processing routes", () => {
       expect(JSON.stringify(entry?.conversionReview)).not.toContain("Synthetic generated summary");
     },
   );
+
+  it.each(["reviewed", "rejected"] as const)(
+    "records metadata-only document conversion review %s decisions",
+    async (decision) => {
+      const repository = new InMemoryOpenPracticeRepository();
+      await createConversionReviewArtifact(repository, {
+        id: `artifact-conversion-review-decision-${decision}`,
+      });
+      const before = await conversionReviewMutationSnapshot(repository);
+
+      const response = await testServer({ repository, ocrJobQueue: undefined }).inject({
+        method: "PATCH",
+        url: "/api/document-processing/documents/doc-001/conversion-review/review",
+        payload: { decision },
+      });
+
+      expect(response.statusCode).toBe(200);
+      const payload = response.json();
+      expect(payload).toMatchObject({
+        status: "completed",
+        task: "document_conversion_review",
+        documentId: "doc-001",
+        conversionReview: {
+          posture: decision,
+          summaryPosture: "op_authored_metadata_only",
+          artifactId: `artifact-conversion-review-decision-${decision}`,
+          provider: "local-document-conversion-metadata",
+          providerStatus: "metadata_only",
+          counts: { sourceTextLength: 47, wordCount: 6, lineCount: 2, nonEmptyLineCount: 2 },
+          reviewReadiness: {
+            status: decision,
+            artifactStatus: "metadata_only",
+            reviewedAt: expect.any(String),
+            staffReviewRequired: true,
+            terminalReview: true,
+            reviewOnly: true,
+            metadataOnly: true,
+            downstreamMutation: false,
+            providerEvidenceStored: false,
+            rawOcrTextReturned: false,
+          },
+          latestDecision: {
+            artifactId: `artifact-conversion-review-decision-${decision}`,
+            decision,
+            decidedAt: expect.any(String),
+            decidedByUserId: "user-owner_admin",
+            artifactStatus: "metadata_only",
+            reviewOnly: true,
+            metadataOnly: true,
+            terminalReview: true,
+            downstreamMutation: false,
+            providerEvidenceStored: false,
+            rawOcrTextReturned: false,
+          },
+          decisionHistory: [
+            {
+              artifactId: `artifact-conversion-review-decision-${decision}`,
+              decision,
+              decidedAt: expect.any(String),
+              decidedByUserId: "user-owner_admin",
+              artifactStatus: "metadata_only",
+              reviewOnly: true,
+              metadataOnly: true,
+              terminalReview: true,
+              downstreamMutation: false,
+              providerEvidenceStored: false,
+              rawOcrTextReturned: false,
+            },
+          ],
+        },
+      });
+      expect(payload).not.toHaveProperty("artifact");
+      const responseJson = JSON.stringify(payload);
+      for (const fragment of unsafeConversionReviewFragments) {
+        expect(responseJson).not.toContain(fragment);
+      }
+      expect(responseJson).not.toContain('"providerEvidence":');
+      expect(responseJson).not.toContain('"providerPayload":');
+      expect(responseJson).not.toContain('"providerPayloads":');
+      expect(responseJson).not.toContain('"annotationSpans":');
+      expect(responseJson).not.toContain('"annotations":');
+      expect(responseJson).not.toContain('"chunks":');
+      expect(responseJson).not.toContain('"embeddings":');
+      expect(responseJson).not.toContain('"storageKey":');
+      expect(responseJson).not.toContain('"objectKey":');
+      expect(responseJson).not.toContain('"objectBody":');
+
+      const [artifact] = await repository.listLegalResearchArtifacts(firmId, {
+        matterId: "matter-001",
+        kind: "document_analysis_status",
+      });
+      expect(artifact).toMatchObject({
+        id: `artifact-conversion-review-decision-${decision}`,
+        status: decision,
+        reviewDecision: decision,
+        reviewedByUserId: "user-owner_admin",
+        reviewedAt: expect.any(String),
+        reviewOnly: true,
+        metadata: expect.objectContaining({
+          source: "document_conversion_review",
+          jobId: "job-conversion-review-decision",
+          extractionId: "extraction-conversion-review-decision",
+          provider: "local-document-conversion-metadata",
+          providerStatus: "metadata_only",
+          metadataOnly: true,
+          reviewOnly: true,
+          reviewState: decision,
+          artifactStatus: "metadata_only",
+          staffReviewRequired: true,
+          terminalReview: true,
+          downstreamMutation: false,
+          providerEvidenceStored: false,
+          rawOcrTextReturned: false,
+          conversionReviewPosture: "ready_for_review",
+          summaryPosture: "op_authored_metadata_only",
+        }),
+      });
+      expect(artifact?.metadata.counts).toEqual({
+        sourceTextLength: 47,
+        wordCount: 6,
+        lineCount: 2,
+        nonEmptyLineCount: 2,
+      });
+      expect(artifact?.metadata.policy).toMatchObject({
+        metadataOnly: true,
+        reviewOnly: true,
+        rawOcrTextReturned: false,
+        providerPayloadsStored: false,
+      });
+      for (const key of [
+        "rawOcrText",
+        "rawMarkdown",
+        "convertedMarkdown",
+        "providerEvidence",
+        "providerPayload",
+        "providerPayloads",
+        "annotationSpans",
+        "annotations",
+        "prompt",
+        "chunks",
+        "embeddings",
+        "storageKey",
+        "objectKey",
+        "objectBody",
+        "privateExcerpt",
+        "generatedSummary",
+      ]) {
+        expect(artifact?.metadata).not.toHaveProperty(key);
+      }
+
+      const audit = await repository.listAuditEvents(firmId);
+      const reviewAudit = audit.events.find(
+        (event) => event.action === "legal_research.artifact.reviewed",
+      );
+      expect(reviewAudit).toMatchObject({
+        resourceType: "legal_research",
+        resourceId: `artifact-conversion-review-decision-${decision}`,
+        metadata: expect.objectContaining({
+          matterId: "matter-001",
+          artifactKind: "document_analysis_status",
+          status: decision,
+          decision,
+          documentId: "doc-001",
+          sourceTextLength: 47,
+          reviewedByUserId: "user-owner_admin",
+          reviewOnly: true,
+        }),
+      });
+      const auditJson = JSON.stringify(reviewAudit?.metadata);
+      for (const fragment of unsafeConversionReviewFragments) {
+        expect(auditJson).not.toContain(fragment);
+      }
+
+      await expect(conversionReviewMutationSnapshot(repository)).resolves.toBe(before);
+    },
+  );
+
+  it("returns the same terminal conversion review decision without rewriting", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await createConversionReviewArtifact(repository, {
+      status: "reviewed",
+      reviewedAt: "2026-06-27T13:10:00.000Z",
+      updatedAt: "2026-06-27T13:10:00.000Z",
+      unsafeMetadata: false,
+    });
+
+    const response = await testServer({ repository, ocrJobQueue: undefined }).inject({
+      method: "PATCH",
+      url: "/api/document-processing/documents/doc-001/conversion-review/review",
+      payload: { decision: "reviewed" },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      status: "completed",
+      task: "document_conversion_review",
+      documentId: "doc-001",
+      conversionReview: {
+        posture: "reviewed",
+        reviewReadiness: {
+          status: "reviewed",
+          reviewedAt: "2026-06-27T13:10:00.000Z",
+          terminalReview: true,
+          downstreamMutation: false,
+        },
+      },
+    });
+    const [artifact] = await repository.listLegalResearchArtifacts(firmId, {
+      matterId: "matter-001",
+      kind: "document_analysis_status",
+    });
+    expect(artifact?.reviewedAt).toBe("2026-06-27T13:10:00.000Z");
+    expect(artifact?.updatedAt).toBe("2026-06-27T13:10:00.000Z");
+    const audit = await repository.listAuditEvents(firmId);
+    expect(audit.events.some((event) => event.action === "legal_research.artifact.reviewed")).toBe(
+      false,
+    );
+  });
+
+  it("returns ordered metadata-only conversion review decision history in the workbench", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await createConversionReviewArtifact(repository, {
+      id: "artifact-conversion-review-history-old",
+      status: "reviewed",
+      reviewedAt: "2026-06-27T13:00:00.000Z",
+      updatedAt: "2026-06-27T13:00:00.000Z",
+    });
+    await createConversionReviewArtifact(repository, {
+      id: "artifact-conversion-review-history-new",
+      status: "rejected",
+      reviewedAt: "2026-06-27T14:00:00.000Z",
+      updatedAt: "2026-06-27T14:00:00.000Z",
+    });
+
+    const response = await testServer({ repository, ocrJobQueue: undefined }).inject({
+      method: "GET",
+      url: "/api/document-processing/workbench?matterId=matter-001",
+    });
+
+    expect(response.statusCode).toBe(200);
+    const [entry] = response
+      .json()
+      .documents.filter((item: { document: { id: string } }) => item.document.id === "doc-001");
+    expect(entry.conversionReview).toMatchObject({
+      posture: "rejected",
+      latestDecision: {
+        artifactId: "artifact-conversion-review-history-new",
+        decision: "rejected",
+        decidedAt: "2026-06-27T14:00:00.000Z",
+        decidedByUserId: "user-owner_admin",
+        artifactStatus: "metadata_only",
+        reviewOnly: true,
+        metadataOnly: true,
+        terminalReview: true,
+        downstreamMutation: false,
+        providerEvidenceStored: false,
+        rawOcrTextReturned: false,
+      },
+      decisionHistory: [
+        {
+          artifactId: "artifact-conversion-review-history-new",
+          decision: "rejected",
+          decidedAt: "2026-06-27T14:00:00.000Z",
+        },
+        {
+          artifactId: "artifact-conversion-review-history-old",
+          decision: "reviewed",
+          decidedAt: "2026-06-27T13:00:00.000Z",
+        },
+      ],
+    });
+    const responseJson = JSON.stringify(entry.conversionReview);
+    for (const fragment of unsafeConversionReviewFragments) {
+      expect(responseJson).not.toContain(fragment);
+    }
+    expect(responseJson).not.toContain('"providerPayload":');
+    expect(responseJson).not.toContain('"storageKey":');
+    expect(responseJson).not.toContain('"generatedSummary":');
+  });
+
+  it("rejects opposite terminal conversion review decisions", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await createConversionReviewArtifact(repository, {
+      status: "reviewed",
+      reviewedAt: "2026-06-27T13:20:00.000Z",
+      updatedAt: "2026-06-27T13:20:00.000Z",
+    });
+
+    const response = await testServer({ repository, ocrJobQueue: undefined }).inject({
+      method: "PATCH",
+      url: "/api/document-processing/documents/doc-001/conversion-review/review",
+      payload: { decision: "rejected" },
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({
+      message: "Document conversion review has already been decided",
+    });
+    const [artifact] = await repository.listLegalResearchArtifacts(firmId, {
+      matterId: "matter-001",
+      kind: "document_analysis_status",
+    });
+    expect(artifact).toMatchObject({
+      status: "reviewed",
+      reviewDecision: "reviewed",
+      reviewedAt: "2026-06-27T13:20:00.000Z",
+    });
+    const audit = await repository.listAuditEvents(firmId);
+    expect(audit.events.some((event) => event.action === "legal_research.artifact.reviewed")).toBe(
+      false,
+    );
+  });
+
+  it("rejects conversion review decisions before metadata artifacts are ready", async () => {
+    const missingArtifactRepository = new InMemoryOpenPracticeRepository();
+    const missingArtifactResponse = await testServer({
+      repository: missingArtifactRepository,
+      ocrJobQueue: undefined,
+    }).inject({
+      method: "PATCH",
+      url: "/api/document-processing/documents/doc-001/conversion-review/review",
+      payload: { decision: "reviewed" },
+    });
+    expect(missingArtifactResponse.statusCode).toBe(409);
+    expect(missingArtifactResponse.json()).toMatchObject({
+      message: "Document conversion review artifact is not ready for review",
+    });
+
+    const draftArtifactRepository = new InMemoryOpenPracticeRepository();
+    await createConversionReviewArtifact(draftArtifactRepository, { status: "draft" });
+    const draftResponse = await testServer({
+      repository: draftArtifactRepository,
+      ocrJobQueue: undefined,
+    }).inject({
+      method: "PATCH",
+      url: "/api/document-processing/documents/doc-001/conversion-review/review",
+      payload: { decision: "reviewed" },
+    });
+    expect(draftResponse.statusCode).toBe(409);
+    expect(draftResponse.json()).toMatchObject({
+      message: "Document conversion review artifact is not ready for review",
+    });
+
+    const queuedRepository = new InMemoryOpenPracticeRepository();
+    await createConversionReviewArtifact(queuedRepository);
+    await queuedRepository.createJobLifecycleRecord({
+      id: "job-conversion-review-queued",
+      firmId,
+      queueName: "ocr",
+      jobName: "document_conversion_review",
+      status: "queued",
+      targetResourceType: "document",
+      targetResourceId: "doc-001",
+      attemptsMade: 0,
+      maxAttempts: 3,
+      queuedAt: "2026-06-27T13:25:00.000Z",
+      metadata: {
+        matterId: "matter-001",
+        documentId: "doc-001",
+        provider: "local-document-conversion-metadata",
+        providerStatus: "metadata_only",
+        sourceTextLength: 47,
+      },
+    });
+    const queuedResponse = await testServer({
+      repository: queuedRepository,
+      ocrJobQueue: undefined,
+    }).inject({
+      method: "PATCH",
+      url: "/api/document-processing/documents/doc-001/conversion-review/review",
+      payload: { decision: "reviewed" },
+    });
+    expect(queuedResponse.statusCode).toBe(409);
+    expect(queuedResponse.json()).toMatchObject({
+      message: "Document conversion review is not ready for a review decision",
+    });
+
+    const missingDocumentRepository = new InMemoryOpenPracticeRepository();
+    const missingDocumentResponse = await testServer({
+      repository: missingDocumentRepository,
+      ocrJobQueue: undefined,
+    }).inject({
+      method: "PATCH",
+      url: "/api/document-processing/documents/doc-missing/conversion-review/review",
+      payload: { decision: "reviewed" },
+    });
+    expect(missingDocumentResponse.statusCode).toBe(404);
+  });
+
+  it("enforces matter scope and legal research approval for conversion review decisions", async () => {
+    const crossMatterRepository = new InMemoryOpenPracticeRepository();
+    await createConversionReviewArtifact(crossMatterRepository);
+    const crossMatter = await testServer({
+      repository: crossMatterRepository,
+      authUser: user("firm_member", ["matter-002"]),
+      ocrJobQueue: undefined,
+    }).inject({
+      method: "PATCH",
+      url: "/api/document-processing/documents/doc-001/conversion-review/review",
+      payload: { decision: "reviewed" },
+    });
+    expect(crossMatter.statusCode).toBe(403);
+
+    const auditorRepository = new InMemoryOpenPracticeRepository();
+    await createConversionReviewArtifact(auditorRepository);
+    const auditor = await testServer({
+      repository: auditorRepository,
+      authUser: user("auditor", ["matter-001"]),
+      ocrJobQueue: undefined,
+    }).inject({
+      method: "PATCH",
+      url: "/api/document-processing/documents/doc-001/conversion-review/review",
+      payload: { decision: "reviewed" },
+    });
+    expect(auditor.statusCode).toBe(403);
+    const [artifact] = await auditorRepository.listLegalResearchArtifacts(firmId, {
+      matterId: "matter-001",
+      kind: "document_analysis_status",
+    });
+    expect(artifact?.status).toBe("ready_for_review");
+  });
 
   it("returns a matter-scoped sanitized document processing workbench", async () => {
     const repository = new InMemoryOpenPracticeRepository();

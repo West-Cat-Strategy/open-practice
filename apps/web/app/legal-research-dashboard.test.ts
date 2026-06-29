@@ -4,6 +4,7 @@ import {
   buildLegalResearchReviewPath,
   buildLegalResearchWorkspacePath,
   canReviewLegalResearch,
+  describeLegalResearchDocumentAnalysisDecision,
   emptyLegalResearchWorkspace,
   replaceLegalResearchArtifact,
   summarizeLegalResearchWorkspaceStatus,
@@ -87,5 +88,48 @@ describe("legal research dashboard helpers", () => {
     expect(updated.summary.openCheckpointCount).toBe(0);
     expect(canReviewLegalResearch("firm_member")).toBe(true);
     expect(canReviewLegalResearch("auditor")).toBe(false);
+  });
+
+  it("describes terminal document-analysis decisions without artifact bodies", () => {
+    const artifact = {
+      id: "legal-research-document-analysis-001",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      kind: "document_analysis_status" as const,
+      status: "reviewed" as const,
+      title: "Document conversion review posture",
+      note: "Synthetic raw OCR note must not be used.",
+      sourceReferences: [],
+      contextLinks: [{ resourceType: "document" as const, resourceId: "doc-001" }],
+      documentAnalysis: {
+        documentId: "doc-001",
+        status: "ready_for_review" as const,
+        extractionStatus: "completed" as const,
+        artifactStatus: "metadata_only" as const,
+        sourceTextLength: 47,
+      },
+      reviewDecision: "reviewed" as const,
+      reviewedByUserId: "user-admin",
+      reviewedAt: "2026-06-27T14:05:00.000Z",
+      createdByUserId: "user-admin",
+      createdAt: "2026-06-27T13:00:00.000Z",
+      updatedAt: "2026-06-27T14:05:00.000Z",
+      reviewOnly: true as const,
+      metadata: {
+        rawOcrText: "Synthetic private text",
+        providerPayload: { private: "Synthetic provider payload" },
+        generatedSummary: "Synthetic generated summary",
+      },
+    };
+
+    const description = describeLegalResearchDocumentAnalysisDecision(artifact);
+
+    expect(description).toBe(
+      "latest decision reviewed at 2026-06-27T14:05:00.000Z · reviewer user-admin · artifact metadata only · metadata only · review only · no downstream mutation · no provider evidence · no raw OCR returned",
+    );
+    expect(description).not.toContain("Synthetic raw OCR note");
+    expect(description).not.toContain("Synthetic private text");
+    expect(description).not.toContain("Synthetic provider payload");
+    expect(description).not.toContain("Synthetic generated summary");
   });
 });

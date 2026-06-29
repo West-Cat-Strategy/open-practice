@@ -13,6 +13,7 @@ import type {
   CalendarSchedulingRequestRecord,
   CalendarSchedulingRequestSummary,
 } from "./models.js";
+import { buildReviewAgingCue } from "./review-aging.js";
 
 const DEFAULT_PRODUCT_ID = "-//Open Practice//Matter Calendar//EN";
 const DEFAULT_DTSTAMP = "1970-01-01T00:00:00.000Z";
@@ -262,6 +263,7 @@ export function buildCalendarSchedulingRequestSummaries(input: {
   requests: CalendarSchedulingRequestRecord[];
   events?: CalendarEventRecord[];
   includeTimeCapture?: boolean;
+  now?: string;
 }): CalendarSchedulingRequestSummary[] {
   const eventsById = new Map(
     (input.events ?? []).map((event): [string, CalendarEventRecord] => [event.id, event]),
@@ -309,6 +311,14 @@ export function buildCalendarSchedulingRequestSummaries(input: {
         },
         timeCaptureCue: timeCaptureCue(request, includeTimeCapture),
         reviewBoundary: SCHEDULING_REVIEW_BOUNDARY,
+        ...(request.status === "needs_review"
+          ? {
+              reviewAging: buildReviewAgingCue({
+                referenceAt: request.createdAt,
+                now: input.now,
+              }),
+            }
+          : {}),
         reviewedAt: request.reviewedAt,
         reviewedByUserId: request.reviewedByUserId,
       };

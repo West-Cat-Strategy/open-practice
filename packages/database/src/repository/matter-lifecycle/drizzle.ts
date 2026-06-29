@@ -4,7 +4,7 @@ import {
   buildMatterLifecycleCommandExecution,
   buildMatterLifecycleTransitionAuditMetadata,
   buildMatterLifecycleTransitionRecord,
-  matterLifecycleCommandRequiredStatus,
+  matterLifecycleCommandRequiredStatuses,
   matterLifecycleTargetStatus,
   type ContactIdentifier,
   type Matter,
@@ -420,6 +420,10 @@ function commandStatusMismatch(message: string): MatterLifecycleCommandError {
   return new MatterLifecycleCommandError("MATTER_LIFECYCLE_EXPECTED_STATUS_MISMATCH", message);
 }
 
+function requiredStatusLabel(statuses: readonly string[]): string {
+  return statuses.join(", ");
+}
+
 function commandNotAvailable(command: string): MatterLifecycleCommandError {
   return new MatterLifecycleCommandError(
     "MATTER_LIFECYCLE_COMMAND_NOT_AVAILABLE",
@@ -463,10 +467,12 @@ export async function executeDrizzleMatterLifecycleCommand(
     if (!actorRow) throw new Error(`Unknown user ${input.executedByUserId}`);
 
     const matter = mapMatter(matterRow);
-    const requiredStatus = matterLifecycleCommandRequiredStatus(input.command);
-    if (input.expectedStatus !== requiredStatus) {
+    const requiredStatuses = matterLifecycleCommandRequiredStatuses(input.command);
+    if (!requiredStatuses.includes(input.expectedStatus)) {
       throw commandStatusMismatch(
-        `Matter lifecycle command ${input.command} expected status must be ${requiredStatus}`,
+        `Matter lifecycle command ${input.command} expected status must be ${requiredStatusLabel(
+          requiredStatuses,
+        )}`,
       );
     }
     if (matter.status !== input.expectedStatus) throw commandNotAvailable(input.command);

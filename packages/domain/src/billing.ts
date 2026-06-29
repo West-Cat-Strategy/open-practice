@@ -167,6 +167,16 @@ export type PaymentImportEventFamily = (typeof paymentImportEventFamilies)[numbe
 
 export type PaymentImportReviewState = "needs_review";
 
+export const paymentImportRefundChargebackReviewStatuses = [
+  "refund_observed",
+  "chargeback_observed",
+] as const;
+
+export type PaymentImportRefundChargebackReviewStatus =
+  (typeof paymentImportRefundChargebackReviewStatuses)[number];
+
+export type PaymentImportRefundChargebackReviewCategory = "refund" | "chargeback";
+
 export const paymentImportReviewConflictReasons = [
   "duplicate",
   "candidate_mismatch",
@@ -182,6 +192,76 @@ export interface PaymentImportReviewDepositMatchCue {
   invoiceBalanceMutation: "none";
   reconciliationMutation: "none";
   trustPosting: "none";
+}
+
+export interface PaymentImportRefundChargebackReviewCue {
+  category: PaymentImportRefundChargebackReviewCategory;
+  status: "needs_review";
+  reviewAction: "staff_refund_chargeback_review_required";
+  rawProviderPayloadRetained: false;
+  invoiceBalanceMutation: "none";
+  ledgerReversal: "none";
+  trustPosting: "none";
+  providerCommand: "none";
+  clientNotification: "none";
+}
+
+export const paymentImportDepositMatchReviewDecisions = [
+  "candidate_supported",
+  "candidate_rejected",
+  "needs_more_evidence",
+] as const;
+
+export type PaymentImportDepositMatchReviewDecision =
+  (typeof paymentImportDepositMatchReviewDecisions)[number];
+
+export const paymentImportDepositMatchReviewReasons = [
+  "candidate_evidence_matches",
+  "amount_mismatch",
+  "status_conflict",
+  "duplicate_or_conflict",
+  "manual_payment_not_pending",
+  "invoice_candidate_mismatch",
+  "missing_reviewer_evidence",
+] as const;
+
+export type PaymentImportDepositMatchReviewReason =
+  (typeof paymentImportDepositMatchReviewReasons)[number];
+
+export interface PaymentImportDepositMatchReviewBoundary {
+  rawProviderPayloadRetained: false;
+  invoiceBalanceMutation: "none";
+  settlementAutomation: false;
+  reconciliationMutation: "none";
+  refundHandling: "none";
+  chargebackHandling: "none";
+  trustPosting: "none";
+  providerCommand: "none";
+  clientNotification: "none";
+  depositMatching: "review_decision_only";
+}
+
+export type PaymentImportDepositMatchReconciliationReadinessReason =
+  | "supported_candidate_ready"
+  | "no_supported_decision"
+  | "candidate_not_supported"
+  | "import_record_conflict"
+  | "candidate_manual_payment_mismatch"
+  | "manual_payment_not_found"
+  | "manual_payment_not_pending"
+  | "amount_mismatch"
+  | "invoice_not_found"
+  | "invoice_candidate_mismatch"
+  | "invoice_balance_insufficient";
+
+export interface PaymentImportDepositMatchReconciliationReadiness {
+  eligible: boolean;
+  reason: PaymentImportDepositMatchReconciliationReadinessReason;
+  reviewAction: "manual_payment_reconcile_review";
+  candidateManualPaymentId?: string;
+  candidateInvoiceId?: string;
+  amountCents?: number;
+  mutation: "none";
 }
 
 export type TrustTransferRequestStatus =
@@ -461,6 +541,28 @@ export interface PaymentImportReviewRecord {
   updatedAt: string;
 }
 
+export interface PaymentImportDepositMatchReviewRecord {
+  id: string;
+  firmId: string;
+  matterId: string;
+  paymentImportReviewRecordId: string;
+  candidateManualPaymentId: string;
+  candidateInvoiceId?: string;
+  decision: PaymentImportDepositMatchReviewDecision;
+  reason: PaymentImportDepositMatchReviewReason;
+  importAmountCents: number;
+  manualPaymentAmountCents: number;
+  currency: "CAD";
+  candidateManualPaymentStatus: ManualPaymentStatus;
+  reviewerEvidencePresent: true;
+  idempotencyKey: string;
+  decisionFingerprint: string;
+  boundaries: PaymentImportDepositMatchReviewBoundary;
+  reviewedByUserId: string;
+  reviewedAt: string;
+  createdAt: string;
+}
+
 export interface TrustTransferRequestRecord {
   id: string;
   firmId: string;
@@ -634,6 +736,21 @@ export function defaultPaymentImportReviewBoundary(): PaymentImportReviewBoundar
   };
 }
 
+export function defaultPaymentImportDepositMatchReviewBoundary(): PaymentImportDepositMatchReviewBoundary {
+  return {
+    rawProviderPayloadRetained: false,
+    invoiceBalanceMutation: "none",
+    settlementAutomation: false,
+    reconciliationMutation: "none",
+    refundHandling: "none",
+    chargebackHandling: "none",
+    trustPosting: "none",
+    providerCommand: "none",
+    clientNotification: "none",
+    depositMatching: "review_decision_only",
+  };
+}
+
 export function paymentImportReviewHasConflict(
   record: Pick<PaymentImportReviewRecord, "conflictReason" | "duplicateOfRecordId">,
 ): boolean {
@@ -649,6 +766,140 @@ export function paymentImportReviewDepositMatchCue(
     invoiceBalanceMutation: "none",
     reconciliationMutation: "none",
     trustPosting: "none",
+  };
+}
+
+function paymentImportDepositMatchReadiness(
+  reason: PaymentImportDepositMatchReconciliationReadinessReason,
+  details: Pick<
+    PaymentImportDepositMatchReconciliationReadiness,
+    "candidateManualPaymentId" | "candidateInvoiceId" | "amountCents"
+  > = {},
+): PaymentImportDepositMatchReconciliationReadiness {
+  const readiness: PaymentImportDepositMatchReconciliationReadiness = {
+    eligible: reason === "supported_candidate_ready",
+    reason,
+    reviewAction: "manual_payment_reconcile_review",
+    mutation: "none",
+  };
+  if (details.candidateManualPaymentId) {
+    readiness.candidateManualPaymentId = details.candidateManualPaymentId;
+  }
+  if (details.candidateInvoiceId) readiness.candidateInvoiceId = details.candidateInvoiceId;
+  if (details.amountCents !== undefined) readiness.amountCents = details.amountCents;
+  return readiness;
+}
+
+export function paymentImportDepositMatchReconciliationReadiness(input: {
+  importRecord: Pick<
+    PaymentImportReviewRecord,
+    | "matterId"
+    | "amountCents"
+    | "candidateManualPaymentId"
+    | "candidateInvoiceId"
+    | "duplicateOfRecordId"
+    | "conflictReason"
+  >;
+  latestReview?: Pick<
+    PaymentImportDepositMatchReviewRecord,
+    | "decision"
+    | "reason"
+    | "matterId"
+    | "candidateManualPaymentId"
+    | "candidateInvoiceId"
+    | "importAmountCents"
+    | "manualPaymentAmountCents"
+  >;
+  manualPayment?: Pick<
+    ManualPaymentRecord,
+    "id" | "matterId" | "invoiceId" | "amountCents" | "status"
+  >;
+  invoice?: Pick<InvoiceRecord, "id" | "matterId" | "balanceDueCents">;
+}): PaymentImportDepositMatchReconciliationReadiness {
+  const { importRecord, latestReview, manualPayment, invoice } = input;
+  if (!latestReview) return paymentImportDepositMatchReadiness("no_supported_decision");
+  const details = {
+    candidateManualPaymentId: latestReview.candidateManualPaymentId,
+    candidateInvoiceId:
+      latestReview.candidateInvoiceId ??
+      importRecord.candidateInvoiceId ??
+      manualPayment?.invoiceId,
+    amountCents: latestReview.manualPaymentAmountCents,
+  };
+  if (
+    latestReview.decision !== "candidate_supported" ||
+    latestReview.reason !== "candidate_evidence_matches"
+  ) {
+    return paymentImportDepositMatchReadiness("candidate_not_supported", details);
+  }
+  if (paymentImportReviewHasConflict(importRecord)) {
+    return paymentImportDepositMatchReadiness("import_record_conflict", details);
+  }
+  if (
+    !importRecord.candidateManualPaymentId ||
+    importRecord.candidateManualPaymentId !== latestReview.candidateManualPaymentId
+  ) {
+    return paymentImportDepositMatchReadiness("candidate_manual_payment_mismatch", details);
+  }
+  if (!manualPayment || manualPayment.id !== latestReview.candidateManualPaymentId) {
+    return paymentImportDepositMatchReadiness("manual_payment_not_found", details);
+  }
+  if (
+    manualPayment.matterId !== importRecord.matterId ||
+    latestReview.matterId !== importRecord.matterId
+  ) {
+    return paymentImportDepositMatchReadiness("candidate_manual_payment_mismatch", details);
+  }
+  if (manualPayment.status !== "pending_reconciliation") {
+    return paymentImportDepositMatchReadiness("manual_payment_not_pending", details);
+  }
+  if (
+    manualPayment.amountCents !== latestReview.manualPaymentAmountCents ||
+    importRecord.amountCents !== latestReview.importAmountCents ||
+    latestReview.importAmountCents !== latestReview.manualPaymentAmountCents
+  ) {
+    return paymentImportDepositMatchReadiness("amount_mismatch", details);
+  }
+  const candidateInvoiceId = latestReview.candidateInvoiceId ?? importRecord.candidateInvoiceId;
+  if (!manualPayment.invoiceId || !candidateInvoiceId || !invoice) {
+    return paymentImportDepositMatchReadiness("invoice_not_found", details);
+  }
+  if (manualPayment.invoiceId !== candidateInvoiceId || invoice.id !== candidateInvoiceId) {
+    return paymentImportDepositMatchReadiness("invoice_candidate_mismatch", details);
+  }
+  if (invoice.matterId !== importRecord.matterId || invoice.matterId !== manualPayment.matterId) {
+    return paymentImportDepositMatchReadiness("invoice_candidate_mismatch", details);
+  }
+  if (manualPayment.amountCents > invoice.balanceDueCents) {
+    return paymentImportDepositMatchReadiness("invoice_balance_insufficient", details);
+  }
+  return paymentImportDepositMatchReadiness("supported_candidate_ready", details);
+}
+
+export function paymentImportRefundChargebackReviewCue(
+  record: Pick<PaymentImportReviewRecord, "eventFamily" | "eventStatus">,
+): PaymentImportRefundChargebackReviewCue | undefined {
+  if (record.eventFamily !== "payment") return undefined;
+  const categoryByStatus: Record<
+    PaymentImportRefundChargebackReviewStatus,
+    PaymentImportRefundChargebackReviewCategory
+  > = {
+    refund_observed: "refund",
+    chargeback_observed: "chargeback",
+  };
+  const category =
+    categoryByStatus[record.eventStatus as PaymentImportRefundChargebackReviewStatus];
+  if (!category) return undefined;
+  return {
+    category,
+    status: "needs_review",
+    reviewAction: "staff_refund_chargeback_review_required",
+    rawProviderPayloadRetained: false,
+    invoiceBalanceMutation: "none",
+    ledgerReversal: "none",
+    trustPosting: "none",
+    providerCommand: "none",
+    clientNotification: "none",
   };
 }
 

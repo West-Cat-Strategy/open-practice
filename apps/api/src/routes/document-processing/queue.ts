@@ -196,6 +196,7 @@ export function registerDocumentProcessingQueueRoutes(
         latestExtraction,
         latestJob,
         artifact: existingArtifact,
+        artifacts,
       });
       if (
         existingSummary.posture === "queued" ||
@@ -342,6 +343,7 @@ export function registerDocumentProcessingQueueRoutes(
         document,
         latestExtraction,
         latestJob: updatedJob,
+        artifacts,
       });
       return reply.code(202).send({
         status: "queued",

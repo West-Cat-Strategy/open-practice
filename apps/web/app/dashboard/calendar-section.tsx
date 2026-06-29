@@ -7,6 +7,7 @@ import {
   describeCalendarEventHandoff,
   describeCalendarEventTiming,
   describeCalendarGuestSessionStatus,
+  describeReviewAgingCue,
   describeCalendarSchedulingReviewNextStep,
   describeCalendarSchedulingRequestHandoff,
   describeMeetingInvitationBoundary,
@@ -296,6 +297,16 @@ export function CalendarSection({
       .filter((request) => request.status === "needs_review" && request.linkedReminderId)
       .map((request) => `${request.linkedEvent?.id ?? ""}:${request.linkedReminderId}`),
   );
+  const agingSchedulingRequestCount = activeCalendarSchedulingRequests.filter(
+    (request) => request.reviewAging?.status === "aging",
+  ).length;
+  const staleSchedulingRequestCount = activeCalendarSchedulingRequests.filter(
+    (request) => request.reviewAging?.status === "stale",
+  ).length;
+  const schedulingAgingSummary =
+    agingSchedulingRequestCount || staleSchedulingRequestCount
+      ? `${staleSchedulingRequestCount} stale · ${agingSchedulingRequestCount} aging`
+      : "no aging cues";
 
   return (
     <>
@@ -318,6 +329,7 @@ export function CalendarSection({
         <div>
           <span className="field-label">Scheduling reviews</span>
           <strong>{activeCalendarSchedulingRequests.length}</strong>
+          <small>{schedulingAgingSummary}</small>
         </div>
         <div>
           <span className="field-label">Cancelled</span>
@@ -420,6 +432,7 @@ export function CalendarSection({
             eligibleEventCount: eligibleEvents.length,
             selectedEventId: selectedReviewEventId,
           });
+          const agingCue = describeReviewAgingCue(request.reviewAging);
           const busyPrefix = `${request.id}:`;
           const reviewBusy = reviewingCalendarSchedulingRequestKey.startsWith(busyPrefix);
           return (
@@ -447,6 +460,11 @@ export function CalendarSection({
                       }`}
                 </small>
                 <small>{handoff.detail}</small>
+                {agingCue ? (
+                  <small>
+                    {agingCue.label}: {agingCue.detail}
+                  </small>
+                ) : null}
                 <small>
                   {reviewNextStep.label}: {reviewNextStep.detail}
                 </small>

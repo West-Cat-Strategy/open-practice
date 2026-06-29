@@ -14,6 +14,7 @@ import {
   defaultCreditWriteOffPosture,
   defaultBillingExpenseCategoriesForFirm,
   defaultHostedPaymentProcessorState,
+  defaultPaymentImportDepositMatchReviewBoundary,
   defaultPaymentImportReviewBoundary,
   defaultPaymentPlanPlaceholder,
   buildPaymentSettlementReview,
@@ -24,15 +25,20 @@ import {
   hostedPaymentRequestPath,
   isBillableUnbilled,
   normalizeExpenseCategoryCode,
+  paymentImportDepositMatchReconciliationReadiness,
   paymentImportReviewDepositMatchCue,
   paymentImportReviewHasConflict,
+  paymentImportRefundChargebackReviewCue,
   resolveBillingRateRule,
   summarizeTrustTransferLedgerLink,
   timerDraftMinutesFromWindow,
   trustTransferRequestAvailableBalanceCents,
   validateBillingExpenseCategory,
   type BillingRateRuleRecord,
+  type InvoiceRecord,
   type ManualPaymentRecord,
+  type PaymentImportDepositMatchReviewRecord,
+  type PaymentImportReviewRecord,
 } from "./billing.js";
 import {
   sampleInvoiceLines,
@@ -425,6 +431,220 @@ describe("billing period locks and rate rules", () => {
       reconciliationMutation: "none",
       trustPosting: "none",
     });
+    expect(
+      paymentImportRefundChargebackReviewCue({
+        eventFamily: "payment",
+        eventStatus: "refund_observed",
+      }),
+    ).toEqual({
+      category: "refund",
+      status: "needs_review",
+      reviewAction: "staff_refund_chargeback_review_required",
+      rawProviderPayloadRetained: false,
+      invoiceBalanceMutation: "none",
+      ledgerReversal: "none",
+      trustPosting: "none",
+      providerCommand: "none",
+      clientNotification: "none",
+    });
+    expect(
+      paymentImportRefundChargebackReviewCue({
+        eventFamily: "payment",
+        eventStatus: "chargeback_observed",
+      }),
+    ).toMatchObject({
+      category: "chargeback",
+      status: "needs_review",
+      reviewAction: "staff_refund_chargeback_review_required",
+    });
+    expect(
+      paymentImportRefundChargebackReviewCue({
+        eventFamily: "payment",
+        eventStatus: "payment_observed",
+      }),
+    ).toBeUndefined();
+    expect(
+      paymentImportRefundChargebackReviewCue({
+        eventFamily: "deposit",
+        eventStatus: "refund_observed",
+      }),
+    ).toBeUndefined();
+    expect(defaultPaymentImportDepositMatchReviewBoundary()).toEqual({
+      rawProviderPayloadRetained: false,
+      invoiceBalanceMutation: "none",
+      settlementAutomation: false,
+      reconciliationMutation: "none",
+      refundHandling: "none",
+      chargebackHandling: "none",
+      trustPosting: "none",
+      providerCommand: "none",
+      clientNotification: "none",
+      depositMatching: "review_decision_only",
+    });
+  });
+
+  it("classifies OP-T162 deposit-match decisions as read-only manual reconcile cues", () => {
+    const importRecord = {
+      id: "payment-import-review-domain",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      providerLabel: "synthetic_processor",
+      eventFamily: "deposit",
+      eventStatus: "deposit_observed",
+      externalEventId: "evt_synthetic_domain",
+      externalDepositId: "dep_synthetic_domain",
+      amountCents: 5000,
+      currency: "CAD",
+      importedAt: "2026-06-27T12:00:00.000Z",
+      importedByUserId: "user-licensee",
+      candidateInvoiceId: "invoice-001",
+      candidateManualPaymentId: "payment-001",
+      reviewState: "needs_review",
+      normalizedEvidenceFingerprint: "synthetic-domain-fingerprint",
+      boundaries: defaultPaymentImportReviewBoundary(),
+      updatedAt: "2026-06-27T12:00:00.000Z",
+    } satisfies PaymentImportReviewRecord;
+    const supportedReview = {
+      id: "deposit-match-review-domain",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      paymentImportReviewRecordId: importRecord.id,
+      candidateManualPaymentId: "payment-001",
+      candidateInvoiceId: "invoice-001",
+      decision: "candidate_supported",
+      reason: "candidate_evidence_matches",
+      importAmountCents: 5000,
+      manualPaymentAmountCents: 5000,
+      currency: "CAD",
+      candidateManualPaymentStatus: "pending_reconciliation",
+      reviewerEvidencePresent: true,
+      idempotencyKey: "synthetic-readiness-key",
+      decisionFingerprint: "synthetic-readiness-fingerprint",
+      boundaries: defaultPaymentImportDepositMatchReviewBoundary(),
+      reviewedByUserId: "user-licensee",
+      reviewedAt: "2026-06-27T12:05:00.000Z",
+      createdAt: "2026-06-27T12:05:00.000Z",
+    } satisfies PaymentImportDepositMatchReviewRecord;
+    const manualPayment = {
+      id: "payment-001",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      invoiceId: "invoice-001",
+      receivedAt: "2026-06-27T12:01:00.000Z",
+      amountCents: 5000,
+      method: "eft",
+      status: "pending_reconciliation",
+      receivedByUserId: "user-licensee",
+    } satisfies ManualPaymentRecord;
+    const invoice = {
+      id: "invoice-001",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      invoiceNumber: "INV-001",
+      status: "issued",
+      createdByUserId: "user-licensee",
+      createdAt: "2026-06-27T11:00:00.000Z",
+      subtotalCents: 10000,
+      taxCents: 0,
+      totalCents: 10000,
+      paidCents: 0,
+      balanceDueCents: 10000,
+    } satisfies InvoiceRecord;
+
+    expect(
+      paymentImportDepositMatchReconciliationReadiness({
+        importRecord,
+        latestReview: supportedReview,
+        manualPayment,
+        invoice,
+      }),
+    ).toEqual({
+      eligible: true,
+      reason: "supported_candidate_ready",
+      reviewAction: "manual_payment_reconcile_review",
+      candidateManualPaymentId: "payment-001",
+      candidateInvoiceId: "invoice-001",
+      amountCents: 5000,
+      mutation: "none",
+    });
+
+    expect(
+      paymentImportDepositMatchReconciliationReadiness({ importRecord, manualPayment, invoice }),
+    ).toMatchObject({ eligible: false, reason: "no_supported_decision" });
+    expect(
+      paymentImportDepositMatchReconciliationReadiness({
+        importRecord,
+        latestReview: {
+          ...supportedReview,
+          decision: "candidate_rejected",
+          reason: "amount_mismatch",
+        },
+        manualPayment,
+        invoice,
+      }),
+    ).toMatchObject({ eligible: false, reason: "candidate_not_supported" });
+    expect(
+      paymentImportDepositMatchReconciliationReadiness({
+        importRecord: { ...importRecord, conflictReason: "duplicate" },
+        latestReview: supportedReview,
+        manualPayment,
+        invoice,
+      }),
+    ).toMatchObject({ eligible: false, reason: "import_record_conflict" });
+    expect(
+      paymentImportDepositMatchReconciliationReadiness({
+        importRecord: { ...importRecord, candidateManualPaymentId: "payment-other" },
+        latestReview: supportedReview,
+        manualPayment,
+        invoice,
+      }),
+    ).toMatchObject({ eligible: false, reason: "candidate_manual_payment_mismatch" });
+    expect(
+      paymentImportDepositMatchReconciliationReadiness({
+        importRecord,
+        latestReview: supportedReview,
+        invoice,
+      }),
+    ).toMatchObject({ eligible: false, reason: "manual_payment_not_found" });
+    expect(
+      paymentImportDepositMatchReconciliationReadiness({
+        importRecord,
+        latestReview: supportedReview,
+        manualPayment: { ...manualPayment, status: "received" },
+        invoice,
+      }),
+    ).toMatchObject({ eligible: false, reason: "manual_payment_not_pending" });
+    expect(
+      paymentImportDepositMatchReconciliationReadiness({
+        importRecord,
+        latestReview: supportedReview,
+        manualPayment: { ...manualPayment, amountCents: 4900 },
+        invoice,
+      }),
+    ).toMatchObject({ eligible: false, reason: "amount_mismatch" });
+    expect(
+      paymentImportDepositMatchReconciliationReadiness({
+        importRecord,
+        latestReview: supportedReview,
+        manualPayment,
+      }),
+    ).toMatchObject({ eligible: false, reason: "invoice_not_found" });
+    expect(
+      paymentImportDepositMatchReconciliationReadiness({
+        importRecord,
+        latestReview: supportedReview,
+        manualPayment,
+        invoice: { ...invoice, matterId: "matter-002" },
+      }),
+    ).toMatchObject({ eligible: false, reason: "invoice_candidate_mismatch" });
+    expect(
+      paymentImportDepositMatchReconciliationReadiness({
+        importRecord,
+        latestReview: supportedReview,
+        manualPayment,
+        invoice: { ...invoice, balanceDueCents: 4000 },
+      }),
+    ).toMatchObject({ eligible: false, reason: "invoice_balance_insufficient" });
   });
 });
 

@@ -1,9 +1,13 @@
 import type { LedgerPostingRequestStatus } from "./ledger.js";
+import type { LegalResearchArtifactStatus, LegalResearchReviewDecision } from "./legal-research.js";
 
 export type OperationalActionAvailability = "available" | "disabled";
 export type OperationalActionTone = "neutral" | "ready" | "risk";
 export type DocumentRetentionHoldReviewAction = "record_review";
 export type DocumentRetentionHoldReviewBusyAction = DocumentRetentionHoldReviewAction | "other";
+export type LegalResearchArtifactReviewAction = LegalResearchReviewDecision;
+export type LegalResearchArtifactReviewBusyAction = LegalResearchArtifactReviewAction | "other";
+export type LegalResearchReviewWorkspaceStatus = "available" | "access_denied" | "unavailable";
 export type TrustPostingRequestReviewAction = "approved" | "rejected";
 export type TrustPostingRequestReviewBusyAction = TrustPostingRequestReviewAction | "other";
 export type MatterLifecycleReviewAction = "record_review";
@@ -112,6 +116,94 @@ export function describeMatterLifecycleReviewAction(input: {
           label: descriptor.busyLabel,
         }),
       !input.canRecord && disabledOperationalAction("permission_required"),
+    ],
+  });
+}
+
+const legalResearchArtifactReviewActions = [
+  "reviewed",
+  "rejected",
+] as const satisfies readonly LegalResearchArtifactReviewAction[];
+
+const legalResearchArtifactReviewActionDescriptors: Record<
+  LegalResearchArtifactReviewAction,
+  {
+    actionKey: string;
+    label: string;
+    busyLabel: string;
+    availableTone: OperationalActionTone;
+  }
+> = {
+  reviewed: {
+    actionKey: "legal_research_artifact.review",
+    label: "Review",
+    busyLabel: "Saving",
+    availableTone: "ready",
+  },
+  rejected: {
+    actionKey: "legal_research_artifact.reject",
+    label: "Reject",
+    busyLabel: "Saving",
+    availableTone: "risk",
+  },
+};
+
+export function legalResearchArtifactReviewBusyKey(
+  action: LegalResearchArtifactReviewAction,
+  artifactId: string,
+): string {
+  return `${action}:${artifactId}`;
+}
+
+export function legalResearchArtifactReviewBusyAction(
+  busyKey: string,
+  artifactId: string,
+): LegalResearchArtifactReviewBusyAction | undefined {
+  if (!busyKey) return undefined;
+  for (const action of legalResearchArtifactReviewActions) {
+    if (busyKey === legalResearchArtifactReviewBusyKey(action, artifactId)) return action;
+  }
+  return busyKey.endsWith(`:${artifactId}`) ? "other" : undefined;
+}
+
+export function compactLegalResearchArtifactReviewActionReason(value?: string): string {
+  if (!value) return "available";
+  const labels: Record<string, string> = {
+    reviewed_in_progress: "review in progress",
+    rejected_in_progress: "rejection in progress",
+    review_action_in_progress: "review action in progress",
+    permission_required: "permission required",
+    status_not_ready_for_review: "not ready for review",
+    workspace_unavailable: "workspace unavailable",
+  };
+  return labels[value] ?? value.replaceAll("_", " ");
+}
+
+export function describeLegalResearchArtifactReviewAction(input: {
+  action: LegalResearchArtifactReviewAction;
+  status: LegalResearchArtifactStatus;
+  busyAction?: LegalResearchArtifactReviewBusyAction;
+  canReview: boolean;
+  workspaceStatus: LegalResearchReviewWorkspaceStatus;
+}): OperationalActionState {
+  const descriptor = legalResearchArtifactReviewActionDescriptors[input.action];
+  const sameActionBusy = input.busyAction === input.action;
+  const anyActionBusy = input.busyAction !== undefined;
+
+  return describeOperationalActionState({
+    actionKey: descriptor.actionKey,
+    label: descriptor.label,
+    availableTone: descriptor.availableTone,
+    disabledWhen: [
+      sameActionBusy &&
+        disabledOperationalAction(`${input.action}_in_progress`, {
+          label: descriptor.busyLabel,
+        }),
+      anyActionBusy && disabledOperationalAction("review_action_in_progress"),
+      !input.canReview && disabledOperationalAction("permission_required"),
+      input.status !== "ready_for_review" &&
+        disabledOperationalAction("status_not_ready_for_review"),
+      input.workspaceStatus !== "available" && disabledOperationalAction("workspace_unavailable"),
     ],
   });
 }

@@ -14,6 +14,8 @@ import type {
   BillingExpenseCategoryRecord,
   BillingRateSnapshot,
   HostedPaymentRequestRecord,
+  ManualPaymentStatus,
+  PaymentImportDepositMatchReviewRecord,
   PaymentImportReviewRecord,
   Province,
 } from "@open-practice/domain";
@@ -423,6 +425,107 @@ export const paymentImportReviewRecords = pgTable(
     cadCurrency: check(
       "payment_import_review_records_cad_currency",
       sql`${table.currency} = 'CAD'`,
+    ),
+  }),
+);
+
+export const paymentImportDepositMatchReviews = pgTable(
+  "payment_import_deposit_match_reviews",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    matterId: text("matter_id")
+      .notNull()
+      .references(() => matters.id),
+    paymentImportReviewRecordId: text("payment_import_review_record_id")
+      .notNull()
+      .references(() => paymentImportReviewRecords.id),
+    candidateManualPaymentId: text("candidate_manual_payment_id")
+      .notNull()
+      .references(() => manualPayments.id),
+    candidateInvoiceId: text("candidate_invoice_id").references(() => invoices.id),
+    decision: text("decision").$type<PaymentImportDepositMatchReviewRecord["decision"]>().notNull(),
+    reason: text("reason").$type<PaymentImportDepositMatchReviewRecord["reason"]>().notNull(),
+    importAmountCents: integer("import_amount_cents").notNull(),
+    manualPaymentAmountCents: integer("manual_payment_amount_cents").notNull(),
+    currency: text("currency").$type<PaymentImportDepositMatchReviewRecord["currency"]>().notNull(),
+    candidateManualPaymentStatus: text("candidate_manual_payment_status")
+      .$type<ManualPaymentStatus>()
+      .notNull(),
+    reviewerEvidencePresent: boolean("reviewer_evidence_present").notNull().default(true),
+    idempotencyKey: text("idempotency_key").notNull(),
+    decisionFingerprint: text("decision_fingerprint").notNull(),
+    boundaries: jsonb("boundaries")
+      .$type<PaymentImportDepositMatchReviewRecord["boundaries"]>()
+      .notNull()
+      .default({
+        rawProviderPayloadRetained: false,
+        invoiceBalanceMutation: "none",
+        settlementAutomation: false,
+        reconciliationMutation: "none",
+        refundHandling: "none",
+        chargebackHandling: "none",
+        trustPosting: "none",
+        providerCommand: "none",
+        clientNotification: "none",
+        depositMatching: "review_decision_only",
+      }),
+    reviewedByUserId: text("reviewed_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    firmMatterReviewed: index("payment_import_deposit_match_reviews_firm_matter_reviewed_idx").on(
+      table.firmId,
+      table.matterId,
+      table.reviewedAt,
+    ),
+    firmImportRecord: index("payment_import_deposit_match_reviews_firm_import_record_idx").on(
+      table.firmId,
+      table.paymentImportReviewRecordId,
+    ),
+    firmManualPayment: index("payment_import_deposit_match_reviews_firm_manual_payment_idx").on(
+      table.firmId,
+      table.candidateManualPaymentId,
+    ),
+    firmReviewIdempotency: uniqueIndex(
+      "payment_import_deposit_match_reviews_firm_record_idempotency_idx",
+    ).on(table.firmId, table.paymentImportReviewRecordId, table.idempotencyKey),
+    decisionValue: check(
+      "payment_import_deposit_match_reviews_decision_value",
+      sql`${table.decision} in ('candidate_supported', 'candidate_rejected', 'needs_more_evidence')`,
+    ),
+    reasonValue: check(
+      "payment_import_deposit_match_reviews_reason_value",
+      sql`${table.reason} in ('candidate_evidence_matches', 'amount_mismatch', 'status_conflict', 'duplicate_or_conflict', 'manual_payment_not_pending', 'invoice_candidate_mismatch', 'missing_reviewer_evidence')`,
+    ),
+    manualPaymentStatusValue: check(
+      "payment_import_deposit_match_reviews_manual_payment_status_value",
+      sql`${table.candidateManualPaymentStatus} in ('pending_reconciliation', 'received', 'void')`,
+    ),
+    positiveImportAmount: check(
+      "payment_import_deposit_match_reviews_positive_import_amount",
+      sql`${table.importAmountCents} > 0`,
+    ),
+    positiveManualPaymentAmount: check(
+      "payment_import_deposit_match_reviews_positive_manual_payment_amount",
+      sql`${table.manualPaymentAmountCents} > 0`,
+    ),
+    cadCurrency: check(
+      "payment_import_deposit_match_reviews_cad_currency",
+      sql`${table.currency} = 'CAD'`,
+    ),
+    reviewerEvidenceRequired: check(
+      "payment_import_deposit_match_reviews_reviewer_evidence_required",
+      sql`${table.reviewerEvidencePresent} = true`,
+    ),
+    idempotencyKeyFormat: check(
+      "payment_import_deposit_match_reviews_idempotency_key_format",
+      sql`${table.idempotencyKey} ~ '^[A-Za-z0-9_.:-]+$'`,
     ),
   }),
 );

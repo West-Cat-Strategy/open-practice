@@ -4,6 +4,8 @@ import {
   billingExpenseCategoryProfileFromRecord,
   billingTimerDraftPolicy,
   hasHostedPaymentRequestEvidence,
+  paymentImportDepositMatchReconciliationReadiness,
+  paymentImportRefundChargebackReviewCue,
 } from "@open-practice/domain";
 import { requireAccess } from "../../http/auth-guards.js";
 import type { ApiRouteDependencies } from "../types.js";
@@ -28,6 +30,7 @@ export function registerBillingDashboardRoutes(
       payments,
       paymentRequests,
       paymentImportReviewRecords,
+      paymentImportDepositMatchReviews,
       periodLocks,
       rateRules,
       expenseCategories,
@@ -38,6 +41,7 @@ export function registerBillingDashboardRoutes(
       repository.listPayments(request.auth.firmId),
       repository.listHostedPaymentRequests(request.auth.firmId),
       repository.listPaymentImportReviewRecords(request.auth.firmId),
+      repository.listPaymentImportDepositMatchReviews(request.auth.firmId),
       repository.listBillingPeriodLocks(request.auth.firmId),
       repository.listBillingRateRules(request.auth.firmId),
       repository.listBillingExpenseCategories(request.auth.firmId),
@@ -168,27 +172,69 @@ export function registerBillingDashboardRoutes(
           })),
         paymentImportReviewRecords: paymentImportReviewRecords
           .filter((record) => record.matterId === matterId)
-          .map((record) => ({
-            id: record.id,
-            matterId: record.matterId,
-            providerLabel: record.providerLabel,
-            eventFamily: record.eventFamily,
-            eventStatus: record.eventStatus,
-            externalEventId: record.externalEventId,
-            externalPaymentIdPresent: Boolean(record.externalPaymentId),
-            externalDepositIdPresent: Boolean(record.externalDepositId),
-            amountCents: record.amountCents,
-            currency: record.currency,
-            observedAt: record.observedAt,
-            importedAt: record.importedAt,
-            candidateInvoiceId: record.candidateInvoiceId,
-            candidateHostedPaymentRequestId: record.candidateHostedPaymentRequestId,
-            candidateManualPaymentId: record.candidateManualPaymentId,
-            duplicateCuePresent: Boolean(record.duplicateOfRecordId),
-            conflictReason: record.conflictReason,
-            reviewState: record.reviewState,
-            boundaries: record.boundaries,
-          })),
+          .map((record) => {
+            const recordDepositMatchReviews = paymentImportDepositMatchReviews
+              .filter((review) => review.paymentImportReviewRecordId === record.id)
+              .sort((left, right) => Date.parse(right.reviewedAt) - Date.parse(left.reviewedAt));
+            const latestReview = recordDepositMatchReviews[0];
+            const currentManualPayment = latestReview
+              ? payments.find((payment) => payment.id === latestReview.candidateManualPaymentId)
+              : undefined;
+            const currentInvoiceId =
+              currentManualPayment?.invoiceId ??
+              latestReview?.candidateInvoiceId ??
+              record.candidateInvoiceId;
+            const currentInvoice = currentInvoiceId
+              ? invoices.find((invoice) => invoice.id === currentInvoiceId)
+              : undefined;
+            return {
+              id: record.id,
+              matterId: record.matterId,
+              providerLabel: record.providerLabel,
+              eventFamily: record.eventFamily,
+              eventStatus: record.eventStatus,
+              externalEventId: record.externalEventId,
+              externalPaymentIdPresent: Boolean(record.externalPaymentId),
+              externalDepositIdPresent: Boolean(record.externalDepositId),
+              amountCents: record.amountCents,
+              currency: record.currency,
+              observedAt: record.observedAt,
+              importedAt: record.importedAt,
+              candidateInvoiceId: record.candidateInvoiceId,
+              candidateHostedPaymentRequestId: record.candidateHostedPaymentRequestId,
+              candidateManualPaymentId: record.candidateManualPaymentId,
+              duplicateCuePresent: Boolean(record.duplicateOfRecordId),
+              conflictReason: record.conflictReason,
+              reviewState: record.reviewState,
+              boundaries: record.boundaries,
+              refundChargebackReviewCue: paymentImportRefundChargebackReviewCue(record),
+              depositMatchReviewCount: recordDepositMatchReviews.length,
+              latestDepositMatchReview: latestReview
+                ? {
+                    id: latestReview.id,
+                    decision: latestReview.decision,
+                    reason: latestReview.reason,
+                    candidateManualPaymentId: latestReview.candidateManualPaymentId,
+                    candidateInvoiceId: latestReview.candidateInvoiceId,
+                    importAmountCents: latestReview.importAmountCents,
+                    manualPaymentAmountCents: latestReview.manualPaymentAmountCents,
+                    currency: latestReview.currency,
+                    candidateManualPaymentStatus: latestReview.candidateManualPaymentStatus,
+                    reviewerEvidencePresent: latestReview.reviewerEvidencePresent,
+                    reviewedAt: latestReview.reviewedAt,
+                    boundaries: latestReview.boundaries,
+                  }
+                : undefined,
+              reconciliationReadiness: latestReview
+                ? paymentImportDepositMatchReconciliationReadiness({
+                    importRecord: record,
+                    latestReview,
+                    manualPayment: currentManualPayment,
+                    invoice: currentInvoice,
+                  })
+                : undefined,
+            };
+          }),
       };
     });
     const visibleInvoices = matterSummaries.flatMap((matter) => matter.invoices);
@@ -235,6 +281,22 @@ export function registerBillingDashboardRoutes(
             record.eventFamily === "deposit" ||
             record.externalDepositIdPresent ||
             Boolean(record.candidateManualPaymentId),
+        ).length,
+        depositMatchDecisionCount: visiblePaymentImportReviewRecords.reduce(
+          (count, record) => count + (record.depositMatchReviewCount ?? 0),
+          0,
+        ),
+        depositMatchReconciliationReadyCount: visiblePaymentImportReviewRecords.filter(
+          (record) => record.reconciliationReadiness?.eligible,
+        ).length,
+        refundReviewCueCount: visiblePaymentImportReviewRecords.filter(
+          (record) => record.refundChargebackReviewCue?.category === "refund",
+        ).length,
+        chargebackReviewCueCount: visiblePaymentImportReviewRecords.filter(
+          (record) => record.refundChargebackReviewCue?.category === "chargeback",
+        ).length,
+        refundChargebackReviewCueCount: visiblePaymentImportReviewRecords.filter(
+          (record) => record.refundChargebackReviewCue,
         ).length,
       },
       periodLocks,

@@ -100,6 +100,12 @@ export interface CalendarStaffHandoffSummary {
   nativeMediaEnabled: false;
 }
 
+export interface ReviewAgingDisplay {
+  label: string;
+  detail: string;
+  tone?: "risk";
+}
+
 export interface CalendarMeetingReadinessItem {
   id: string;
   label: string;
@@ -335,6 +341,23 @@ export function describeCalendarSchedulingRequestHandoff(
       "Dismissed scheduling requests stay closed to booking, provider sync, and native media.",
     action: "no_action",
     ...disabledCalendarAutomation,
+  };
+}
+
+export function describeReviewAgingCue(
+  cue: CalendarSchedulingRequestSummary["reviewAging"] | undefined,
+): ReviewAgingDisplay | undefined {
+  if (!cue) return undefined;
+  const label =
+    cue.status === "stale"
+      ? "stale review"
+      : cue.status === "aging"
+        ? "aging review"
+        : "fresh review";
+  return {
+    label,
+    detail: `${cue.ageHours}h waiting since ${cue.referenceAt}; manual review only, no auto-confirm, auto-expiry, or provider sync.`,
+    ...(cue.status === "stale" ? { tone: "risk" as const } : {}),
   };
 }
 

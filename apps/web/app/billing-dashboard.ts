@@ -86,6 +86,11 @@ export interface PaymentImportReviewSummary {
   depositEventCount: number;
   conflictCount: number;
   depositMatchReviewCount: number;
+  depositMatchReviewDecisionCount: number;
+  depositMatchReconciliationReadyCount: number;
+  refundReviewCueCount: number;
+  chargebackReviewCueCount: number;
+  refundChargebackReviewCueCount: number;
   rawProviderPayloadRetained: false;
   invoiceBalanceMutation: "none";
   settlementAutomation: false;
@@ -108,6 +113,21 @@ export function summarizePaymentImportReviews(
         record.externalDepositIdPresent ||
         Boolean(record.candidateManualPaymentId),
     ).length,
+    depositMatchReviewDecisionCount: records.reduce(
+      (count, record) => count + (record.depositMatchReviewCount ?? 0),
+      0,
+    ),
+    depositMatchReconciliationReadyCount: records.filter(
+      (record) => record.reconciliationReadiness?.eligible,
+    ).length,
+    refundReviewCueCount: records.filter(
+      (record) => record.refundChargebackReviewCue?.category === "refund",
+    ).length,
+    chargebackReviewCueCount: records.filter(
+      (record) => record.refundChargebackReviewCue?.category === "chargeback",
+    ).length,
+    refundChargebackReviewCueCount: records.filter((record) => record.refundChargebackReviewCue)
+      .length,
     rawProviderPayloadRetained: false,
     invoiceBalanceMutation: "none",
     settlementAutomation: false,
@@ -136,7 +156,41 @@ export function describePaymentImportReview(record: BillingPaymentImportReviewSu
     : record.duplicateCuePresent
       ? " · duplicate cue"
       : "";
-  return `${record.providerLabel} · ${eventLabel} · ${candidateLabel}${depositMatchLabel}${conflictLabel}`;
+  const latestReviewLabel = record.latestDepositMatchReview
+    ? ` · latest review ${record.latestDepositMatchReview.decision.replaceAll("_", " ")}`
+    : "";
+  const refundChargebackLabel = record.refundChargebackReviewCue
+    ? ` · ${record.refundChargebackReviewCue.category} review cue`
+    : "";
+  return `${record.providerLabel} · ${eventLabel} · ${candidateLabel}${depositMatchLabel}${refundChargebackLabel}${conflictLabel}${latestReviewLabel}`;
+}
+
+const depositMatchReadinessReasonLabels: Record<
+  NonNullable<BillingPaymentImportReviewSummary["reconciliationReadiness"]>["reason"],
+  string
+> = {
+  supported_candidate_ready: "Ready for manual reconcile review",
+  no_supported_decision: "No supported deposit decision",
+  candidate_not_supported: "Latest decision is not supported",
+  import_record_conflict: "Duplicate or conflict cue active",
+  candidate_manual_payment_mismatch: "Manual payment candidate changed",
+  manual_payment_not_found: "Manual payment not found",
+  manual_payment_not_pending: "Manual payment is not pending",
+  amount_mismatch: "Amount mismatch",
+  invoice_not_found: "Invoice not found",
+  invoice_candidate_mismatch: "Invoice candidate mismatch",
+  invoice_balance_insufficient: "Invoice balance no longer covers payment",
+};
+
+export function describePaymentImportReconciliationReadiness(
+  record: BillingPaymentImportReviewSummary,
+): string {
+  const readiness = record.reconciliationReadiness;
+  if (!readiness) return "No manual reconcile readiness cue";
+  if (readiness.eligible) return "Ready for manual reconcile review · Read-only cue";
+  return `Not ready for manual reconcile review · ${
+    depositMatchReadinessReasonLabels[readiness.reason]
+  }`;
 }
 
 export function summarizePaymentSettlementReview(

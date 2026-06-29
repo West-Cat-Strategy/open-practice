@@ -147,6 +147,32 @@ export function formatLegalResearchValue(value?: string): string {
   return value ? value.replaceAll("_", " ") : "none";
 }
 
+export function describeLegalResearchDocumentAnalysisDecision(
+  artifact: LegalResearchArtifactRecord,
+  compactDate: (value?: string) => string = (value?: string) => value ?? "none",
+): string | undefined {
+  if (artifact.kind !== "document_analysis_status") return undefined;
+  const decision =
+    artifact.reviewDecision === "reviewed" || artifact.reviewDecision === "rejected"
+      ? artifact.reviewDecision
+      : artifact.status === "reviewed" || artifact.status === "rejected"
+        ? artifact.status
+        : undefined;
+  if (!decision || !artifact.reviewedAt || !artifact.reviewedByUserId) return undefined;
+  return [
+    `latest decision ${formatLegalResearchValue(decision)} at ${compactDate(artifact.reviewedAt)}`,
+    `reviewer ${artifact.reviewedByUserId}`,
+    `artifact ${formatLegalResearchValue(artifact.documentAnalysis?.artifactStatus ?? "metadata_only")}`,
+    "metadata only",
+    artifact.reviewOnly ? "review only" : undefined,
+    "no downstream mutation",
+    "no provider evidence",
+    "no raw OCR returned",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
 export function canReviewLegalResearch(role: User["role"]): boolean {
   return ["owner_admin", "licensee", "firm_member"].includes(role);
 }

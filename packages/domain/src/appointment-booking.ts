@@ -1,4 +1,5 @@
 import type { CalendarEventRecord } from "./models.js";
+import { buildReviewAgingCue, type ReviewAgingCue } from "./review-aging.js";
 
 export type AppointmentBookingProfileStatus = "active" | "paused";
 export type AppointmentBookingRequestStatus = "tentative_hold" | "confirmed" | "dismissed";
@@ -120,6 +121,7 @@ export interface AppointmentBookingRequestSummary {
   requestedStartsAt: string;
   requestedEndsAt: string;
   submittedAt: string;
+  reviewAging?: ReviewAgingCue;
   reviewedAt?: string;
   reviewedByUserId?: string;
   dismissedReason?: string;
@@ -320,6 +322,7 @@ export function summarizeAppointmentBookingLink(
 export function summarizeAppointmentBookingRequest(input: {
   request: AppointmentBookingRequestRecord;
   profile?: AppointmentBookingProfileRecord;
+  now?: string;
 }): AppointmentBookingRequestSummary {
   return {
     id: input.request.id,
@@ -338,6 +341,14 @@ export function summarizeAppointmentBookingRequest(input: {
     requestedStartsAt: input.request.requestedStartsAt,
     requestedEndsAt: input.request.requestedEndsAt,
     submittedAt: input.request.submittedAt,
+    ...(input.request.status === "tentative_hold"
+      ? {
+          reviewAging: buildReviewAgingCue({
+            referenceAt: input.request.submittedAt,
+            now: input.now,
+          }),
+        }
+      : {}),
     reviewedAt: input.request.reviewedAt,
     reviewedByUserId: input.request.reviewedByUserId,
     dismissedReason: input.request.dismissedReason,

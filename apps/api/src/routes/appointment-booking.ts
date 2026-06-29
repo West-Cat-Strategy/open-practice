@@ -874,11 +874,13 @@ export function registerAppointmentBookingRoutes(
       repository.listAppointmentBookingRequests(request.auth.firmId, query),
     ]);
     const profileById = new Map(profiles.map((profile) => [profile.id, profile]));
+    const now = new Date().toISOString();
     return {
       requests: requests.map((bookingRequest) =>
         summarizeAppointmentBookingRequest({
           request: bookingRequest,
           profile: profileById.get(bookingRequest.profileId),
+          now,
         }),
       ),
     };
@@ -946,6 +948,7 @@ export function registerAppointmentBookingRoutes(
       request: summarizeAppointmentBookingRequest({
         request: reviewed.request,
         profile,
+        now,
       }),
     };
   });

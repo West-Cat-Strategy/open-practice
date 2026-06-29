@@ -51,6 +51,18 @@ export const BILLING_ROUTE_AUTHORIZATION_MANIFEST = [
   paymentRoute("POST", "/api/payments/:paymentId/reconcile", "create", "derived"),
   paymentRoute("GET", "/api/billing/payment-import-review-records", "read", "optional"),
   paymentRoute("POST", "/api/billing/payment-import-review-records", "create", "required"),
+  paymentRoute(
+    "GET",
+    "/api/billing/payment-import-review-records/:recordId/deposit-match-reviews",
+    "read",
+    "derived",
+  ),
+  paymentRoute(
+    "POST",
+    "/api/billing/payment-import-review-records/:recordId/deposit-match-reviews",
+    "create",
+    "derived",
+  ),
   paymentRoute("GET", "/api/billing/payment-requests", "read", "optional"),
   paymentRoute("POST", "/api/billing/payment-requests", "create", "required"),
   paymentRoute("PATCH", "/api/billing/payment-requests/:id", "update", "derived"),

@@ -1,5 +1,5 @@
 import Fastify, { type FastifyInstance } from "fastify";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { InMemoryOpenPracticeRepository, type AuthSessionRecord } from "@open-practice/database";
 import type { AuditEvent, NewAuditEvent, ProfessionalRole, User } from "@open-practice/domain";
 import { createSessionToken, hashToken } from "../http/auth-helpers.js";
@@ -146,6 +146,7 @@ async function openHostedGuestSession(server: FastifyInstance): Promise<string> 
 }
 
 afterEach(async () => {
+  vi.useRealTimers();
   await Promise.all(servers.splice(0).map((server) => server.close()));
 });
 
@@ -260,6 +261,8 @@ describe("calendar routes", () => {
   });
 
   it("creates and reviews staff-only scheduling requests with redacted audit metadata", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-06-01T12:00:00.000Z"));
     const repository = new AuditRecordingRepository();
     const server = testServer(user("licensee", ["matter-001"]), repository);
 
@@ -285,8 +288,40 @@ describe("calendar routes", () => {
       status: "needs_review",
       privacy: { visibility: "staff_only", clientVisible: false },
       source: { type: "manual" },
+      reviewAging: {
+        status: "fresh",
+        ageHours: 0,
+        referenceAt: "2026-06-01T12:00:00.000Z",
+        agingAfterHours: 24,
+        staleAfterHours: 72,
+        automaticFinalConfirmation: false,
+        autoExpires: false,
+      },
     });
     const requestId = created.json().schedulingRequest.id;
+
+    vi.setSystemTime(new Date("2026-06-04T12:00:00.000Z"));
+    const listed = await server.inject({
+      method: "GET",
+      url: "/api/calendar/events?matterId=matter-001",
+    });
+    expect(listed.statusCode).toBe(200);
+    const listedRequest = listed
+      .json()
+      .schedulingRequests.find((request: { id: string }) => request.id === requestId);
+    expect(listedRequest).toMatchObject({
+      id: requestId,
+      status: "needs_review",
+      reviewAging: {
+        status: "stale",
+        ageHours: 72,
+        referenceAt: "2026-06-01T12:00:00.000Z",
+        agingAfterHours: 24,
+        staleAfterHours: 72,
+        automaticFinalConfirmation: false,
+        autoExpires: false,
+      },
+    });
 
     const reviewed = await server.inject({
       method: "PATCH",
@@ -307,6 +342,7 @@ describe("calendar routes", () => {
         status: "tentative",
       },
     });
+    expect(reviewed.json().schedulingRequest).not.toHaveProperty("reviewAging");
 
     expect(repository.recordedAuditEvents.map((event) => event.action)).toEqual([
       "calendar.scheduling_request.created",

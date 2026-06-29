@@ -39,6 +39,7 @@ import type { CalendarMeetingLinkMode } from "@open-practice/domain/calendar-mod
 import {
   compactTrustPostingRequestReviewActionReason,
   describeTrustPostingRequestReviewAction,
+  legalResearchArtifactReviewBusyKey,
   trustPostingRequestReviewBusyAction,
   trustPostingRequestReviewBusyKey,
 } from "@open-practice/domain/operational-actions";
@@ -4119,7 +4120,7 @@ export default function DashboardClient({
     record: LegalResearchArtifactRecord,
     decision: "reviewed" | "rejected",
   ): Promise<void> {
-    setLegalResearchReviewBusyId(record.id);
+    setLegalResearchReviewBusyId(legalResearchArtifactReviewBusyKey(decision, record.id));
     setLegalResearchStatus(`Recording ${decision} research review...`);
     try {
       const response = await fetch(`${apiBaseUrl}${buildLegalResearchReviewPath(record.id)}`, {

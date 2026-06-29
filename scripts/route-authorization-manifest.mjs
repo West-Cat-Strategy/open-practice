@@ -1530,6 +1530,16 @@ export const ROUTE_AUTHORIZATION_MANIFEST = [
     "derived",
   ),
   multiGuardAuthRoute(
+    "registerDocumentProcessingRoutes",
+    "apps/api/src/routes/document-processing.test.ts",
+    "PATCH",
+    "/api/document-processing/documents/:documentId/conversion-review/review",
+    [
+      { resource: "document_processing", action: "read", matterScope: "derived" },
+      { resource: "legal_research", action: "approve", matterScope: "derived" },
+    ],
+  ),
+  multiGuardAuthRoute(
     "registerDocumentAssemblyRoutes",
     "apps/api/src/routes/document-assembly.test.ts",
     "GET",

@@ -11,6 +11,55 @@ const licensee = {
   mfaEnabled: true,
 };
 
+const firmId = "firm-west-legal";
+const matterId = "matter-001";
+
+async function lifecycleSideEffectSnapshot(repository: InMemoryOpenPracticeRepository) {
+  const [matter] = await repository.listMattersForUser(licensee);
+  const overview = await repository.getOverview(firmId);
+  const ledger = await repository.getLedger(firmId, { matterId });
+
+  return {
+    closedOn: matter?.closedOn,
+    portalGrants: (await repository.listPortalGrants(firmId)).filter(
+      (grant) => grant.matterId === matterId,
+    ),
+    portalDocumentAccess: await repository.listPortalDocumentAccess(firmId, { matterId }),
+    shareLinks: await repository.listShareLinks(firmId, { matterId }),
+    externalUploadLinks: await repository.listExternalUploadLinks(firmId, { matterId }),
+    assignedUsers: overview.users
+      .map((user) => ({ id: user.id, assignedMatterIds: user.assignedMatterIds }))
+      .sort((left, right) => left.id.localeCompare(right.id)),
+    tasks: await repository.listTaskDeadlines(firmId, {
+      matterId,
+      includeCompleted: true,
+      includeArchived: true,
+    }),
+    taskChecklistItems: await repository.listTaskChecklistItems(firmId, {
+      matterId,
+      includeArchived: true,
+    }),
+    taskComments: await repository.listTaskComments(firmId, { matterId, includeArchived: true }),
+    taskDependencies: await repository.listTaskDependencies(firmId, {
+      matterId,
+      includeArchived: true,
+    }),
+    taskTemplates: await repository.listTaskTemplates(firmId, { includeArchived: true }),
+    timeEntries: await repository.listTimeEntries(firmId, { matterId }),
+    expenseEntries: await repository.listExpenseEntries(firmId, { matterId }),
+    invoices: await repository.listInvoices(firmId, { matterId }),
+    payments: await repository.listPayments(firmId, { matterId }),
+    ledger,
+    trustTransferRequests: await repository.listTrustTransferRequests(firmId, { matterId }),
+    documents: matter?.documents.map((document) => ({
+      id: document.id,
+      legalHold: document.legalHold,
+      reviewMetadata: document.reviewMetadata,
+    })),
+    lifecycleTransitions: await repository.listMatterLifecycleTransitions(firmId, matterId),
+  };
+}
+
 describe("repository matter lifecycle transitions", () => {
   it("stores append-only transition evidence without mutating matter status", async () => {
     const repository = new InMemoryOpenPracticeRepository();
@@ -152,6 +201,7 @@ describe("repository matter lifecycle transitions", () => {
         assignmentChanged: false,
         billingChanged: false,
         trustChanged: false,
+        retentionChanged: false,
         cleanupRun: false,
       },
     });
@@ -233,8 +283,85 @@ describe("repository matter lifecycle transitions", () => {
         assignmentChanged: false,
         billingChanged: false,
         trustChanged: false,
+        retentionChanged: false,
         cleanupRun: false,
       },
+    });
+
+    const closedReopenRecord = await repository.createMatterLifecycleTransition({
+      id: "matter-lifecycle-ready-reopen-closed",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      transition: "reopen",
+      readiness: "ready",
+      reason: "Synthetic closed matter reopen packet is ready.",
+      reviewedByUserId: "user-licensee",
+      reviewedAt: "2026-06-19T12:30:00.000Z",
+      createdAt: "2026-06-19T12:30:00.000Z",
+      auditEventId: "audit-matter-lifecycle-ready-reopen-closed",
+    });
+    const beforeClosedReopenSideEffects = await lifecycleSideEffectSnapshot(repository);
+    const reopenedFromClosed = await repository.executeMatterLifecycleCommand({
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      command: "reopen",
+      expectedStatus: "closed",
+      transitionRecordId: closedReopenRecord.id,
+      reason: "Synthetic operator confirmed closed matter reopen execution.",
+      idempotencyKey: "synthetic-closed-reopen-command-key",
+      executedByUserId: "user-licensee",
+      executedAt: "2026-06-19T12:35:00.000Z",
+      auditEventId: "audit-matter-lifecycle-reopen-closed-command",
+    });
+    expect(reopenedFromClosed.matter).toMatchObject({
+      id: "matter-001",
+      status: "open",
+      trustBalanceCents: before.trustBalanceCents,
+    });
+    expect(reopenedFromClosed.lifecycleCommand).toMatchObject({
+      command: "reopen",
+      beforeStatus: "closed",
+      expectedStatus: "closed",
+      afterStatus: "open",
+      consequences: {
+        matterStatusChanged: true,
+        closedOnChanged: false,
+        portalAccessChanged: false,
+        taskChanged: false,
+        assignmentChanged: false,
+        billingChanged: false,
+        trustChanged: false,
+        retentionChanged: false,
+        cleanupRun: false,
+      },
+    });
+    await expect(lifecycleSideEffectSnapshot(repository)).resolves.toEqual(
+      beforeClosedReopenSideEffects,
+    );
+
+    const recloseRecord = await repository.createMatterLifecycleTransition({
+      id: "matter-lifecycle-ready-reclose",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      transition: "close",
+      readiness: "ready",
+      reason: "Synthetic re-close packet is ready for archive proof.",
+      reviewedByUserId: "user-licensee",
+      reviewedAt: "2026-06-19T12:40:00.000Z",
+      createdAt: "2026-06-19T12:40:00.000Z",
+      auditEventId: "audit-matter-lifecycle-ready-reclose",
+    });
+    await repository.executeMatterLifecycleCommand({
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      command: "close",
+      expectedStatus: "open",
+      transitionRecordId: recloseRecord.id,
+      reason: "Synthetic operator confirmed re-close execution.",
+      idempotencyKey: "synthetic-reclose-command-key",
+      executedByUserId: "user-licensee",
+      executedAt: "2026-06-19T12:45:00.000Z",
+      auditEventId: "audit-matter-lifecycle-reclose-command",
     });
 
     const archiveRecord = await repository.createMatterLifecycleTransition({
@@ -245,8 +372,8 @@ describe("repository matter lifecycle transitions", () => {
       readiness: "ready",
       reason: "Synthetic archive packet is ready.",
       reviewedByUserId: "user-licensee",
-      reviewedAt: "2026-06-19T12:30:00.000Z",
-      createdAt: "2026-06-19T12:30:00.000Z",
+      reviewedAt: "2026-06-19T12:50:00.000Z",
+      createdAt: "2026-06-19T12:50:00.000Z",
       auditEventId: "audit-matter-lifecycle-ready-archive",
     });
     const archived = await repository.executeMatterLifecycleCommand({
@@ -258,7 +385,7 @@ describe("repository matter lifecycle transitions", () => {
       reason: "Synthetic operator confirmed archive execution.",
       idempotencyKey: "synthetic-archive-command-key",
       executedByUserId: "user-licensee",
-      executedAt: "2026-06-19T12:35:00.000Z",
+      executedAt: "2026-06-19T12:55:00.000Z",
       auditEventId: "audit-matter-lifecycle-archive-command",
     });
     expect(archived.matter).toMatchObject({
@@ -283,9 +410,61 @@ describe("repository matter lifecycle transitions", () => {
         assignmentChanged: false,
         billingChanged: false,
         trustChanged: false,
+        retentionChanged: false,
         cleanupRun: false,
       },
     });
+
+    const archivedReopenRecord = await repository.createMatterLifecycleTransition({
+      id: "matter-lifecycle-ready-reopen-archived",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      transition: "reopen",
+      readiness: "ready",
+      reason: "Synthetic archived matter reopen packet is ready.",
+      reviewedByUserId: "user-licensee",
+      reviewedAt: "2026-06-19T13:00:00.000Z",
+      createdAt: "2026-06-19T13:00:00.000Z",
+      auditEventId: "audit-matter-lifecycle-ready-reopen-archived",
+    });
+    const beforeArchivedReopenSideEffects = await lifecycleSideEffectSnapshot(repository);
+    const reopenedFromArchived = await repository.executeMatterLifecycleCommand({
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      command: "reopen",
+      expectedStatus: "archived",
+      transitionRecordId: archivedReopenRecord.id,
+      reason: "Synthetic operator confirmed archived matter reopen execution.",
+      idempotencyKey: "synthetic-archived-reopen-command-key",
+      executedByUserId: "user-licensee",
+      executedAt: "2026-06-19T13:05:00.000Z",
+      auditEventId: "audit-matter-lifecycle-reopen-archived-command",
+    });
+    expect(reopenedFromArchived.matter).toMatchObject({
+      id: "matter-001",
+      status: "open",
+      trustBalanceCents: before.trustBalanceCents,
+    });
+    expect(reopenedFromArchived.lifecycleCommand).toMatchObject({
+      command: "reopen",
+      beforeStatus: "archived",
+      expectedStatus: "archived",
+      afterStatus: "open",
+      consequences: {
+        matterStatusChanged: true,
+        closedOnChanged: false,
+        portalAccessChanged: false,
+        taskChanged: false,
+        assignmentChanged: false,
+        billingChanged: false,
+        trustChanged: false,
+        retentionChanged: false,
+        cleanupRun: false,
+      },
+    });
+    await expect(lifecycleSideEffectSnapshot(repository)).resolves.toEqual(
+      beforeArchivedReopenSideEffects,
+    );
 
     const audit = await repository.listAuditEvents("firm-west-legal");
     expect(audit.events).toEqual(
@@ -302,6 +481,7 @@ describe("repository matter lifecycle transitions", () => {
             idempotencyKeyPresent: true,
             billingChanged: false,
             trustChanged: false,
+            retentionChanged: false,
             cleanupRun: false,
           }),
         }),
@@ -313,6 +493,27 @@ describe("repository matter lifecycle transitions", () => {
             lifecycleCommand: "reopen",
             beforeStatus: "paused",
             afterStatus: "open",
+            retentionChanged: false,
+            cleanupRun: false,
+          }),
+        }),
+        expect.objectContaining({
+          action: "matter.lifecycle_command_executed",
+          resourceId: "matter-001",
+          metadata: expect.objectContaining({
+            transitionRecordId: "matter-lifecycle-ready-reopen-closed",
+            lifecycleCommand: "reopen",
+            beforeStatus: "closed",
+            expectedStatus: "closed",
+            afterStatus: "open",
+            closedOnChanged: false,
+            portalAccessChanged: false,
+            taskChanged: false,
+            assignmentChanged: false,
+            billingChanged: false,
+            trustChanged: false,
+            retentionChanged: false,
+            cleanupRun: false,
           }),
         }),
         expect.objectContaining({
@@ -326,6 +527,7 @@ describe("repository matter lifecycle transitions", () => {
             closedOnChanged: false,
             billingChanged: false,
             trustChanged: false,
+            retentionChanged: false,
             cleanupRun: false,
           }),
         }),
@@ -344,6 +546,26 @@ describe("repository matter lifecycle transitions", () => {
             assignmentChanged: false,
             billingChanged: false,
             trustChanged: false,
+            retentionChanged: false,
+            cleanupRun: false,
+          }),
+        }),
+        expect.objectContaining({
+          action: "matter.lifecycle_command_executed",
+          resourceId: "matter-001",
+          metadata: expect.objectContaining({
+            transitionRecordId: "matter-lifecycle-ready-reopen-archived",
+            lifecycleCommand: "reopen",
+            beforeStatus: "archived",
+            expectedStatus: "archived",
+            afterStatus: "open",
+            closedOnChanged: false,
+            portalAccessChanged: false,
+            taskChanged: false,
+            assignmentChanged: false,
+            billingChanged: false,
+            trustChanged: false,
+            retentionChanged: false,
             cleanupRun: false,
           }),
         }),
@@ -353,7 +575,10 @@ describe("repository matter lifecycle transitions", () => {
     expect(JSON.stringify(audit.events)).not.toContain("synthetic-pause-command-key");
     expect(JSON.stringify(audit.events)).not.toContain("synthetic-reopen-command-key");
     expect(JSON.stringify(audit.events)).not.toContain("synthetic-close-command-key");
+    expect(JSON.stringify(audit.events)).not.toContain("synthetic-closed-reopen-command-key");
+    expect(JSON.stringify(audit.events)).not.toContain("synthetic-reclose-command-key");
     expect(JSON.stringify(audit.events)).not.toContain("synthetic-archive-command-key");
+    expect(JSON.stringify(audit.events)).not.toContain("synthetic-archived-reopen-command-key");
   });
 
   it("rejects stale, blocked, or expected-status mismatched lifecycle commands", async () => {

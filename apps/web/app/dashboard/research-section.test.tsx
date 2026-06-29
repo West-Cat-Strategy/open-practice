@@ -1,6 +1,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import { legalResearchArtifactReviewBusyKey } from "@open-practice/domain/operational-actions";
 import type { LegalResearchWorkspaceResponse } from "../types";
 import { ResearchSection } from "./research-section";
 
@@ -24,22 +25,53 @@ const workspace: LegalResearchWorkspaceResponse = {
       reviewOnly: true,
       metadata: {},
     },
+    {
+      id: "legal-research-document-analysis-001",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      kind: "document_analysis_status",
+      status: "rejected",
+      title: "Document conversion review posture",
+      note: "Synthetic raw OCR text must not render.",
+      sourceReferences: [],
+      contextLinks: [{ resourceType: "document", resourceId: "doc-001" }],
+      documentAnalysis: {
+        documentId: "doc-001",
+        status: "ready_for_review",
+        extractionStatus: "completed",
+        artifactStatus: "metadata_only",
+        sourceTextLength: 47,
+      },
+      reviewDecision: "rejected",
+      reviewedByUserId: "user-licensee",
+      reviewedAt: "2026-06-27T14:00:00.000Z",
+      createdByUserId: "user-licensee",
+      createdAt: "2026-06-27T13:00:00.000Z",
+      updatedAt: "2026-06-27T14:00:00.000Z",
+      reviewOnly: true,
+      metadata: {
+        rawOcrText: "Synthetic provider OCR body must not render.",
+        providerPayload: { private: "Synthetic provider payload must not render." },
+        storageKey: "private/synthetic-object",
+        generatedSummary: "Synthetic generated summary must not render.",
+      },
+    },
   ],
   summary: {
-    total: 1,
+    total: 2,
     draft: 0,
     readyForReview: 1,
     reviewed: 0,
-    rejected: 0,
+    rejected: 1,
     sourceReferenceCount: 1,
-    contextLinkCount: 1,
-    documentAnalysisCount: 0,
+    contextLinkCount: 2,
+    documentAnalysisCount: 1,
     strategyTimelineCount: 0,
     openCheckpointCount: 0,
     byKind: {
       cited_source_note: 1,
       matter_context_attachment: 0,
-      document_analysis_status: 0,
+      document_analysis_status: 1,
       strategy_timeline_note: 0,
       review_checkpoint: 0,
     },
@@ -135,9 +167,53 @@ describe("ResearchSection", () => {
     expect(writableHtml).toContain("1 provider jobs recorded");
     expect(writableHtml).toContain("Citation review");
     expect(writableHtml).toContain("citation review");
+    expect(writableHtml).toContain("latest decision rejected at 2026-06-27T14:00:00.000Z");
+    expect(writableHtml).toContain("reviewer user-licensee");
+    expect(writableHtml).toContain("metadata only");
+    expect(writableHtml).toContain("no provider evidence");
+    expect(writableHtml).toContain("no downstream mutation");
+    expect(writableHtml).toContain("no raw OCR returned");
+    expect(writableHtml).not.toContain("Synthetic raw OCR text must not render.");
+    expect(writableHtml).not.toContain("Synthetic provider OCR body must not render.");
+    expect(writableHtml).not.toContain("Synthetic provider payload must not render.");
+    expect(writableHtml).not.toContain("private/synthetic-object");
+    expect(writableHtml).not.toContain("Synthetic generated summary must not render.");
+    expect(writableHtml).toContain('data-action-key="legal_research_artifact.review"');
+    expect(writableHtml).toContain('data-action-key="legal_research_artifact.reject"');
+    expect(writableHtml).toContain('aria-label="Review"');
+    expect(writableHtml).toContain('aria-label="Reject"');
+    expect(writableHtml).toContain('title="Review"');
+    expect(writableHtml).toContain('title="Reject"');
     expect(writableHtml).toContain("Review</button>");
     expect(writableHtml).toContain("Reject</button>");
+    expect(readOnlyHtml).not.toContain("legal_research_artifact.review");
+    expect(readOnlyHtml).not.toContain("legal_research_artifact.reject");
     expect(readOnlyHtml).not.toContain("Review</button>");
     expect(readOnlyHtml).not.toContain("Reject</button>");
+  });
+
+  it("renders descriptor-backed busy review button status", () => {
+    const busyHtml = renderToStaticMarkup(
+      createElement(ResearchSection, {
+        canReview: true,
+        compactDate: (value?: string) => value ?? "none",
+        onReviewArtifact: () => {},
+        reviewBusyId: legalResearchArtifactReviewBusyKey(
+          "reviewed",
+          "legal-research-source-note-001",
+        ),
+        reviewStatus: "Recording reviewed research review...",
+        workspace,
+      }),
+    );
+
+    expect(busyHtml).toContain('data-action-key="legal_research_artifact.review"');
+    expect(busyHtml).toContain('data-action-key="legal_research_artifact.reject"');
+    expect(busyHtml).toContain('aria-label="Saving: review in progress"');
+    expect(busyHtml).toContain('title="Saving: review in progress"');
+    expect(busyHtml).toContain(">Saving</button>");
+    expect(busyHtml).toContain('aria-label="Reject: review action in progress"');
+    expect(busyHtml).toContain('title="Reject: review action in progress"');
+    expect(busyHtml.match(/disabled=""/g) ?? []).toHaveLength(2);
   });
 });

@@ -1,7 +1,14 @@
 import { Check, X } from "lucide-react";
 import type { LegalResearchArtifactRecord } from "@open-practice/domain";
+import {
+  compactLegalResearchArtifactReviewActionReason,
+  describeLegalResearchArtifactReviewAction,
+  legalResearchArtifactReviewBusyAction,
+  type LegalResearchArtifactReviewAction,
+} from "@open-practice/domain/operational-actions";
 import type { LegalResearchWorkspaceResponse } from "../types";
 import {
+  describeLegalResearchDocumentAnalysisDecision,
   formatLegalResearchValue,
   summarizeLegalResearchWorkspaceStatus,
 } from "../legal-research-dashboard";
@@ -11,7 +18,7 @@ export interface ResearchSectionProps {
   compactDate: (value?: string) => string;
   onReviewArtifact: (
     artifact: LegalResearchArtifactRecord,
-    decision: "reviewed" | "rejected",
+    decision: LegalResearchArtifactReviewAction,
   ) => void;
   reviewBusyId?: string;
   reviewStatus: string;
@@ -33,6 +40,15 @@ function artifactDetail(artifact: LegalResearchArtifactRecord): string {
     }`;
   }
   return `${artifact.sourceReferences.length} sources · ${artifact.contextLinks.length} context links`;
+}
+
+function legalResearchArtifactReviewActionStatus(
+  action: ReturnType<typeof describeLegalResearchArtifactReviewAction>,
+): string {
+  if (action.available) return action.label;
+  return `${action.label}: ${compactLegalResearchArtifactReviewActionReason(
+    action.disabledReason,
+  )}`;
 }
 
 export function ResearchSection({
@@ -109,7 +125,27 @@ export function ResearchSection({
       </div>
       <div className="party-list">
         {workspace.artifacts.map((artifact) => {
-          const busy = reviewBusyId === artifact.id;
+          const busyAction = legalResearchArtifactReviewBusyAction(reviewBusyId, artifact.id);
+          const documentAnalysisDecision = describeLegalResearchDocumentAnalysisDecision(
+            artifact,
+            compactDate,
+          );
+          const reviewAction = describeLegalResearchArtifactReviewAction({
+            action: "reviewed",
+            status: artifact.status,
+            busyAction,
+            canReview,
+            workspaceStatus: workspace.status,
+          });
+          const rejectAction = describeLegalResearchArtifactReviewAction({
+            action: "rejected",
+            status: artifact.status,
+            busyAction,
+            canReview,
+            workspaceStatus: workspace.status,
+          });
+          const reviewActionStatus = legalResearchArtifactReviewActionStatus(reviewAction);
+          const rejectActionStatus = legalResearchArtifactReviewActionStatus(rejectAction);
           const showReviewControls =
             canReview && artifact.status === "ready_for_review" && workspace.status === "available";
           return (
@@ -121,27 +157,36 @@ export function ResearchSection({
                   {formatLegalResearchValue(artifact.status)} · {compactDate(artifact.updatedAt)}
                 </small>
                 <small>{artifactDetail(artifact)}</small>
-                {artifact.note ? <small>{artifact.note}</small> : null}
+                {documentAnalysisDecision ? <small>{documentAnalysisDecision}</small> : null}
+                {artifact.note && artifact.kind !== "document_analysis_status" ? (
+                  <small>{artifact.note}</small>
+                ) : null}
               </span>
               {showReviewControls ? (
                 <div className="draft-assist-actions">
                   <button
+                    aria-label={reviewActionStatus}
                     className="secondary-button compact-button"
-                    disabled={busy}
+                    data-action-key={reviewAction.actionKey}
+                    disabled={!reviewAction.available}
                     onClick={() => onReviewArtifact(artifact, "reviewed")}
+                    title={reviewActionStatus}
                     type="button"
                   >
-                    <Check size={16} />
-                    {busy ? "Saving" : "Review"}
+                    <Check aria-hidden="true" size={16} />
+                    {reviewAction.label}
                   </button>
                   <button
+                    aria-label={rejectActionStatus}
                     className="secondary-button compact-button"
-                    disabled={busy}
+                    data-action-key={rejectAction.actionKey}
+                    disabled={!rejectAction.available}
                     onClick={() => onReviewArtifact(artifact, "rejected")}
+                    title={rejectActionStatus}
                     type="button"
                   >
-                    <X size={16} />
-                    Reject
+                    <X aria-hidden="true" size={16} />
+                    {rejectAction.label}
                   </button>
                 </div>
               ) : (

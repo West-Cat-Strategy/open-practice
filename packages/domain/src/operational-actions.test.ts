@@ -1,13 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
   compactDocumentRetentionHoldReviewActionReason,
+  compactLegalResearchArtifactReviewActionReason,
   compactMatterLifecycleReviewActionReason,
   compactTrustPostingRequestReviewActionReason,
   describeDocumentRetentionHoldReviewAction,
+  describeLegalResearchArtifactReviewAction,
   describeMatterLifecycleReviewAction,
   describeOperationalActionState,
   describeTrustPostingRequestReviewAction,
   disabledOperationalAction,
+  legalResearchArtifactReviewBusyAction,
+  legalResearchArtifactReviewBusyKey,
   trustPostingRequestReviewBusyAction,
   trustPostingRequestReviewBusyKey,
 } from "./operational-actions.js";
@@ -124,6 +128,174 @@ describe("operational action states", () => {
     expect(serialized).not.toContain("matter_lifecycle_synthetic");
     expect(serialized).not.toContain("Synthetic pause review");
     expect(serialized).not.toContain("Synthetic blocker evidence");
+  });
+
+  it("describes available legal research artifact review actions", () => {
+    expect(
+      describeLegalResearchArtifactReviewAction({
+        action: "reviewed",
+        status: "ready_for_review",
+        canReview: true,
+        workspaceStatus: "available",
+      }),
+    ).toEqual({
+      actionKey: "legal_research_artifact.review",
+      available: true,
+      availability: "available",
+      label: "Review",
+      tone: "ready",
+    });
+
+    expect(
+      describeLegalResearchArtifactReviewAction({
+        action: "rejected",
+        status: "ready_for_review",
+        canReview: true,
+        workspaceStatus: "available",
+      }),
+    ).toEqual({
+      actionKey: "legal_research_artifact.reject",
+      available: true,
+      availability: "available",
+      label: "Reject",
+      tone: "risk",
+    });
+  });
+
+  it("describes legal research artifact review busy states without artifact data", () => {
+    const busyKey = legalResearchArtifactReviewBusyKey(
+      "reviewed",
+      "legal_research_artifact_synthetic",
+    );
+
+    expect(
+      legalResearchArtifactReviewBusyAction(busyKey, "legal_research_artifact_synthetic"),
+    ).toBe("reviewed");
+    expect(
+      legalResearchArtifactReviewBusyAction("", "legal_research_artifact_synthetic"),
+    ).toBeUndefined();
+    expect(
+      legalResearchArtifactReviewBusyAction(
+        "archived:legal_research_artifact_synthetic",
+        "legal_research_artifact_synthetic",
+      ),
+    ).toBe("other");
+
+    const busyAction = describeLegalResearchArtifactReviewAction({
+      action: "reviewed",
+      status: "ready_for_review",
+      busyAction: "reviewed",
+      canReview: true,
+      workspaceStatus: "available",
+    });
+    expect(busyAction).toMatchObject({
+      actionKey: "legal_research_artifact.review",
+      available: false,
+      availability: "disabled",
+      label: "Saving",
+      disabledReason: "reviewed_in_progress",
+    });
+
+    expect(
+      describeLegalResearchArtifactReviewAction({
+        action: "rejected",
+        status: "ready_for_review",
+        busyAction: "reviewed",
+        canReview: true,
+        workspaceStatus: "available",
+      }),
+    ).toMatchObject({
+      actionKey: "legal_research_artifact.reject",
+      available: false,
+      availability: "disabled",
+      label: "Reject",
+      disabledReason: "review_action_in_progress",
+    });
+
+    expect(
+      describeLegalResearchArtifactReviewAction({
+        action: "rejected",
+        status: "ready_for_review",
+        busyAction: "rejected",
+        canReview: true,
+        workspaceStatus: "available",
+      }),
+    ).toMatchObject({
+      label: "Saving",
+      disabledReason: "rejected_in_progress",
+    });
+
+    const serialized = JSON.stringify(busyAction);
+    expect(serialized).not.toContain("legal_research_artifact_synthetic");
+    expect(serialized).not.toContain("Synthetic staff-authored source note");
+    expect(serialized).not.toContain("Residential tenancy source note");
+    expect(serialized).not.toContain("raw authority text");
+  });
+
+  it("describes unavailable legal research artifact review states", () => {
+    expect(
+      describeLegalResearchArtifactReviewAction({
+        action: "reviewed",
+        status: "ready_for_review",
+        canReview: false,
+        workspaceStatus: "available",
+      }),
+    ).toMatchObject({
+      actionKey: "legal_research_artifact.review",
+      available: false,
+      availability: "disabled",
+      label: "Review",
+      disabledReason: "permission_required",
+    });
+
+    expect(
+      describeLegalResearchArtifactReviewAction({
+        action: "reviewed",
+        status: "draft",
+        canReview: true,
+        workspaceStatus: "available",
+      }),
+    ).toMatchObject({
+      actionKey: "legal_research_artifact.review",
+      available: false,
+      availability: "disabled",
+      label: "Review",
+      disabledReason: "status_not_ready_for_review",
+    });
+
+    expect(
+      describeLegalResearchArtifactReviewAction({
+        action: "rejected",
+        status: "ready_for_review",
+        canReview: true,
+        workspaceStatus: "unavailable",
+      }),
+    ).toMatchObject({
+      actionKey: "legal_research_artifact.reject",
+      available: false,
+      availability: "disabled",
+      label: "Reject",
+      disabledReason: "workspace_unavailable",
+    });
+
+    expect(compactLegalResearchArtifactReviewActionReason("reviewed_in_progress")).toBe(
+      "review in progress",
+    );
+    expect(compactLegalResearchArtifactReviewActionReason("rejected_in_progress")).toBe(
+      "rejection in progress",
+    );
+    expect(compactLegalResearchArtifactReviewActionReason("review_action_in_progress")).toBe(
+      "review action in progress",
+    );
+    expect(compactLegalResearchArtifactReviewActionReason("permission_required")).toBe(
+      "permission required",
+    );
+    expect(compactLegalResearchArtifactReviewActionReason("status_not_ready_for_review")).toBe(
+      "not ready for review",
+    );
+    expect(compactLegalResearchArtifactReviewActionReason("workspace_unavailable")).toBe(
+      "workspace unavailable",
+    );
   });
 
   it("describes document retention and hold review actions without document data", () => {

@@ -17,11 +17,11 @@ export const matterLifecycleTargetStatusByTransition = {
 } as const satisfies Record<MatterLifecycleTransition, MatterStatus>;
 
 export const matterLifecycleCommandRequiredStatusByCommand = {
-  pause: "open",
-  reopen: "paused",
-  close: "open",
-  archive: "closed",
-} as const satisfies Record<MatterLifecycleCommand, MatterStatus>;
+  pause: ["open"],
+  reopen: ["paused", "closed", "archived"],
+  close: ["open"],
+  archive: ["closed"],
+} as const satisfies Record<MatterLifecycleCommand, readonly MatterStatus[]>;
 
 export interface MatterLifecycleCommandConsequences {
   matterStatusChanged: boolean;
@@ -31,6 +31,7 @@ export interface MatterLifecycleCommandConsequences {
   assignmentChanged: boolean;
   billingChanged: boolean;
   trustChanged: boolean;
+  retentionChanged: boolean;
   cleanupRun: boolean;
 }
 
@@ -85,6 +86,7 @@ const statusOnlyCommandConsequences: MatterLifecycleCommandConsequences = {
   assignmentChanged: false,
   billingChanged: false,
   trustChanged: false,
+  retentionChanged: false,
   cleanupRun: false,
 };
 
@@ -100,7 +102,17 @@ export function matterLifecycleTargetStatus(transition: MatterLifecycleTransitio
 export function matterLifecycleCommandRequiredStatus(
   command: MatterLifecycleCommand,
 ): MatterStatus {
+  return matterLifecycleCommandRequiredStatuses(command)[0]!;
+}
+
+export function matterLifecycleCommandRequiredStatuses(
+  command: MatterLifecycleCommand,
+): readonly MatterStatus[] {
   return matterLifecycleCommandRequiredStatusByCommand[command];
+}
+
+function requiredStatusLabel(statuses: readonly MatterStatus[]): string {
+  return statuses.join(", ");
 }
 
 export function validateMatterLifecycleCommandExecution(
@@ -116,17 +128,21 @@ export function validateMatterLifecycleCommandExecution(
   if (!execution.executedByUserId.trim()) {
     throw new Error("Matter lifecycle command executor user id is required");
   }
-  const requiredStatus = matterLifecycleCommandRequiredStatus(execution.command);
+  const requiredStatuses = matterLifecycleCommandRequiredStatuses(execution.command);
+  const requiredLabel = requiredStatusLabel(requiredStatuses);
   const targetStatus = matterLifecycleTargetStatus(execution.command);
-  if (execution.expectedStatus !== requiredStatus) {
+  if (!requiredStatuses.includes(execution.expectedStatus)) {
     throw new Error(
-      `Matter lifecycle command ${execution.command} expected status must be ${requiredStatus}`,
+      `Matter lifecycle command ${execution.command} expected status must be ${requiredLabel}`,
     );
   }
-  if (execution.beforeStatus !== requiredStatus) {
+  if (!requiredStatuses.includes(execution.beforeStatus)) {
     throw new Error(
-      `Matter lifecycle command ${execution.command} requires matter status ${requiredStatus}`,
+      `Matter lifecycle command ${execution.command} requires matter status ${requiredLabel}`,
     );
+  }
+  if (execution.beforeStatus !== execution.expectedStatus) {
+    throw new Error("Matter lifecycle command expected status must match matter status");
   }
   if (execution.afterStatus !== targetStatus) {
     throw new Error(
@@ -147,6 +163,7 @@ export function validateMatterLifecycleCommandExecution(
     execution.consequences.assignmentChanged,
     execution.consequences.billingChanged,
     execution.consequences.trustChanged,
+    execution.consequences.retentionChanged,
     execution.consequences.cleanupRun,
   ];
   if (blockedConsequences.some(Boolean)) {

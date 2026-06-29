@@ -140,6 +140,7 @@ export type {
 } from "./_features/document-assembly/models";
 
 export type {
+  DocumentConversionReviewDecisionCue,
   DocumentConversionReviewCounts,
   DocumentConversionReviewPolicy,
   DocumentConversionReviewSummary,

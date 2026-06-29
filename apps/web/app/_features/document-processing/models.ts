@@ -260,6 +260,20 @@ export interface DocumentConversionReviewReadiness {
   rawOcrTextReturned: false;
 }
 
+export interface DocumentConversionReviewDecisionCue {
+  artifactId: string;
+  decision: "reviewed" | "rejected";
+  decidedAt: string;
+  decidedByUserId: string;
+  artifactStatus: string;
+  reviewOnly: true;
+  metadataOnly: true;
+  terminalReview: true;
+  downstreamMutation: false;
+  providerEvidenceStored: false;
+  rawOcrTextReturned: false;
+}
+
 export interface DocumentConversionReviewSummary {
   posture:
     | "blocked"
@@ -273,9 +287,13 @@ export interface DocumentConversionReviewSummary {
   summaryPosture: "op_authored_metadata_only" | string;
   jobId?: string;
   artifactId?: string;
+  provider?: string;
+  providerStatus?: string;
   counts?: DocumentConversionReviewCounts;
   policy: DocumentConversionReviewPolicy;
   reviewReadiness?: DocumentConversionReviewReadiness;
+  latestDecision?: DocumentConversionReviewDecisionCue;
+  decisionHistory: DocumentConversionReviewDecisionCue[];
 }
 
 export type DocumentReviewSuggestionGroup =

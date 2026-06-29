@@ -129,6 +129,7 @@ describe("calendar scheduling request summaries", () => {
         requests: [request],
         events: [event],
         includeTimeCapture: false,
+        now: "2026-05-03T12:00:00.000Z",
       }),
     ).toEqual([
       expect.objectContaining({
@@ -151,6 +152,15 @@ describe("calendar scheduling request summaries", () => {
           approvalCancelsReminder: false,
           approvalCreatesTimeEntry: false,
         },
+        reviewAging: {
+          status: "stale",
+          ageHours: 72,
+          referenceAt: "2026-04-30T12:00:00.000Z",
+          agingAfterHours: 24,
+          staleAfterHours: 72,
+          automaticFinalConfirmation: false,
+          autoExpires: false,
+        },
       }),
     ]);
     expect(
@@ -159,9 +169,18 @@ describe("calendar scheduling request summaries", () => {
           requests: [request],
           events: [event],
           includeTimeCapture: false,
+          now: "2026-05-03T12:00:00.000Z",
         }),
       ),
     ).not.toContain("Private reminder note");
+    expect(
+      buildCalendarSchedulingRequestSummaries({
+        requests: [{ ...request, status: "scheduled", reviewedAt: "2026-05-01T12:00:00.000Z" }],
+        events: [event],
+        includeTimeCapture: false,
+        now: "2026-05-03T12:00:00.000Z",
+      })[0],
+    ).not.toHaveProperty("reviewAging");
   });
 });
 

@@ -86,6 +86,7 @@ import {
   type MatterLifecycleTransitionRecord,
   type MatterParty,
   type PaymentAllocationRecord,
+  type PaymentImportDepositMatchReviewRecord,
   type PaymentImportReviewRecord,
   type PortalGrant,
   type PortalDocumentAccess,
@@ -3275,6 +3276,42 @@ export function paymentImportReviewRecordInsert(
     observedAt: record.observedAt ? new Date(record.observedAt) : null,
     importedAt: new Date(record.importedAt),
     updatedAt: new Date(record.updatedAt),
+  };
+}
+
+export function mapPaymentImportDepositMatchReviewRow(
+  row: typeof schema.paymentImportDepositMatchReviews.$inferSelect,
+): PaymentImportDepositMatchReviewRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    matterId: row.matterId,
+    paymentImportReviewRecordId: row.paymentImportReviewRecordId,
+    candidateManualPaymentId: row.candidateManualPaymentId,
+    candidateInvoiceId: row.candidateInvoiceId ?? undefined,
+    decision: row.decision,
+    reason: row.reason,
+    importAmountCents: row.importAmountCents,
+    manualPaymentAmountCents: row.manualPaymentAmountCents,
+    currency: row.currency,
+    candidateManualPaymentStatus: row.candidateManualPaymentStatus,
+    reviewerEvidencePresent: true,
+    idempotencyKey: row.idempotencyKey,
+    decisionFingerprint: row.decisionFingerprint,
+    boundaries: row.boundaries,
+    reviewedByUserId: row.reviewedByUserId,
+    reviewedAt: row.reviewedAt.toISOString(),
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+export function paymentImportDepositMatchReviewInsert(
+  record: PaymentImportDepositMatchReviewRecord,
+): typeof schema.paymentImportDepositMatchReviews.$inferInsert {
+  return {
+    ...record,
+    reviewedAt: new Date(record.reviewedAt),
+    createdAt: new Date(record.createdAt),
   };
 }
 

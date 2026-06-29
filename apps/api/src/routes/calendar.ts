@@ -252,11 +252,13 @@ async function schedulingRequestSummaryForResponse(input: {
   request: CalendarSchedulingRequestRecord;
   events: CalendarEventRecord[];
   includeTimeCapture: boolean;
+  now?: string;
 }): Promise<unknown> {
   return buildCalendarSchedulingRequestSummaries({
     requests: [input.request],
     events: input.events,
     includeTimeCapture: input.includeTimeCapture,
+    now: input.now,
   })[0];
 }
 
@@ -323,6 +325,7 @@ export function registerCalendarRoutes(
         matterId: query.matterId,
       });
       const eventsById = new Map(events.map((event) => [event.id, event]));
+      const now = new Date().toISOString();
 
       return {
         events: events.map((event) => calendarEventResponse(event, meetingInvitationBoundary)),
@@ -335,6 +338,7 @@ export function registerCalendarRoutes(
           requests: schedulingRequests,
           events,
           includeTimeCapture: canReadTimeCapture(request.auth, query.matterId),
+          now,
         }),
         caldavUrl: `${trustedApiBaseUrl(request, publicApiBaseUrl)}/caldav`,
         subscriptionUrl: webcalSubscriptionUrl(request, query.matterId, publicApiBaseUrl),
@@ -521,6 +525,7 @@ export function registerCalendarRoutes(
         request: created,
         events,
         includeTimeCapture: canReadTimeCapture(request.auth, body.matterId),
+        now,
       }),
     });
   });
@@ -620,6 +625,7 @@ export function registerCalendarRoutes(
         request: updated,
         events,
         includeTimeCapture: canReadTimeCapture(request.auth, body.matterId),
+        now,
       }),
     };
   });

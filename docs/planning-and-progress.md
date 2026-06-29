@@ -1,6 +1,6 @@
 # Planning and Progress
 
-**Last Updated:** 2026-06-26
+**Last Updated:** 2026-06-29
 
 Use this file for live tracked work, immediate next moves, and the forward-looking development plan.
 Use `docs/planning.md` for the durable roadmap, `docs/improvement-opportunities.md` for candidate
@@ -10,8 +10,8 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 | Snapshot              | Value                                                                |
 | --------------------- | -------------------------------------------------------------------- |
-| Current focus         | 2026-06-26 active-lane mainline closeout is complete.                |
-| Next recommended pick | Choose the next candidate from the durable roadmap/backlog.          |
+| Current focus         | Current dirty branch integration and validation reconciliation.      |
+| Next recommended pick | Finish validation/proof reconciliation before opening new rows.      |
 | Ready rows            | 0                                                                    |
 | Candidate rows        | 0                                                                    |
 | In progress rows      | 0                                                                    |
@@ -21,6 +21,66 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 | Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`     |
 
 ## Current Handoff Notes
+
+The current dirty branch is integrating provider document conversion review decisions, OP-T162
+deposit-match reviewer decisions, provider document conversion latest-decision/history cues, a
+metadata-only refund/chargeback cue surface, and the adopted closed/archived matter lifecycle
+reopen boundary.
+Provider-status and self-host operations-readiness residue was preserved separately in targeted
+stashes and is not part of this closeout. This is branch validation work, not final `main`
+publication evidence yet. The row counters remain zero because no candidate table rows are open;
+active validation state is tracked in these handoff notes and the draft proof until selector output,
+command results, and proof reconciliation are current. Evidence is being recorded in
+[2026-06-28/2026-06-29 branch integration validation draft](validation/OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-28.md).
+
+The 2026-06-27 `feat/provider-document-conversion-review-decision-20260627` branch promotes the
+next provider document conversion runtime slice as an explicit metadata-only review decision
+command. `PATCH /api/document-processing/documents/:documentId/conversion-review/review` lets
+authorized staff mark an existing ready `document_analysis_status` conversion-review artifact
+`reviewed` or `rejected`, requires matter-scoped `document_processing:read` plus
+`legal_research:approve`, and updates only review metadata. It preserves OP-authored posture,
+counts, lengths, statuses, policy flags, and review metadata while blocking provider conversion
+activation, raw client text, converted Markdown, annotations, chunks, embeddings, prompts, provider
+payloads, storage keys, object bodies, generated summaries, downstream source-record mutation, and
+new jobs. Proof is recorded in
+[provider document conversion review decision proof](validation/OP_PROVIDER_DOCUMENT_CONVERSION_REVIEW_DECISION_PROOF_2026-06-27.md).
+The 2026-06-29 cue follow-up keeps that boundary read-only by deriving `latestDecision` and bounded
+newest-first `decisionHistory` from existing terminal artifact review fields only, then showing safe
+decision/timestamp/posture flags in Documents and Research without artifact metadata, notes, raw
+text, Markdown, annotations, chunks, embeddings, prompts, provider payloads, storage keys, object
+bodies, or generated summaries. Proof is recorded in
+[provider document conversion review cues proof](validation/OP_PROVIDER_DOCUMENT_CONVERSION_REVIEW_CUES_PROOF_2026-06-29.md).
+
+The 2026-06-29 legal-research artifact review action-descriptor follow-up keeps those review
+commands and provider/document-processing boundaries unchanged while moving the existing Research
+workspace artifact `Review`/`Reject` button labels, busy/disabled reasons, stable action keys, and
+accessible status text into domain-owned operational action descriptors. Proof is recorded in
+[legal research artifact review action descriptors proof](validation/OP_LEGAL_RESEARCH_ARTIFACT_REVIEW_ACTION_DESCRIPTORS_PROOF_2026-06-29.md).
+
+The 2026-06-27 `feat/deposit-match-review-command-boundary-20260627` branch implements OP-T162 as
+the next safe payment import/deposit matching runtime slice after OP-T160. It adds staff-only,
+provider-neutral, append-only deposit-match reviewer decisions over normalized payment import
+review records, with idempotent replay, same-matter candidate validation, Billing dashboard latest
+decision cues, read-only manual-reconcile readiness cues, and safe audit metadata. The slice remains
+evidence-only: it does not reconcile manual payments, mutate invoice balances, clear deposits, call
+providers, notify clients, handle refunds or chargebacks, post trust entries, or retain raw provider
+payloads. Proof is recorded in
+[OP-T162 deposit-match review command boundary proof](validation/OP-T162_DEPOSIT_MATCH_REVIEW_COMMAND_BOUNDARY_PROOF_2026-06-27.md).
+
+The 2026-06-28 refund/chargeback review cue surface stays on the same provider-neutral payment
+import boundary. Existing normalized payment import review records with `eventFamily=payment` and
+`eventStatus=refund_observed` or `eventStatus=chargeback_observed` now derive reviewer cue counts,
+row cue metadata, and allowlisted audit metadata. The surface is metadata-only and adds no provider
+calls, dispute packets, ledger reversals, invoice mutations, client notifications, trust transfers,
+or trust posting. Proof is recorded in
+[refund/chargeback review cue proof](validation/OP_REFUND_CHARGEBACK_REVIEW_CUES_PROOF_2026-06-28.md).
+
+The 2026-06-28 review-only calendar aging cue follow-up adds staff-only fresh/aging/stale metadata
+for open appointment booking tentative holds and open calendar scheduling requests. The cues are
+derived from existing `submittedAt`/`createdAt` timestamps, display in Calendar/dashboard review
+surfaces only, and preserve no automatic final confirmation, auto-expiry, provider sync, public
+room URLs, native media, chat, recordings, or matter creation. Proof is recorded in
+[calendar aging review cues proof](validation/OP_CALENDAR_AGING_REVIEW_CUES_PROOF_2026-06-28.md).
 
 The 2026-06-26 active-lane mainline closeout integrates the features/capabilities parity audit and
 remediation, appointment booking tentative holds, structured task management V3, calendar tickler
@@ -308,11 +368,14 @@ OP-T160 matter lifecycle commands are done in
 Follow-up proofs cover the status-only
 [close](validation/OP-T160_MATTER_LIFECYCLE_CLOSE_COMMAND_PROOF_2026-06-20.md) and
 [archive](validation/OP-T160_MATTER_LIFECYCLE_ARCHIVE_COMMAND_PROOF_2026-06-21.md) slices. The
-runtime path now covers `pause`, `reopen`, `close`, and `archive`: `open -> paused`,
-`paused -> open`, `open -> closed`, and `closed -> archived`, gated by the latest matching ready
-lifecycle-transition journal record. It preserves the existing no-destructive-cleanup posture and
-does not mutate `closedOn`, portal grants, tasks, assignments, billing records, trust records,
-retention state, or cleanup state.
+[closed/archived reopen boundary proof](validation/OP_MATTER_LIFECYCLE_REOPEN_BOUNDARY_PROOF_2026-06-27.md)
+extends `reopen` to `closed -> open` and `archived -> open` without adding a new route or command.
+The runtime path now covers `pause`, `reopen`, `close`, and `archive`: `open -> paused`,
+`paused -> open`, `closed -> open`, `archived -> open`, `open -> closed`, and
+`closed -> archived`, gated by the latest matching ready lifecycle-transition journal record. It
+preserves the existing no-destructive-cleanup posture and does not mutate `closedOn`, portal grants
+or access links, tasks, assignments, billing records, trust records, retention metadata, cleanup
+state, or lifecycle-transition source records.
 
 The 2026-06-19 `remediate/ops-efficiency-20260619` branch implements the operational-efficiency
 review remediation in the clean sibling worktree
@@ -536,6 +599,23 @@ chunks, embeddings, prompts, storage keys, provider payloads, private excerpts, 
 summaries. Proof is recorded in
 [provider document conversion metadata follow-up proof](validation/OP_PROVIDER_DOCUMENT_CONVERSION_METADATA_FOLLOWUP_PROOF_2026-06-20.md).
 
+The 2026-06-27 provider document conversion review decision follow-up adds the smallest command
+surface over that metadata-only runtime: authorized staff can mark a ready conversion-review
+artifact `reviewed` or `rejected`. Same terminal decisions return the existing safe summary without
+rewriting, opposite terminal decisions conflict, and not-ready or missing artifacts conflict. The
+slice adds no provider activation, schema, migration, queue, worker processor, object-storage write,
+dashboard action, raw text, retained Markdown, annotations, chunks, embeddings, prompts, provider
+payloads, private excerpts, generated summaries, or downstream document/draft/matter/task/calendar/
+ledger/portal mutation. Proof is recorded in
+[provider document conversion review decision proof](validation/OP_PROVIDER_DOCUMENT_CONVERSION_REVIEW_DECISION_PROOF_2026-06-27.md).
+
+The 2026-06-29 action-descriptor follow-up over the existing Research workspace review controls is
+behavior-preserving: `Review`/`Reject` labels, busy/disabled reasons, `data-action-key`,
+`aria-label`, and `title` now come from `@open-practice/domain/operational-actions`; legal-research
+and document-processing route/API behavior, authorization, audit metadata, persistence, provider
+posture, and review-only boundaries stay unchanged. Proof is recorded in
+[legal research artifact review action descriptors proof](validation/OP_LEGAL_RESEARCH_ARTIFACT_REVIEW_ACTION_DESCRIPTORS_PROOF_2026-06-29.md).
+
 The 2026-06-16 private document conversion and annotation boundary proof remains the historical
 docs-first policy record. The current local-only follow-up now adds metadata-only
 `document_conversion_review` jobs after verified upload, safe scan posture, and completed OCR
@@ -642,6 +722,23 @@ shows deposit-match review counts in Billing without allocating payments, mutati
 creating reconciliation records, issuing provider commands, handling refunds/chargebacks, or posting
 trust entries. Proof is recorded in
 [OP-T160 deposit-match review records proof](validation/OP-T160_DEPOSIT_MATCH_REVIEW_RECORDS_PROOF_2026-06-20.md).
+
+The 2026-06-27 OP-T162 deposit-match review command boundary follow-up records append-only
+reviewer decisions over those normalized deposit/manual-payment candidates. It adds safe
+support/reject/needs-more-evidence decisions, idempotent replay, candidate-supported guardrails, and
+Billing latest-decision cues. The 2026-06-29 readiness follow-up adds read-only Billing cues for
+supported decisions that still appear eligible for the existing manual-payment reconcile review
+workflow while preserving no live settlement, provider commands, raw provider payload retention,
+invoice-balance mutation, reconciliation automation, refund/chargeback workflow, client
+notifications, trust transfers, or trust posting. Proof is recorded in
+[OP-T162 deposit-match review command boundary proof](validation/OP-T162_DEPOSIT_MATCH_REVIEW_COMMAND_BOUNDARY_PROOF_2026-06-27.md).
+
+The 2026-06-28 refund/chargeback review cue surface derives provider-neutral dashboard counts, row
+cue metadata, and safe payment-import audit metadata from existing normalized payment import review
+records with `eventStatus=refund_observed` or `eventStatus=chargeback_observed`. It remains a cue
+surface only, with no provider calls, dispute packet storage, invoice mutation, ledger reversal,
+client notification, trust transfer, or trust posting. Proof is recorded in
+[refund/chargeback review cue proof](validation/OP_REFUND_CHARGEBACK_REVIEW_CUES_PROOF_2026-06-28.md).
 
 The 2026-06-16 Signature Request Envelope Metadata branch adds OP-authored signer-order and
 field-placement metadata directly to existing signature requests. Domain validation stays
@@ -1160,8 +1257,10 @@ controls, safe audit metadata, and explicit no-automation/no-destructive-closure
 
 The 2026-06-17 matter lifecycle command policy/API plan was drafted in
 [Matter lifecycle command policy/API plan proof](validation/OP_MATTER_LIFECYCLE_COMMAND_POLICY_PLAN_PROOF_2026-06-17.md).
-OP-T160 now ships runtime subsets for `pause`, `reopen`, and status-only `close`, while `archive`
-and broader closed-or-archived reopen remain planned for a separately scoped future slice.
+OP-T160 now ships runtime subsets for `pause`, status-only `reopen` from paused/closed/archived
+matters, status-only `close`, and status-only `archive`. Any future portal, cleanup, retention,
+billing, trust, assignment, `closedOn`, or lifecycle-transition source-record automation remains a
+separately scoped and separately approved slice.
 
 | Status | ID      | Task                           | Immediate Next Move                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | Validation Plan                                                                                                                                                                                                                                                                                                                                                 |
 | ------ | ------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

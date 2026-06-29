@@ -3,11 +3,13 @@
 Date: 2026-06-17 PDT
 
 This packet defines the next safe boundary for future payment processor imports, deposit matching,
-refunds, and chargebacks. It began as docs-first policy groundwork and now has one narrow runtime
-slice: staff-only normalized payment import review records for processor evidence cues. The packet
-still does not authorize live settlement, payment processor webhooks, provider payload persistence,
-invoice mutation, trust posting, bank-feed connections, worker replay, provider commands, refunds,
-chargebacks, or deposit matching automation.
+refunds, and chargebacks. It began as docs-first policy groundwork and now has three narrow runtime
+slices: staff-only normalized payment import review records for processor evidence cues,
+staff-only deposit-match reviewer decisions over those normalized records, and provider-neutral
+refund/chargeback review cues derived from existing payment import records. The packet still does
+not authorize live settlement, payment processor webhooks, provider payload persistence, invoice
+mutation, trust posting, bank-feed connections, worker replay, provider commands, refund or
+chargeback commands, or deposit matching automation.
 
 ## Source Posture
 
@@ -26,6 +28,15 @@ The boundary builds from the shipped payment and funds proofs:
 - OP-T160 adds provider-neutral payment import review records and Billing dashboard cues. They are
   normalized reviewer evidence only and do not apply payments, mutate invoice balances, reconcile
   deposits, handle refunds or chargebacks, or post trust entries.
+- OP-T162 adds provider-neutral deposit-match reviewer decisions over OP-T160 records. They are
+  append-only reviewer evidence only and do not apply or reconcile manual payments, mutate invoice
+  balances, clear deposits, call providers, notify clients, handle refunds or chargebacks, or post
+  trust entries.
+- The 2026-06-28 refund/chargeback cue surface derives provider-neutral reviewer cues from existing
+  payment import review records with `eventFamily="payment"` and `eventStatus="refund_observed"`
+  or `eventStatus="chargeback_observed"`. It adds dashboard counts, optional row cue metadata, and
+  safe audit metadata only; it does not create workflows, provider commands, dispute packets,
+  invoice mutations, ledger reversals, client notifications, trust transfers, or trust postings.
 
 ## First Runtime Slice
 
@@ -48,6 +59,50 @@ OP-T160 implements the first runtime slice under this packet:
   transfer, or trust posting action. The 2026-06-20 follow-up lets staff attach an existing
   manual-payment candidate ID to normalized deposit evidence for review, but it still does not
   reconcile, allocate, clear, or post that payment.
+
+## Second Runtime Slice
+
+OP-T162 implements the second runtime slice under this packet:
+
+- `POST /api/billing/payment-import-review-records/:recordId/deposit-match-reviews` and
+  `GET /api/billing/payment-import-review-records/:recordId/deposit-match-reviews` record and list
+  staff-only reviewer decisions for one normalized deposit import record.
+- Stored fields are provider-neutral and audit-safe: payment import review record ID, candidate
+  manual-payment and optional invoice IDs, enum decision and reason, import/manual-payment amount
+  snapshots, candidate manual-payment status, reviewer/evidence posture, idempotency key and
+  fingerprint, reviewed timestamp/user, and explicit no-side-effect boundary flags.
+- Idempotency is keyed by `(firm, payment import review record, idempotency key)`: identical
+  reviewer evidence returns the existing decision, while changed evidence for the same key is
+  rejected for staff review.
+- `candidate_supported` is allowed only when the normalized record has deposit evidence and a
+  candidate manual payment, the candidate remains `pending_reconciliation`, amounts/currency match,
+  and duplicate/conflict cues are inactive. Rejections and needs-more-evidence decisions remain
+  reviewer evidence only.
+- Billing dashboard cues show per-matter decision counts and latest decision posture. The slice
+  creates no matching, reconciliation, ledger, payment, refund, chargeback, notification, provider
+  command, trust transfer, or trust posting action.
+- The 2026-06-29 readiness follow-up adds Billing dashboard cues for latest `candidate_supported`
+  decisions that still appear eligible for the existing manual-payment reconcile review workflow.
+  Eligibility is read from current manual-payment and invoice state, remains advisory, and does not
+  invoke `POST /api/payments/:paymentId/reconcile`, allocate funds, clear deposits, mutate invoices,
+  or post trust entries.
+
+## Refund And Chargeback Cue Surface
+
+The 2026-06-28 cue surface derives reviewer-visible exception cues from existing normalized payment
+import review records only:
+
+- Recognized inputs are limited to `eventFamily="payment"` with `eventStatus="refund_observed"` or
+  `eventStatus="chargeback_observed"`.
+- The derived cue is metadata only: `category`, `status="needs_review"`, and
+  `reviewAction="staff_refund_chargeback_review_required"`, plus explicit no-side-effect flags.
+- Billing dashboard responses expose refund, chargeback, and combined cue counts, with optional
+  per-record cue metadata for reviewer context.
+- Audit metadata for payment-import creation may include cue category/status/action and boundary
+  flags such as `refundHandling`, `chargebackHandling`, `providerCommand`, and
+  `clientNotification`.
+- The slice adds no table, migration, provider adapter, worker, route, ledger command, invoice
+  mutation, dispute packet retention, trust posting, or client notification.
 
 ## Safe Import Boundary
 
@@ -93,9 +148,10 @@ candidate manual payment.
 ## Deposit Matching Boundary
 
 Deposit matching should remain reviewer-owned until a later implementation proves stronger controls.
-The safe first slice may propose candidate matches between normalized processor evidence, hosted
-payment requests, manual payment evidence, bank-feed review summaries, and existing reconciliation
-records. Candidate manual payments are references to existing evidence only. It must not:
+The current safe slices may propose candidate matches and record reviewer support/rejection/needs
+more evidence decisions between normalized processor evidence, hosted payment requests, manual
+payment evidence, bank-feed review summaries, and existing reconciliation records. Candidate manual
+payments are references to existing evidence only. They must not:
 
 - create or complete ledger reconciliation records automatically;
 - match or clear deposits without reviewer evidence;
@@ -105,14 +161,15 @@ records. Candidate manual payments are references to existing evidence only. It 
 - treat payout or deposit timing as proof that an invoice was paid;
 - clear protected-funds or trust questions without explicit funds review.
 
-Deposit proposals should be reversible review cues. A reviewer must be able to reject a proposed
-match without changing invoice balances, ledgers, trust-transfer state, or reconciliation records.
+Deposit proposals and reviewer decisions should be reversible review cues. A reviewer must be able
+to reject a proposed match without changing invoice balances, ledgers, trust-transfer state, or
+reconciliation records.
 
 ## Refund And Chargeback Boundary
 
-Refunds and chargebacks are exception review cues, not financial commands. A future review surface
-may show normalized status, amount, currency, timing, related import evidence, and candidate invoice
-or payment references. It must not:
+Refunds and chargebacks are exception review cues, not financial commands. The cue surface may show
+normalized status, amount, currency, timing, related import evidence, candidate invoice or payment
+references, cue counts, and safe cue metadata. It must not:
 
 - call provider refund or dispute APIs;
 - issue automatic invoice credits, write-offs, voids, reversals, or balance changes;
@@ -131,6 +188,9 @@ Invoice balances can change only through explicit Open Practice workflows with r
 
 - Manual-payment evidence must still pass through `POST /api/payments/:paymentId/reconcile` before
   it creates an effective allocation and recalculates invoice paid/balance status.
+- Deposit-match readiness cues may identify supported candidates for that existing manual-payment
+  review workflow, but the cue itself is read-only and performs no reconciliation, allocation,
+  deposit clearing, invoice mutation, provider command, or trust posting.
 - Hosted payment requests, processor imports, settlement-event review, deposit-match proposals,
   refunds, and chargeback cues must not independently mutate `paidCents`, `balanceDueCents`, invoice
   lifecycle status, source-entry billing state, or trust-transfer state.

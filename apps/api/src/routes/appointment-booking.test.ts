@@ -177,6 +177,7 @@ describe("appointment booking routes", () => {
     });
     expect(JSON.stringify(bookingResponse.json())).not.toContain("calendar-event");
     expect(JSON.stringify(bookingResponse.json())).not.toContain("client@example.test");
+    expect(JSON.stringify(bookingResponse.json())).not.toContain("reviewAging");
     await expect(
       repository.listAppointmentBookingRequests("firm-west-legal"),
     ).resolves.toHaveLength(1);
@@ -257,6 +258,38 @@ describe("appointment booking routes", () => {
       url: "/api/appointment-booking/requests",
     });
     const requestId = requestList.json().requests[0].id as string;
+    expect(requestList.json().requests[0]).toMatchObject({
+      id: requestId,
+      status: "tentative_hold",
+      reviewAging: {
+        status: "fresh",
+        ageHours: 0,
+        referenceAt: "2026-06-26T12:00:00.000Z",
+        agingAfterHours: 24,
+        staleAfterHours: 72,
+        automaticFinalConfirmation: false,
+        autoExpires: false,
+      },
+    });
+
+    vi.setSystemTime(new Date("2026-06-29T12:00:00.000Z"));
+    const staleRequestList = await server.inject({
+      method: "GET",
+      url: "/api/appointment-booking/requests",
+    });
+    expect(staleRequestList.json().requests[0]).toMatchObject({
+      id: requestId,
+      status: "tentative_hold",
+      reviewAging: {
+        status: "stale",
+        ageHours: 72,
+        referenceAt: "2026-06-26T12:00:00.000Z",
+        agingAfterHours: 24,
+        staleAfterHours: 72,
+        automaticFinalConfirmation: false,
+        autoExpires: false,
+      },
+    });
 
     const reviewed = await server.inject({
       method: "PATCH",
@@ -267,5 +300,6 @@ describe("appointment booking routes", () => {
     expect(reviewed.json()).toMatchObject({
       request: { id: requestId, status: "confirmed" },
     });
+    expect(reviewed.json().request).not.toHaveProperty("reviewAging");
   });
 });

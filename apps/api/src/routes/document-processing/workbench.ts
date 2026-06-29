@@ -109,6 +109,7 @@ export function registerDocumentProcessingWorkbenchRoutes(
           latestExtraction: latestCompletedExtraction,
           latestJob: latestConversionJob,
           artifact: conversionReviewArtifactForDocument(document, conversionReviewArtifacts),
+          artifacts: conversionReviewArtifacts,
         });
         const reviewSuggestions = buildDocumentReviewSuggestions({
           document,
