@@ -151,9 +151,27 @@ export type BillingPaymentImportDepositMatchReconciliationReadinessReason =
   | "invoice_candidate_mismatch"
   | "invoice_balance_insufficient";
 
+export type BillingPaymentImportDepositMatchReconciliationReadinessDetailCode =
+  | "latest_supported_decision"
+  | "no_duplicate_or_conflict_cue"
+  | "manual_payment_candidate_matches"
+  | "manual_payment_found"
+  | "manual_payment_pending"
+  | "amounts_match"
+  | "invoice_found"
+  | "invoice_candidate_matches"
+  | "invoice_balance_covers_payment";
+
+export interface BillingPaymentImportDepositMatchReconciliationReadinessDetail {
+  code: BillingPaymentImportDepositMatchReconciliationReadinessDetailCode;
+  status: "satisfied" | "blocked";
+  label: string;
+}
+
 export interface BillingPaymentImportDepositMatchReconciliationReadiness {
   eligible: boolean;
   reason: BillingPaymentImportDepositMatchReconciliationReadinessReason;
+  reasonDetails: BillingPaymentImportDepositMatchReconciliationReadinessDetail[];
   reviewAction: "manual_payment_reconcile_review";
   candidateManualPaymentId?: string;
   candidateInvoiceId?: string;

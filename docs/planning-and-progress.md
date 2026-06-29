@@ -76,10 +76,11 @@ The 2026-06-27 `feat/deposit-match-review-command-boundary-20260627` branch impl
 the next safe payment import/deposit matching runtime slice after OP-T160. It adds staff-only,
 provider-neutral, append-only deposit-match reviewer decisions over normalized payment import
 review records, with idempotent replay, same-matter candidate validation, Billing dashboard latest
-decision cues, read-only manual-reconcile readiness cues, and safe audit metadata. The slice remains
-evidence-only: it does not reconcile manual payments, mutate invoice balances, clear deposits, call
-providers, notify clients, handle refunds or chargebacks, post trust entries, or retain raw provider
-payloads. Proof is recorded in
+decision cues, read-only manual-reconcile readiness cues, structured safe reason details for
+supported rows that are still eligible or have drifted ineligible, and safe audit metadata. The
+slice remains evidence-only: it does not reconcile manual payments, mutate invoice balances, clear
+deposits, call providers, notify clients, handle refunds or chargebacks, post trust entries, or
+retain raw provider payloads. Proof is recorded in
 [OP-T162 deposit-match review command boundary proof](validation/OP-T162_DEPOSIT_MATCH_REVIEW_COMMAND_BOUNDARY_PROOF_2026-06-27.md).
 
 The 2026-06-28 refund/chargeback review cue surface stays on the same provider-neutral payment
@@ -793,8 +794,9 @@ reviewer decisions over those normalized deposit/manual-payment candidates. It a
 support/reject/needs-more-evidence decisions, idempotent replay, candidate-supported guardrails, and
 Billing latest-decision cues. The 2026-06-29 readiness follow-up adds read-only Billing cues for
 supported decisions that still appear eligible for the existing manual-payment reconcile review
-workflow while preserving no live settlement, provider commands, raw provider payload retention,
-invoice-balance mutation, reconciliation automation, refund/chargeback workflow, client
+workflow and structured per-row reason details for supported decisions that are still eligible or
+now ineligible while preserving no live settlement, provider commands, raw provider payload
+retention, invoice-balance mutation, reconciliation automation, refund/chargeback workflow, client
 notifications, trust transfers, or trust posting. Proof is recorded in
 [OP-T162 deposit-match review command boundary proof](validation/OP-T162_DEPOSIT_MATCH_REVIEW_COMMAND_BOUNDARY_PROOF_2026-06-27.md).
 

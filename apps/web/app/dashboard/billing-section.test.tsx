@@ -308,6 +308,129 @@ function buildSyntheticBillingDashboard(): BillingDashboardResponse {
               candidateManualPaymentId: "payment_synthetic",
               candidateInvoiceId: "invoice_synthetic",
               amountCents: 50000,
+              reasonDetails: [
+                {
+                  code: "latest_supported_decision",
+                  status: "satisfied",
+                  label: "Latest decision supports candidate",
+                },
+                {
+                  code: "no_duplicate_or_conflict_cue",
+                  status: "satisfied",
+                  label: "No duplicate or conflict cue",
+                },
+                {
+                  code: "manual_payment_candidate_matches",
+                  status: "satisfied",
+                  label: "Manual payment candidate still matches",
+                },
+                {
+                  code: "manual_payment_found",
+                  status: "satisfied",
+                  label: "Manual payment evidence found",
+                },
+                {
+                  code: "manual_payment_pending",
+                  status: "satisfied",
+                  label: "Manual payment remains pending",
+                },
+                {
+                  code: "amounts_match",
+                  status: "satisfied",
+                  label: "Import and manual payment amounts match",
+                },
+                {
+                  code: "invoice_found",
+                  status: "satisfied",
+                  label: "Candidate invoice found",
+                },
+                {
+                  code: "invoice_candidate_matches",
+                  status: "satisfied",
+                  label: "Invoice candidate still matches",
+                },
+                {
+                  code: "invoice_balance_covers_payment",
+                  status: "satisfied",
+                  label: "Invoice balance covers payment",
+                },
+              ],
+              mutation: "none",
+            },
+          },
+          {
+            id: "payment_import_review_now_ineligible_synthetic",
+            matterId: "matter_synthetic",
+            providerLabel: "synthetic_processor",
+            eventFamily: "deposit",
+            eventStatus: "deposit_observed",
+            externalEventId: "evt_synthetic_import_review_now_ineligible",
+            externalDepositIdPresent: true,
+            amountCents: 50000,
+            currency: "CAD",
+            observedAt: "2026-06-07T00:20:00.000Z",
+            importedAt: "2026-06-07T00:25:00.000Z",
+            candidateInvoiceId: "invoice_synthetic",
+            candidateManualPaymentId: "payment_synthetic_received",
+            duplicateCuePresent: false,
+            reviewState: "needs_review",
+            boundaries: {
+              rawProviderPayloadRetained: false,
+              invoiceBalanceMutation: "none",
+              settlementAutomation: false,
+              reconciliationMutation: "none",
+              refundHandling: "review_only",
+              chargebackHandling: "review_only",
+              trustPosting: "none",
+              providerCommand: "none",
+              clientNotification: "none",
+              depositMatching: "review_cue_only",
+            },
+            depositMatchReviewCount: 1,
+            latestDepositMatchReview: {
+              id: "deposit_match_review_now_ineligible_synthetic",
+              decision: "candidate_supported",
+              reason: "candidate_evidence_matches",
+              candidateManualPaymentId: "payment_synthetic_received",
+              candidateInvoiceId: "invoice_synthetic",
+              importAmountCents: 50000,
+              manualPaymentAmountCents: 50000,
+              currency: "CAD",
+              candidateManualPaymentStatus: "pending_reconciliation",
+              reviewerEvidencePresent: true,
+              reviewedAt: "2026-06-07T00:30:00.000Z",
+              boundaries: {
+                rawProviderPayloadRetained: false,
+                invoiceBalanceMutation: "none",
+                settlementAutomation: false,
+                reconciliationMutation: "none",
+                refundHandling: "none",
+                chargebackHandling: "none",
+                trustPosting: "none",
+                providerCommand: "none",
+                clientNotification: "none",
+                depositMatching: "review_decision_only",
+              },
+            },
+            reconciliationReadiness: {
+              eligible: false,
+              reason: "manual_payment_not_pending",
+              reviewAction: "manual_payment_reconcile_review",
+              candidateManualPaymentId: "payment_synthetic_received",
+              candidateInvoiceId: "invoice_synthetic",
+              amountCents: 50000,
+              reasonDetails: [
+                {
+                  code: "latest_supported_decision",
+                  status: "satisfied",
+                  label: "Latest decision supports candidate",
+                },
+                {
+                  code: "manual_payment_pending",
+                  status: "blocked",
+                  label: "Manual payment remains pending",
+                },
+              ],
               mutation: "none",
             },
           },
@@ -517,6 +640,12 @@ describe("BillingSection", () => {
     expect(html).toContain("No settlement command");
     expect(html).toContain("Ready for manual reconcile review");
     expect(html).toContain("Read-only cue");
+    expect(html).toContain("Readiness details:");
+    expect(html).toContain("Latest decision supports candidate satisfied");
+    expect(html).toContain("Invoice balance covers payment satisfied");
+    expect(html).toContain("Not ready for manual reconcile review");
+    expect(html).toContain("Manual payment is not pending");
+    expect(html).toContain("Manual payment remains pending blocked");
     expect(html).toContain("refund observed");
     expect(html).toContain("chargeback observed");
     expect(html).toContain("refund review cue");

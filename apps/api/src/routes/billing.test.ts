@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { InMemoryOpenPracticeRepository } from "@open-practice/database";
-import type { PaymentProcessorCheckoutSessionInput } from "@open-practice/domain";
+import {
+  defaultPaymentImportDepositMatchReviewBoundary,
+  defaultPaymentImportReviewBoundary,
+  type PaymentProcessorCheckoutSessionInput,
+} from "@open-practice/domain";
 import { createApiServer } from "../server.js";
 
 const servers: Array<{ close: () => Promise<void> }> = [];
@@ -2318,6 +2322,64 @@ describe("billing routes", () => {
     });
     expect(crossMatterDepositReview.statusCode).toBe(403);
 
+    await repository.createPayment({
+      payment: {
+        id: "payment-import-review-manual-now-received",
+        firmId: "firm-west-legal",
+        matterId: "matter-001",
+        invoiceId: "invoice-001",
+        receivedAt: "2026-06-19T16:10:00.000Z",
+        amountCents: 5000,
+        method: "eft",
+        status: "received",
+        receivedByUserId: "user-licensee",
+        evidence: { source: "synthetic-payment-import-review-now-received" },
+      },
+      allocations: [],
+    });
+    await repository.createPaymentImportReviewRecord({
+      id: "payment-import-review-supported-now-ineligible",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      providerLabel: "synthetic_processor",
+      eventFamily: "deposit",
+      eventStatus: "deposit_observed",
+      externalEventId: "evt_synthetic_supported_now_ineligible",
+      externalDepositId: "dep_synthetic_supported_now_ineligible",
+      amountCents: 5000,
+      currency: "CAD",
+      observedAt: "2026-06-19T16:10:00.000Z",
+      importedAt: "2026-06-19T16:12:00.000Z",
+      importedByUserId: "user-licensee",
+      candidateInvoiceId: "invoice-001",
+      candidateManualPaymentId: "payment-import-review-manual-now-received",
+      reviewState: "needs_review",
+      normalizedEvidenceFingerprint: "synthetic-supported-now-ineligible-fingerprint",
+      boundaries: defaultPaymentImportReviewBoundary(),
+      updatedAt: "2026-06-19T16:12:00.000Z",
+    });
+    await repository.createPaymentImportDepositMatchReview({
+      id: "deposit-match-review-supported-now-ineligible",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      paymentImportReviewRecordId: "payment-import-review-supported-now-ineligible",
+      candidateManualPaymentId: "payment-import-review-manual-now-received",
+      candidateInvoiceId: "invoice-001",
+      decision: "candidate_supported",
+      reason: "candidate_evidence_matches",
+      importAmountCents: 5000,
+      manualPaymentAmountCents: 5000,
+      currency: "CAD",
+      candidateManualPaymentStatus: "pending_reconciliation",
+      reviewerEvidencePresent: true,
+      idempotencyKey: "synthetic-supported-now-ineligible-key",
+      decisionFingerprint: "synthetic-supported-now-ineligible-fingerprint",
+      boundaries: defaultPaymentImportDepositMatchReviewBoundary(),
+      reviewedByUserId: "user-licensee",
+      reviewedAt: "2026-06-19T16:15:00.000Z",
+      createdAt: "2026-06-19T16:15:00.000Z",
+    });
+
     const list = await server.inject({
       method: "GET",
       url: "/api/billing/payment-import-review-records?matterId=matter-001",
@@ -2360,9 +2422,9 @@ describe("billing routes", () => {
         }>;
       }>().summary,
     ).toMatchObject({
-      paymentImportReviewCount: 8,
-      depositMatchReviewCount: 5,
-      depositMatchDecisionCount: 1,
+      paymentImportReviewCount: 9,
+      depositMatchReviewCount: 6,
+      depositMatchDecisionCount: 2,
       depositMatchReconciliationReadyCount: 1,
       refundReviewCueCount: 1,
       chargebackReviewCueCount: 1,
@@ -2386,6 +2448,7 @@ describe("billing routes", () => {
               reconciliationReadiness?: {
                 eligible: boolean;
                 reason: string;
+                reasonDetails: Array<{ code: string; status: string; label: string }>;
                 reviewAction: string;
                 mutation: string;
               };
@@ -2409,12 +2472,45 @@ describe("billing routes", () => {
           reconciliationReadiness: expect.objectContaining({
             eligible: true,
             reason: "supported_candidate_ready",
+            reasonDetails: expect.arrayContaining([
+              {
+                code: "latest_supported_decision",
+                status: "satisfied",
+                label: "Latest decision supports candidate",
+              },
+              {
+                code: "invoice_balance_covers_payment",
+                status: "satisfied",
+                label: "Invoice balance covers payment",
+              },
+            ]),
             reviewAction: "manual_payment_reconcile_review",
             mutation: "none",
           }),
           boundaries: expect.objectContaining({
             rawProviderPayloadRetained: false,
             trustPosting: "none",
+          }),
+        }),
+        expect.objectContaining({
+          id: "payment-import-review-supported-now-ineligible",
+          candidateManualPaymentId: "payment-import-review-manual-now-received",
+          latestDepositMatchReview: expect.objectContaining({
+            decision: "candidate_supported",
+            reason: "candidate_evidence_matches",
+          }),
+          reconciliationReadiness: expect.objectContaining({
+            eligible: false,
+            reason: "manual_payment_not_pending",
+            reasonDetails: expect.arrayContaining([
+              {
+                code: "manual_payment_pending",
+                status: "blocked",
+                label: "Manual payment remains pending",
+              },
+            ]),
+            reviewAction: "manual_payment_reconcile_review",
+            mutation: "none",
           }),
         }),
         expect.objectContaining({
