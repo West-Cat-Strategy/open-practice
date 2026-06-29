@@ -1,4 +1,12 @@
 import { sanitizeDraftHtml } from "./drafting.js";
+export {
+  compareEmailTemplateDraftWithPublishedVersion,
+  type EmailTemplateComparableDraft,
+  type EmailTemplateComparablePublishedVersion,
+  type EmailTemplateComparisonField,
+  type EmailTemplateComparisonFieldName,
+  type EmailTemplateDraftPublishedVersionComparison,
+} from "./email-template-draft-comparison.js";
 
 export type EmailTemplateDraftStatus = "draft" | "archived";
 

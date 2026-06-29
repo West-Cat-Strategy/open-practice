@@ -658,6 +658,41 @@
   color: var(--warning);
 }
 
+.email-template-compare {
+  display: grid;
+  gap: 10px;
+}
+
+.email-template-compare-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.email-template-compare-summary,
+.email-template-compare-row {
+  align-items: flex-start;
+}
+
+.email-template-compare-row span {
+  gap: 6px;
+}
+
+.email-template-compare-row pre {
+  max-height: 140px;
+  margin: 0;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-muted);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  padding: 8px;
+}
+
 .activity-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(156px, 1fr));
