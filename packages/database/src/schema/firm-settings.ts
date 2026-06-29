@@ -7,6 +7,7 @@ import {
   timestamp,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+import type { DocumentDispositionReviewScheduleProfile } from "@open-practice/domain";
 import { firms, users } from "./core.js";
 
 export const firmSettings = pgTable("firm_settings", {
@@ -38,6 +39,9 @@ export const firmSettings = pgTable("firm_settings", {
   website: text("website"),
   description: text("description"),
   businessNumber: text("business_number"),
+  dispositionReviewScheduleProfile: jsonb(
+    "disposition_review_schedule_profile",
+  ).$type<DocumentDispositionReviewScheduleProfile>(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

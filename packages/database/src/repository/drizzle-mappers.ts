@@ -17,6 +17,7 @@ import type {
 import {
   canShareDocumentThroughPortal,
   clientTrustBalanceByMatter,
+  normalizeDocumentDispositionReviewScheduleProfile,
   type AiOperationalProposalRecord,
   type AccessLogRecord,
   type ActivityTimelineEntry,
@@ -649,6 +650,9 @@ export function mapFirmSettingsRow(row: typeof schema.firmSettings.$inferSelect)
     website: row.website ?? undefined,
     description: row.description ?? undefined,
     businessNumber: row.businessNumber ?? undefined,
+    dispositionReviewScheduleProfile: normalizeDocumentDispositionReviewScheduleProfile(
+      row.dispositionReviewScheduleProfile,
+    ),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };

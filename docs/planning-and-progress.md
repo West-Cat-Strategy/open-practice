@@ -281,6 +281,17 @@ route, command, migration, audit write, provider payload retention, object delet
 claim. Proof is recorded in
 [document disposition metadata proof](validation/OP_DOCUMENT_DISPOSITION_METADATA_PROOF_2026-06-29.md).
 
+The 2026-06-29 `feat/document-disposition-schedule-profile-20260629` branch in
+`/Users/bryan/projects/open-practice-disposition-schedule-profile-20260629` adds the smallest
+firm-configured disposition review schedule profile slice. A nullable, bounded default profile is
+stored in firm settings behind staff-only read and `firm:update` write routes, then projected
+read-only into the existing workbench `retentionHoldReview.dispositionMetadata.scheduleProfile`
+with fixed no-destructive-action/no-deadline/no-compliance flags. The Documents dashboard renders
+the profile as reviewer context only. It does not delete objects, enforce retention deadlines,
+override legal holds, retain raw/export bodies, add public/client controls, or make compliance
+claims. Proof is recorded in
+[document disposition schedule profile proof](validation/OP_DOCUMENT_DISPOSITION_SCHEDULE_PROFILE_PROOF_2026-06-29.md).
+
 The 2026-06-20 `recovery/inbound-email-operator-replay-20260620` branch adds the smallest
 operator-reviewed inbound-email recovery action: owner-only
 `POST /api/inbound-email/parser-jobs/:jobId/replay-request` marks failed/dead-letter parser jobs

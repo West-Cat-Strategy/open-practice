@@ -4,6 +4,7 @@ import {
   buildDocumentMetadataSearchPosture,
   buildDocumentMetadataTags,
   buildDocumentReviewSuggestions,
+  normalizeDocumentDispositionReviewScheduleProfile,
 } from "./document-suggestions.js";
 import type { DocumentRecord, Matter } from "./models.js";
 import type { DocumentTextExtractionRecord } from "./operations.js";
@@ -410,6 +411,70 @@ describe("document review suggestions", () => {
       rawPayloadRetention: false,
       complianceClaim: false,
     });
+    expect(noDecision.dispositionMetadata).not.toHaveProperty("scheduleProfile");
+  });
+
+  it("projects a bounded firm disposition schedule profile without changing hold blockers", () => {
+    const rawProfile = {
+      profileKey: "ignored_custom_key",
+      label: "Synthetic default disposition review",
+      reviewCadence: "quarterly",
+      reviewAfterDays: 180,
+      minimumRetainDays: 365,
+      rawPayload: "Synthetic private profile payload must stay private.",
+      exportBody: "Synthetic retained export body must stay private.",
+      storageKey: "matters/matter-001/private-profile.json",
+    };
+    expect(normalizeDocumentDispositionReviewScheduleProfile(rawProfile)).toEqual({
+      profileKey: "default",
+      label: "Synthetic default disposition review",
+      reviewCadence: "quarterly",
+      reviewAfterDays: 180,
+      minimumRetainDays: 365,
+    });
+
+    const posture = buildDocumentRetentionHoldReview({
+      document: { ...baseDocument, legalHold: true },
+      reviewSuggestions: buildDocumentReviewSuggestions({
+        document: { ...baseDocument, legalHold: true },
+        sameMatterDocuments: [{ ...baseDocument, legalHold: true }],
+      }),
+      dispositionReviewScheduleProfile:
+        normalizeDocumentDispositionReviewScheduleProfile(rawProfile),
+    });
+
+    expect(posture).toMatchObject({
+      status: "blocked_by_hold",
+      blockers: ["legal_hold"],
+      dispositionMetadata: {
+        candidateState: "blocked_by_hold",
+        readyForReviewerPacket: false,
+        scheduleProfile: {
+          source: "firm_settings",
+          profileKey: "default",
+          label: "Synthetic default disposition review",
+          reviewCadence: "quarterly",
+          reviewAfterDays: 180,
+          minimumRetainDays: 365,
+          destructiveAction: false,
+          retentionDeadlineEnforced: false,
+          complianceClaim: false,
+        },
+        destructiveAction: false,
+        objectDeletion: false,
+        retentionDeadlineEnforced: false,
+        legalHoldReleaseCommand: false,
+        retainedExportBody: false,
+        rawPayloadRetention: false,
+        complianceClaim: false,
+      },
+    });
+    expect(JSON.stringify(posture.dispositionMetadata)).not.toContain('"rawPayload":');
+    expect(JSON.stringify(posture.dispositionMetadata)).not.toContain('"exportBody":');
+    expect(JSON.stringify(posture.dispositionMetadata)).not.toContain("synthetic private payload");
+    expect(JSON.stringify(posture.dispositionMetadata)).not.toContain("synthetic export body");
+    expect(JSON.stringify(posture.dispositionMetadata)).not.toContain("storageKey");
+    expect(JSON.stringify(posture.dispositionMetadata)).not.toContain("private-profile");
   });
 
   it("builds metadata-only tags and search summaries without OCR body text", () => {

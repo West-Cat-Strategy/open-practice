@@ -167,6 +167,49 @@ describe("audit event taxonomy", () => {
     );
   });
 
+  it("classifies disposition schedule profile settings metadata as firm-scoped and bounded", () => {
+    const classification = classifyAuditEvent(
+      auditEvent({
+        action: "firm.disposition_review_schedule_profile.updated",
+        resourceType: "firm",
+        resourceId: "firm-west-legal",
+        metadata: {
+          profileConfigured: true,
+          reviewCadence: "quarterly",
+          reviewAfterDaysPresent: true,
+          minimumRetainDaysPresent: true,
+          destructiveAction: false,
+          retentionDeadlineEnforced: false,
+          legalHoldOverride: false,
+          retainedExportBody: false,
+          rawPayloadRetention: false,
+          complianceClaim: false,
+        },
+      }),
+    );
+
+    expect(classification).toMatchObject({
+      category: "documents",
+      known: true,
+      matterScope: "firm",
+      resourceTypeMatches: true,
+    });
+    expect(classification.metadataHints.resource).toEqual(
+      expect.arrayContaining([
+        "profileConfigured",
+        "reviewCadence",
+        "reviewAfterDaysPresent",
+        "minimumRetainDaysPresent",
+        "destructiveAction",
+        "retentionDeadlineEnforced",
+        "legalHoldOverride",
+        "retainedExportBody",
+        "rawPayloadRetention",
+        "complianceClaim",
+      ]),
+    );
+  });
+
   it("classifies calendar scheduling request audit metadata as redacted review hints", () => {
     const classification = classifyAuditEvent(
       auditEvent({

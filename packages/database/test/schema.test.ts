@@ -917,6 +917,7 @@ describe("database schema hardening", () => {
         "trust_account_label",
         "trust_funds_caveat_accepted_at",
         "trust_funds_caveat_accepted_by_user_id",
+        "disposition_review_schedule_profile",
       ]),
     );
   });

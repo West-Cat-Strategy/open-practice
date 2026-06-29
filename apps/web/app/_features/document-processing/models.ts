@@ -359,6 +359,20 @@ export type DocumentDispositionCandidateState =
   | "reviewed_keep"
   | "reviewed_superseded";
 
+export type DocumentDispositionReviewCadence = "manual_review" | "monthly" | "quarterly" | "annual";
+
+export interface DocumentDispositionScheduleProfileProjection {
+  source: "firm_settings";
+  profileKey: "default";
+  label: string;
+  reviewCadence: DocumentDispositionReviewCadence;
+  reviewAfterDays?: number;
+  minimumRetainDays?: number;
+  destructiveAction: false;
+  retentionDeadlineEnforced: false;
+  complianceClaim: false;
+}
+
 export interface DocumentDispositionMetadata {
   candidateState: DocumentDispositionCandidateState;
   readyForReviewerPacket: boolean;
@@ -371,6 +385,7 @@ export interface DocumentDispositionMetadata {
   sourceCueCounts: Record<DocumentReviewSuggestionGroup | "total", number>;
   reviewAfter?: string;
   minimumRetainThrough?: string;
+  scheduleProfile?: DocumentDispositionScheduleProfileProjection;
   destructiveAction: false;
   objectDeletion: false;
   retentionDeadlineEnforced: false;

@@ -110,6 +110,40 @@ describe("repository first-run setup", () => {
     await expect(repository.listMattersForUser(input.owner)).resolves.toHaveLength(1);
   });
 
+  it("updates and clears bounded disposition review schedule profile settings", async () => {
+    const repository = new InMemoryOpenPracticeRepository({ seedSampleData: false });
+    const input = setupInput();
+    await repository.completeFirstRunSetup(input);
+    const rawProfile = {
+      profileKey: "default" as const,
+      label: "Synthetic default disposition review",
+      reviewCadence: "quarterly" as const,
+      reviewAfterDays: 180,
+      minimumRetainDays: 365,
+      rawPayload: "Synthetic private profile payload must stay private.",
+    };
+
+    const updated = await repository.updateDispositionReviewScheduleProfile({
+      firmId: input.firm.id,
+      profile: rawProfile,
+    });
+
+    expect(updated.dispositionReviewScheduleProfile).toEqual({
+      profileKey: "default",
+      label: "Synthetic default disposition review",
+      reviewCadence: "quarterly",
+      reviewAfterDays: 180,
+      minimumRetainDays: 365,
+    });
+    expect(JSON.stringify(updated.dispositionReviewScheduleProfile)).not.toContain("rawPayload");
+
+    const cleared = await repository.updateDispositionReviewScheduleProfile({
+      firmId: input.firm.id,
+      profile: undefined,
+    });
+    expect(cleared.dispositionReviewScheduleProfile).toBeUndefined();
+  });
+
   it("creates first-run provider settings through the existing provider settings store", async () => {
     const repository = new InMemoryOpenPracticeRepository({ seedSampleData: false });
     const input = setupInput();

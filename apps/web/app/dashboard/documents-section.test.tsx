@@ -480,6 +480,17 @@ describe("DocumentsSection", () => {
           readyForReviewerPacket: true,
           reviewAfter: "2026-07-01T00:00:00.000Z",
           minimumRetainThrough: "2026-08-01T00:00:00.000Z",
+          scheduleProfile: {
+            source: "firm_settings" as const,
+            profileKey: "default" as const,
+            label: "Synthetic default disposition review",
+            reviewCadence: "quarterly" as const,
+            reviewAfterDays: 180,
+            minimumRetainDays: 365,
+            destructiveAction: false as const,
+            retentionDeadlineEnforced: false as const,
+            complianceClaim: false as const,
+          },
         },
       },
     };
@@ -497,6 +508,9 @@ describe("DocumentsSection", () => {
     expect(html).toContain("disposition ready for reviewer packet");
     expect(html).toContain("review after 2026-07-01T00:00:00.000Z");
     expect(html).toContain("retain through 2026-08-01T00:00:00.000Z");
+    expect(html).toContain("profile Synthetic default disposition review (quarterly)");
+    expect(html).toContain("profile review after 180 days");
+    expect(html).toContain("profile retain 365 days");
     expect(html).toContain("no deletion");
     expect(html).toContain("no deadline enforcement");
     expect(html.match(/data-action-key="document_retention_hold_review\.record"/g)).toHaveLength(1);
