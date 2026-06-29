@@ -148,20 +148,25 @@ surface.
 - **Private document conversion and annotation research spike**
   - **Status:** Metadata-only conversion review shipped on 2026-06-16; the 2026-06-27
     follow-up runtime depth is the review-decision command over existing conversion-review
-    artifacts. The 2026-06-17 provider-backed boundary proof still records the reviewed design
+    artifacts. The 2026-06-29 semantic-readiness packet now marks only existing same-matter
+    `ready_for_review` or `reviewed` conversion-review artifacts as ready for later reviewer-only
+    semantic-review work; rejected, queued, failed, missing, draft, and not-requested states remain
+    blocked. The 2026-06-17 provider-backed boundary proof still records the reviewed design
     guardrails for future conversion, annotation, chunking, embedding, and semantic-review slices.
-    Provider conversion remains a separate future implementation.
+    Provider conversion and semantic-review execution remain separate future implementations.
   - **Shipped boundary:** Open Practice now queues `document_conversion_review` jobs after verified
     upload, safe scan posture, and completed OCR extraction, then surfaces posture in Documents and
     Research through `document_analysis_status` artifacts. Staff can now mark an existing ready
     artifact `reviewed` or `rejected` through an explicit matter-scoped API command; Documents and
     Research now show only safe latest-decision/history cues derived from terminal artifact review
-    fields. Retained state is limited to OP-authored redacted posture,
-    `summaryPosture: op_authored_metadata_only`, counts, lengths, statuses, policy flags, and
-    review metadata; raw client text, raw converted Markdown, raw annotations, provider payloads,
-    prompts, sensitive chunks, embeddings, storage keys, object bodies, free-form generated
-    summaries, and private excerpts must not enter job metadata, audit metadata, API posture,
-    artifacts, projections, or proof notes.
+    fields, plus a safe `semanticReviewReadiness` packet with only IDs, counts/lengths, statuses,
+    and fixed no-provider/no-raw-text/no-Markdown/no-annotation/no-chunk/no-embedding/no-prompt/
+    no-payload/no-storage/no-summary/no-downstream-mutation flags. Retained state is limited to
+    OP-authored redacted posture, `summaryPosture: op_authored_metadata_only`, counts, lengths,
+    statuses, policy flags, and review metadata; raw client text, raw converted Markdown, raw
+    annotations, provider payloads, prompts, sensitive chunks, embeddings, storage keys, object
+    bodies, free-form generated summaries, and private excerpts must not enter job metadata, audit
+    metadata, API posture, artifacts, projections, or proof notes.
   - **Remaining boundary:** Provider-backed conversion, annotation bodies, chunk storage,
     embeddings, retained Markdown, provider payload retention, and external semantic-review
     providers remain out of scope until a later runtime slice proves the same metadata-only,
