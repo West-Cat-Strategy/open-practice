@@ -543,6 +543,58 @@
   gap: 8px;
 }
 
+.policy-preview-matrix-shell {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow-x: auto;
+}
+
+.policy-preview-matrix {
+  border-collapse: collapse;
+  min-width: 620px;
+  width: 100%;
+}
+
+.policy-preview-matrix th,
+.policy-preview-matrix td {
+  border-bottom: 1px solid var(--line);
+  padding: 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.policy-preview-matrix thead th {
+  background: var(--surface-muted);
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.policy-preview-matrix tbody th {
+  font-size: 0.84rem;
+  white-space: nowrap;
+}
+
+.policy-preview-matrix td {
+  min-width: 132px;
+}
+
+.policy-preview-matrix td strong,
+.policy-preview-matrix td small {
+  display: block;
+}
+
+.policy-preview-matrix td small {
+  color: var(--muted);
+  font-size: 0.76rem;
+  overflow-wrap: anywhere;
+}
+
+.policy-preview-matrix tbody tr:last-child th,
+.policy-preview-matrix tbody tr:last-child td {
+  border-bottom: 0;
+}
+
 .audit-projection-summary {
   border: 1px solid var(--line);
   border-radius: 8px;

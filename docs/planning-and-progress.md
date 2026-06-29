@@ -30,6 +30,14 @@ would require policy if maker-checker were later enabled. Policy remains disable
 semantics stay unchanged, and the branch does not approve, reject, auto-post, settle, match bank
 feeds, or claim jurisdiction-certified accounting. Proof is recorded in
 [Trust Controls maker-checker readiness proof](validation/OP_TRUST_CONTROLS_MAKER_CHECKER_READINESS_PROOF_2026-06-28.md).
+The 2026-06-29 `feat/trust-controls-policy-preview-matrix-20260629` follow-up adds a read-only
+policy preview matrix under the same readiness payload. The matrix cross-tabs existing Trust
+Controls categories against safe matter IDs that already appear in readiness rows; account- or
+firm-level cues remain category-only unless current matter-bearing evidence supports a safe cell.
+Policy remains disabled, direct posting semantics stay unchanged, and the branch does not approve,
+reject, post, settle, auto-match, connect bank feeds, or claim certified accounting. Proof is
+recorded in
+[Trust Controls policy preview matrix proof](validation/OP_TRUST_CONTROLS_POLICY_PREVIEW_MATRIX_PROOF_2026-06-29.md).
 
 The 2026-06-29 `integrate/mainline-consolidation-20260629` branch consolidates the currently active
 local lanes for legal-research action descriptors, document disposition metadata, OP-T158 email

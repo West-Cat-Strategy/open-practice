@@ -1203,6 +1203,30 @@ describe("ledger routes", () => {
           reasonCodes: string[];
           reviewOnly: true;
         }>;
+        policyPreviewMatrix: {
+          columns: Array<{ category: string; label: string; reviewOnly: true }>;
+          rows: Array<{ matterId: string; reviewOnly: true }>;
+          cells: Array<{
+            matterId: string;
+            category: string;
+            readiness: string;
+            reasonCodes: string[];
+            reviewCueCount: number;
+            pendingCount: number;
+            exceptionCount: number;
+            amountCents: number;
+            reviewOnly: true;
+          }>;
+          policy: {
+            makerCheckerPolicyEnabled: false;
+            directPostingSemantics: "unchanged";
+            approvalMutation: false;
+            automaticTrustPosting: false;
+            settlementAutomation: false;
+            bankFeedMatching: false;
+            jurisdictionCertifiedAccounting: false;
+          };
+        };
         policy: {
           makerCheckerPolicyEnabled: false;
           directPostingSemantics: "unchanged";
@@ -1309,6 +1333,61 @@ describe("ledger routes", () => {
         reviewOnly: true,
       }),
     ]);
+    expect(body.makerCheckerReadiness.policyPreviewMatrix.rows).toEqual([
+      { matterId: "matter-001", reviewOnly: true },
+    ]);
+    expect(
+      body.makerCheckerReadiness.policyPreviewMatrix.columns.map((column) => column.category),
+    ).toEqual([
+      "ledger",
+      "statement_import",
+      "exception",
+      "trust_transfer",
+      "posting_request",
+      "payment_import",
+    ]);
+    const matrixCellsByMatterAndCategory = new Map(
+      body.makerCheckerReadiness.policyPreviewMatrix.cells.map((cell) => [
+        `${cell.matterId}:${cell.category}`,
+        cell,
+      ]),
+    );
+    expect(matrixCellsByMatterAndCategory.get("matter-001:trust_transfer")).toMatchObject({
+      readiness: "policy_required_if_enabled",
+      reasonCodes: ["pending_trust_transfer_request"],
+      reviewCueCount: 1,
+      pendingCount: 1,
+      exceptionCount: 0,
+      amountCents: 13230,
+      reviewOnly: true,
+    });
+    expect(matrixCellsByMatterAndCategory.get("matter-001:payment_import")).toMatchObject({
+      readiness: "policy_required_if_enabled",
+      reasonCodes: ["payment_import_review_required"],
+      reviewCueCount: 1,
+      pendingCount: 1,
+      exceptionCount: 0,
+      amountCents: 13230,
+      reviewOnly: true,
+    });
+    expect(matrixCellsByMatterAndCategory.get("matter-001:posting_request")).toMatchObject({
+      readiness: "clear",
+      reasonCodes: [],
+      reviewCueCount: 0,
+      pendingCount: 0,
+      exceptionCount: 0,
+      amountCents: 0,
+      reviewOnly: true,
+    });
+    expect(body.makerCheckerReadiness.policyPreviewMatrix.policy).toMatchObject({
+      makerCheckerPolicyEnabled: false,
+      directPostingSemantics: "unchanged",
+      approvalMutation: false,
+      automaticTrustPosting: false,
+      settlementAutomation: false,
+      bankFeedMatching: false,
+      jurisdictionCertifiedAccounting: false,
+    });
     expect(body.makerCheckerReadiness.policy).toMatchObject({
       makerCheckerPolicyEnabled: false,
       directPostingSemantics: "unchanged",
