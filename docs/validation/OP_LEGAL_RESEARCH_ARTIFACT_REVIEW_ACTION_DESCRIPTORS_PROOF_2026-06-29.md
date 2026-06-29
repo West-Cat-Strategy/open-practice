@@ -38,22 +38,69 @@ Preserved boundaries:
 
 ## Validation
 
-| Command                                                                                                       | Status  | Notes                                                                                                                                                                 |
-| ------------------------------------------------------------------------------------------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm --filter @open-practice/domain exec vitest run src/operational-actions.test.ts --reporter=verbose`      | Pass    | Focused descriptor tests covered available, busy, cross-action busy, permission, non-ready, workspace unavailable, compact reason text, and synthetic-data redaction. |
-| `pnpm --filter @open-practice/domain build`                                                                   | Pass    | Rebuilt `@open-practice/domain/operational-actions` for web subpath consumers.                                                                                        |
-| `pnpm --filter @open-practice/web exec vitest run app/dashboard/research-section.test.tsx --reporter=verbose` | Pass    | Focused static render tests covered descriptor-backed action keys, aria/title status text, busy labels, disabled buttons, and hidden read-only controls.              |
-| `pnpm verify:select -- --files <final changed paths>`                                                         | Pending | Run after final path confirmation.                                                                                                                                    |
-| `pnpm --filter @open-practice/domain test`                                                                    | Pending | Required package test sweep.                                                                                                                                          |
-| `pnpm --filter @open-practice/domain typecheck`                                                               | Pending | Required package typecheck.                                                                                                                                           |
-| `pnpm --filter @open-practice/domain build`                                                                   | Pending | Required package build rerun after final path confirmation.                                                                                                           |
-| `pnpm --filter @open-practice/web test`                                                                       | Pending | Required web package test sweep.                                                                                                                                      |
-| `pnpm --filter @open-practice/web typecheck`                                                                  | Pending | Required web package typecheck.                                                                                                                                       |
-| `pnpm proof:reconcile`                                                                                        | Pending | Required proof reconciliation.                                                                                                                                        |
-| `pnpm docs:check`                                                                                             | Pending | Required docs check.                                                                                                                                                  |
-| `pnpm policy:check`                                                                                           | Pending | Required policy check.                                                                                                                                                |
+- Pass: `pnpm verify:select -- --files <final changed paths>`. Selector recommended
+  `pnpm architecture:check`, `pnpm format:check`, `pnpm docs:check`, `pnpm policy:check`,
+  domain test/typecheck/build, API/provider/worker/web tests, web typecheck, and `pnpm build`.
+- Pass: `pnpm architecture:check`. Architecture import policy passed with 461 workspace import
+  edges reviewed.
+- Blocked because unrelated dirty proof formatting remains outside this slice: `pnpm format:check`
+  fails on `docs/validation/OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-28.md`.
+- Pass: `pnpm exec prettier --check <final changed paths>`. All owned final files use Prettier
+  style after formatting `apps/web/app/dashboard/research-section.test.tsx`.
+- Pass:
+  `pnpm --filter @open-practice/domain exec vitest run src/operational-actions.test.ts --reporter=verbose`.
+  Focused descriptor tests covered available, busy, cross-action busy, permission, non-ready,
+  workspace unavailable, compact reason text, and synthetic-data redaction.
+- Pass: `pnpm --filter @open-practice/domain test`. 33 test files passed; 261 tests passed.
+- Pass: `pnpm --filter @open-practice/domain typecheck`. Domain typecheck completed with no errors.
+- Pass: `pnpm --filter @open-practice/domain build`. Domain build completed with no errors and
+  rebuilt `@open-practice/domain/operational-actions` for web subpath consumers.
+- Blocked because the full API suite reported one timeout in `src/routes/caldav.test.ts`:
+  `pnpm --filter @open-practice/api test`. 42 files and 620 tests passed, 1 test timed out.
+- Pass:
+  `pnpm --filter @open-practice/api exec vitest run src/routes/caldav.test.ts --reporter=verbose`.
+  Isolated retry passed the previously timed-out CalDAV route test file with 8 tests passed.
+- Pass: `pnpm --filter @open-practice/providers test`. 13 test files passed; 37 tests passed.
+- Pass: `pnpm --filter @open-practice/worker test`. 6 test files passed; 54 tests passed.
+- Pass:
+  `pnpm --filter @open-practice/web exec vitest run app/dashboard/research-section.test.tsx --reporter=verbose`.
+  Focused static render tests covered descriptor-backed action keys, aria/title status text, busy
+  labels, disabled buttons, and hidden read-only controls.
+- Pass: `pnpm --filter @open-practice/web test`. 46 test files passed; 241 tests passed.
+- Pass: `pnpm --filter @open-practice/web typecheck`. Web typecheck completed with no errors.
+- Pass: `pnpm build`. Initial attempts were blocked by an active concurrent Next build lock in this
+  checkout; after the live build exited and the lock cleared, root Turbo build completed with all 6
+  package builds successful.
+- Pass: `pnpm docs:check`. Documentation link validation passed after final proof-note updates.
+- Blocked because the toolchain policy failed before later policy stages: `pnpm policy:check`.
+  Local `pnpm --version` is `11.7.0`, but `packageManager` requires `11.5.3`.
+- Blocked because the bare command now requires `--proof` and a file/base/dirty selector:
+  `pnpm proof:reconcile`. Scoped proof reconciliation is recorded separately.
+- Pass:
+  `pnpm proof:reconcile -- --proof docs/validation/OP_LEGAL_RESEARCH_ARTIFACT_REVIEW_ACTION_DESCRIPTORS_PROOF_2026-06-29.md --files <final changed paths>`.
+  Validation proof reconciliation passed for the exact final path set.
 
 ## Selector Notes
 
-Pending selector output will be recorded here after `pnpm verify:select -- --files` is run against
-the exact final changed paths above.
+`pnpm verify:select -- --files apps/web/app/dashboard-client.tsx
+apps/web/app/dashboard/research-section.test.tsx apps/web/app/dashboard/research-section.tsx
+docs/improvement-opportunities.md docs/planning-and-progress.md
+docs/validation/OP_LEGAL_RESEARCH_ARTIFACT_REVIEW_ACTION_DESCRIPTORS_PROOF_2026-06-29.md
+docs/validation/README.md packages/domain/src/operational-actions.test.ts
+packages/domain/src/operational-actions.ts`
+
+Recommended validation commands:
+
+- `pnpm architecture:check`
+- `pnpm format:check`
+- `pnpm docs:check`
+- `pnpm policy:check`
+- `pnpm --filter @open-practice/domain test`
+- `pnpm --filter @open-practice/domain typecheck`
+- `pnpm --filter @open-practice/domain build`
+- `pnpm --filter @open-practice/api test`
+- `pnpm --filter @open-practice/providers test`
+- `pnpm --filter @open-practice/worker test`
+- `pnpm --filter @open-practice/web test`
+- `pnpm --filter @open-practice/web typecheck`
+- `pnpm build`
