@@ -1,5 +1,6 @@
 import type {
   PaymentImportDepositMatchReviewRecord,
+  PaymentImportRefundChargebackReviewRecord,
   PaymentImportReviewRecord,
 } from "@open-practice/domain";
 
@@ -16,6 +17,13 @@ export interface PaymentImportDepositMatchReviewListOptions {
   paymentImportReviewRecordId?: string;
   candidateManualPaymentId?: string;
   decision?: PaymentImportDepositMatchReviewRecord["decision"];
+}
+
+export interface PaymentImportRefundChargebackReviewListOptions {
+  matterId?: string;
+  paymentImportReviewRecordId?: string;
+  category?: PaymentImportRefundChargebackReviewRecord["category"];
+  decision?: PaymentImportRefundChargebackReviewRecord["decision"];
 }
 
 export interface PaymentImportReviewRecordRepository {
@@ -37,4 +45,11 @@ export interface PaymentImportReviewRecordRepository {
     firmId: string,
     options?: PaymentImportDepositMatchReviewListOptions,
   ): Promise<PaymentImportDepositMatchReviewRecord[]>;
+  createPaymentImportRefundChargebackReview(
+    record: PaymentImportRefundChargebackReviewRecord,
+  ): Promise<PaymentImportRefundChargebackReviewRecord>;
+  listPaymentImportRefundChargebackReviews(
+    firmId: string,
+    options?: PaymentImportRefundChargebackReviewListOptions,
+  ): Promise<PaymentImportRefundChargebackReviewRecord[]>;
 }

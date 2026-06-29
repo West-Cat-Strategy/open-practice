@@ -206,6 +206,41 @@ export interface PaymentImportRefundChargebackReviewCue {
   clientNotification: "none";
 }
 
+export const paymentImportRefundChargebackReviewDecisions = [
+  "exception_confirmed",
+  "exception_rejected",
+  "needs_more_evidence",
+] as const;
+
+export type PaymentImportRefundChargebackReviewDecision =
+  (typeof paymentImportRefundChargebackReviewDecisions)[number];
+
+export const paymentImportRefundChargebackReviewReasons = [
+  "refund_observed",
+  "chargeback_observed",
+  "duplicate_or_conflict",
+  "candidate_reference_mismatch",
+  "missing_reviewer_evidence",
+  "status_unclear",
+] as const;
+
+export type PaymentImportRefundChargebackReviewReason =
+  (typeof paymentImportRefundChargebackReviewReasons)[number];
+
+export interface PaymentImportRefundChargebackReviewBoundary {
+  rawProviderPayloadRetained: false;
+  refundArtifactRetained: false;
+  disputeArtifactRetained: false;
+  invoiceBalanceMutation: "none";
+  ledgerReversal: "none";
+  trustPosting: "none";
+  providerCommand: "none";
+  clientNotification: "none";
+  fundsMovement: "none";
+  refundHandling: "review_decision_only";
+  chargebackHandling: "review_decision_only";
+}
+
 export const paymentImportDepositMatchReviewDecisions = [
   "candidate_supported",
   "candidate_rejected",
@@ -563,6 +598,23 @@ export interface PaymentImportDepositMatchReviewRecord {
   createdAt: string;
 }
 
+export interface PaymentImportRefundChargebackReviewRecord {
+  id: string;
+  firmId: string;
+  matterId: string;
+  paymentImportReviewRecordId: string;
+  category: PaymentImportRefundChargebackReviewCategory;
+  decision: PaymentImportRefundChargebackReviewDecision;
+  reason: PaymentImportRefundChargebackReviewReason;
+  reviewerEvidencePresent: true;
+  idempotencyKey: string;
+  decisionFingerprint: string;
+  boundaries: PaymentImportRefundChargebackReviewBoundary;
+  reviewedByUserId: string;
+  reviewedAt: string;
+  createdAt: string;
+}
+
 export interface TrustTransferRequestRecord {
   id: string;
   firmId: string;
@@ -751,6 +803,22 @@ export function defaultPaymentImportDepositMatchReviewBoundary(): PaymentImportD
   };
 }
 
+export function defaultPaymentImportRefundChargebackReviewBoundary(): PaymentImportRefundChargebackReviewBoundary {
+  return {
+    rawProviderPayloadRetained: false,
+    refundArtifactRetained: false,
+    disputeArtifactRetained: false,
+    invoiceBalanceMutation: "none",
+    ledgerReversal: "none",
+    trustPosting: "none",
+    providerCommand: "none",
+    clientNotification: "none",
+    fundsMovement: "none",
+    refundHandling: "review_decision_only",
+    chargebackHandling: "review_decision_only",
+  };
+}
+
 export function paymentImportReviewHasConflict(
   record: Pick<PaymentImportReviewRecord, "conflictReason" | "duplicateOfRecordId">,
 ): boolean {
@@ -901,6 +969,16 @@ export function paymentImportRefundChargebackReviewCue(
     providerCommand: "none",
     clientNotification: "none",
   };
+}
+
+export function paymentImportRefundChargebackReviewDecisionMatchesCue(
+  input: Pick<PaymentImportRefundChargebackReviewRecord, "category" | "decision" | "reason">,
+): boolean {
+  if (input.decision !== "exception_confirmed") return true;
+  return (
+    (input.category === "refund" && input.reason === "refund_observed") ||
+    (input.category === "chargeback" && input.reason === "chargeback_observed")
+  );
 }
 
 export function hostedPaymentRequestPath(requestId: string): string {

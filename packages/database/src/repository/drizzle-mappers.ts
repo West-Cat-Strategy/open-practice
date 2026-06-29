@@ -88,6 +88,7 @@ import {
   type MatterParty,
   type PaymentAllocationRecord,
   type PaymentImportDepositMatchReviewRecord,
+  type PaymentImportRefundChargebackReviewRecord,
   type PaymentImportReviewRecord,
   type PortalGrant,
   type PortalDocumentAccess,
@@ -3345,6 +3346,37 @@ export function mapPaymentImportDepositMatchReviewRow(
 export function paymentImportDepositMatchReviewInsert(
   record: PaymentImportDepositMatchReviewRecord,
 ): typeof schema.paymentImportDepositMatchReviews.$inferInsert {
+  return {
+    ...record,
+    reviewedAt: new Date(record.reviewedAt),
+    createdAt: new Date(record.createdAt),
+  };
+}
+
+export function mapPaymentImportRefundChargebackReviewRow(
+  row: typeof schema.paymentImportRefundChargebackReviews.$inferSelect,
+): PaymentImportRefundChargebackReviewRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    matterId: row.matterId,
+    paymentImportReviewRecordId: row.paymentImportReviewRecordId,
+    category: row.category,
+    decision: row.decision,
+    reason: row.reason,
+    reviewerEvidencePresent: true,
+    idempotencyKey: row.idempotencyKey,
+    decisionFingerprint: row.decisionFingerprint,
+    boundaries: row.boundaries,
+    reviewedByUserId: row.reviewedByUserId,
+    reviewedAt: row.reviewedAt.toISOString(),
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+export function paymentImportRefundChargebackReviewInsert(
+  record: PaymentImportRefundChargebackReviewRecord,
+): typeof schema.paymentImportRefundChargebackReviews.$inferInsert {
   return {
     ...record,
     reviewedAt: new Date(record.reviewedAt),

@@ -3,13 +3,14 @@
 Date: 2026-06-17 PDT
 
 This packet defines the next safe boundary for future payment processor imports, deposit matching,
-refunds, and chargebacks. It began as docs-first policy groundwork and now has three narrow runtime
+refunds, and chargebacks. It began as docs-first policy groundwork and now has four narrow runtime
 slices: staff-only normalized payment import review records for processor evidence cues,
-staff-only deposit-match reviewer decisions over those normalized records, and provider-neutral
-refund/chargeback review cues derived from existing payment import records. The packet still does
-not authorize live settlement, payment processor webhooks, provider payload persistence, invoice
-mutation, trust posting, bank-feed connections, worker replay, provider commands, refund or
-chargeback commands, or deposit matching automation.
+staff-only deposit-match reviewer decisions over those normalized records, provider-neutral
+refund/chargeback review cues derived from existing payment import records, and staff-only
+refund/chargeback reviewer decisions over those cues. The packet still does not authorize live
+settlement, payment processor webhooks, provider payload persistence, invoice mutation, trust
+posting, bank-feed connections, worker replay, provider commands, refund or chargeback commands, or
+deposit matching automation.
 
 ## Source Posture
 
@@ -37,6 +38,11 @@ The boundary builds from the shipped payment and funds proofs:
   or `eventStatus="chargeback_observed"`. It adds dashboard counts, optional row cue metadata, and
   safe audit metadata only; it does not create workflows, provider commands, dispute packets,
   invoice mutations, ledger reversals, client notifications, trust transfers, or trust postings.
+- The 2026-06-29 refund/chargeback decision slice records staff enum decisions over those derived
+  cues only. It stores safe IDs, the derived category, enum decision/reason, idempotency posture,
+  reviewer timestamps/user IDs, and explicit no-side-effect flags without amounts, external payment
+  IDs, raw payloads, refund artifacts, dispute packets, notes, invoice mutation, ledger reversal,
+  trust posting, client notification, provider commands, or funds movement.
 
 ## First Runtime Slice
 
@@ -101,8 +107,36 @@ import review records only:
 - Audit metadata for payment-import creation may include cue category/status/action and boundary
   flags such as `refundHandling`, `chargebackHandling`, `providerCommand`, and
   `clientNotification`.
-- The slice adds no table, migration, provider adapter, worker, route, ledger command, invoice
-  mutation, dispute packet retention, trust posting, or client notification.
+- The cue surface itself adds no table, migration, provider adapter, worker, route, ledger command,
+  invoice mutation, dispute packet retention, trust posting, or client notification. The
+  2026-06-29 decision follow-up adds a table and staff routes for enum decisions only, not refund
+  or chargeback artifacts or commands.
+
+## Refund And Chargeback Decision Records
+
+The 2026-06-29 decision slice lets staff record an exception decision only when the existing import
+record derives a refund or chargeback cue:
+
+- `GET /api/billing/payment-import-review-records/:recordId/refund-chargeback-reviews` and
+  `POST /api/billing/payment-import-review-records/:recordId/refund-chargeback-reviews` list and
+  record staff-only decisions for one authorized payment import review record.
+- Supported source records are limited to `eventFamily="payment"` with
+  `eventStatus="refund_observed"` or `eventStatus="chargeback_observed"`.
+- Stored fields are provider-neutral and audit-safe: firm, matter, import-record, derived category,
+  enum decision/reason, idempotency key/fingerprint, reviewer user/timestamps, reviewer evidence
+  posture, and explicit no-side-effect boundary flags.
+- Decisions are limited to `exception_confirmed`, `exception_rejected`, and
+  `needs_more_evidence`; reasons are limited to `refund_observed`, `chargeback_observed`,
+  `duplicate_or_conflict`, `candidate_reference_mismatch`, `missing_reviewer_evidence`, and
+  `status_unclear`. `exception_confirmed` must use the reason that matches the derived cue
+  category.
+- Idempotency is keyed by `(firm, payment import review record, idempotency key)`: identical
+  reviewer evidence returns the existing decision, while changed evidence for the same key is
+  rejected for staff review.
+- Billing dashboard responses expose decision counts and the latest enum decision for staff
+  visibility only. This slice creates no dashboard form, refund workflow, dispute workflow,
+  reconciliation mutation, ledger reversal, invoice mutation, trust posting, client notification,
+  provider command, or funds movement.
 
 ## Safe Import Boundary
 
@@ -167,9 +201,11 @@ reconciliation records.
 
 ## Refund And Chargeback Boundary
 
-Refunds and chargebacks are exception review cues, not financial commands. The cue surface may show
-normalized status, amount, currency, timing, related import evidence, candidate invoice or payment
-references, cue counts, and safe cue metadata. It must not:
+Refunds and chargebacks are exception review cues and staff decision records, not financial
+commands. The cue surface may show normalized status, amount, currency, timing, related import
+evidence, candidate invoice or payment references, cue counts, and safe cue metadata. The decision
+record may store only safe IDs, derived category, enum decision/reason, idempotency posture,
+reviewer metadata, and explicit no-side-effect flags. These surfaces must not:
 
 - call provider refund or dispute APIs;
 - issue automatic invoice credits, write-offs, voids, reversals, or balance changes;
@@ -180,7 +216,8 @@ references, cue counts, and safe cue metadata. It must not:
   evidence bodies.
 
 Any later refund or chargeback command needs its own reviewer workflow, audit metadata allowlist,
-reversal semantics, accounting policy, trust/funds review posture, and selector-driven proof.
+reversal semantics, accounting policy, trust/funds review posture, funds movement controls, and
+selector-driven proof.
 
 ## Invoice And Trust Effects
 

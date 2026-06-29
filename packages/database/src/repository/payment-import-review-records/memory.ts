@@ -1,16 +1,19 @@
 import type {
   PaymentImportDepositMatchReviewRecord,
+  PaymentImportRefundChargebackReviewRecord,
   PaymentImportReviewRecord,
 } from "@open-practice/domain";
 import { IdempotencyKeyConflictError, clone } from "../contracts.js";
 import type {
   PaymentImportDepositMatchReviewListOptions,
+  PaymentImportRefundChargebackReviewListOptions,
   PaymentImportReviewRecordListOptions,
 } from "../payment-import-review-records-contracts.js";
 
 export interface MemoryPaymentImportReviewRecordStore {
   paymentImportReviewRecords: PaymentImportReviewRecord[];
   paymentImportDepositMatchReviews: PaymentImportDepositMatchReviewRecord[];
+  paymentImportRefundChargebackReviews: PaymentImportRefundChargebackReviewRecord[];
 }
 
 function matchesOptions(
@@ -38,6 +41,19 @@ function matchesDepositMatchReviewOptions(
       record.paymentImportReviewRecordId === options.paymentImportReviewRecordId) &&
     (!options.candidateManualPaymentId ||
       record.candidateManualPaymentId === options.candidateManualPaymentId) &&
+    (!options.decision || record.decision === options.decision)
+  );
+}
+
+function matchesRefundChargebackReviewOptions(
+  record: PaymentImportRefundChargebackReviewRecord,
+  options: PaymentImportRefundChargebackReviewListOptions,
+): boolean {
+  return (
+    (!options.matterId || record.matterId === options.matterId) &&
+    (!options.paymentImportReviewRecordId ||
+      record.paymentImportReviewRecordId === options.paymentImportReviewRecordId) &&
+    (!options.category || record.category === options.category) &&
     (!options.decision || record.decision === options.decision)
   );
 }
@@ -118,6 +134,44 @@ export function listMemoryPaymentImportDepositMatchReviews(
     store.paymentImportDepositMatchReviews
       .filter(
         (record) => record.firmId === firmId && matchesDepositMatchReviewOptions(record, options),
+      )
+      .sort((left, right) => Date.parse(right.reviewedAt) - Date.parse(left.reviewedAt)),
+  );
+}
+
+export function createMemoryPaymentImportRefundChargebackReview(
+  store: MemoryPaymentImportReviewRecordStore,
+  record: PaymentImportRefundChargebackReviewRecord,
+): PaymentImportRefundChargebackReviewRecord {
+  const existing = store.paymentImportRefundChargebackReviews.find(
+    (candidate) =>
+      candidate.firmId === record.firmId &&
+      candidate.paymentImportReviewRecordId === record.paymentImportReviewRecordId &&
+      candidate.idempotencyKey === record.idempotencyKey,
+  );
+  if (existing) {
+    if (existing.decisionFingerprint !== record.decisionFingerprint) {
+      throw new IdempotencyKeyConflictError();
+    }
+    return clone(existing);
+  }
+  store.paymentImportRefundChargebackReviews = [
+    ...store.paymentImportRefundChargebackReviews,
+    clone(record),
+  ];
+  return clone(record);
+}
+
+export function listMemoryPaymentImportRefundChargebackReviews(
+  store: MemoryPaymentImportReviewRecordStore,
+  firmId: string,
+  options: PaymentImportRefundChargebackReviewListOptions = {},
+): PaymentImportRefundChargebackReviewRecord[] {
+  return clone(
+    store.paymentImportRefundChargebackReviews
+      .filter(
+        (record) =>
+          record.firmId === firmId && matchesRefundChargebackReviewOptions(record, options),
       )
       .sort((left, right) => Date.parse(right.reviewedAt) - Date.parse(left.reviewedAt)),
   );

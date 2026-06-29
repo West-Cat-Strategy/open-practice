@@ -35,6 +35,7 @@ function buildSyntheticBillingDashboard(): BillingDashboardResponse {
       refundReviewCueCount: 1,
       chargebackReviewCueCount: 1,
       refundChargebackReviewCueCount: 2,
+      refundChargebackReviewDecisionCount: 2,
     },
     periodLocks: [
       {
@@ -348,6 +349,28 @@ function buildSyntheticBillingDashboard(): BillingDashboardResponse {
               providerCommand: "none",
               clientNotification: "none",
             },
+            refundChargebackReviewDecisionCount: 1,
+            latestRefundChargebackReview: {
+              id: "refund_chargeback_review_synthetic",
+              category: "refund",
+              decision: "exception_confirmed",
+              reason: "refund_observed",
+              reviewerEvidencePresent: true,
+              reviewedAt: "2026-06-07T01:10:00.000Z",
+              boundaries: {
+                rawProviderPayloadRetained: false,
+                refundArtifactRetained: false,
+                disputeArtifactRetained: false,
+                invoiceBalanceMutation: "none",
+                ledgerReversal: "none",
+                trustPosting: "none",
+                providerCommand: "none",
+                clientNotification: "none",
+                fundsMovement: "none",
+                refundHandling: "review_decision_only",
+                chargebackHandling: "review_decision_only",
+              },
+            },
           },
           {
             id: "payment_import_chargeback_review_synthetic",
@@ -385,6 +408,28 @@ function buildSyntheticBillingDashboard(): BillingDashboardResponse {
               trustPosting: "none",
               providerCommand: "none",
               clientNotification: "none",
+            },
+            refundChargebackReviewDecisionCount: 1,
+            latestRefundChargebackReview: {
+              id: "chargeback_review_synthetic",
+              category: "chargeback",
+              decision: "needs_more_evidence",
+              reason: "status_unclear",
+              reviewerEvidencePresent: true,
+              reviewedAt: "2026-06-07T01:20:00.000Z",
+              boundaries: {
+                rawProviderPayloadRetained: false,
+                refundArtifactRetained: false,
+                disputeArtifactRetained: false,
+                invoiceBalanceMutation: "none",
+                ledgerReversal: "none",
+                trustPosting: "none",
+                providerCommand: "none",
+                clientNotification: "none",
+                fundsMovement: "none",
+                refundHandling: "review_decision_only",
+                chargebackHandling: "review_decision_only",
+              },
             },
           },
         ],
@@ -508,6 +553,7 @@ describe("BillingSection", () => {
     expect(html).toContain("Review decisions");
     expect(html).toContain("Ready to reconcile");
     expect(html).toContain("Exception cues");
+    expect(html).toContain("Exception decisions");
     expect(html).toContain("Refund cues");
     expect(html).toContain("Chargeback cues");
     expect(html).toContain("deposit match review");
@@ -522,6 +568,10 @@ describe("BillingSection", () => {
     expect(html).toContain("refund review cue");
     expect(html).toContain("chargeback review cue");
     expect(html).toContain("Refund/chargeback review:");
+    expect(html).toContain("Latest exception decision:");
+    expect(html).toContain("exception confirmed");
+    expect(html).toContain("needs more evidence");
+    expect(html).toContain("No funds movement");
     expect(html).toContain("refund · needs review · No provider command");
     expect(html).toContain("chargeback · needs review · No provider command");
     expect(html).toContain("No raw payload");

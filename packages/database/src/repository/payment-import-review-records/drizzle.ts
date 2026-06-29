@@ -1,5 +1,6 @@
 import type {
   PaymentImportDepositMatchReviewRecord,
+  PaymentImportRefundChargebackReviewRecord,
   PaymentImportReviewRecord,
 } from "@open-practice/domain";
 import { and, desc, eq } from "drizzle-orm";
@@ -8,12 +9,15 @@ import * as schema from "../../schema.js";
 import { IdempotencyKeyConflictError, clone, isPostgresUniqueViolation } from "../contracts.js";
 import {
   mapPaymentImportDepositMatchReviewRow,
+  mapPaymentImportRefundChargebackReviewRow,
   mapPaymentImportReviewRecordRow,
   paymentImportDepositMatchReviewInsert,
+  paymentImportRefundChargebackReviewInsert,
   paymentImportReviewRecordInsert,
 } from "../drizzle-mappers.js";
 import type {
   PaymentImportDepositMatchReviewListOptions,
+  PaymentImportRefundChargebackReviewListOptions,
   PaymentImportReviewRecordListOptions,
 } from "../payment-import-review-records-contracts.js";
 
@@ -249,4 +253,105 @@ export async function listDrizzlePaymentImportDepositMatchReviews(
     .where(and(...filters))
     .orderBy(desc(schema.paymentImportDepositMatchReviews.reviewedAt));
   return rows.map(mapPaymentImportDepositMatchReviewRow);
+}
+
+async function getRefundChargebackReviewByIdempotency(input: {
+  db: OpenPracticeDatabase;
+  firmId: string;
+  paymentImportReviewRecordId: string;
+  idempotencyKey: string;
+}): Promise<PaymentImportRefundChargebackReviewRecord | undefined> {
+  const [row] = await input.db
+    .select()
+    .from(schema.paymentImportRefundChargebackReviews)
+    .where(
+      and(
+        eq(schema.paymentImportRefundChargebackReviews.firmId, input.firmId),
+        eq(
+          schema.paymentImportRefundChargebackReviews.paymentImportReviewRecordId,
+          input.paymentImportReviewRecordId,
+        ),
+        eq(schema.paymentImportRefundChargebackReviews.idempotencyKey, input.idempotencyKey),
+      ),
+    );
+  return row ? mapPaymentImportRefundChargebackReviewRow(row) : undefined;
+}
+
+function existingRefundChargebackReviewOrConflict(
+  existing: PaymentImportRefundChargebackReviewRecord | undefined,
+  incoming: PaymentImportRefundChargebackReviewRecord,
+): PaymentImportRefundChargebackReviewRecord | undefined {
+  if (!existing) return undefined;
+  if (existing.decisionFingerprint !== incoming.decisionFingerprint) {
+    throw new IdempotencyKeyConflictError();
+  }
+  return clone(existing);
+}
+
+export async function createDrizzlePaymentImportRefundChargebackReview(
+  db: OpenPracticeDatabase,
+  record: PaymentImportRefundChargebackReviewRecord,
+): Promise<PaymentImportRefundChargebackReviewRecord> {
+  const existing = await getRefundChargebackReviewByIdempotency({
+    db,
+    firmId: record.firmId,
+    paymentImportReviewRecordId: record.paymentImportReviewRecordId,
+    idempotencyKey: record.idempotencyKey,
+  });
+  const reused = existingRefundChargebackReviewOrConflict(existing, record);
+  if (reused) return reused;
+
+  try {
+    const [row] = await db
+      .insert(schema.paymentImportRefundChargebackReviews)
+      .values(paymentImportRefundChargebackReviewInsert(record))
+      .returning();
+    return mapPaymentImportRefundChargebackReviewRow(row);
+  } catch (error) {
+    if (
+      !isPostgresUniqueViolation(error, "payment_import_rc_reviews_firm_record_idempotency_idx")
+    ) {
+      throw error;
+    }
+    const racedExisting = await getRefundChargebackReviewByIdempotency({
+      db,
+      firmId: record.firmId,
+      paymentImportReviewRecordId: record.paymentImportReviewRecordId,
+      idempotencyKey: record.idempotencyKey,
+    });
+    const racedReuse = existingRefundChargebackReviewOrConflict(racedExisting, record);
+    if (racedReuse) return racedReuse;
+    throw error;
+  }
+}
+
+export async function listDrizzlePaymentImportRefundChargebackReviews(
+  db: OpenPracticeDatabase,
+  firmId: string,
+  options: PaymentImportRefundChargebackReviewListOptions = {},
+): Promise<PaymentImportRefundChargebackReviewRecord[]> {
+  const filters = [eq(schema.paymentImportRefundChargebackReviews.firmId, firmId)];
+  if (options.matterId) {
+    filters.push(eq(schema.paymentImportRefundChargebackReviews.matterId, options.matterId));
+  }
+  if (options.paymentImportReviewRecordId) {
+    filters.push(
+      eq(
+        schema.paymentImportRefundChargebackReviews.paymentImportReviewRecordId,
+        options.paymentImportReviewRecordId,
+      ),
+    );
+  }
+  if (options.category) {
+    filters.push(eq(schema.paymentImportRefundChargebackReviews.category, options.category));
+  }
+  if (options.decision) {
+    filters.push(eq(schema.paymentImportRefundChargebackReviews.decision, options.decision));
+  }
+  const rows = await db
+    .select()
+    .from(schema.paymentImportRefundChargebackReviews)
+    .where(and(...filters))
+    .orderBy(desc(schema.paymentImportRefundChargebackReviews.reviewedAt));
+  return rows.map(mapPaymentImportRefundChargebackReviewRow);
 }
