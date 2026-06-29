@@ -109,6 +109,88 @@ const reportingWorkspace: StaffReportingWorkspaceResponse = {
       includesRawReportBody: false,
     },
   ],
+  exportProfileAlignment: {
+    status: "read_only_metadata_alignment",
+    staffReportProfiles: [
+      {
+        id: "summary_json",
+        label: "Summary JSON",
+        format: "json",
+        detailLevel: "summary",
+        manualDownloadOnly: true,
+        scheduledEmailDelivery: false,
+        includesRawReportBody: false,
+      },
+      {
+        id: "review_csv",
+        label: "Review CSV profile",
+        format: "csv",
+        detailLevel: "row_summary",
+        manualDownloadOnly: true,
+        scheduledEmailDelivery: false,
+        includesRawReportBody: false,
+      },
+    ],
+    financialFieldProfiles: [
+      {
+        id: "billing_operational_records_json",
+        label: "Billing operational records JSON",
+        format: "json",
+        source: "generated_local_projection",
+        fieldKeyCount: 78,
+        sampleFieldKeys: ["fieldProfile", "generatedAt", "reportType"],
+        manualDownloadOnly: true,
+        scheduledDelivery: false,
+        storesRawExportBody: false,
+      },
+      {
+        id: "jurisdictional_trust_summary_json",
+        label: "Jurisdictional trust summary JSON",
+        format: "json",
+        source: "generated_local_projection",
+        fieldKeyCount: 28,
+        sampleFieldKeys: ["fieldProfile", "groupBy", "filters"],
+        manualDownloadOnly: true,
+        scheduledDelivery: false,
+        storesRawExportBody: false,
+      },
+    ],
+    differences: [
+      {
+        key: "purpose",
+        label: "Purpose",
+        staffReporting: "Manual saved-report downloads for staff review.",
+        financialFieldProfiles:
+          "Allowlisted field metadata for generated local financial downloads.",
+      },
+      {
+        key: "field_key_behavior",
+        label: "Field-key behavior",
+        staffReporting: "No field-key allowlist is attached to manual report export profiles.",
+        financialFieldProfiles: "Each financial field profile lists generated-projection keys.",
+      },
+      {
+        key: "download_body_behavior",
+        label: "Download body",
+        staffReporting: "Downloads regenerate authorized report projections at request time.",
+        financialFieldProfiles:
+          "Downloads include field metadata while preserving existing serialization.",
+      },
+    ],
+    sharedSafeguards: {
+      customSql: false,
+      biEmbeds: false,
+      scheduledExecution: false,
+      scheduledDelivery: false,
+      rawBodyStorage: false,
+      paymentProcessorExposure: false,
+      paymentCreation: false,
+      paymentAllocation: false,
+      invoiceMutation: false,
+      trustPosting: false,
+      certificationClaims: false,
+    },
+  },
   reports: [
     {
       definitionKey: "invoice_aging",
@@ -257,6 +339,19 @@ describe("ReportsSection", () => {
     expect(html).toContain("No BI embeds");
     expect(html).toContain("No scheduled email delivery");
     expect(html).toContain("No raw report bodies");
+    expect(html).toContain("Export profile alignment");
+    expect(html).toContain("Manual report export profiles");
+    expect(html).toContain("Summary JSON (JSON)");
+    expect(html).toContain("Review CSV profile (CSV)");
+    expect(html).toContain("Financial export field profiles");
+    expect(html).toContain("Billing operational records JSON (78 keys)");
+    expect(html).toContain("Jurisdictional trust summary JSON (28 keys)");
+    expect(html).toContain("No payment processor exposure");
+    expect(html).toContain("No invoice mutation");
+    expect(html).toContain("No trust posting");
+    expect(html).toContain("No certification claims");
+    expect(html).toContain("Field-key behavior");
+    expect(html).toContain("Downloads regenerate authorized report projections");
     expect(html).toContain("Aged receivables");
     expect(html).toContain("Ada Morgan");
     expect(html).toContain("invoice INV-AR-001");
@@ -266,6 +361,9 @@ describe("ReportsSection", () => {
     expect(html).toContain("clinic-program-tenancy-stability");
     expect(html).toContain("not reviewed");
     expect(html).not.toContain("custom SQL editor");
+    expect(html).not.toContain("schedule export email");
+    expect(html).not.toContain("payment processor setup");
+    expect(html).not.toContain("post trust entry");
     expect(html).not.toContain("ada@example.test");
     expect(html).not.toContain("Initial tenancy dispute invoice");
     expect(html).not.toContain("Synthetic private productivity report body");

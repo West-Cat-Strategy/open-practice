@@ -1,4 +1,8 @@
 import type { BillingPeriodLockRecord, InvoiceRecord } from "./billing.js";
+import {
+  financialExportFieldProfiles,
+  type FinancialExportFieldProfileId,
+} from "./financial-export-profiles.js";
 import type { LegalClinicMatterProfile } from "./legal-clinics.js";
 import type { LedgerAccount, LedgerEntry, LedgerReconciliationRecord } from "./ledger.js";
 import type {
@@ -59,6 +63,63 @@ export interface StaffReportExportProfile {
   manualDownloadOnly: true;
   scheduledEmailDelivery: false;
   includesRawReportBody: false;
+}
+
+export interface StaffReportExportProfileAlignmentStaffProfile {
+  id: StaffReportExportProfileId;
+  label: string;
+  format: StaffReportExportProfile["format"];
+  detailLevel: StaffReportExportProfile["detailLevel"];
+  manualDownloadOnly: true;
+  scheduledEmailDelivery: false;
+  includesRawReportBody: false;
+}
+
+export interface StaffReportExportProfileAlignmentFinancialProfile {
+  id: FinancialExportFieldProfileId;
+  label: string;
+  format: "json";
+  source: "generated_local_projection";
+  fieldKeyCount: number;
+  sampleFieldKeys: readonly string[];
+  manualDownloadOnly: true;
+  scheduledDelivery: false;
+  storesRawExportBody: false;
+}
+
+export interface StaffReportExportProfileAlignmentDifference {
+  key:
+    | "purpose"
+    | "scope"
+    | "field_key_behavior"
+    | "format_coverage"
+    | "queue_job_metadata"
+    | "download_body_behavior";
+  label: string;
+  staffReporting: string;
+  financialFieldProfiles: string;
+}
+
+export interface StaffReportExportProfileAlignmentSafeguards {
+  customSql: false;
+  biEmbeds: false;
+  scheduledExecution: false;
+  scheduledDelivery: false;
+  rawBodyStorage: false;
+  paymentProcessorExposure: false;
+  paymentCreation: false;
+  paymentAllocation: false;
+  invoiceMutation: false;
+  trustPosting: false;
+  certificationClaims: false;
+}
+
+export interface StaffReportExportProfileAlignment {
+  status: "read_only_metadata_alignment";
+  staffReportProfiles: StaffReportExportProfileAlignmentStaffProfile[];
+  financialFieldProfiles: StaffReportExportProfileAlignmentFinancialProfile[];
+  differences: StaffReportExportProfileAlignmentDifference[];
+  sharedSafeguards: StaffReportExportProfileAlignmentSafeguards;
 }
 
 export type StaffReportScheduleReadinessStatus = "manual_export_ready";
@@ -208,6 +269,7 @@ export interface StaffReportingWorkspace {
   generatedAt: string;
   definitions: StaffSavedReportDefinition[];
   exportProfiles: StaffReportExportProfile[];
+  exportProfileAlignment: StaffReportExportProfileAlignment;
   reports: StaffReportProjection[];
   history: StaffReportHistoryItem[];
   scheduleReadinessSummary: StaffReportScheduleReadinessSummary;
@@ -280,6 +342,7 @@ export interface BuildStaffReportingWorkspaceInput extends Omit<
 
 const savedDefinitionTimestamp = "2026-05-28T00:00:00.000Z";
 const dayMs = 86_400_000;
+const financialFieldProfileSampleSize = 6;
 const staffReportDimensionGroupingKeys = [
   "jurisdiction",
   "practiceArea",
@@ -1446,6 +1509,89 @@ function exportJobPosture(history: StaffReportHistoryItem[]): StaffReportExportJ
   };
 }
 
+export function buildStaffReportExportProfileAlignment(): StaffReportExportProfileAlignment {
+  return {
+    status: "read_only_metadata_alignment",
+    staffReportProfiles: STAFF_REPORT_EXPORT_PROFILES.map((profile) => ({
+      id: profile.id,
+      label: profile.label,
+      format: profile.format,
+      detailLevel: profile.detailLevel,
+      manualDownloadOnly: profile.manualDownloadOnly,
+      scheduledEmailDelivery: profile.scheduledEmailDelivery,
+      includesRawReportBody: profile.includesRawReportBody,
+    })),
+    financialFieldProfiles: Object.values(financialExportFieldProfiles).map((profile) => ({
+      id: profile.id,
+      label: profile.label,
+      format: profile.format,
+      source: profile.source,
+      fieldKeyCount: profile.fieldKeys.length,
+      sampleFieldKeys: profile.fieldKeys.slice(0, financialFieldProfileSampleSize),
+      manualDownloadOnly: profile.manualDownloadOnly,
+      scheduledDelivery: profile.scheduledDelivery,
+      storesRawExportBody: profile.storesRawExportBody,
+    })),
+    differences: [
+      {
+        key: "purpose",
+        label: "Purpose",
+        staffReporting: "Manual saved-report downloads for staff review.",
+        financialFieldProfiles:
+          "Allowlisted field metadata for generated local financial downloads.",
+      },
+      {
+        key: "scope",
+        label: "Scope",
+        staffReporting:
+          "Report definitions, groupings, filters, projection rows, and export history.",
+        financialFieldProfiles:
+          "Billing operational records and jurisdictional trust summary fields.",
+      },
+      {
+        key: "field_key_behavior",
+        label: "Field-key behavior",
+        staffReporting: "No field-key allowlist is attached to manual report export profiles.",
+        financialFieldProfiles: "Each financial field profile lists generated-projection keys.",
+      },
+      {
+        key: "format_coverage",
+        label: "Format coverage",
+        staffReporting: "JSON summary and CSV review profiles are available.",
+        financialFieldProfiles: "JSON field-profile metadata is available for financial downloads.",
+      },
+      {
+        key: "queue_job_metadata",
+        label: "Queue metadata",
+        staffReporting:
+          "Jobs store definition, profile, grouping, requester, and count metadata only.",
+        financialFieldProfiles:
+          "Financial jobs store field profile IDs and bounded status metadata only.",
+      },
+      {
+        key: "download_body_behavior",
+        label: "Download body",
+        staffReporting: "Downloads regenerate authorized report projections at request time.",
+        financialFieldProfiles:
+          "Downloads include field metadata while preserving existing serialization.",
+      },
+    ],
+    sharedSafeguards: {
+      customSql: false,
+      biEmbeds: false,
+      scheduledExecution: false,
+      scheduledDelivery: false,
+      rawBodyStorage: false,
+      paymentProcessorExposure: false,
+      paymentCreation: false,
+      paymentAllocation: false,
+      invoiceMutation: false,
+      trustPosting: false,
+      certificationClaims: false,
+    },
+  };
+}
+
 export function buildStaffReportingWorkspace(
   input: BuildStaffReportingWorkspaceInput,
 ): StaffReportingWorkspace {
@@ -1456,6 +1602,7 @@ export function buildStaffReportingWorkspace(
     generatedAt,
     definitions,
     exportProfiles: STAFF_REPORT_EXPORT_PROFILES,
+    exportProfileAlignment: buildStaffReportExportProfileAlignment(),
     reports: definitions.map((definition) =>
       buildStaffReportProjection({
         ...input,
