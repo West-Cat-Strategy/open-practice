@@ -590,6 +590,13 @@ SQL, BI embeds, scheduled execution/email, raw report-body storage, payment proc
 payment creation/allocation, invoice mutation, trust posting, or certification claims. Proof is
 recorded in
 [report export profile alignment proof](validation/OP_REPORT_EXPORT_PROFILE_ALIGNMENT_PROOF_2026-06-29.md).
+The 2026-06-29 report export download audit follow-up adds safe `*.downloaded` audit events for
+completed audit, billing, staff report, and jurisdictional trust export jobs. Audit metadata is
+limited to job/profile/scope/count fields plus explicit regenerated-download and no-storage flags;
+the slice de-duplicates the billing export request taxonomy entry and keeps export serialization,
+profiles, schedules, custom SQL, BI embeds, retained bodies, private audit payload exposure, payment
+mutation, trust posting, and certification claims out of scope. Proof is recorded in
+[report export download audit events proof](validation/OP_REPORT_EXPORT_DOWNLOAD_AUDIT_EVENTS_PROOF_2026-06-29.md).
 
 The 2026-06-17 inbound email recovery metadata branch deepens the existing Mailgun/IMAP inbound
 replay-recovery posture with owner-reviewed metadata only. Parser and IMAP poll lifecycle records
