@@ -53,6 +53,7 @@ import {
   type EmailTemplateDraftRecord,
   type EmailTemplatePublishedVersionRecord,
   type EmailTemplatePreviewSnapshotRecord,
+  type EmailTemplateReviewedOutboundPreviewRecord,
   type ExpenseEntry,
   type ExternalUploadLinkRecord,
   type FirmSettings,
@@ -975,6 +976,73 @@ export function emailTemplatePublishedVersionInsert(
     description: record.description ?? null,
     relatedResourceType: record.relatedResourceType ?? null,
     publishedAt: new Date(record.publishedAt),
+  };
+}
+
+export function mapEmailTemplateReviewedOutboundPreviewRow(
+  row: typeof schema.emailTemplateReviewedOutboundPreviews.$inferSelect,
+): EmailTemplateReviewedOutboundPreviewRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    templateDraftId: row.templateDraftId,
+    publishedVersionId: row.publishedVersionId,
+    publishedVersion: row.publishedVersion,
+    matterId: row.matterId,
+    contactId: row.contactId,
+    contactMethodId: row.contactMethodId,
+    createdByUserId: row.createdByUserId,
+    templateKey: row.templateKey,
+    subjectPreview: row.subjectPreview,
+    body: {
+      textPreview: row.textPreview ?? undefined,
+      htmlPreview: row.htmlPreview ?? undefined,
+      contentTypes: {
+        text: Boolean(row.textPreview),
+        html: Boolean(row.htmlPreview),
+      },
+    },
+    recipientSummary: row.recipientSummary,
+    reviewStatus: row.reviewStatus as EmailTemplateReviewedOutboundPreviewRecord["reviewStatus"],
+    relatedResource:
+      row.relatedResourceType && row.relatedResourceId
+        ? {
+            type: row.relatedResourceType,
+            id: row.relatedResourceId,
+          }
+        : undefined,
+    warnings: row.warnings,
+    delivery: row.delivery,
+    createdAt: row.createdAt.toISOString(),
+    metadata: row.metadata,
+  };
+}
+
+export function emailTemplateReviewedOutboundPreviewInsert(
+  record: EmailTemplateReviewedOutboundPreviewRecord,
+): typeof schema.emailTemplateReviewedOutboundPreviews.$inferInsert {
+  return {
+    id: record.id,
+    firmId: record.firmId,
+    templateDraftId: record.templateDraftId,
+    publishedVersionId: record.publishedVersionId,
+    publishedVersion: record.publishedVersion,
+    matterId: record.matterId,
+    contactId: record.contactId,
+    contactMethodId: record.contactMethodId,
+    createdByUserId: record.createdByUserId,
+    templateKey: record.templateKey,
+    subjectPreview: record.subjectPreview,
+    textPreview: record.body.textPreview ?? null,
+    htmlPreview: record.body.htmlPreview ?? null,
+    recipientSummary: record.recipientSummary,
+    reviewStatus: record.reviewStatus,
+    relatedResourceType: record.relatedResource?.type ?? null,
+    relatedResourceId: record.relatedResource?.id ?? null,
+    warnings: record.warnings,
+    delivery: record.delivery,
+    createdAt: new Date(record.createdAt),
+    metadata: record.metadata,
   };
 }
 

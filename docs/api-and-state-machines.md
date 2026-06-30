@@ -827,6 +827,23 @@ and no-delivery posture only. Template draft routes do not inspect SMTP or IMAP 
 call `queueRouteEmailOutbox`, enqueue BullMQ jobs, append send metadata, create campaigns or bulk
 sends, manage subscriptions, or store raw subject/body/recipient addresses in audit or job metadata.
 
+Reviewed outbound previews hand off from an immutable published template version without becoming
+delivery candidates. `POST
+/api/email/template-drafts/:templateDraftId/versions/:publishedVersionId/reviewed-outbound-previews`
+requires staff matter-scoped `email:create` and accepts only `matterId`, `contactId`,
+`contactMethodId`, and optional related-resource fields. The server checks the published version,
+the existing related-resource/matter matcher, a visible contact linked to the matter, and an email
+contact method that is not marked do-not-contact. `GET
+/api/email/template-drafts/:templateDraftId/reviewed-outbound-previews?matterId=&limit=` requires
+matter-scoped `email:read`. Stored reviewed-preview rows contain IDs, published version number,
+template key, sanitized/truncated subject and body preview, contact/contact-method IDs, recipient
+count `1`, warning codes, `reviewed_preview` status, and `persisted: true` / `queued: false`
+delivery flags. Audit action `email_template_reviewed_outbound_preview.created` records only IDs,
+counts, version/review posture, and explicit no-delivery/no-provider/no-campaign/no-bulk/no
+subscription flags; it excludes raw subject, body, recipient email address, provider payloads, job
+data, and template body content. Reviewed-preview routes do not create outbox records, enqueue jobs,
+call providers, inspect provider settings, add campaigns, add bulk sends, or manage subscriptions.
+
 Outbound email queueing is SMTP-provider gated and confirmation-gated. `POST /api/mail/outbox`
 requires matter-scoped email create access, an enabled SMTP provider setting, configured
 Redis/BullMQ queue access, matching `deliveryConfirmation`, and at least one non-empty text or HTML

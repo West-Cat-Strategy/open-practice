@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildEmailTemplatePublishedVersion,
   buildEmailTemplatePreviewSnapshot,
+  buildEmailTemplateReviewedOutboundPreview,
   compareEmailTemplateDraftWithPublishedVersion,
   normalizeEmailTemplateHtmlPreview,
   normalizeEmailTemplateTextPreview,
@@ -129,6 +130,61 @@ describe("email template drafts", () => {
     expect(metadata).not.toContain("Synthetic private publish subject");
     expect(metadata).not.toContain("Synthetic private publish body");
     expect(metadata).not.toContain("retainer.follow_up");
+  });
+
+  it("builds reviewed outbound previews from immutable published versions", () => {
+    const publishedVersion = buildEmailTemplatePublishedVersion({
+      id: "template-published-version-reviewed-001",
+      firmId: "firm-west-legal",
+      templateDraft: templateDraft({
+        version: 5,
+        subject: " Synthetic private reviewed subject ",
+        textBody: "Hello client@example.test. This reviewed body stays preview-only.",
+        htmlBody: `<p onclick="alert(1)">Reviewed body</p><script>alert("secret")</script>`,
+      }),
+      version: 4,
+      publishedByUserId: "user-admin",
+      publishedAt: "2026-06-30T10:00:00.000Z",
+    });
+
+    const preview = buildEmailTemplateReviewedOutboundPreview({
+      id: "reviewed-outbound-preview-001",
+      firmId: "firm-west-legal",
+      publishedVersion,
+      matterId: "matter-001",
+      contactId: "contact-client-001",
+      contactMethodId: "contact-method-email-001",
+      createdByUserId: "user-admin",
+      relatedResource: { type: "draft", id: "draft-001" },
+      createdAt: "2026-06-30T10:05:00.000Z",
+    });
+
+    expect(preview).toMatchObject({
+      id: "reviewed-outbound-preview-001",
+      templateDraftId: "template-draft-001",
+      publishedVersionId: "template-published-version-reviewed-001",
+      publishedVersion: 4,
+      matterId: "matter-001",
+      contactId: "contact-client-001",
+      contactMethodId: "contact-method-email-001",
+      templateKey: "retainer.follow_up",
+      subjectPreview: "Synthetic private reviewed subject",
+      recipientSummary: { toCount: 1, ccCount: 0, bccCount: 0, recipientCount: 1 },
+      reviewStatus: "reviewed_preview",
+      delivery: { persisted: true, queued: false },
+      relatedResource: { type: "draft", id: "draft-001" },
+      warnings: expect.arrayContaining(["html_body_sanitized"]),
+    });
+    expect(preview.body.htmlPreview).not.toContain("<script");
+    expect(preview.body.htmlPreview).not.toContain("onclick");
+
+    const metadata = JSON.stringify(preview.metadata);
+    expect(metadata).toContain("reviewedOutboundPreviewId");
+    expect(metadata).toContain("providerNeutral");
+    expect(metadata).toContain("subscriptionManagement");
+    expect(metadata).not.toContain("client@example.test");
+    expect(metadata).not.toContain("Synthetic private reviewed subject");
+    expect(metadata).not.toContain("This reviewed body");
   });
 
   it("compares saved drafts against immutable published versions", () => {

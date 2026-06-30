@@ -2,6 +2,7 @@ import type {
   EmailTemplateDraftRecord,
   EmailTemplatePublishedVersionRecord,
   EmailTemplatePreviewSnapshotRecord,
+  EmailTemplateReviewedOutboundPreviewRecord,
 } from "@open-practice/domain";
 import { and, desc, eq } from "drizzle-orm";
 import type { OpenPracticeDatabase } from "../../runtime.js";
@@ -11,9 +12,11 @@ import {
   emailTemplateDraftInsert,
   emailTemplatePublishedVersionInsert,
   emailTemplatePreviewSnapshotInsert,
+  emailTemplateReviewedOutboundPreviewInsert,
   mapEmailTemplateDraftRow,
   mapEmailTemplatePublishedVersionRow,
   mapEmailTemplatePreviewSnapshotRow,
+  mapEmailTemplateReviewedOutboundPreviewRow,
 } from "../drizzle-mappers.js";
 
 export async function listDrizzleEmailTemplateDrafts(
@@ -187,6 +190,59 @@ export async function getLatestDrizzleEmailTemplatePublishedVersion(
   return row ? mapEmailTemplatePublishedVersionRow(row) : undefined;
 }
 
+export async function getDrizzleEmailTemplatePublishedVersion(
+  db: OpenPracticeDatabase,
+  firmId: string,
+  templateDraftId: string,
+  publishedVersionId: string,
+): Promise<EmailTemplatePublishedVersionRecord | undefined> {
+  const [row] = await db
+    .select()
+    .from(schema.emailTemplatePublishedVersions)
+    .where(
+      and(
+        eq(schema.emailTemplatePublishedVersions.firmId, firmId),
+        eq(schema.emailTemplatePublishedVersions.templateDraftId, templateDraftId),
+        eq(schema.emailTemplatePublishedVersions.id, publishedVersionId),
+      ),
+    );
+  return row ? mapEmailTemplatePublishedVersionRow(row) : undefined;
+}
+
+export async function createDrizzleEmailTemplateReviewedOutboundPreview(
+  db: OpenPracticeDatabase,
+  record: EmailTemplateReviewedOutboundPreviewRecord,
+): Promise<EmailTemplateReviewedOutboundPreviewRecord> {
+  const [row] = await db
+    .insert(schema.emailTemplateReviewedOutboundPreviews)
+    .values(emailTemplateReviewedOutboundPreviewInsert(record))
+    .returning();
+  return mapEmailTemplateReviewedOutboundPreviewRow(row);
+}
+
+export async function listDrizzleEmailTemplateReviewedOutboundPreviews(
+  db: OpenPracticeDatabase,
+  firmId: string,
+  templateDraftId: string,
+  options: { matterId?: string; limit?: number } = {},
+): Promise<EmailTemplateReviewedOutboundPreviewRecord[]> {
+  const conditions = [
+    eq(schema.emailTemplateReviewedOutboundPreviews.firmId, firmId),
+    eq(schema.emailTemplateReviewedOutboundPreviews.templateDraftId, templateDraftId),
+  ];
+  if (options.matterId) {
+    conditions.push(eq(schema.emailTemplateReviewedOutboundPreviews.matterId, options.matterId));
+  }
+
+  const rows = await db
+    .select()
+    .from(schema.emailTemplateReviewedOutboundPreviews)
+    .where(and(...conditions))
+    .orderBy(desc(schema.emailTemplateReviewedOutboundPreviews.createdAt))
+    .limit(options.limit ?? 25);
+  return rows.map(mapEmailTemplateReviewedOutboundPreviewRow);
+}
+
 export function createDrizzleEmailTemplateDraftRepository(
   db: OpenPracticeDatabase,
 ): EmailTemplateDraftRepository {
@@ -208,5 +264,11 @@ export function createDrizzleEmailTemplateDraftRepository(
       listDrizzleEmailTemplatePublishedVersions(db, firmId, templateDraftId, options),
     getLatestEmailTemplatePublishedVersion: (firmId, templateDraftId) =>
       getLatestDrizzleEmailTemplatePublishedVersion(db, firmId, templateDraftId),
+    getEmailTemplatePublishedVersion: (firmId, templateDraftId, publishedVersionId) =>
+      getDrizzleEmailTemplatePublishedVersion(db, firmId, templateDraftId, publishedVersionId),
+    createEmailTemplateReviewedOutboundPreview: (record) =>
+      createDrizzleEmailTemplateReviewedOutboundPreview(db, record),
+    listEmailTemplateReviewedOutboundPreviews: (firmId, templateDraftId, options) =>
+      listDrizzleEmailTemplateReviewedOutboundPreviews(db, firmId, templateDraftId, options),
   };
 }

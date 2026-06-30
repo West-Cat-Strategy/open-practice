@@ -2,7 +2,7 @@ import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { InMemoryOpenPracticeRepository } from "@open-practice/database";
 import { serializeSmtpProviderConfig } from "@open-practice/domain";
-import type { ProfessionalRole, User } from "@open-practice/domain";
+import type { Contact, ProfessionalRole, User } from "@open-practice/domain";
 import { registerEmailRoutes } from "./email.js";
 import type { ApiJobQueue, ConnectorDnsResolver } from "./types.js";
 
@@ -59,6 +59,67 @@ function extractReceiptToken(emailBody: string): string {
   );
   if (!match?.[1]) throw new Error("Receipt token was not appended to the email body");
   return match[1];
+}
+
+async function setSyntheticContactMethods(
+  repository: InMemoryOpenPracticeRepository,
+  contactId: string,
+  contactMethods: NonNullable<Contact["contactMethods"]>,
+  updates: Partial<Pick<Contact, "doNotContact">> = {},
+): Promise<void> {
+  const updated = await repository.updateContact({
+    firmId: "firm-west-legal",
+    contactId,
+    updates: {
+      ...updates,
+      contactMethods,
+      updatedByUserId: "user-test",
+    },
+  });
+  expect(updated).toBeDefined();
+}
+
+async function createPublishedTemplate(
+  server: FastifyInstance,
+  payload: Partial<{
+    name: string;
+    category: string;
+    templateKey: string;
+    from: string;
+    subject: string;
+    textBody: string;
+    htmlBody: string;
+    recipientHints: string[];
+  }> = {},
+): Promise<{ templateDraftId: string; publishedVersionId: string }> {
+  const created = await server.inject({
+    method: "POST",
+    url: "/api/email/template-drafts",
+    payload: {
+      name: "Reviewed handoff template",
+      category: "matter_update",
+      templateKey: "matter.reviewed_handoff",
+      from: "Open Practice <notice@example.test>",
+      subject: "Synthetic immutable subject",
+      textBody: "Synthetic immutable body for reviewed preview.",
+      htmlBody: "<p>Synthetic immutable body for reviewed preview.</p>",
+      recipientHints: ["primary_client"],
+      ...payload,
+    },
+  });
+  expect(created.statusCode).toBe(201);
+  const templateDraftId = created.json<{ templateDraft: { id: string } }>().templateDraft.id;
+
+  const published = await server.inject({
+    method: "POST",
+    url: `/api/email/template-drafts/${templateDraftId}/publish`,
+  });
+  expect(published.statusCode).toBe(201);
+
+  return {
+    templateDraftId,
+    publishedVersionId: published.json<{ publishedVersion: { id: string } }>().publishedVersion.id,
+  };
 }
 
 afterEach(async () => {
@@ -519,6 +580,348 @@ describe("email routes", () => {
         created.json().templateDraft.id,
       ),
     ).resolves.toEqual([]);
+  });
+
+  it("creates a single-recipient reviewed outbound preview from an immutable published version", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const listProviderSettings = vi.spyOn(repository, "listProviderSettings");
+    const add = vi.fn(async (_name: string, _data: unknown, options?: { jobId?: string }) => ({
+      id: options?.jobId ?? "email-job-test",
+    }));
+    const queue: ApiJobQueue = { add };
+    await setSyntheticContactMethods(repository, "contact-ada", [
+      {
+        id: "contact-method-ada-email",
+        type: "email",
+        label: "work",
+        value: "ada@example.test",
+        preferred: true,
+      },
+    ]);
+    const server = testServer({
+      repository,
+      authUser: user("owner_admin", ["matter-001", "matter-002"]),
+      emailJobQueue: queue,
+    });
+    const { templateDraftId, publishedVersionId } = await createPublishedTemplate(server, {
+      subject: "Synthetic immutable v1 subject",
+      textBody: "Synthetic immutable v1 body.",
+      htmlBody: '<p onclick="secret()">Synthetic immutable v1 body.</p><script>secret()</script>',
+    });
+
+    const updated = await server.inject({
+      method: "PATCH",
+      url: `/api/email/template-drafts/${templateDraftId}`,
+      payload: {
+        subject: "Synthetic mutable v2 subject",
+        textBody: "Synthetic mutable v2 body.",
+        htmlBody: "<p>Synthetic mutable v2 body.</p>",
+      },
+    });
+    expect(updated.statusCode).toBe(200);
+
+    const response = await server.inject({
+      method: "POST",
+      url: `/api/email/template-drafts/${templateDraftId}/versions/${publishedVersionId}/reviewed-outbound-previews`,
+      payload: {
+        matterId: "matter-001",
+        contactId: "contact-ada",
+        contactMethodId: "contact-method-ada-email",
+        relatedResourceType: "signature_request",
+        relatedResourceId: "sig-001",
+      },
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(response.json()).toMatchObject({
+      status: "previewed",
+      mode: "reviewed_outbound_preview",
+      reviewedOutboundPreview: {
+        templateDraftId,
+        publishedVersionId,
+        publishedVersion: 1,
+        matterId: "matter-001",
+        contactId: "contact-ada",
+        contactMethodId: "contact-method-ada-email",
+        templateKey: "matter.reviewed_handoff",
+        subjectPreview: "Synthetic immutable v1 subject",
+        body: {
+          textPreview: "Synthetic immutable v1 body.",
+          contentTypes: { text: true, html: true },
+        },
+        recipientSummary: {
+          toCount: 1,
+          ccCount: 0,
+          bccCount: 0,
+          recipientCount: 1,
+        },
+        relatedResource: { type: "signature_request", id: "sig-001" },
+        reviewStatus: "reviewed_preview",
+        warnings: expect.arrayContaining(["html_body_sanitized"]),
+        delivery: { persisted: true, queued: false },
+      },
+    });
+    expect(response.body).not.toContain("Synthetic mutable v2 subject");
+    expect(response.body).not.toContain("Synthetic mutable v2 body");
+    expect(response.body).not.toContain("ada@example.test");
+    expect(response.json().reviewedOutboundPreview.body.htmlPreview).not.toContain("<script>");
+    expect(response.json().reviewedOutboundPreview.body.htmlPreview).not.toContain("onclick");
+
+    const listed = await server.inject({
+      method: "GET",
+      url: `/api/email/template-drafts/${templateDraftId}/reviewed-outbound-previews?matterId=matter-001`,
+    });
+    expect(listed.statusCode).toBe(200);
+    expect(listed.json().reviewedOutboundPreviews).toHaveLength(1);
+    expect(listed.json().reviewedOutboundPreviews[0]).toMatchObject({
+      publishedVersionId,
+      recipientSummary: { recipientCount: 1 },
+      delivery: { persisted: true, queued: false },
+    });
+
+    await expect(repository.listEmailOutbox("firm-west-legal")).resolves.toEqual([]);
+    await expect(repository.listJobLifecycleRecords("firm-west-legal")).resolves.toEqual([]);
+    expect(add).not.toHaveBeenCalled();
+    expect(listProviderSettings).not.toHaveBeenCalled();
+
+    const audit = await repository.listAuditEvents("firm-west-legal");
+    const event = audit.events.find(
+      (candidate) => candidate.action === "email_template_reviewed_outbound_preview.created",
+    );
+    expect(event).toMatchObject({
+      resourceType: "email_template_reviewed_outbound_preview",
+      metadata: expect.objectContaining({
+        publishedVersionId,
+        templateDraftId,
+        publishedVersion: 1,
+        matterId: "matter-001",
+        contactId: "contact-ada",
+        contactMethodId: "contact-method-ada-email",
+        recipientCount: 1,
+        reviewStatus: "reviewed_preview",
+        persisted: true,
+        queued: false,
+        providerNeutral: true,
+        deliveryQueued: false,
+        providerDeliverySideEffect: false,
+        campaignAutomation: false,
+        bulkSend: false,
+        subscriptionManagement: false,
+      }),
+    });
+    const serializedAudit = JSON.stringify(audit.events);
+    expect(serializedAudit).not.toContain("Synthetic immutable v1 subject");
+    expect(serializedAudit).not.toContain("Synthetic immutable v1 body");
+    expect(serializedAudit).not.toContain("ada@example.test");
+  });
+
+  it("requires matter-scoped access and a matter-linked contact for reviewed outbound previews", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await setSyntheticContactMethods(repository, "contact-ada", [
+      {
+        id: "contact-method-ada-email",
+        type: "email",
+        label: "work",
+        value: "ada@example.test",
+      },
+    ]);
+    await setSyntheticContactMethods(repository, "contact-northstar", [
+      {
+        id: "contact-method-northstar-email",
+        type: "email",
+        label: "work",
+        value: "northstar@example.test",
+      },
+    ]);
+    const ownerServer = testServer({
+      repository,
+      authUser: user("owner_admin", ["matter-001", "matter-002"]),
+    });
+    const { templateDraftId, publishedVersionId } = await createPublishedTemplate(ownerServer);
+
+    const matterDenied = await testServer({
+      repository,
+      authUser: user("firm_member", ["matter-002"]),
+    }).inject({
+      method: "POST",
+      url: `/api/email/template-drafts/${templateDraftId}/versions/${publishedVersionId}/reviewed-outbound-previews`,
+      payload: {
+        matterId: "matter-001",
+        contactId: "contact-ada",
+        contactMethodId: "contact-method-ada-email",
+      },
+    });
+    expect(matterDenied.statusCode).toBe(403);
+    expect(matterDenied.json()).toMatchObject({ code: "EMAIL_ACCESS_REQUIRED" });
+
+    const contactDenied = await ownerServer.inject({
+      method: "POST",
+      url: `/api/email/template-drafts/${templateDraftId}/versions/${publishedVersionId}/reviewed-outbound-previews`,
+      payload: {
+        matterId: "matter-001",
+        contactId: "contact-northstar",
+        contactMethodId: "contact-method-northstar-email",
+      },
+    });
+    expect(contactDenied.statusCode).toBe(403);
+    expect(contactDenied.json()).toMatchObject({ code: "CONTACT_MATTER_LINK_NOT_VISIBLE" });
+    await expect(
+      repository.listEmailTemplateReviewedOutboundPreviews("firm-west-legal", templateDraftId, {
+        matterId: "matter-001",
+      }),
+    ).resolves.toEqual([]);
+  });
+
+  it("rejects do-not-contact and non-email methods for reviewed outbound previews", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({
+      repository,
+      authUser: user("owner_admin", ["matter-001", "matter-002"]),
+    });
+    const { templateDraftId, publishedVersionId } = await createPublishedTemplate(server);
+    const url = `/api/email/template-drafts/${templateDraftId}/versions/${publishedVersionId}/reviewed-outbound-previews`;
+
+    await setSyntheticContactMethods(
+      repository,
+      "contact-ada",
+      [
+        {
+          id: "contact-method-ada-dnc",
+          type: "email",
+          label: "work",
+          value: "ada@example.test",
+        },
+      ],
+      { doNotContact: true },
+    );
+    const contactBlocked = await server.inject({
+      method: "POST",
+      url,
+      payload: {
+        matterId: "matter-001",
+        contactId: "contact-ada",
+        contactMethodId: "contact-method-ada-dnc",
+      },
+    });
+    expect(contactBlocked.statusCode).toBe(409);
+    expect(contactBlocked.json()).toMatchObject({ code: "CONTACT_DO_NOT_CONTACT" });
+
+    await setSyntheticContactMethods(
+      repository,
+      "contact-ada",
+      [
+        {
+          id: "contact-method-ada-method-dnc",
+          type: "email",
+          label: "work",
+          value: "ada@example.test",
+          doNotContact: true,
+        },
+      ],
+      { doNotContact: false },
+    );
+    const methodBlocked = await server.inject({
+      method: "POST",
+      url,
+      payload: {
+        matterId: "matter-001",
+        contactId: "contact-ada",
+        contactMethodId: "contact-method-ada-method-dnc",
+      },
+    });
+    expect(methodBlocked.statusCode).toBe(409);
+    expect(methodBlocked.json()).toMatchObject({ code: "CONTACT_METHOD_DO_NOT_CONTACT" });
+
+    await setSyntheticContactMethods(repository, "contact-ada", [
+      {
+        id: "contact-method-ada-phone",
+        type: "phone",
+        label: "mobile",
+        value: "555-0100",
+      },
+    ]);
+    const phoneBlocked = await server.inject({
+      method: "POST",
+      url,
+      payload: {
+        matterId: "matter-001",
+        contactId: "contact-ada",
+        contactMethodId: "contact-method-ada-phone",
+      },
+    });
+    expect(phoneBlocked.statusCode).toBe(409);
+    expect(phoneBlocked.json()).toMatchObject({ code: "CONTACT_METHOD_NOT_EMAIL" });
+    await expect(
+      repository.listEmailTemplateReviewedOutboundPreviews("firm-west-legal", templateDraftId, {
+        matterId: "matter-001",
+      }),
+    ).resolves.toEqual([]);
+  });
+
+  it("rejects reviewed outbound preview related-resource mismatches and delivery-shaped payload fields", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await setSyntheticContactMethods(repository, "contact-ada", [
+      {
+        id: "contact-method-ada-email",
+        type: "email",
+        label: "work",
+        value: "ada@example.test",
+      },
+    ]);
+    await repository.createDraft({
+      id: "draft-reviewed-preview-matter-002",
+      firmId: "firm-west-legal",
+      matterId: "matter-002",
+      title: "Matter 002 synthetic reviewed preview draft",
+      editorJson: { type: "doc", content: [{ type: "paragraph", text: "Synthetic" }] },
+      version: 1,
+      createdByUserId: "user-admin",
+      updatedByUserId: "user-admin",
+      createdAt: "2026-06-16T10:00:00.000Z",
+      updatedAt: "2026-06-16T10:00:00.000Z",
+      metadata: {},
+    });
+    const server = testServer({
+      repository,
+      authUser: user("owner_admin", ["matter-001", "matter-002"]),
+    });
+    const { templateDraftId, publishedVersionId } = await createPublishedTemplate(server);
+    const url = `/api/email/template-drafts/${templateDraftId}/versions/${publishedVersionId}/reviewed-outbound-previews`;
+
+    const mismatch = await server.inject({
+      method: "POST",
+      url,
+      payload: {
+        matterId: "matter-001",
+        contactId: "contact-ada",
+        contactMethodId: "contact-method-ada-email",
+        relatedResourceType: "draft",
+        relatedResourceId: "draft-reviewed-preview-matter-002",
+      },
+    });
+    expect(mismatch.statusCode).toBe(403);
+
+    const deliveryShaped = await server.inject({
+      method: "POST",
+      url,
+      payload: {
+        matterId: "matter-001",
+        contactId: "contact-ada",
+        contactMethodId: "contact-method-ada-email",
+        to: ["ada@example.test"],
+        provider: "mailpit",
+        campaignId: "campaign-synthetic",
+        deliveryConfirmation: { confirmed: true },
+      },
+    });
+    expect(deliveryShaped.statusCode).toBe(400);
+    await expect(
+      repository.listEmailTemplateReviewedOutboundPreviews("firm-west-legal", templateDraftId, {
+        matterId: "matter-001",
+      }),
+    ).resolves.toEqual([]);
+    await expect(repository.listEmailOutbox("firm-west-legal")).resolves.toEqual([]);
+    await expect(repository.listJobLifecycleRecords("firm-west-legal")).resolves.toEqual([]);
   });
 
   it("persists template preview snapshots without provider, outbox, or job side effects", async () => {

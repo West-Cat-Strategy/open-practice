@@ -3,9 +3,14 @@ import { z } from "zod";
 import {
   buildEmailTemplatePublishedVersion,
   buildEmailTemplatePreviewSnapshot,
+  buildEmailTemplateReviewedOutboundPreview,
+  type ContactDossier,
+  type ContactMethod,
   type EmailTemplateDraftRecord,
   type EmailTemplatePublishedVersionRecord,
   type EmailTemplatePreviewSnapshotRecord,
+  type EmailTemplateReviewedOutboundPreviewRecord,
+  type User,
 } from "@open-practice/domain";
 import { ApiHttpError } from "../../http/response.js";
 import { parseRequestPart } from "../../http/validation.js";
@@ -31,6 +36,10 @@ const templateDraftListQuerySchema = z.object({
 
 const templateDraftParamsSchema = z.object({
   templateDraftId: z.string().min(1),
+});
+
+const publishedVersionParamsSchema = templateDraftParamsSchema.extend({
+  publishedVersionId: z.string().min(1),
 });
 
 const templateDraftBodyBaseSchema = z.object({
@@ -95,6 +104,21 @@ const previewSnapshotQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(25).default(10),
 });
 
+const reviewedOutboundPreviewBodySchema = z
+  .object({
+    matterId: z.string().min(1),
+    contactId: z.string().min(1),
+    contactMethodId: z.string().min(1),
+    relatedResourceType: relatedEmailResourceTypeSchema.optional(),
+    relatedResourceId: z.string().min(1).optional(),
+  })
+  .strict();
+
+const reviewedOutboundPreviewQuerySchema = z.object({
+  matterId: z.string().min(1),
+  limit: z.coerce.number().int().min(1).max(25).default(10),
+});
+
 function serializeTemplateDraft(draft: EmailTemplateDraftRecord): EmailTemplateDraftRecord {
   return draft;
 }
@@ -109,6 +133,12 @@ function serializePublishedVersion(
   version: EmailTemplatePublishedVersionRecord,
 ): EmailTemplatePublishedVersionRecord {
   return version;
+}
+
+function serializeReviewedOutboundPreview(
+  preview: EmailTemplateReviewedOutboundPreviewRecord,
+): EmailTemplateReviewedOutboundPreviewRecord {
+  return preview;
 }
 
 function draftAuditMetadata(draft: EmailTemplateDraftRecord): Record<string, unknown> {
@@ -147,6 +177,31 @@ function publishedVersionAuditMetadata(
   };
 }
 
+function reviewedOutboundPreviewAuditMetadata(
+  preview: EmailTemplateReviewedOutboundPreviewRecord,
+): Record<string, unknown> {
+  return {
+    reviewedOutboundPreviewId: preview.id,
+    publishedVersionId: preview.publishedVersionId,
+    templateDraftId: preview.templateDraftId,
+    publishedVersion: preview.publishedVersion,
+    matterId: preview.matterId,
+    contactId: preview.contactId,
+    contactMethodId: preview.contactMethodId,
+    recipientCount: preview.recipientSummary.recipientCount,
+    warningCount: preview.warnings.length,
+    reviewStatus: preview.reviewStatus,
+    persisted: true,
+    queued: false,
+    providerNeutral: true,
+    deliveryQueued: false,
+    providerDeliverySideEffect: false,
+    campaignAutomation: false,
+    bulkSend: false,
+    subscriptionManagement: false,
+  };
+}
+
 async function getTemplateDraftOrThrow(
   repository: ApiRouteDependencies["repository"],
   firmId: string,
@@ -161,6 +216,82 @@ async function getTemplateDraftOrThrow(
     );
   }
   return draft;
+}
+
+async function getPublishedVersionOrThrow(
+  repository: ApiRouteDependencies["repository"],
+  firmId: string,
+  templateDraftId: string,
+  publishedVersionId: string,
+): Promise<EmailTemplatePublishedVersionRecord> {
+  const version = await repository.getEmailTemplatePublishedVersion(
+    firmId,
+    templateDraftId,
+    publishedVersionId,
+  );
+  if (!version) {
+    throw new ApiHttpError(
+      404,
+      "EMAIL_TEMPLATE_PUBLISHED_VERSION_NOT_FOUND",
+      "Email template published version was not found",
+    );
+  }
+  return version;
+}
+
+async function getAuthorizedContactEmailMethodOrThrow(
+  repository: ApiRouteDependencies["repository"],
+  user: User,
+  input: {
+    matterId: string;
+    contactId: string;
+    contactMethodId: string;
+  },
+): Promise<ContactMethod> {
+  const dossiers = await repository.listContactDossiersForUser(user);
+  const dossier = dossiers.find(
+    (candidate: ContactDossier) => candidate.contact.id === input.contactId,
+  );
+  if (!dossier) {
+    throw new ApiHttpError(403, "CONTACT_NOT_VISIBLE", "Contact is not visible");
+  }
+  if (!dossier.matters.some((matter) => matter.matterId === input.matterId)) {
+    throw new ApiHttpError(
+      403,
+      "CONTACT_MATTER_LINK_NOT_VISIBLE",
+      "Contact is not linked to the requested matter",
+    );
+  }
+  if (dossier.contact.doNotContact) {
+    throw new ApiHttpError(
+      409,
+      "CONTACT_DO_NOT_CONTACT",
+      "Contact is not eligible for reviewed email preview",
+    );
+  }
+
+  const method = dossier.contact.contactMethods?.find(
+    (candidate) => candidate.id === input.contactMethodId,
+  );
+  if (!method) {
+    throw new ApiHttpError(404, "CONTACT_METHOD_NOT_FOUND", "Contact method was not found");
+  }
+  if (method.type !== "email" || !method.value) {
+    throw new ApiHttpError(
+      409,
+      "CONTACT_METHOD_NOT_EMAIL",
+      "Contact method is not eligible for reviewed email preview",
+    );
+  }
+  if (method.doNotContact) {
+    throw new ApiHttpError(
+      409,
+      "CONTACT_METHOD_DO_NOT_CONTACT",
+      "Contact method is not eligible for reviewed email preview",
+    );
+  }
+
+  return method;
 }
 
 export function registerEmailTemplateDraftRoutes(
@@ -312,6 +443,86 @@ export function registerEmailTemplateDraftRoutes(
     );
     return { publishedVersions: publishedVersions.map(serializePublishedVersion) };
   });
+
+  server.post(
+    "/api/email/template-drafts/:templateDraftId/versions/:publishedVersionId/reviewed-outbound-previews",
+    async (request, reply) => {
+      const params = parseRequestPart(publishedVersionParamsSchema, request.params, "params");
+      const body = parseRequestPart(reviewedOutboundPreviewBodySchema, request.body, "body");
+      assertEmailAccess(request.auth, {
+        resource: "email",
+        action: "create",
+        matterId: body.matterId,
+      });
+      await assertRelatedEmailResourceMatchesMatter(repository, request.auth, body);
+      await getTemplateDraftOrThrow(repository, request.auth.firmId, params.templateDraftId);
+      const publishedVersion = await getPublishedVersionOrThrow(
+        repository,
+        request.auth.firmId,
+        params.templateDraftId,
+        params.publishedVersionId,
+      );
+      await getAuthorizedContactEmailMethodOrThrow(repository, request.auth.user, body);
+
+      const reviewedPreview = buildEmailTemplateReviewedOutboundPreview({
+        id: crypto.randomUUID(),
+        firmId: request.auth.firmId,
+        publishedVersion,
+        matterId: body.matterId,
+        contactId: body.contactId,
+        contactMethodId: body.contactMethodId,
+        createdByUserId: request.auth.user.id,
+        relatedResource:
+          body.relatedResourceType && body.relatedResourceId
+            ? {
+                type: body.relatedResourceType,
+                id: body.relatedResourceId,
+              }
+            : undefined,
+        createdAt: new Date().toISOString(),
+      });
+      const created = await repository.createEmailTemplateReviewedOutboundPreview(reviewedPreview);
+      await appendRouteAuditEvent(repository, request.auth, {
+        action: "email_template_reviewed_outbound_preview.created",
+        resourceType: "email_template_reviewed_outbound_preview",
+        resourceId: created.id,
+        metadata: reviewedOutboundPreviewAuditMetadata(created),
+      });
+
+      reply.code(201);
+      return {
+        status: "previewed",
+        mode: "reviewed_outbound_preview",
+        reviewedOutboundPreview: serializeReviewedOutboundPreview(created),
+      };
+    },
+  );
+
+  server.get(
+    "/api/email/template-drafts/:templateDraftId/reviewed-outbound-previews",
+    async (request) => {
+      const params = parseRequestPart(templateDraftParamsSchema, request.params, "params");
+      const query = parseRequestPart(reviewedOutboundPreviewQuerySchema, request.query, "query");
+      assertEmailAccess(request.auth, {
+        resource: "email",
+        action: "read",
+        matterId: query.matterId,
+      });
+      await getTemplateDraftOrThrow(repository, request.auth.firmId, params.templateDraftId);
+
+      const reviewedOutboundPreviews = await repository.listEmailTemplateReviewedOutboundPreviews(
+        request.auth.firmId,
+        params.templateDraftId,
+        {
+          matterId: query.matterId,
+          limit: query.limit,
+        },
+      );
+      return {
+        reviewedOutboundPreviews: reviewedOutboundPreviews.map(serializeReviewedOutboundPreview),
+      };
+    },
+  );
 
   server.post(
     "/api/email/template-drafts/:templateDraftId/preview-snapshots",

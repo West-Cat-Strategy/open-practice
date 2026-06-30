@@ -2,6 +2,7 @@ import type {
   EmailTemplateDraftRecord,
   EmailTemplatePublishedVersionRecord,
   EmailTemplatePreviewSnapshotRecord,
+  EmailTemplateReviewedOutboundPreviewRecord,
 } from "@open-practice/domain";
 
 export interface EmailTemplateDraftRepository {
@@ -63,4 +64,20 @@ export interface EmailTemplateDraftRepository {
     firmId: string,
     templateDraftId: string,
   ): Promise<EmailTemplatePublishedVersionRecord | undefined>;
+  getEmailTemplatePublishedVersion(
+    firmId: string,
+    templateDraftId: string,
+    publishedVersionId: string,
+  ): Promise<EmailTemplatePublishedVersionRecord | undefined>;
+  createEmailTemplateReviewedOutboundPreview(
+    record: EmailTemplateReviewedOutboundPreviewRecord,
+  ): Promise<EmailTemplateReviewedOutboundPreviewRecord>;
+  listEmailTemplateReviewedOutboundPreviews(
+    firmId: string,
+    templateDraftId: string,
+    options?: {
+      matterId?: string;
+      limit?: number;
+    },
+  ): Promise<EmailTemplateReviewedOutboundPreviewRecord[]>;
 }

@@ -124,6 +124,84 @@ describe("audit event taxonomy", () => {
     );
   });
 
+  it("classifies reviewed outbound preview metadata without raw recipient or body content", () => {
+    const classification = classifyAuditEvent(
+      auditEvent({
+        action: "email_template_reviewed_outbound_preview.created",
+        resourceType: "email_template_reviewed_outbound_preview",
+        resourceId: "reviewed-preview-001",
+        metadata: {
+          reviewedOutboundPreviewId: "reviewed-preview-001",
+          publishedVersionId: "published-version-001",
+          templateDraftId: "template-draft-001",
+          publishedVersion: 1,
+          matterId: "matter-001",
+          contactId: "contact-ada",
+          contactMethodId: "contact-method-ada-email",
+          recipientCount: 1,
+          warningCount: 0,
+          reviewStatus: "reviewed_preview",
+          subject: "Synthetic private subject should not be a hint",
+          body: "Synthetic private body should not be a hint",
+          textBody: "Synthetic private text body should not be a hint",
+          htmlBody: "<p>Synthetic private html body should not be a hint</p>",
+          recipientEmail: "ada@example.test",
+          providerPayload: { body: "private" },
+          jobData: { body: "private" },
+          persisted: true,
+          queued: false,
+          providerNeutral: true,
+          deliveryQueued: false,
+          providerDeliverySideEffect: false,
+          campaignAutomation: false,
+          bulkSend: false,
+          subscriptionManagement: false,
+        },
+      }),
+    );
+
+    expect(classification).toMatchObject({
+      category: "communications",
+      known: true,
+      matterScope: "matter",
+      hasMatterId: true,
+      resourceTypeMatches: true,
+    });
+    expect(classification.metadataHints.resource).toEqual(
+      expect.arrayContaining([
+        "reviewedOutboundPreviewId",
+        "publishedVersionId",
+        "templateDraftId",
+        "publishedVersion",
+        "contactId",
+        "contactMethodId",
+        "recipientCount",
+        "warningCount",
+        "reviewStatus",
+        "persisted",
+        "queued",
+        "providerNeutral",
+        "deliveryQueued",
+        "providerDeliverySideEffect",
+        "campaignAutomation",
+        "bulkSend",
+        "subscriptionManagement",
+      ]),
+    );
+    expect(classification.metadataHints.resource).not.toEqual(
+      expect.arrayContaining([
+        "subject",
+        "body",
+        "textBody",
+        "htmlBody",
+        "recipientEmail",
+        "providerPayload",
+        "jobData",
+      ]),
+    );
+    expect(classification.metadataHints.matter).toEqual(["matterId"]);
+  });
+
   it("classifies document retention and hold review audit metadata as review-only", () => {
     const classification = classifyAuditEvent(
       auditEvent({
