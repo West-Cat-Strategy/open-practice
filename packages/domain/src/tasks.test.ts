@@ -9,7 +9,9 @@ import type {
   TaskTemplateItemRecord,
   TaskTemplateRecord,
 } from "./models.js";
+import type { AppointmentBookingRequestRecord } from "./appointment-booking.js";
 import {
+  buildCalendarAgingFollowUpTaskDraft,
   buildContactTimelineTaskCues,
   buildTaskStructuredDetail,
   buildTaskDeadlineWorkbench,
@@ -35,6 +37,208 @@ function task(
     ...input,
   };
 }
+
+function calendarSchedulingRequest(
+  input: Partial<CalendarSchedulingRequestRecord> & Pick<CalendarSchedulingRequestRecord, "id">,
+): CalendarSchedulingRequestRecord {
+  const { id, ...overrides } = input;
+  return {
+    id,
+    firmId: "firm-west-legal",
+    matterId: "matter-001",
+    kind: "event_scheduling",
+    status: "needs_review",
+    title: "Private scheduling title",
+    sourceType: "manual",
+    sourceLabel: "Private scheduling source label",
+    requestedStartsAt: "2026-06-04T17:00:00.000Z",
+    requestedEndsAt: "2026-06-04T17:30:00.000Z",
+    reminderPosture: "none",
+    privacy: "staff_only",
+    timeCaptureCue: {
+      posture: "none",
+      existingTimeEntryCount: 0,
+      billable: false,
+    },
+    createdAt: "2026-06-01T12:00:00.000Z",
+    updatedAt: "2026-06-01T12:00:00.000Z",
+    createdByUserId: "user-licensee",
+    updatedByUserId: "user-licensee",
+    reviewAgingDecision: "follow_up_required",
+    reviewAgingDecidedAt: "2026-06-04T15:00:00.000Z",
+    reviewAgingDecidedByUserId: "user-licensee",
+    reviewAgingCueStatus: "stale",
+    reviewAgingAgeHours: 72,
+    ...overrides,
+  };
+}
+
+function appointmentBookingRequest(
+  input: Partial<AppointmentBookingRequestRecord> & Pick<AppointmentBookingRequestRecord, "id">,
+): AppointmentBookingRequestRecord {
+  const { id, ...overrides } = input;
+  return {
+    id,
+    firmId: "firm-west-legal",
+    profileId: "booking-profile-001",
+    source: "website",
+    status: "tentative_hold",
+    calendarEventId: `calendar-event-${id}`,
+    matterId: "matter-001",
+    requesterName: "Private synthetic requester",
+    requesterEmail: "requester@example.test",
+    requestedStartsAt: "2026-06-04T18:00:00.000Z",
+    requestedEndsAt: "2026-06-04T18:30:00.000Z",
+    submittedAt: "2026-06-01T12:00:00.000Z",
+    reviewAgingDecision: "follow_up_required",
+    reviewAgingDecidedAt: "2026-06-04T16:00:00.000Z",
+    reviewAgingDecidedByUserId: "user-licensee",
+    reviewAgingCueStatus: "stale",
+    reviewAgingAgeHours: 72,
+    metadata: { syntheticNote: "Private synthetic booking metadata" },
+    ...overrides,
+  };
+}
+
+describe("calendar aging follow-up task drafts", () => {
+  it("selects the latest eligible source and keeps the task draft redacted", () => {
+    const draft = buildCalendarAgingFollowUpTaskDraft({
+      matterId: "matter-001",
+      appointmentBookingRequests: [
+        appointmentBookingRequest({
+          id: "booking-request-matterless",
+          matterId: undefined,
+          reviewAgingDecidedAt: "2026-06-04T17:00:00.000Z",
+        }),
+        appointmentBookingRequest({
+          id: "booking-request-latest",
+          requesterName: "Private latest requester",
+          reviewAgingDecidedAt: "2026-06-04T16:00:00.000Z",
+        }),
+      ],
+      calendarSchedulingRequests: [
+        calendarSchedulingRequest({
+          id: "calendar-scheduling-request-older",
+          title: "Private older scheduling title",
+          sourceLabel: "Private older source label",
+          reviewAgingDecidedAt: "2026-06-04T15:00:00.000Z",
+        }),
+      ],
+      existingTasks: [],
+    });
+
+    expect(draft).toMatchObject({
+      title: "Review calendar aging follow-up",
+      priority: "high",
+      sourceType: "calendar_scheduling",
+      sourceId: "booking-request-latest",
+      source: {
+        kind: "appointment_booking_request",
+        id: "booking-request-latest",
+        matterId: "matter-001",
+        decidedAt: "2026-06-04T16:00:00.000Z",
+        decidedByUserId: "user-licensee",
+        cueStatus: "stale",
+        ageHours: 72,
+      },
+      auditMetadata: {
+        calendarAgingSourceKind: "appointment_booking_request",
+        calendarAgingSourceId: "booking-request-latest",
+        reviewAgingDecision: "follow_up_required",
+        automaticFinalConfirmation: false,
+        autoExpires: false,
+        providerSync: false,
+        reminderQueued: false,
+        publicRoomCreated: false,
+        nativeMediaCreated: false,
+        chatCreated: false,
+        recordingCreated: false,
+        matterCreated: false,
+      },
+    });
+    expect(draft?.description).toContain("Review the calendar aging source record in Calendar");
+    expect(draft?.description).toContain("do not add client names");
+    const serialized = JSON.stringify(draft);
+    expect(serialized).not.toContain("Private latest requester");
+    expect(serialized).not.toContain("requester@example.test");
+    expect(serialized).not.toContain("Private older scheduling title");
+    expect(serialized).not.toContain("Private older source label");
+    expect(serialized).not.toContain("2026-06-04T18:00:00.000Z");
+    expect(serialized).not.toContain("Private synthetic booking metadata");
+  });
+
+  it("excludes duplicate task sources, non-follow-up decisions, closed sources, and other matters", () => {
+    const draft = buildCalendarAgingFollowUpTaskDraft({
+      matterId: "matter-001",
+      appointmentBookingRequests: [
+        appointmentBookingRequest({
+          id: "booking-request-duplicate",
+          reviewAgingDecidedAt: "2026-06-04T18:00:00.000Z",
+        }),
+        appointmentBookingRequest({
+          id: "booking-request-dismissed",
+          status: "dismissed",
+          reviewAgingDecidedAt: "2026-06-04T17:00:00.000Z",
+        }),
+      ],
+      calendarSchedulingRequests: [
+        calendarSchedulingRequest({
+          id: "calendar-scheduling-request-deferred",
+          reviewAgingDecision: "defer_review",
+          reviewAgingDecidedAt: "2026-06-04T16:30:00.000Z",
+        }),
+        calendarSchedulingRequest({
+          id: "calendar-scheduling-request-reviewed",
+          status: "reviewed",
+          reviewAgingDecidedAt: "2026-06-04T16:15:00.000Z",
+        }),
+        calendarSchedulingRequest({
+          id: "calendar-scheduling-request-other-matter",
+          matterId: "matter-002",
+          reviewAgingDecidedAt: "2026-06-04T16:10:00.000Z",
+        }),
+        calendarSchedulingRequest({
+          id: "calendar-scheduling-request-eligible",
+          reviewAgingDecidedAt: "2026-06-04T16:00:00.000Z",
+        }),
+      ],
+      existingTasks: [
+        task({
+          id: "task-existing",
+          sourceType: "calendar_scheduling",
+          sourceId: "booking-request-duplicate",
+        }),
+      ],
+    });
+
+    expect(draft?.source).toMatchObject({
+      kind: "calendar_scheduling_request",
+      id: "calendar-scheduling-request-eligible",
+      matterId: "matter-001",
+    });
+  });
+
+  it("returns no draft when aging metadata is incomplete", () => {
+    expect(
+      buildCalendarAgingFollowUpTaskDraft({
+        matterId: "matter-001",
+        appointmentBookingRequests: [
+          appointmentBookingRequest({
+            id: "booking-request-missing-decider",
+            reviewAgingDecidedByUserId: undefined,
+          }),
+        ],
+        calendarSchedulingRequests: [
+          calendarSchedulingRequest({
+            id: "calendar-scheduling-request-missing-age",
+            reviewAgingAgeHours: undefined,
+          }),
+        ],
+        existingTasks: [],
+      }),
+    ).toBeUndefined();
+  });
+});
 
 describe("task deadline workbench", () => {
   it("classifies open deadlines into overdue, today, upcoming, unscheduled, and completed buckets", () => {

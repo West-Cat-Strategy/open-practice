@@ -15,7 +15,7 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 | Ready rows            | 0                                                                    |
 | Candidate rows        | 0                                                                    |
 | In progress rows      | 0                                                                    |
-| Review rows           | 0                                                                    |
+| Review rows           | 1                                                                    |
 | Blocked rows          | 0                                                                    |
 | Archive               | Historical snapshots and proof live in [Archive](archive/README.md). |
 | Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`     |
@@ -48,6 +48,15 @@ boundaries only. New duplicate-candidate decisions use
 continues to handle non-duplicate signals and rejects new duplicate-candidate writes. Proof is
 recorded in
 [contact duplicate resolution decisions proof](validation/OP_CONTACT_DUPLICATE_RESOLUTION_DECISIONS_PROOF_2026-06-30.md).
+
+The 2026-06-30 `feat/calendar-aging-follow-up-task-20260630` branch adds one explicit staff action
+to create a normal internal task from the latest eligible calendar-aging decision with
+`follow_up_required`. It stays matter-scoped with existing staff and `task:create` checks, considers
+appointment booking tentative holds and calendar scheduling requests, excludes matterless holds,
+uses fixed redacted operational task copy, and prevents duplicate task sources. The branch does not
+auto-confirm holds, auto-expire requests, sync providers, queue reminders, create public rooms, add
+native media/chat/recording, or create matters. Proof is recorded in
+[calendar aging follow-up task proof](validation/OP_CALENDAR_AGING_FOLLOW_UP_TASK_PROOF_2026-06-30.md).
 
 The 2026-06-28 `feat/trust-controls-maker-checker-readiness-20260628` branch adds read-only
 Trust Controls maker-checker readiness indicators to the existing controls payload and dashboard.

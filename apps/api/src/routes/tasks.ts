@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import {
+  buildCalendarAgingFollowUpTaskDraft,
   buildLegalClinicCadenceSignals,
   buildTaskStructuredDetail,
   buildTaskDeadlineWorkbench,
@@ -86,6 +87,9 @@ const taskCreateBodySchema = taskSourceSchema.extend({
   assignedToUserId: z.string().min(1).optional(),
   priority: taskPrioritySchema.default("medium"),
   dueAt: z.string().datetime().optional(),
+});
+const calendarAgingFollowUpTaskBodySchema = z.object({
+  matterId: z.string().min(1),
 });
 
 const nullableSourceSchema = z
@@ -483,6 +487,80 @@ export function registerTaskRoutes(
       }),
       userId: request.auth.user.id,
     });
+  });
+
+  server.post("/api/tasks/calendar-aging-follow-up", async (request, reply) => {
+    const staffAccess = requireStaffAccess(request.auth);
+    if (!staffAccess.ok) throw staffAccess.error;
+    const body = parseRequestPart(calendarAgingFollowUpTaskBodySchema, request.body, "body");
+    assertTaskAccess(request.auth, body.matterId, "create");
+    const visibleMatterIds = await visibleMatterIdsForRequest(request, repository);
+    assertMatterVisible(visibleMatterIds, body.matterId);
+
+    const [appointmentBookingRequests, calendarSchedulingRequests, existingTasks] =
+      await Promise.all([
+        repository.listAppointmentBookingRequests(request.auth.firmId, {
+          matterId: body.matterId,
+          status: "tentative_hold",
+        }),
+        repository.listCalendarSchedulingRequests(request.auth.firmId, {
+          matterId: body.matterId,
+          status: "needs_review",
+        }),
+        repository.listTaskDeadlines(request.auth.firmId, {
+          matterId: body.matterId,
+          sourceType: "calendar_scheduling",
+          includeCompleted: true,
+          includeArchived: true,
+        }),
+      ]);
+    const draft = buildCalendarAgingFollowUpTaskDraft({
+      matterId: body.matterId,
+      appointmentBookingRequests,
+      calendarSchedulingRequests,
+      existingTasks,
+    });
+    if (!draft) {
+      throw new ApiHttpError(
+        409,
+        "CALENDAR_AGING_FOLLOW_UP_TASK_UNAVAILABLE",
+        "No eligible calendar aging follow-up decision is available",
+        { matterId: body.matterId },
+      );
+    }
+
+    const now = new Date().toISOString();
+    const task = await repository.createTaskDeadline({
+      id: `task-${createSessionToken().slice(0, 16)}`,
+      firmId: request.auth.firmId,
+      matterId: body.matterId,
+      title: draft.title,
+      description: draft.description,
+      priority: draft.priority,
+      sourceType: draft.sourceType,
+      sourceId: draft.sourceId,
+      createdAt: now,
+      createdByUserId: request.auth.user.id,
+      updatedAt: now,
+      updatedByUserId: request.auth.user.id,
+    });
+    await appendTaskAuditEvent(repository, request.auth, {
+      action: "task.created",
+      taskId: task.id,
+      matterId: task.matterId,
+      occurredAt: now,
+      metadata: {
+        assignedToUserId: task.assignedToUserId,
+        priority: task.priority,
+        dueAt: task.dueAt,
+        sourceType: task.sourceType,
+        sourceId: task.sourceId,
+        ...draft.auditMetadata,
+      },
+    });
+    return reply
+      .code(201)
+      .send({ task: projectTaskDeadline(task), calendarAgingFollowUp: draft.source });
   });
 
   server.get("/api/tasks/:taskId/structure", async (request) => {

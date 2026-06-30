@@ -4,7 +4,14 @@ import {
   InMemoryOpenPracticeRepository,
   type OpenPracticeRepository,
 } from "@open-practice/database";
-import type { ProfessionalRole, User } from "@open-practice/domain";
+import type {
+  AppointmentBookingProfileRecord,
+  AppointmentBookingRequestRecord,
+  CalendarEventRecord,
+  CalendarSchedulingRequestRecord,
+  ProfessionalRole,
+  User,
+} from "@open-practice/domain";
 import { registerTaskRoutes } from "./tasks.js";
 
 const servers: FastifyInstance[] = [];
@@ -40,6 +47,166 @@ function testServer(
   registerTaskRoutes(server, { repository });
   servers.push(server);
   return server;
+}
+
+function calendarSchedulingRequest(
+  input: Partial<CalendarSchedulingRequestRecord> & Pick<CalendarSchedulingRequestRecord, "id">,
+): CalendarSchedulingRequestRecord {
+  const { id, ...overrides } = input;
+  return {
+    id,
+    firmId: "firm-west-legal",
+    matterId: "matter-001",
+    kind: "event_scheduling",
+    status: "needs_review",
+    title: "Private synthetic scheduling request title",
+    sourceType: "manual",
+    sourceLabel: "Private synthetic scheduling source",
+    requestedStartsAt: "2026-08-04T17:00:00.000Z",
+    requestedEndsAt: "2026-08-04T17:30:00.000Z",
+    reminderPosture: "none",
+    privacy: "staff_only",
+    timeCaptureCue: {
+      posture: "none",
+      existingTimeEntryCount: 0,
+      billable: false,
+    },
+    createdAt: "2026-06-01T12:00:00.000Z",
+    updatedAt: "2026-06-01T12:00:00.000Z",
+    createdByUserId: "user-licensee",
+    updatedByUserId: "user-licensee",
+    ...overrides,
+  };
+}
+
+function appointmentProfile(
+  id = "appointment-booking-profile-calendar-aging",
+): AppointmentBookingProfileRecord {
+  return {
+    id,
+    firmId: "firm-west-legal",
+    label: "Synthetic consultation profile",
+    publicLabel: "Synthetic consultation",
+    timezone: "America/Vancouver",
+    durationMinutes: 30,
+    slotIntervalMinutes: 30,
+    minLeadMinutes: 0,
+    maxLeadDays: 90,
+    status: "active",
+    weeklyWindows: [{ weekday: 2, startTime: "09:00", endTime: "17:00" }],
+    createdAt: "2026-06-01T00:00:00.000Z",
+    updatedAt: "2026-06-01T00:00:00.000Z",
+    createdByUserId: "user-licensee",
+    updatedByUserId: "user-licensee",
+  };
+}
+
+function appointmentEvent(input: {
+  id: string;
+  matterId?: string;
+  startsAt: string;
+  endsAt: string;
+}): CalendarEventRecord {
+  return {
+    id: input.id,
+    firmId: "firm-west-legal",
+    matterId: input.matterId,
+    uid: `${input.id}@example.test`,
+    title: "Private synthetic booking hold title",
+    startsAt: input.startsAt,
+    endsAt: input.endsAt,
+    status: "tentative",
+    sequence: 0,
+    createdAt: "2026-06-01T12:00:00.000Z",
+    updatedAt: "2026-06-01T12:00:00.000Z",
+    createdByUserId: "user-licensee",
+    updatedByUserId: "user-licensee",
+  };
+}
+
+async function seedCalendarSchedulingAgingDecision(
+  repository: OpenPracticeRepository,
+  input: {
+    id: string;
+    matterId?: string;
+    decidedAt: string;
+    decision?: NonNullable<CalendarSchedulingRequestRecord["reviewAgingDecision"]>;
+    status?: CalendarSchedulingRequestRecord["status"];
+  },
+): Promise<CalendarSchedulingRequestRecord> {
+  const matterId = input.matterId ?? "matter-001";
+  await repository.createCalendarSchedulingRequest(
+    calendarSchedulingRequest({
+      id: input.id,
+      matterId,
+      status: input.status ?? "needs_review",
+    }),
+  );
+  const updated = await repository.recordCalendarSchedulingRequestAgingReviewDecision({
+    firmId: "firm-west-legal",
+    matterId,
+    requestId: input.id,
+    decision: input.decision ?? "follow_up_required",
+    decidedAt: input.decidedAt,
+    decidedByUserId: "user-licensee",
+    cueStatus: "stale",
+    ageHours: 72,
+  });
+  if (!updated) throw new Error(`Failed to seed scheduling request ${input.id}`);
+  return updated;
+}
+
+async function seedAppointmentBookingAgingDecision(
+  repository: OpenPracticeRepository,
+  input: {
+    id: string;
+    matterId?: string;
+    startsAt: string;
+    endsAt: string;
+    decidedAt: string;
+    status?: AppointmentBookingRequestRecord["status"];
+  },
+): Promise<AppointmentBookingRequestRecord> {
+  const profile = appointmentProfile();
+  await repository.upsertAppointmentBookingProfile(profile);
+  await repository.createAppointmentBookingTentativeHold({
+    firmId: "firm-west-legal",
+    profileId: profile.id,
+    startsAt: input.startsAt,
+    endsAt: input.endsAt,
+    event: appointmentEvent({
+      id: `calendar-event-${input.id}`,
+      matterId: input.matterId,
+      startsAt: input.startsAt,
+      endsAt: input.endsAt,
+    }),
+    request: {
+      id: input.id,
+      firmId: "firm-west-legal",
+      profileId: profile.id,
+      source: "website",
+      status: input.status ?? "tentative_hold",
+      calendarEventId: `calendar-event-${input.id}`,
+      matterId: input.matterId,
+      requesterName: "Private synthetic requester",
+      requesterEmail: "requester@example.test",
+      requestedStartsAt: input.startsAt,
+      requestedEndsAt: input.endsAt,
+      submittedAt: "2026-06-01T12:00:00.000Z",
+      metadata: { syntheticPrivateNote: "Private synthetic booking metadata" },
+    },
+  });
+  const updated = await repository.recordAppointmentBookingAgingReviewDecision({
+    firmId: "firm-west-legal",
+    requestId: input.id,
+    decision: "follow_up_required",
+    decidedAt: input.decidedAt,
+    decidedByUserId: "user-licensee",
+    cueStatus: "stale",
+    ageHours: 72,
+  });
+  if (!updated) throw new Error(`Failed to seed appointment request ${input.id}`);
+  return updated;
 }
 
 beforeEach(() => {
@@ -276,6 +443,11 @@ describe("task routes", () => {
     });
     const mutationRequests: InjectOptions[] = [
       { method: "POST", url: "/api/tasks", payload: { matterId: "matter-001", title: "Denied" } },
+      {
+        method: "POST",
+        url: "/api/tasks/calendar-aging-follow-up",
+        payload: { matterId: "matter-001" },
+      },
       { method: "PATCH", url: "/api/tasks/task-deadline-001", payload: { title: "Denied" } },
       { method: "PATCH", url: "/api/tasks/task-deadline-001/complete", payload: {} },
       { method: "PATCH", url: "/api/tasks/task-deadline-001/reopen", payload: {} },
@@ -287,6 +459,210 @@ describe("task routes", () => {
       expect(response.statusCode).toBe(403);
       expect(response.json()).toMatchObject({ message: "Staff access required" });
     }
+  });
+
+  it("creates a redacted internal task from the latest eligible calendar aging decision", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await seedCalendarSchedulingAgingDecision(repository, {
+      id: "calendar-scheduling-aging-older",
+      decidedAt: "2026-06-04T15:00:00.000Z",
+    });
+    await seedAppointmentBookingAgingDecision(repository, {
+      id: "appointment-booking-aging-latest",
+      matterId: "matter-001",
+      startsAt: "2026-08-04T18:00:00.000Z",
+      endsAt: "2026-08-04T18:30:00.000Z",
+      decidedAt: "2026-06-04T16:00:00.000Z",
+    });
+    const server = testServer({
+      repository,
+      user: user("licensee", ["matter-001"]),
+    });
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/tasks/calendar-aging-follow-up",
+      payload: { matterId: "matter-001" },
+    });
+    const payload = response.json<{
+      task: {
+        id: string;
+        matterId: string;
+        title: string;
+        description?: string;
+        priority: string;
+        sourceType?: string;
+        sourceId?: string;
+        assignedToUserId?: string;
+      };
+      calendarAgingFollowUp: { kind: string; id: string; matterId: string };
+    }>();
+
+    expect(response.statusCode).toBe(201);
+    expect(payload.task).toMatchObject({
+      matterId: "matter-001",
+      title: "Review calendar aging follow-up",
+      priority: "high",
+      sourceType: "calendar_scheduling",
+      sourceId: "appointment-booking-aging-latest",
+    });
+    expect(payload.task).not.toHaveProperty("assignedToUserId");
+    expect(payload.task.description).toContain(
+      "Review the calendar aging source record in Calendar",
+    );
+    expect(payload.calendarAgingFollowUp).toMatchObject({
+      kind: "appointment_booking_request",
+      id: "appointment-booking-aging-latest",
+      matterId: "matter-001",
+    });
+
+    await expect(
+      repository.getAppointmentBookingRequest(
+        "firm-west-legal",
+        "appointment-booking-aging-latest",
+      ),
+    ).resolves.toMatchObject({ status: "tentative_hold" });
+    await expect(
+      repository.getCalendarSchedulingRequest(
+        "firm-west-legal",
+        "matter-001",
+        "calendar-scheduling-aging-older",
+      ),
+    ).resolves.toMatchObject({ status: "needs_review" });
+    await expect(
+      repository.listTaskDeadlines("firm-west-legal", {
+        matterId: "matter-001",
+        sourceType: "calendar_scheduling",
+        sourceId: "appointment-booking-aging-latest",
+        includeCompleted: true,
+        includeArchived: true,
+      }),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        id: payload.task.id,
+        title: "Review calendar aging follow-up",
+        priority: "high",
+        sourceType: "calendar_scheduling",
+        sourceId: "appointment-booking-aging-latest",
+      }),
+    ]);
+
+    const audit = await repository.listAuditEvents("firm-west-legal");
+    expect(audit.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          action: "task.created",
+          resourceType: "task",
+          resourceId: payload.task.id,
+          metadata: expect.objectContaining({
+            matterId: "matter-001",
+            taskId: payload.task.id,
+            priority: "high",
+            sourceType: "calendar_scheduling",
+            sourceId: "appointment-booking-aging-latest",
+            calendarAgingSourceKind: "appointment_booking_request",
+            calendarAgingSourceId: "appointment-booking-aging-latest",
+            reviewAgingDecision: "follow_up_required",
+            reviewAgingCueStatus: "stale",
+            reviewAgingAgeHours: 72,
+            reviewAgingDecidedAt: "2026-06-04T16:00:00.000Z",
+            reviewAgingDecidedByUserId: "user-licensee",
+            automaticFinalConfirmation: false,
+            autoExpires: false,
+            providerSync: false,
+            reminderQueued: false,
+            publicRoomCreated: false,
+            nativeMediaCreated: false,
+            chatCreated: false,
+            recordingCreated: false,
+            matterCreated: false,
+          }),
+        }),
+      ]),
+    );
+    const serialized = JSON.stringify({ payload, audit: audit.events });
+    expect(serialized).not.toContain("Private synthetic requester");
+    expect(serialized).not.toContain("requester@example.test");
+    expect(serialized).not.toContain("Private synthetic scheduling request title");
+    expect(serialized).not.toContain("Private synthetic scheduling source");
+    expect(serialized).not.toContain("Private synthetic booking hold title");
+    expect(serialized).not.toContain("2026-08-04T18:00:00.000Z");
+    expect(serialized).not.toContain("Private synthetic booking metadata");
+  });
+
+  it("requires matter-scoped task create access for calendar aging follow-up tasks", async () => {
+    const response = await testServer({
+      user: user("licensee", ["matter-002"]),
+    }).inject({
+      method: "POST",
+      url: "/api/tasks/calendar-aging-follow-up",
+      payload: { matterId: "matter-001" },
+    });
+
+    expect(response.statusCode).toBe(403);
+  });
+
+  it("skips existing source tasks and returns a conflict when no eligible source remains", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await seedAppointmentBookingAgingDecision(repository, {
+      id: "appointment-booking-aging-duplicate",
+      matterId: "matter-001",
+      startsAt: "2026-08-05T18:00:00.000Z",
+      endsAt: "2026-08-05T18:30:00.000Z",
+      decidedAt: "2026-06-04T18:00:00.000Z",
+    });
+    await seedCalendarSchedulingAgingDecision(repository, {
+      id: "calendar-scheduling-aging-eligible",
+      decidedAt: "2026-06-04T16:00:00.000Z",
+    });
+    await repository.createTaskDeadline({
+      id: "task-existing-calendar-aging",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      title: "Existing synthetic calendar aging task",
+      priority: "high",
+      sourceType: "calendar_scheduling",
+      sourceId: "appointment-booking-aging-duplicate",
+      createdAt: "2026-06-04T18:05:00.000Z",
+      createdByUserId: "user-licensee",
+      updatedAt: "2026-06-04T18:05:00.000Z",
+      updatedByUserId: "user-licensee",
+    });
+    const server = testServer({
+      repository,
+      user: user("licensee", ["matter-001"]),
+    });
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/tasks/calendar-aging-follow-up",
+      payload: { matterId: "matter-001" },
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(response.json()).toMatchObject({
+      task: {
+        title: "Review calendar aging follow-up",
+        sourceType: "calendar_scheduling",
+        sourceId: "calendar-scheduling-aging-eligible",
+      },
+      calendarAgingFollowUp: {
+        kind: "calendar_scheduling_request",
+        id: "calendar-scheduling-aging-eligible",
+      },
+    });
+
+    const exhausted = await server.inject({
+      method: "POST",
+      url: "/api/tasks/calendar-aging-follow-up",
+      payload: { matterId: "matter-001" },
+    });
+
+    expect(exhausted.statusCode).toBe(409);
+    expect(exhausted.json()).toMatchObject({
+      code: "CALENDAR_AGING_FOLLOW_UP_TASK_UNAVAILABLE",
+      message: "No eligible calendar aging follow-up decision is available",
+    });
   });
 
   it("creates and updates staff task records with audit-safe metadata", async () => {

@@ -17,6 +17,7 @@ import type {
   TaskTemplateItemRecord,
   TaskTemplateRecord,
 } from "./models.js";
+import type { AppointmentBookingRequestRecord } from "./appointment-booking.js";
 import type { LegalClinicCadenceSignal } from "./legal-clinics.js";
 
 export interface TaskDeadlineCounterSet {
@@ -186,6 +187,47 @@ export interface TaskFollowUpSuggestion {
     automaticDeadlineMutation: false;
     automaticReminderChanges: false;
     queueDelivery: false;
+  };
+}
+
+export type CalendarAgingFollowUpSourceKind =
+  | "appointment_booking_request"
+  | "calendar_scheduling_request";
+
+export interface CalendarAgingFollowUpTaskSource {
+  kind: CalendarAgingFollowUpSourceKind;
+  id: string;
+  matterId: string;
+  decidedAt: string;
+  decidedByUserId: string;
+  cueStatus: "aging" | "stale";
+  ageHours: number;
+}
+
+export interface CalendarAgingFollowUpTaskDraft {
+  title: "Review calendar aging follow-up";
+  description: string;
+  priority: "high";
+  sourceType: "calendar_scheduling";
+  sourceId: string;
+  source: CalendarAgingFollowUpTaskSource;
+  auditMetadata: {
+    calendarAgingSourceKind: CalendarAgingFollowUpSourceKind;
+    calendarAgingSourceId: string;
+    reviewAgingDecision: "follow_up_required";
+    reviewAgingCueStatus: "aging" | "stale";
+    reviewAgingAgeHours: number;
+    reviewAgingDecidedAt: string;
+    reviewAgingDecidedByUserId: string;
+    automaticFinalConfirmation: false;
+    autoExpires: false;
+    providerSync: false;
+    reminderQueued: false;
+    publicRoomCreated: false;
+    nativeMediaCreated: false;
+    chatCreated: false;
+    recordingCreated: false;
+    matterCreated: false;
   };
 }
 
@@ -544,6 +586,159 @@ const TASK_FOLLOW_UP_REVIEW_BOUNDARY = {
   automaticReminderChanges: false,
   queueDelivery: false,
 } as const;
+
+const CALENDAR_AGING_FOLLOW_UP_TASK_TITLE = "Review calendar aging follow-up" as const;
+const CALENDAR_AGING_FOLLOW_UP_TASK_DESCRIPTION =
+  "Review the calendar aging source record in Calendar and record the follow-up outcome. Keep this task operational: do not add client names, request titles, source labels, requested times, provider payloads, meeting links, tokens, or notes.";
+
+type CalendarAgingFollowUpCandidate = CalendarAgingFollowUpTaskSource & {
+  decidedTime: number;
+};
+
+function calendarAgingSourceKey(sourceId: string): string {
+  return `calendar_scheduling:${sourceId}`;
+}
+
+function hasCompleteCalendarAgingFollowUpMetadata(input: {
+  reviewAgingDecision?: string;
+  reviewAgingDecidedAt?: string;
+  reviewAgingDecidedByUserId?: string;
+  reviewAgingCueStatus?: string;
+  reviewAgingAgeHours?: number;
+}): input is {
+  reviewAgingDecision: "follow_up_required";
+  reviewAgingDecidedAt: string;
+  reviewAgingDecidedByUserId: string;
+  reviewAgingCueStatus: "aging" | "stale";
+  reviewAgingAgeHours: number;
+} {
+  return (
+    input.reviewAgingDecision === "follow_up_required" &&
+    typeof input.reviewAgingDecidedAt === "string" &&
+    !Number.isNaN(Date.parse(input.reviewAgingDecidedAt)) &&
+    typeof input.reviewAgingDecidedByUserId === "string" &&
+    input.reviewAgingDecidedByUserId.trim().length > 0 &&
+    (input.reviewAgingCueStatus === "aging" || input.reviewAgingCueStatus === "stale") &&
+    typeof input.reviewAgingAgeHours === "number" &&
+    Number.isFinite(input.reviewAgingAgeHours)
+  );
+}
+
+function calendarAgingAppointmentCandidate(
+  request: AppointmentBookingRequestRecord,
+  matterId: string,
+  existingTaskSources: Set<string>,
+): CalendarAgingFollowUpCandidate | undefined {
+  if (
+    request.status !== "tentative_hold" ||
+    request.matterId !== matterId ||
+    existingTaskSources.has(calendarAgingSourceKey(request.id)) ||
+    !hasCompleteCalendarAgingFollowUpMetadata(request)
+  ) {
+    return undefined;
+  }
+  return {
+    kind: "appointment_booking_request",
+    id: request.id,
+    matterId,
+    decidedAt: request.reviewAgingDecidedAt,
+    decidedByUserId: request.reviewAgingDecidedByUserId,
+    cueStatus: request.reviewAgingCueStatus,
+    ageHours: request.reviewAgingAgeHours,
+    decidedTime: Date.parse(request.reviewAgingDecidedAt),
+  };
+}
+
+function calendarAgingSchedulingCandidate(
+  request: CalendarSchedulingRequestRecord,
+  matterId: string,
+  existingTaskSources: Set<string>,
+): CalendarAgingFollowUpCandidate | undefined {
+  if (
+    request.status !== "needs_review" ||
+    request.matterId !== matterId ||
+    existingTaskSources.has(calendarAgingSourceKey(request.id)) ||
+    !hasCompleteCalendarAgingFollowUpMetadata(request)
+  ) {
+    return undefined;
+  }
+  return {
+    kind: "calendar_scheduling_request",
+    id: request.id,
+    matterId,
+    decidedAt: request.reviewAgingDecidedAt,
+    decidedByUserId: request.reviewAgingDecidedByUserId,
+    cueStatus: request.reviewAgingCueStatus,
+    ageHours: request.reviewAgingAgeHours,
+    decidedTime: Date.parse(request.reviewAgingDecidedAt),
+  };
+}
+
+export function buildCalendarAgingFollowUpTaskDraft(input: {
+  matterId: string;
+  appointmentBookingRequests?: AppointmentBookingRequestRecord[];
+  calendarSchedulingRequests?: CalendarSchedulingRequestRecord[];
+  existingTasks?: Pick<TaskDeadlineRecord, "sourceType" | "sourceId">[];
+}): CalendarAgingFollowUpTaskDraft | undefined {
+  const existingTaskSources = new Set(
+    (input.existingTasks ?? [])
+      .filter((task) => task.sourceType === "calendar_scheduling" && task.sourceId)
+      .map((task) => calendarAgingSourceKey(task.sourceId as string)),
+  );
+  const candidates = [
+    ...(input.appointmentBookingRequests ?? []).map((request) =>
+      calendarAgingAppointmentCandidate(request, input.matterId, existingTaskSources),
+    ),
+    ...(input.calendarSchedulingRequests ?? []).map((request) =>
+      calendarAgingSchedulingCandidate(request, input.matterId, existingTaskSources),
+    ),
+  ]
+    .filter((candidate): candidate is CalendarAgingFollowUpCandidate => Boolean(candidate))
+    .sort((left, right) => {
+      if (left.decidedTime !== right.decidedTime) return right.decidedTime - left.decidedTime;
+      const kindOrder = left.kind.localeCompare(right.kind);
+      if (kindOrder !== 0) return kindOrder;
+      return left.id.localeCompare(right.id);
+    });
+
+  const source = candidates[0];
+  if (!source) return undefined;
+
+  return {
+    title: CALENDAR_AGING_FOLLOW_UP_TASK_TITLE,
+    description: CALENDAR_AGING_FOLLOW_UP_TASK_DESCRIPTION,
+    priority: "high",
+    sourceType: "calendar_scheduling",
+    sourceId: source.id,
+    source: {
+      kind: source.kind,
+      id: source.id,
+      matterId: source.matterId,
+      decidedAt: source.decidedAt,
+      decidedByUserId: source.decidedByUserId,
+      cueStatus: source.cueStatus,
+      ageHours: source.ageHours,
+    },
+    auditMetadata: {
+      calendarAgingSourceKind: source.kind,
+      calendarAgingSourceId: source.id,
+      reviewAgingDecision: "follow_up_required",
+      reviewAgingCueStatus: source.cueStatus,
+      reviewAgingAgeHours: source.ageHours,
+      reviewAgingDecidedAt: source.decidedAt,
+      reviewAgingDecidedByUserId: source.decidedByUserId,
+      automaticFinalConfirmation: false,
+      autoExpires: false,
+      providerSync: false,
+      reminderQueued: false,
+      publicRoomCreated: false,
+      nativeMediaCreated: false,
+      chatCreated: false,
+      recordingCreated: false,
+      matterCreated: false,
+    },
+  };
+}
 
 function taskCueAssignmentScope(
   task: TaskDeadlineProjection,

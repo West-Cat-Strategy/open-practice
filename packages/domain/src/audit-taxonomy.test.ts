@@ -1915,6 +1915,70 @@ describe("audit event taxonomy", () => {
         resourceTypeMatches: true,
       });
     }
+
+    const calendarAgingFollowUp = classifyAuditEvent(
+      auditEvent({
+        action: "task.created",
+        resourceType: "task",
+        resourceId: "task-calendar-aging-follow-up",
+        metadata: {
+          matterId: "matter-001",
+          taskId: "task-calendar-aging-follow-up",
+          priority: "high",
+          sourceType: "calendar_scheduling",
+          sourceId: "appointment-booking-request-001",
+          calendarAgingSourceKind: "appointment_booking_request",
+          calendarAgingSourceId: "appointment-booking-request-001",
+          reviewAgingDecision: "follow_up_required",
+          reviewAgingCueStatus: "stale",
+          reviewAgingAgeHours: 72,
+          reviewAgingDecidedAt: "2026-06-04T16:00:00.000Z",
+          reviewAgingDecidedByUserId: "user-licensee",
+          automaticFinalConfirmation: false,
+          autoExpires: false,
+          providerSync: false,
+          reminderQueued: false,
+          publicRoomCreated: false,
+          nativeMediaCreated: false,
+          chatCreated: false,
+          recordingCreated: false,
+          matterCreated: false,
+        },
+      }),
+    );
+
+    expect(calendarAgingFollowUp.metadataHints.resource).toEqual(
+      expect.arrayContaining([
+        "calendarAgingSourceKind",
+        "calendarAgingSourceId",
+        "reviewAgingDecision",
+        "reviewAgingCueStatus",
+        "reviewAgingAgeHours",
+        "reviewAgingDecidedAt",
+        "reviewAgingDecidedByUserId",
+        "automaticFinalConfirmation",
+        "autoExpires",
+        "providerSync",
+        "reminderQueued",
+        "publicRoomCreated",
+        "nativeMediaCreated",
+        "chatCreated",
+        "recordingCreated",
+        "matterCreated",
+      ]),
+    );
+    expect(calendarAgingFollowUp.metadataHints.resource).not.toEqual(
+      expect.arrayContaining([
+        "title",
+        "sourceLabel",
+        "requestedStartsAt",
+        "requestedEndsAt",
+        "providerPayload",
+        "meetingLink",
+        "token",
+        "notes",
+      ]),
+    );
   });
 
   it("classifies calendar event updates with safe meeting-link metadata only", () => {
