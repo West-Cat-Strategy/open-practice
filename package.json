@@ -43,7 +43,7 @@
     "env:check": "node scripts/check-env-surface.mjs",
     "license:scan": "node scripts/run-license-source-scan.mjs",
     "migrations:lint": "node scripts/lint-migrations.mjs",
-    "policy:check": "pnpm security:scan && node scripts/validate-package-manifests.mjs && pnpm deps:supply-chain && pnpm toolchain:check && pnpm env:check && pnpm architecture:check && pnpm deadcode:check && pnpm migrations:check && pnpm migrations:lint && node scripts/validate-oss-reuse.mjs && node scripts/validate-doc-links.mjs && node scripts/validate-validation-proof-index.mjs && node scripts/validate-local-evidence-dockerignore.mjs && node scripts/validate-open-practice-boundaries.mjs",
+    "policy:check": "pnpm security:scan -- --fail-on-skipped && node scripts/validate-package-manifests.mjs && pnpm deps:supply-chain && pnpm toolchain:check && pnpm env:check && pnpm architecture:check && pnpm deadcode:check && pnpm migrations:check && pnpm migrations:lint && node scripts/validate-oss-reuse.mjs && node scripts/validate-doc-links.mjs && node scripts/validate-validation-proof-index.mjs && node scripts/validate-local-evidence-dockerignore.mjs && node scripts/validate-open-practice-boundaries.mjs",
     "playwright": "node scripts/run-e2e.mjs host",
     "proof:reconcile": "node scripts/reconcile-validation-proof.mjs",
     "release:attest": "node scripts/attest-release-artifacts.mjs",

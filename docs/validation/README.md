@@ -18,6 +18,13 @@ skipped-check context. The live workboard remains
 
 ## Current Handoff Notes
 
+The 2026-06-29 policy secret-scan skipped tracked-files proof is recorded in
+[OP_POLICY_SECRET_SCAN_SKIPPED_TRACKED_FILES_PROOF_2026-06-29.md](OP_POLICY_SECRET_SCAN_SKIPPED_TRACKED_FILES_PROOF_2026-06-29.md).
+It covers the policy-gate tightening that makes tracked files skipped by the tracked-secret scanner
+fail `pnpm policy:check`, including focused scanner tests, selector-driven validation, and preserved
+no secret-regex broadening, matched-value serialization, default ignored-evidence scanning,
+`.gitleaksignore` weakening, or synthetic false-positive policy change.
+
 The 2026-06-29 report export profile alignment proof is recorded in
 [OP_REPORT_EXPORT_PROFILE_ALIGNMENT_PROOF_2026-06-29.md](OP_REPORT_EXPORT_PROFILE_ALIGNMENT_PROOF_2026-06-29.md).
 It covers the read-only staff Reports workspace comparison between manual report export profiles
