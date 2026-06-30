@@ -64,6 +64,45 @@ describe("secret scanner", () => {
     assert.deepEqual(scanSecretPaths([artifactDir], { scanLargeFiles: true }).skipped, []);
   });
 
+  it("fails skipped-file scans when requested without serializing skipped content", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "open-practice-secret-skip-json-"));
+    const artifactDir = path.join(dir, "release");
+    const largeFile = path.join(artifactDir, "large.log");
+    const jsonPath = path.join(dir, "scan.json");
+    const largeContent = `${openAiKeyFixture}\n${"x".repeat(5 * 1024 * 1024)}\n`;
+    mkdirSync(artifactDir);
+    writeFileSync(largeFile, largeContent);
+
+    const previousExitCode = process.exitCode;
+    process.exitCode = undefined;
+    try {
+      const result = runSecretScan([
+        "--path",
+        artifactDir,
+        "--fail-on-skipped",
+        "--json-output",
+        jsonPath,
+      ]);
+      assert.equal(process.exitCode, 1);
+      assert.deepEqual(result.findings, []);
+      assert.deepEqual(result.skipped, [
+        { file: largeFile, reason: "large_file", sizeBytes: Buffer.byteLength(largeContent) },
+      ]);
+    } finally {
+      process.exitCode = previousExitCode;
+    }
+
+    const savedText = readFileSync(jsonPath, "utf8");
+    const saved = JSON.parse(savedText);
+    assert.equal(saved.scope.mode, "explicit_paths");
+    assert.equal(saved.options.failOnSkipped, true);
+    assert.deepEqual(saved.findings, []);
+    assert.deepEqual(saved.skipped, [
+      { file: largeFile, reason: "large_file", sizeBytes: Buffer.byteLength(largeContent) },
+    ]);
+    assert.equal(savedText.includes(openAiKeyFixture), false);
+  });
+
   it("builds JSON reports without matched secret values", () => {
     const report = buildSecretScanReport({
       explicitPaths: ["artifact.log"],

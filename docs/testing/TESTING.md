@@ -49,7 +49,7 @@ API contracts, database schema changes, auth changes, or release handoff.
 | Migration parity         | `pnpm migrations:check`                            | Verifies SQL migration files and Drizzle journal entries stay in lockstep.                                                                                                                                                                                                                                                                                                                                      |
 | Migration lint           | `pnpm migrations:lint`                             | Checks changed SQL migrations for destructive or lock-prone review-required patterns.                                                                                                                                                                                                                                                                                                                           |
 | Migration replay         | `pnpm migrations:replay`                           | Applies migrations to a disposable local PostgreSQL database and cleans it up.                                                                                                                                                                                                                                                                                                                                  |
-| Policy and docs checks   | `pnpm policy:check`                                | Runs tracked-secret, package manifest, dead-code, migration parity, OSS reuse, docs link, validation-proof index, local-evidence, and architecture-boundary policy checks.                                                                                                                                                                                                                                      |
+| Policy and docs checks   | `pnpm policy:check`                                | Runs tracked-secret, package manifest, dead-code, migration parity, OSS reuse, docs link, validation-proof index, local-evidence, and architecture-boundary policy checks. The tracked-secret step fails if tracked files are skipped; use explicit scanner paths only for deliberate scoped evidence scans.                                                                                                    |
 | Build                    | `pnpm build`                                       | Required for release or app shell changes.                                                                                                                                                                                                                                                                                                                                                                      |
 
 ## Selective Validation
@@ -122,13 +122,19 @@ Output is deterministic, de-duplicated, and one command per line after a short h
 changes include the domain build before downstream package checks so fresh worktrees hydrate shared
 package output before API, provider, worker, or web validation.
 
-`pnpm policy:check` includes `scripts/validate-package-manifests.mjs`, which blocks dependency,
-development dependency, optional dependency, or peer dependency ranges set to `latest` in repo
-package manifests. Use pinned or semver-bounded ranges so local validation stays repeatable.
-It also runs the lockfile supply-chain policy, toolchain check, env-surface check, architecture
-import check, dead-code gate, migration parity, migration lint, OSS reuse, docs link,
-validation-proof index, local-evidence `.dockerignore`, and architecture-boundary checks; keep
-command-specific proof in the relevant validation note when one of those subchecks drives a change.
+`pnpm policy:check` includes the tracked-secret scanner with `--fail-on-skipped` so tracked files
+that are too large to inspect fail the everyday policy gate instead of becoming soft warnings. This
+matches security-review and release-packet posture without broadening secret regexes, serializing
+matched values, or scanning ignored local evidence by default. Use scoped `pnpm security:scan`
+runs with `--path <path>` only for deliberate scans of release artifacts or other local evidence,
+and add `--scan-large-files` when that scoped evidence must include large text files. `pnpm policy:check`
+also includes `scripts/validate-package-manifests.mjs`, which blocks dependency, development
+dependency, optional dependency, or peer dependency ranges set to `latest` in repo package
+manifests. Use pinned or semver-bounded ranges so local validation stays repeatable. It also runs
+the lockfile supply-chain policy, toolchain check, env-surface check, architecture import check,
+dead-code gate, migration parity, migration lint, OSS reuse, docs link, validation-proof index,
+local-evidence `.dockerignore`, and architecture-boundary checks; keep command-specific proof in
+the relevant validation note when one of those subchecks drives a change.
 Use `pnpm deps:licenses` when adding or upgrading dependencies to keep a reviewable license-group
 summary. The command highlights copyleft, public-license, and unusual groups for review but only
 fails the local run when a dependency reports an unknown, unlicensed, or empty license group. Use
