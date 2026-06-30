@@ -6,6 +6,7 @@ import type {
   ContactIdentifier,
   ContactMethod,
   ContactDataQualityResolutionRecord,
+  ContactDuplicateResolutionRecord,
   ContactDossier,
   ContactDossierQualitySignal,
   MatterParty,
@@ -13,6 +14,8 @@ import type {
 } from "@open-practice/domain";
 import {
   contactDataQualityResolutionDecisions,
+  contactDuplicateResolutionDecisions,
+  contactDuplicateResolutionReasons,
   contactDossierQualitySignalKinds,
   contactRelationshipKinds,
   contactRelationshipSources,
@@ -20,6 +23,7 @@ import {
   contactRoleCategories,
   contactStatuses,
   contactTimelineActivityFilters,
+  defaultContactDuplicateResolutionBoundary,
   filterContactTimelineEntries,
   type JobLifecycleRecord,
 } from "@open-practice/domain";
@@ -27,7 +31,7 @@ import { requireAccess } from "../http/auth-guards.js";
 import { ApiHttpError } from "../http/response.js";
 import { parseRequestPart } from "../http/validation.js";
 import { appendRouteAuditEvent } from "./audit-events.js";
-import { rethrowIdempotencyConflict } from "./idempotency.js";
+import { buildIdempotencyFingerprint, rethrowIdempotencyConflict } from "./idempotency.js";
 import type { ApiJobQueue } from "./types.js";
 
 const CONTACT_HISTORY_EXPORT_DOWNLOAD_TTL_MS = 24 * 60 * 60 * 1000;
@@ -189,6 +193,57 @@ const contactDataQualityResolutionBodySchema = z.object({
   sourceRecordId: z.string().min(1).optional(),
   resolutionNote: z.string().min(1),
 });
+
+const safeContactDecisionIdSchema = z
+  .string()
+  .min(1)
+  .max(160)
+  .regex(/^[A-Za-z0-9_.:-]+$/);
+
+const contactDuplicateResolutionBodySchema = z
+  .object({
+    id: safeContactDecisionIdSchema.optional(),
+    relatedContactId: z.string().min(1),
+    decision: z.enum(contactDuplicateResolutionDecisions),
+    reason: z.enum(contactDuplicateResolutionReasons),
+    idempotencyKey: safeContactDecisionIdSchema,
+  })
+  .strict()
+  .superRefine((body, context) => {
+    if (
+      body.decision === "acknowledged_duplicate_candidate" &&
+      body.reason !== "safe_identity_match" &&
+      body.reason !== "shared_visible_matter"
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["reason"],
+        message: "acknowledged_duplicate_candidate requires safe duplicate evidence",
+      });
+    }
+    if (
+      body.decision === "not_duplicate" &&
+      body.reason !== "distinct_contact_verified" &&
+      body.reason !== "insufficient_safe_evidence"
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["reason"],
+        message: "not_duplicate requires a distinct-contact reason",
+      });
+    }
+    if (
+      body.decision === "needs_follow_up" &&
+      body.reason !== "reviewer_follow_up_required" &&
+      body.reason !== "insufficient_safe_evidence"
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["reason"],
+        message: "needs_follow_up requires a follow-up reason",
+      });
+    }
+  });
 
 const contactHistoryExportBodySchema = z
   .object({
@@ -1079,6 +1134,43 @@ function filterVisibleResolutions(
   );
 }
 
+function hasVisibleDuplicateCue(dossier: ContactDossier, relatedContactId: string): boolean {
+  return dossier.qualityReview.signals.some(
+    (signal) =>
+      signal.kind === "duplicate_candidate" &&
+      (signal.relatedContactIds ?? []).includes(relatedContactId),
+  );
+}
+
+function assertVisibleDuplicateCue(
+  dossiers: ContactDossier[],
+  contactId: string,
+  relatedContactId: string,
+): ContactDossier {
+  const dossier = findVisibleDossier(dossiers, contactId);
+  if (!hasVisibleDuplicateCue(dossier, relatedContactId)) {
+    throw new ApiHttpError(
+      403,
+      "CONTACT_DUPLICATE_SIGNAL_NOT_VISIBLE",
+      "Contact duplicate resolution requires a visible duplicate cue",
+    );
+  }
+  return dossier;
+}
+
+function filterVisibleDuplicateResolutionDecisions(
+  decisions: ContactDuplicateResolutionRecord[],
+  dossiers: ContactDossier[],
+): ContactDuplicateResolutionRecord[] {
+  return decisions.filter((decision) =>
+    dossiers.some(
+      (dossier) =>
+        dossier.contact.id === decision.contactId &&
+        hasVisibleDuplicateCue(dossier, decision.relatedContactId),
+    ),
+  );
+}
+
 export function registerContactRoutes(
   server: FastifyInstance,
   options: { repository: OpenPracticeRepository; reportJobQueue?: ApiJobQueue },
@@ -1231,10 +1323,95 @@ export function registerContactRoutes(
     return filterVisibleResolutions(resolutions, dossiers);
   });
 
+  server.get("/api/contacts/:contactId/duplicate-resolution-decisions", async (request) => {
+    const access = requireAccess(request.auth, { resource: "contact", action: "read" });
+    if (!access.ok) throw access.error;
+    const params = parseRequestPart(contactParamsSchema, request.params, "params");
+    const dossiers = await options.repository.listContactDossiersForUser(request.auth.user);
+    findVisibleDossier(dossiers, params.contactId);
+    const decisions = await options.repository.listContactDuplicateResolutionDecisions(
+      request.auth.firmId,
+      { contactId: params.contactId },
+    );
+    return {
+      reviewOnly: true,
+      decisions: filterVisibleDuplicateResolutionDecisions(decisions, dossiers),
+    };
+  });
+
+  server.post("/api/contacts/:contactId/duplicate-resolution-decisions", async (request) => {
+    const access = requireAccess(request.auth, { resource: "contact", action: "update" });
+    if (!access.ok) throw access.error;
+    const params = parseRequestPart(contactParamsSchema, request.params, "params");
+    const body = parseRequestPart(contactDuplicateResolutionBodySchema, request.body, "body");
+    const dossiers = await options.repository.listContactDossiersForUser(request.auth.user);
+    assertVisibleDuplicateCue(dossiers, params.contactId, body.relatedContactId);
+
+    const now = new Date().toISOString();
+    const boundaries = defaultContactDuplicateResolutionBoundary();
+    const decisionFingerprint = buildIdempotencyFingerprint({
+      contactId: params.contactId,
+      relatedContactId: body.relatedContactId,
+      decision: body.decision,
+      reason: body.reason,
+      boundaries,
+    });
+    const decision: ContactDuplicateResolutionRecord = {
+      id: body.id ?? randomUUID(),
+      firmId: request.auth.firmId,
+      contactId: params.contactId,
+      relatedContactId: body.relatedContactId,
+      decision: body.decision,
+      reason: body.reason,
+      idempotencyKey: body.idempotencyKey,
+      decisionFingerprint,
+      boundaries,
+      reviewedByUserId: request.auth.user.id,
+      reviewedAt: now,
+      createdAt: now,
+    };
+
+    let created: ContactDuplicateResolutionRecord;
+    try {
+      created = await options.repository.createContactDuplicateResolutionDecision(decision);
+    } catch (error) {
+      rethrowIdempotencyConflict(error);
+    }
+
+    await appendRouteAuditEvent(options.repository, request.auth, {
+      action: "contact.duplicate_resolution_decision.recorded",
+      resourceType: "contact_duplicate_resolution_decision",
+      resourceId: created.id,
+      metadata: {
+        contactId: created.contactId,
+        relatedContactId: created.relatedContactId,
+        decision: created.decision,
+        reason: created.reason,
+        idempotencyKeyPresent: Boolean(created.idempotencyKey),
+        contactMerge: created.boundaries.contactMerge,
+        contactFieldMutation: created.boundaries.contactFieldMutation,
+        hiddenMatterDisclosure: created.boundaries.hiddenMatterDisclosure,
+        rawMatchedValueRetention: created.boundaries.rawMatchedValueRetention,
+        privateReviewerNoteRetention: created.boundaries.privateReviewerNoteRetention,
+        conflictCheckMutation: created.boundaries.conflictCheckMutation,
+        portalPermissionWidening: created.boundaries.portalPermissionWidening,
+        contactPermissionWidening: created.boundaries.contactPermissionWidening,
+      },
+    });
+    return { decision: created };
+  });
+
   server.post("/api/contacts/data-quality-resolutions", async (request) => {
     const access = requireAccess(request.auth, { resource: "contact", action: "update" });
     if (!access.ok) throw access.error;
     const body = parseRequestPart(contactDataQualityResolutionBodySchema, request.body, "body");
+    if (body.signalKind === "duplicate_candidate") {
+      throw new ApiHttpError(
+        400,
+        "CONTACT_DUPLICATE_RESOLUTION_ENDPOINT_REQUIRED",
+        "Duplicate-candidate decisions must use the enum-only duplicate resolution endpoint",
+      );
+    }
     if (!contactDataQualityResolutionDecisionsByKind[body.signalKind].has(body.decision)) {
       throw new ApiHttpError(
         400,

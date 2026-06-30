@@ -10,7 +10,7 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 | Snapshot              | Value                                                                |
 | --------------------- | -------------------------------------------------------------------- |
-| Current focus         | 2026-06-30 refund/chargeback resolution packet preview implemented.  |
+| Current focus         | 2026-06-30 all-worktree mainline integration in progress.            |
 | Next recommended pick | Pick the next small row from the candidate backlog.                  |
 | Ready rows            | 0                                                                    |
 | Candidate rows        | 0                                                                    |
@@ -38,6 +38,16 @@ safe IDs. The slice adds no unlock, override, bypass, mutation, lock-enforcement
 provider, settlement, trust-posting, raw report-body storage, private text, memo, client
 identifier, or payment-detail behavior. Proof is recorded in
 [billing period lock impact projection proof](validation/OP_BILLING_PERIOD_LOCK_IMPACT_PROJECTION_PROOF_2026-06-29.md).
+
+The 2026-06-30 `feat/contact-duplicate-resolution-decisions-20260630` branch adds enum-only
+contact duplicate resolution decisions over already-visible dossier duplicate cues. The branch
+stores safe contact IDs, decision/reason enums, idempotency/reviewer metadata, timestamps, and fixed
+no-merge/no-contact-mutation/no-hidden-matter/no-raw-match/no-private-note/no-conflict-check-mutation/no-permission-widen
+boundaries only. New duplicate-candidate decisions use
+`/api/contacts/:contactId/duplicate-resolution-decisions`; the generic contact data-quality route
+continues to handle non-duplicate signals and rejects new duplicate-candidate writes. Proof is
+recorded in
+[contact duplicate resolution decisions proof](validation/OP_CONTACT_DUPLICATE_RESOLUTION_DECISIONS_PROOF_2026-06-30.md).
 
 The 2026-06-28 `feat/trust-controls-maker-checker-readiness-20260628` branch adds read-only
 Trust Controls maker-checker readiness indicators to the existing controls payload and dashboard.

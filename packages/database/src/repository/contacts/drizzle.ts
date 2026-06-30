@@ -4,11 +4,13 @@ import {
   summarizeContactDossierMatterRetentionHoldReview,
   validateContactRecord,
   validateContactDataQualityResolutionRecord,
+  validateContactDuplicateResolutionRecord,
   validateContactRelationshipRecord,
   type ActivityTimelineEntry,
   type CalendarSchedulingRequestRecord,
   type Contact,
   type ContactDataQualityResolutionRecord,
+  type ContactDuplicateResolutionRecord,
   type ContactDossier,
   type ContactRelationshipRecord,
   type IntakeVariableProposal,
@@ -22,6 +24,7 @@ import type { OpenPracticeDatabase } from "../../runtime.js";
 import * as schema from "../../schema.js";
 import type {
   ContactDataQualityResolutionListOptions,
+  ContactDuplicateResolutionDecisionListOptions,
   ContactListOptions,
   ContactVisibilityPreloadContext,
   ContactRelationshipUpdateInput,
@@ -31,14 +34,17 @@ import type {
 import type { MatterSummary } from "../matter-workspace-contracts.js";
 import {
   contactInsert,
+  contactDuplicateResolutionDecisionInsert,
   contactRelationshipInsert,
   mapConflictCheckRow,
   mapContactDataQualityResolutionRow,
+  mapContactDuplicateResolutionDecisionRow,
   mapContactRelationshipRow,
   mapContactRow,
   mapMatterPartyRow,
   matterPartyInsert,
 } from "../drizzle-mappers.js";
+import { IdempotencyKeyConflictError, clone, isPostgresUniqueViolation } from "../contracts.js";
 
 export interface DrizzleContactDependencies {
   listMattersForUser(user: User): Promise<MatterSummary[]>;
@@ -511,6 +517,11 @@ export async function listDrizzleContactTimelineForUser(
   if (!dossier) return [];
   const contact = await getDrizzleContact(db, user.firmId, contactId);
   const visibleMatterIds = new Set(dossier.matters.map((matter) => matter.matterId));
+  const visibleDuplicateRelatedContactIds = new Set(
+    dossier.qualityReview.signals
+      .filter((signal) => signal.kind === "duplicate_candidate")
+      .flatMap((signal) => signal.relatedContactIds ?? []),
+  );
   const entries: ActivityTimelineEntry[] = [];
   if (contact?.createdAt) {
     entries.push({
@@ -609,6 +620,25 @@ export async function listDrizzleContactTimelineForUser(
       },
     });
   }
+  for (const decision of await listDrizzleContactDuplicateResolutionDecisions(db, user.firmId, {
+    contactId,
+  })) {
+    if (!visibleDuplicateRelatedContactIds.has(decision.relatedContactId)) continue;
+    entries.push({
+      id: `contact-duplicate-resolution:${decision.id}`,
+      firmId: decision.firmId,
+      occurredAt: decision.reviewedAt,
+      title: "Duplicate resolution decision",
+      kind: "audit",
+      actorId: decision.reviewedByUserId,
+      metadata: {
+        contactId,
+        relatedContactPresent: true,
+        decision: decision.decision,
+        reason: decision.reason,
+      },
+    });
+  }
   const visibleMatterIdList = [...visibleMatterIds].sort();
   const tasks =
     visibleMatterIdList.length > 0
@@ -682,4 +712,108 @@ export async function listDrizzleContactDataQualityResolutions(
     .where(and(...filters))
     .orderBy(desc(schema.contactDataQualityResolutions.recordedAt));
   return rows.map(mapContactDataQualityResolutionRow);
+}
+
+async function getDuplicateResolutionByIdempotency(input: {
+  db: OpenPracticeDatabase;
+  firmId: string;
+  contactId: string;
+  relatedContactId: string;
+  idempotencyKey: string;
+}): Promise<ContactDuplicateResolutionRecord | undefined> {
+  const [row] = await input.db
+    .select()
+    .from(schema.contactDuplicateResolutionDecisions)
+    .where(
+      and(
+        eq(schema.contactDuplicateResolutionDecisions.firmId, input.firmId),
+        eq(schema.contactDuplicateResolutionDecisions.contactId, input.contactId),
+        eq(schema.contactDuplicateResolutionDecisions.relatedContactId, input.relatedContactId),
+        eq(schema.contactDuplicateResolutionDecisions.idempotencyKey, input.idempotencyKey),
+      ),
+    );
+  return row ? mapContactDuplicateResolutionDecisionRow(row) : undefined;
+}
+
+function existingDuplicateResolutionOrConflict(
+  existing: ContactDuplicateResolutionRecord | undefined,
+  incoming: ContactDuplicateResolutionRecord,
+): ContactDuplicateResolutionRecord | undefined {
+  if (!existing) return undefined;
+  if (existing.decisionFingerprint !== incoming.decisionFingerprint) {
+    throw new IdempotencyKeyConflictError();
+  }
+  return clone(existing);
+}
+
+export async function createDrizzleContactDuplicateResolutionDecision(
+  db: OpenPracticeDatabase,
+  decision: ContactDuplicateResolutionRecord,
+): Promise<ContactDuplicateResolutionRecord> {
+  validateContactDuplicateResolutionRecord(decision);
+  const [contact, relatedContact] = await Promise.all([
+    getDrizzleContact(db, decision.firmId, decision.contactId),
+    getDrizzleContact(db, decision.firmId, decision.relatedContactId),
+  ]);
+  if (!contact) throw new Error("Contact duplicate decision contact was not found");
+  if (!relatedContact) throw new Error("Contact duplicate decision related contact was not found");
+
+  const existing = await getDuplicateResolutionByIdempotency({
+    db,
+    firmId: decision.firmId,
+    contactId: decision.contactId,
+    relatedContactId: decision.relatedContactId,
+    idempotencyKey: decision.idempotencyKey,
+  });
+  const reused = existingDuplicateResolutionOrConflict(existing, decision);
+  if (reused) return reused;
+
+  try {
+    const [row] = await db
+      .insert(schema.contactDuplicateResolutionDecisions)
+      .values(contactDuplicateResolutionDecisionInsert(decision))
+      .returning();
+    return mapContactDuplicateResolutionDecisionRow(row);
+  } catch (error) {
+    if (
+      !isPostgresUniqueViolation(
+        error,
+        "contact_duplicate_resolution_decisions_firm_pair_idempotency_idx",
+      )
+    ) {
+      throw error;
+    }
+    const racedExisting = await getDuplicateResolutionByIdempotency({
+      db,
+      firmId: decision.firmId,
+      contactId: decision.contactId,
+      relatedContactId: decision.relatedContactId,
+      idempotencyKey: decision.idempotencyKey,
+    });
+    const racedReuse = existingDuplicateResolutionOrConflict(racedExisting, decision);
+    if (racedReuse) return racedReuse;
+    throw error;
+  }
+}
+
+export async function listDrizzleContactDuplicateResolutionDecisions(
+  db: OpenPracticeDatabase,
+  firmId: string,
+  options: ContactDuplicateResolutionDecisionListOptions = {},
+): Promise<ContactDuplicateResolutionRecord[]> {
+  const filters = [eq(schema.contactDuplicateResolutionDecisions.firmId, firmId)];
+  if (options.contactId) {
+    filters.push(eq(schema.contactDuplicateResolutionDecisions.contactId, options.contactId));
+  }
+  if (options.relatedContactId) {
+    filters.push(
+      eq(schema.contactDuplicateResolutionDecisions.relatedContactId, options.relatedContactId),
+    );
+  }
+  const rows = await db
+    .select()
+    .from(schema.contactDuplicateResolutionDecisions)
+    .where(and(...filters))
+    .orderBy(desc(schema.contactDuplicateResolutionDecisions.reviewedAt));
+  return rows.map(mapContactDuplicateResolutionDecisionRow);
 }

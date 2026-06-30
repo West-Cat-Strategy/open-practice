@@ -2,6 +2,7 @@ import type {
   ActivityTimelineEntry,
   Contact,
   ContactDataQualityResolutionRecord,
+  ContactDuplicateResolutionRecord,
   ContactDossier,
   ContactTimelineActivityFilter,
   DashboardSectionCapability,
@@ -9,7 +10,12 @@ import type {
 import { contactTimelineActivityFilters } from "@open-practice/domain/contact-models";
 
 export { contactTimelineActivityFilters };
-export type { ContactDataQualityResolutionRecord, ContactDossier, ContactTimelineActivityFilter };
+export type {
+  ContactDataQualityResolutionRecord,
+  ContactDuplicateResolutionRecord,
+  ContactDossier,
+  ContactTimelineActivityFilter,
+};
 
 export function canRecordContactDataQualityResolutions(
   sections: DashboardSectionCapability[],
@@ -63,6 +69,11 @@ export interface ContactReviewQueueResponse {
 }
 
 export type ContactDataQualityResolutionsResponse = ContactDataQualityResolutionRecord[];
+
+export interface ContactDuplicateResolutionDecisionsResponse {
+  reviewOnly: true;
+  decisions: ContactDuplicateResolutionRecord[];
+}
 
 export interface ContactTimelineResponse {
   timeline: ActivityTimelineEntry[];

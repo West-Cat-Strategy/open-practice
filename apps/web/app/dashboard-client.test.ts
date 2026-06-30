@@ -149,14 +149,19 @@ import {
 } from "./calendar-dashboard";
 import {
   buildContactDataQualityResolutionPayload,
+  buildContactDuplicateResolutionPayload,
   buildContactDossierConflictCheckPrefill,
-  contactDataQualityResolutionActions,
+  contactDuplicateResolutionActions,
+  contactDuplicateResolutionMatchesSignal,
   contactDataQualityResolutionMatchesSignal,
   contactDossierRiskClass,
   contactReviewQueueRiskClass,
   filterContactDossiers,
+  formatContactDuplicateResolutionDecision,
+  formatContactDuplicateResolutionReason,
   formatContactDataQualityResolutionDecision,
   formatContactReviewSignalKind,
+  latestContactDuplicateResolutionForSignal,
   latestContactDataQualityResolutionForSignal,
   summarizeContactDossier,
   summarizeContactDuplicateReviewCue,
@@ -327,6 +332,7 @@ import {
   canExportContactHistory,
   canRecordContactDataQualityResolutions,
   type ContactDataQualityResolutionRecord,
+  type ContactDuplicateResolutionRecord,
   type ContactDossier,
 } from "./_features/contacts/models";
 import type {
@@ -554,19 +560,31 @@ function contactDossierWithResolutionSignal(): ContactDossier {
   };
 }
 
-function contactDataQualityResolutionRecord(
-  overrides: Partial<ContactDataQualityResolutionRecord> = {},
-): ContactDataQualityResolutionRecord {
+function contactDuplicateResolutionRecord(
+  overrides: Partial<ContactDuplicateResolutionRecord> = {},
+): ContactDuplicateResolutionRecord {
   return {
-    id: "resolution-river",
+    id: "duplicate-resolution-river",
     firmId: "firm-west-legal",
     contactId: "contact-river",
-    signalKind: "duplicate_candidate",
-    decision: "false_positive",
     relatedContactId: "contact-river-duplicate",
-    resolutionNote: "Synthetic reviewer decision.",
-    recordedByUserId: "user-licensee",
-    recordedAt: "2026-05-01T12:30:00.000Z",
+    decision: "not_duplicate",
+    reason: "distinct_contact_verified",
+    idempotencyKey: "contact-river:contact-river-duplicate:not-duplicate",
+    decisionFingerprint: "fingerprint-not-duplicate",
+    boundaries: {
+      contactMerge: false,
+      contactFieldMutation: "none",
+      hiddenMatterDisclosure: false,
+      rawMatchedValueRetention: false,
+      privateReviewerNoteRetention: false,
+      conflictCheckMutation: "none",
+      portalPermissionWidening: false,
+      contactPermissionWidening: false,
+    },
+    reviewedByUserId: "user-licensee",
+    reviewedAt: "2026-05-01T12:30:00.000Z",
+    createdAt: "2026-05-01T12:30:00.000Z",
     ...overrides,
   };
 }
@@ -2619,16 +2637,24 @@ describe("dashboard client behavior", () => {
     const duplicateSignal = dossier.qualityReview.signals[0]!;
     const revalidationSignal = dossier.qualityReview.signals[1]!;
 
+    expect(contactDuplicateResolutionActions.map((action) => action.label)).toEqual([
+      "Acknowledge cue",
+      "Not duplicate",
+      "Needs review",
+    ]);
     expect(
-      contactDataQualityResolutionActions.duplicate_candidate.map((action) => action.label),
-    ).toEqual(["Not duplicate", "Needs review"]);
-    expect(
-      buildContactDataQualityResolutionPayload(dossier, duplicateSignal, "false_positive"),
-    ).toMatchObject({
-      contactId: "contact-river",
-      signalKind: "duplicate_candidate",
-      decision: "false_positive",
+      buildContactDuplicateResolutionPayload(
+        dossier,
+        duplicateSignal,
+        "not_duplicate",
+        "distinct_contact_verified",
+      ),
+    ).toEqual({
       relatedContactId: "contact-river-duplicate",
+      decision: "not_duplicate",
+      reason: "distinct_contact_verified",
+      idempotencyKey:
+        "contact-duplicate-resolution:contact-river:contact-river-duplicate:not_duplicate:distinct_contact_verified",
     });
     expect(summarizeContactDuplicateReviewCue(duplicateSignal)).toContain(
       "River City Rentals Ltd.",
@@ -2674,13 +2700,32 @@ describe("dashboard client behavior", () => {
       true,
     );
     expect(
+      contactDuplicateResolutionMatchesSignal(contactDuplicateResolutionRecord(), duplicateSignal),
+    ).toBe(true);
+    expect(
       latestContactDataQualityResolutionForSignal(resolutions, "contact-river", revalidationSignal)
         ?.id,
     ).toBe("resolution-latest");
+    expect(
+      latestContactDuplicateResolutionForSignal(
+        [contactDuplicateResolutionRecord()],
+        "contact-river",
+        duplicateSignal,
+      )?.id,
+    ).toBe("duplicate-resolution-river");
     expect(formatContactDataQualityResolutionDecision("false_positive")).toBe("not duplicate");
+    expect(formatContactDuplicateResolutionDecision("not_duplicate")).toBe("not duplicate");
+    expect(formatContactDuplicateResolutionReason("distinct_contact_verified")).toBe(
+      "distinct contact verified",
+    );
     expect(
       JSON.stringify(
-        buildContactDataQualityResolutionPayload(dossier, duplicateSignal, "false_positive"),
+        buildContactDuplicateResolutionPayload(
+          dossier,
+          duplicateSignal,
+          "not_duplicate",
+          "distinct_contact_verified",
+        ),
       ),
     ).not.toContain("legal@rivercity.example");
   });
@@ -2714,18 +2759,20 @@ describe("dashboard client behavior", () => {
         },
       ],
     } satisfies ContactDossier;
-    const resolutions = [contactDataQualityResolutionRecord()];
+    const resolutions: ContactDataQualityResolutionRecord[] = [];
+    const duplicateDecisions = [contactDuplicateResolutionRecord()];
     const signal = dossier.qualityReview.signals[0]!;
-    const latestResolution = latestContactDataQualityResolutionForSignal(
-      resolutions,
+    const latestResolution = latestContactDuplicateResolutionForSignal(
+      duplicateDecisions,
       dossier.contact.id,
       signal,
     );
     const historyRowText = [
-      formatContactDataQualityResolutionDecision(resolutions[0]!.decision),
-      formatContactReviewSignalKind(resolutions[0]!.signalKind),
-      resolutions[0]!.relatedContactId ? "related contact noted" : null,
-      resolutions[0]!.recordedAt,
+      formatContactDuplicateResolutionDecision(duplicateDecisions[0]!.decision),
+      "duplicate candidate",
+      duplicateDecisions[0]!.relatedContactId ? "related contact noted" : null,
+      formatContactDuplicateResolutionReason(duplicateDecisions[0]!.reason),
+      duplicateDecisions[0]!.reviewedAt,
     ]
       .filter(Boolean)
       .join(" · ");
@@ -2746,10 +2793,11 @@ describe("dashboard client behavior", () => {
     expect(canExportContactHistory([capability("contacts", { actions: ["read", "export"] })])).toBe(
       true,
     );
-    expect(latestResolution?.decision).toBe("false_positive");
+    expect(latestResolution?.decision).toBe("not_duplicate");
     expect(historyRowText).toContain("not duplicate");
     expect(historyRowText).toContain("duplicate candidate");
     expect(historyRowText).toContain("related contact noted");
+    expect(historyRowText).toContain("distinct contact verified");
     expect(historyRowText).toContain("2026-05-01T12:30:00.000Z");
     expect(
       JSON.stringify({ visibleSignalText, duplicateReviewText, latestResolution, historyRowText }),
@@ -2766,7 +2814,9 @@ describe("dashboard client behavior", () => {
       contactCreatePhone: "",
       contactCreateStatus: "No standalone contact created in this session.",
       contactDataQualityResolutions: resolutions,
-      contactDataQualityStatus: "1 resolution loaded.",
+      contactDataQualityStatus: "No contact data-quality decisions loaded.",
+      contactDuplicateResolutionDecisions: duplicateDecisions,
+      contactDuplicateResolutionStatus: "1 duplicate decision loaded.",
       contactDossiers: [dossier],
       contactHistoryExportReason: "Synthetic staff review",
       contactHistoryExportStatus: "Export generated 2026-05-01T20:00:00.000Z.",
@@ -2855,9 +2905,11 @@ describe("dashboard client behavior", () => {
       onContactSearchChange: () => {},
       onPrepareConflictCheckFromContact: () => {},
       onRecordContactDataQualityResolution: () => {},
+      onRecordContactDuplicateResolution: () => {},
       onSelectContact: () => {},
       onSelectMatter: () => {},
       recordingContactResolutionKey: "",
+      recordingContactDuplicateResolutionKey: "",
       exportingContactHistory: false,
     };
     const readOnlyHtml = renderToStaticMarkup(

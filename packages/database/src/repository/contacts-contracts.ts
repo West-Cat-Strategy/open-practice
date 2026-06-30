@@ -2,6 +2,7 @@ import type {
   ActivityTimelineEntry,
   Contact,
   ContactDataQualityResolutionRecord,
+  ContactDuplicateResolutionRecord,
   ContactDossier,
   ContactRelationshipRecord,
   MatterParty,
@@ -12,6 +13,11 @@ import type {
 export interface ContactDataQualityResolutionListOptions {
   contactId?: string;
   matterId?: string;
+}
+
+export interface ContactDuplicateResolutionDecisionListOptions {
+  contactId?: string;
+  relatedContactId?: string;
 }
 
 export interface ContactListOptions {
@@ -146,4 +152,11 @@ export interface ContactRepository {
     firmId: string,
     options?: ContactDataQualityResolutionListOptions,
   ): Promise<ContactDataQualityResolutionRecord[]>;
+  createContactDuplicateResolutionDecision(
+    decision: ContactDuplicateResolutionRecord,
+  ): Promise<ContactDuplicateResolutionRecord>;
+  listContactDuplicateResolutionDecisions(
+    firmId: string,
+    options?: ContactDuplicateResolutionDecisionListOptions,
+  ): Promise<ContactDuplicateResolutionRecord[]>;
 }

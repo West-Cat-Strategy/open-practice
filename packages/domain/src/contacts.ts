@@ -238,6 +238,64 @@ export const contactDataQualityResolutionDecisions = [
 export type ContactDataQualityResolutionDecision =
   (typeof contactDataQualityResolutionDecisions)[number];
 
+export const contactDuplicateResolutionDecisions = [
+  "acknowledged_duplicate_candidate",
+  "not_duplicate",
+  "needs_follow_up",
+] as const;
+
+export type ContactDuplicateResolutionDecision =
+  (typeof contactDuplicateResolutionDecisions)[number];
+
+export const contactDuplicateResolutionReasons = [
+  "safe_identity_match",
+  "shared_visible_matter",
+  "distinct_contact_verified",
+  "insufficient_safe_evidence",
+  "reviewer_follow_up_required",
+] as const;
+
+export type ContactDuplicateResolutionReason = (typeof contactDuplicateResolutionReasons)[number];
+
+export interface ContactDuplicateResolutionBoundary {
+  contactMerge: false;
+  contactFieldMutation: "none";
+  hiddenMatterDisclosure: false;
+  rawMatchedValueRetention: false;
+  privateReviewerNoteRetention: false;
+  conflictCheckMutation: "none";
+  portalPermissionWidening: false;
+  contactPermissionWidening: false;
+}
+
+export function defaultContactDuplicateResolutionBoundary(): ContactDuplicateResolutionBoundary {
+  return {
+    contactMerge: false,
+    contactFieldMutation: "none",
+    hiddenMatterDisclosure: false,
+    rawMatchedValueRetention: false,
+    privateReviewerNoteRetention: false,
+    conflictCheckMutation: "none",
+    portalPermissionWidening: false,
+    contactPermissionWidening: false,
+  };
+}
+
+export interface ContactDuplicateResolutionRecord {
+  id: string;
+  firmId: string;
+  contactId: string;
+  relatedContactId: string;
+  decision: ContactDuplicateResolutionDecision;
+  reason: ContactDuplicateResolutionReason;
+  idempotencyKey: string;
+  decisionFingerprint: string;
+  boundaries: ContactDuplicateResolutionBoundary;
+  reviewedByUserId: string;
+  reviewedAt: string;
+  createdAt: string;
+}
+
 export const contactTimelineActivityFilters = [
   "all",
   "crm_activity",
@@ -384,6 +442,15 @@ const contactDataQualityResolutionDecisionsByKind: Record<
   retention_hold_review: new Set(["acknowledged", "needs_follow_up"]),
 };
 
+const contactDuplicateResolutionReasonsByDecision: Record<
+  ContactDuplicateResolutionDecision,
+  ReadonlySet<ContactDuplicateResolutionReason>
+> = {
+  acknowledged_duplicate_candidate: new Set(["safe_identity_match", "shared_visible_matter"]),
+  not_duplicate: new Set(["distinct_contact_verified", "insufficient_safe_evidence"]),
+  needs_follow_up: new Set(["reviewer_follow_up_required", "insufficient_safe_evidence"]),
+};
+
 export function validateContactDataQualityResolutionRecord(
   resolution: ContactDataQualityResolutionRecord,
 ): void {
@@ -404,6 +471,55 @@ export function validateContactDataQualityResolutionRecord(
   }
   if (Number.isNaN(new Date(resolution.recordedAt).getTime())) {
     throw new Error("Contact data-quality resolution timestamp is invalid");
+  }
+}
+
+export function validateContactDuplicateResolutionRecord(
+  resolution: ContactDuplicateResolutionRecord,
+): void {
+  if (!resolution.id.trim()) throw new Error("Contact duplicate decision requires an id");
+  if (!/^[A-Za-z0-9_.:-]+$/.test(resolution.id)) {
+    throw new Error("Contact duplicate decision id is invalid");
+  }
+  if (!resolution.firmId.trim()) throw new Error("Contact duplicate decision requires a firm id");
+  if (!resolution.contactId.trim()) {
+    throw new Error("Contact duplicate decision requires a contact id");
+  }
+  if (!resolution.relatedContactId.trim()) {
+    throw new Error("Contact duplicate decision requires a related contact id");
+  }
+  if (resolution.contactId === resolution.relatedContactId) {
+    throw new Error("Contact duplicate decision requires different contacts");
+  }
+  if (!contactDuplicateResolutionDecisions.includes(resolution.decision)) {
+    throw new Error("Contact duplicate decision is invalid");
+  }
+  if (!contactDuplicateResolutionReasons.includes(resolution.reason)) {
+    throw new Error("Contact duplicate decision reason is invalid");
+  }
+  if (!contactDuplicateResolutionReasonsByDecision[resolution.decision].has(resolution.reason)) {
+    throw new Error("Contact duplicate decision reason is invalid for the decision");
+  }
+  if (!/^[A-Za-z0-9_.:-]+$/.test(resolution.idempotencyKey)) {
+    throw new Error("Contact duplicate decision idempotency key is invalid");
+  }
+  if (!resolution.decisionFingerprint.trim()) {
+    throw new Error("Contact duplicate decision fingerprint is required");
+  }
+  const expectedBoundary = defaultContactDuplicateResolutionBoundary();
+  for (const [key, value] of Object.entries(expectedBoundary)) {
+    if (resolution.boundaries[key as keyof ContactDuplicateResolutionBoundary] !== value) {
+      throw new Error("Contact duplicate decision boundary posture is invalid");
+    }
+  }
+  if (!resolution.reviewedByUserId.trim()) {
+    throw new Error("Contact duplicate decision reviewer is required");
+  }
+  if (Number.isNaN(new Date(resolution.reviewedAt).getTime())) {
+    throw new Error("Contact duplicate decision reviewed timestamp is invalid");
+  }
+  if (Number.isNaN(new Date(resolution.createdAt).getTime())) {
+    throw new Error("Contact duplicate decision created timestamp is invalid");
   }
 }
 

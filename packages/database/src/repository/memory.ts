@@ -37,6 +37,7 @@ import {
   type ConnectorRecord,
   type Contact,
   type ContactDataQualityResolutionRecord,
+  type ContactDuplicateResolutionRecord,
   type ContactRelationshipRecord,
   type ConversationMessageRecord,
   type ConversationMessageNotificationRecord,
@@ -242,10 +243,12 @@ import { runMemoryConflictCheck, type MemoryConflictCheckStore } from "./conflic
 import {
   createMemoryContact,
   createMemoryContactDataQualityResolution,
+  createMemoryContactDuplicateResolutionDecision,
   createMemoryContactRelationship,
   createMemoryMatterContactAssociation,
   getMemoryContact,
   listMemoryContactDataQualityResolutions,
+  listMemoryContactDuplicateResolutionDecisions,
   listMemoryContactDossiersForUser,
   listMemoryContactPortalGrantsForUser,
   listMemoryContactsForUser,
@@ -700,6 +703,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private contacts: Contact[];
   private contactRelationships: ContactRelationshipRecord[];
   private contactDataQualityResolutions: ContactDataQualityResolutionRecord[] = [];
+  private contactDuplicateResolutionDecisions: ContactDuplicateResolutionRecord[] = [];
   private matters: Matter[];
   private matterLifecycleTransitions: MatterLifecycleTransitionRecord[] = [];
   private matterParties: MatterParty[];
@@ -1346,6 +1350,12 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
       set contactDataQualityResolutions(value: ContactDataQualityResolutionRecord[]) {
         repository.contactDataQualityResolutions = value;
       },
+      get contactDuplicateResolutionDecisions() {
+        return repository.contactDuplicateResolutionDecisions;
+      },
+      set contactDuplicateResolutionDecisions(value: ContactDuplicateResolutionRecord[]) {
+        repository.contactDuplicateResolutionDecisions = value;
+      },
     };
   }
 
@@ -1946,6 +1956,19 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     options: Parameters<OpenPracticeRepository["listContactDataQualityResolutions"]>[1] = {},
   ): ReturnType<OpenPracticeRepository["listContactDataQualityResolutions"]> {
     return listMemoryContactDataQualityResolutions(this.contactStore, firmId, options);
+  }
+
+  async createContactDuplicateResolutionDecision(
+    decision: Parameters<OpenPracticeRepository["createContactDuplicateResolutionDecision"]>[0],
+  ): ReturnType<OpenPracticeRepository["createContactDuplicateResolutionDecision"]> {
+    return createMemoryContactDuplicateResolutionDecision(this.contactStore, decision);
+  }
+
+  async listContactDuplicateResolutionDecisions(
+    firmId: string,
+    options: Parameters<OpenPracticeRepository["listContactDuplicateResolutionDecisions"]>[1] = {},
+  ): ReturnType<OpenPracticeRepository["listContactDuplicateResolutionDecisions"]> {
+    return listMemoryContactDuplicateResolutionDecisions(this.contactStore, firmId, options);
   }
 
   async getDocument(firmId: string, documentId: string): Promise<DocumentRecord | undefined> {

@@ -135,6 +135,11 @@ describe("authorization fixture catalogue", () => {
       "contact:unassigned:list-hidden",
       "contact:standalone-creator:list-visible",
       "contact:portal-client:staff-list-denied",
+      "contact-duplicate-resolution:firm-wide:read-all",
+      "contact-duplicate-resolution:assigned:read-visible",
+      "contact-duplicate-resolution:assigned:create-visible",
+      "contact-duplicate-resolution:unassigned:hidden",
+      "contact-duplicate-resolution:portal-client:create-denied",
       "document:assigned:read-visible",
       "document:unassigned:read-hidden",
       "document:portal-grant:metadata-visible",
@@ -219,6 +224,38 @@ describe("authorization fixture catalogue", () => {
       "contact:unassigned:list-hidden",
       "contact:standalone-creator:list-visible",
       "contact:portal-client:staff-list-denied",
+    ]) {
+      const item = fixtureCase(id);
+      const subject =
+        item.subjectId === externalUser.id ? externalUser : sampleUser(item.subjectId);
+      expect(
+        canAccess({
+          user: subject,
+          firmId: sampleFirm.id,
+          resource: item.resource,
+          action: item.action,
+        }),
+      ).toBe(item.expectedDecision === "allow");
+    }
+  });
+
+  it("keeps contact duplicate resolution fixture decisions aligned with contact RBAC", () => {
+    const externalUser: User = {
+      id: "client-ada",
+      firmId: sampleFirm.id,
+      displayName: "Synthetic Portal Client",
+      email: "ada@example.test",
+      role: "client_external",
+      assignedMatterIds: [],
+      mfaEnabled: true,
+    };
+
+    for (const id of [
+      "contact-duplicate-resolution:firm-wide:read-all",
+      "contact-duplicate-resolution:assigned:read-visible",
+      "contact-duplicate-resolution:assigned:create-visible",
+      "contact-duplicate-resolution:unassigned:hidden",
+      "contact-duplicate-resolution:portal-client:create-denied",
     ]) {
       const item = fixtureCase(id);
       const subject =

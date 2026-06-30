@@ -51,6 +51,15 @@ preserved no unlock, override, bypass, mutation, enforcement, migration, provide
 trust-posting, raw report-body storage, private text, client identifier, memo, or payment-detail
 behavior.
 
+The 2026-06-30 contact duplicate resolution decisions proof is recorded in
+[OP_CONTACT_DUPLICATE_RESOLUTION_DECISIONS_PROOF_2026-06-30.md](OP_CONTACT_DUPLICATE_RESOLUTION_DECISIONS_PROOF_2026-06-30.md).
+It covers the enum-only, no-merge duplicate-candidate decision layer over already-visible contact
+dossier duplicate cues, including persistence, idempotent replay/conflict behavior, visible-cue API
+enforcement, duplicate-generic-route rejection, dashboard routing, authorization fixtures, selector
+validation, and preserved no contact merge, contact field mutation, hidden matter disclosure, raw
+matching value/private note retention, conflict-check mutation, or portal/contact permission
+widening.
+
 The 2026-06-29 report export profile alignment proof is recorded in
 [OP_REPORT_EXPORT_PROFILE_ALIGNMENT_PROOF_2026-06-29.md](OP_REPORT_EXPORT_PROFILE_ALIGNMENT_PROOF_2026-06-29.md).
 It covers the read-only staff Reports workspace comparison between manual report export profiles

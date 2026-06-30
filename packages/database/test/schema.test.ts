@@ -26,6 +26,7 @@ import {
   connectorDeliveryAttempts,
   connectorOutbox,
   connectors,
+  contactDuplicateResolutionDecisions,
   contactRelationships,
   conversationMessages,
   conversationThreads,
@@ -165,6 +166,44 @@ describe("database schema hardening", () => {
         "result_snapshot",
         "disposition",
         "reviewed_by_user_id",
+      ]),
+    );
+  });
+
+  it("persists enum-only contact duplicate resolution decisions", () => {
+    const config = getTableConfig(contactDuplicateResolutionDecisions);
+    const columns = config.columns.map((column) => column.name);
+
+    expect(columns).toEqual(
+      expect.arrayContaining([
+        "id",
+        "firm_id",
+        "contact_id",
+        "related_contact_id",
+        "decision",
+        "reason",
+        "idempotency_key",
+        "decision_fingerprint",
+        "boundaries",
+        "reviewed_by_user_id",
+        "reviewed_at",
+        "created_at",
+      ]),
+    );
+    expect(config.indexes.map((index) => index.config.name)).toEqual(
+      expect.arrayContaining([
+        "contact_duplicate_resolution_decisions_contact_reviewed_idx",
+        "contact_duplicate_resolution_decisions_related_reviewed_idx",
+        "contact_duplicate_resolution_decisions_firm_pair_idempotency_idx",
+      ]),
+    );
+    expect(config.checks.map((check) => check.name)).toEqual(
+      expect.arrayContaining([
+        "contact_duplicate_resolution_decisions_different_contacts",
+        "contact_duplicate_resolution_decisions_id_format",
+        "contact_duplicate_resolution_decisions_decision_value",
+        "contact_duplicate_resolution_decisions_reason_value",
+        "contact_duplicate_resolution_decisions_idempotency_key_format",
       ]),
     );
   });

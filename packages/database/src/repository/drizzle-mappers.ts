@@ -38,6 +38,7 @@ import {
   type ConnectorRecord,
   type Contact,
   type ContactDataQualityResolutionRecord,
+  type ContactDuplicateResolutionRecord,
   type ContactRelationshipRecord,
   type ConversationMessageRecord,
   type ConversationMessageNotificationRecord,
@@ -3057,6 +3058,44 @@ export function mapContactDataQualityResolutionRow(
     sourceRecordId: row.sourceRecordId ?? undefined,
     recordedByUserId: row.recordedByUserId,
     recordedAt: row.recordedAt.toISOString(),
+  };
+}
+
+export function mapContactDuplicateResolutionDecisionRow(
+  row: typeof schema.contactDuplicateResolutionDecisions.$inferSelect,
+): ContactDuplicateResolutionRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    contactId: row.contactId,
+    relatedContactId: row.relatedContactId,
+    decision: row.decision as ContactDuplicateResolutionRecord["decision"],
+    reason: row.reason as ContactDuplicateResolutionRecord["reason"],
+    idempotencyKey: row.idempotencyKey,
+    decisionFingerprint: row.decisionFingerprint,
+    boundaries: row.boundaries,
+    reviewedByUserId: row.reviewedByUserId,
+    reviewedAt: row.reviewedAt.toISOString(),
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+export function contactDuplicateResolutionDecisionInsert(
+  decision: ContactDuplicateResolutionRecord,
+): typeof schema.contactDuplicateResolutionDecisions.$inferInsert {
+  return {
+    id: decision.id,
+    firmId: decision.firmId,
+    contactId: decision.contactId,
+    relatedContactId: decision.relatedContactId,
+    decision: decision.decision,
+    reason: decision.reason,
+    idempotencyKey: decision.idempotencyKey,
+    decisionFingerprint: decision.decisionFingerprint,
+    boundaries: decision.boundaries,
+    reviewedByUserId: decision.reviewedByUserId,
+    reviewedAt: new Date(decision.reviewedAt),
+    createdAt: new Date(decision.createdAt),
   };
 }
 

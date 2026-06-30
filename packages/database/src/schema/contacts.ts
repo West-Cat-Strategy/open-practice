@@ -8,10 +8,16 @@ import {
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { firms, users } from "./core.js";
 import { matters } from "./matters.js";
-import type { ContactIdentifier, ContactMethod, ContactRoleCategory } from "@open-practice/domain";
+import type {
+  ContactDuplicateResolutionBoundary,
+  ContactIdentifier,
+  ContactMethod,
+  ContactRoleCategory,
+} from "@open-practice/domain";
 
 export const contactKind = pgEnum("contact_kind", ["person", "organization"]);
 export const partyRole = pgEnum("party_role", [
@@ -146,6 +152,76 @@ export const contactDataQualityResolutions = pgTable(
     resolutionNotePresent: check(
       "contact_data_quality_resolutions_note_present",
       sql`length(trim(${table.resolutionNote})) > 0`,
+    ),
+  }),
+);
+
+export const contactDuplicateResolutionDecisions = pgTable(
+  "contact_duplicate_resolution_decisions",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    contactId: text("contact_id")
+      .notNull()
+      .references(() => contacts.id),
+    relatedContactId: text("related_contact_id")
+      .notNull()
+      .references(() => contacts.id),
+    decision: text("decision").notNull(),
+    reason: text("reason").notNull(),
+    idempotencyKey: text("idempotency_key").notNull(),
+    decisionFingerprint: text("decision_fingerprint").notNull(),
+    boundaries: jsonb("boundaries").$type<ContactDuplicateResolutionBoundary>().notNull().default({
+      contactMerge: false,
+      contactFieldMutation: "none",
+      hiddenMatterDisclosure: false,
+      rawMatchedValueRetention: false,
+      privateReviewerNoteRetention: false,
+      conflictCheckMutation: "none",
+      portalPermissionWidening: false,
+      contactPermissionWidening: false,
+    }),
+    reviewedByUserId: text("reviewed_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    contactReviewed: index("contact_duplicate_resolution_decisions_contact_reviewed_idx").on(
+      table.firmId,
+      table.contactId,
+      table.reviewedAt,
+    ),
+    relatedContactReviewed: index("contact_duplicate_resolution_decisions_related_reviewed_idx").on(
+      table.firmId,
+      table.relatedContactId,
+      table.reviewedAt,
+    ),
+    firmDecisionIdempotency: uniqueIndex(
+      "contact_duplicate_resolution_decisions_firm_pair_idempotency_idx",
+    ).on(table.firmId, table.contactId, table.relatedContactId, table.idempotencyKey),
+    differentContacts: check(
+      "contact_duplicate_resolution_decisions_different_contacts",
+      sql`${table.contactId} <> ${table.relatedContactId}`,
+    ),
+    idFormat: check(
+      "contact_duplicate_resolution_decisions_id_format",
+      sql`${table.id} ~ '^[A-Za-z0-9_.:-]+$'`,
+    ),
+    decisionValue: check(
+      "contact_duplicate_resolution_decisions_decision_value",
+      sql`${table.decision} in ('acknowledged_duplicate_candidate', 'not_duplicate', 'needs_follow_up')`,
+    ),
+    reasonValue: check(
+      "contact_duplicate_resolution_decisions_reason_value",
+      sql`${table.reason} in ('safe_identity_match', 'shared_visible_matter', 'distinct_contact_verified', 'insufficient_safe_evidence', 'reviewer_follow_up_required')`,
+    ),
+    idempotencyKeyFormat: check(
+      "contact_duplicate_resolution_decisions_idempotency_key_format",
+      sql`${table.idempotencyKey} ~ '^[A-Za-z0-9_.:-]+$'`,
     ),
   }),
 );

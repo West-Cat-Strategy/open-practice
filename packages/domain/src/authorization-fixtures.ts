@@ -3,6 +3,7 @@ import type { Action, ResourceKind } from "./permissions.js";
 export type AuthorizationFixtureFamily =
   | "matter"
   | "contact"
+  | "contact_duplicate_resolution_decision"
   | "document"
   | "job"
   | "ai_proposal"
@@ -190,6 +191,80 @@ export const authorizationFixtureCases: AuthorizationFixtureCase[] = [
     contactId: "contact-ada",
     resourceId: "contact-ada",
     rationale: "Client-external portal users cannot access staff contact dossier/list routes.",
+  },
+  {
+    id: "contact-duplicate-resolution:firm-wide:read-all",
+    family: "contact_duplicate_resolution_decision",
+    resource: "contact",
+    action: "read",
+    relation: "firm_wide_reviewer",
+    expectedDecision: "allow",
+    listVisible: true,
+    subjectId: "user-admin",
+    resourceId: "contact-duplicate-decision-001",
+    contactId: "contact-ada",
+    rationale:
+      "Firm-wide contact reviewers can read enum-only duplicate decisions after the dossier cue is visible.",
+  },
+  {
+    id: "contact-duplicate-resolution:assigned:read-visible",
+    family: "contact_duplicate_resolution_decision",
+    resource: "contact",
+    action: "read",
+    relation: "assigned_matter_staff",
+    expectedDecision: "allow",
+    listVisible: true,
+    subjectId: "user-licensee",
+    matterId: "matter-001",
+    resourceId: "contact-duplicate-decision-001",
+    contactId: "contact-ada",
+    rationale:
+      "Assigned staff can read duplicate decisions only when both contacts remain visible through the dossier cue.",
+  },
+  {
+    id: "contact-duplicate-resolution:assigned:create-visible",
+    family: "contact_duplicate_resolution_decision",
+    resource: "contact",
+    action: "update",
+    relation: "assigned_matter_staff",
+    expectedDecision: "allow",
+    listVisible: true,
+    subjectId: "user-licensee",
+    matterId: "matter-001",
+    resourceId: "contact-duplicate-decision-001",
+    contactId: "contact-ada",
+    rationale:
+      "Assigned staff can record enum-only duplicate decisions through contact:update after visible-cue enforcement.",
+  },
+  {
+    id: "contact-duplicate-resolution:unassigned:hidden",
+    family: "contact_duplicate_resolution_decision",
+    resource: "contact",
+    action: "update",
+    relation: "unassigned_matter_staff",
+    expectedDecision: "allow",
+    listVisible: false,
+    subjectId: "user-licensee",
+    matterId: "matter-002",
+    resourceId: "contact-duplicate-decision-hidden",
+    contactId: "contact-northstar",
+    rationale:
+      "Route-level contact update is not enough; hidden duplicate cues are filtered or rejected by dossier visibility.",
+  },
+  {
+    id: "contact-duplicate-resolution:portal-client:create-denied",
+    family: "contact_duplicate_resolution_decision",
+    resource: "contact",
+    action: "update",
+    relation: "external_portal_contact",
+    expectedDecision: "deny",
+    listVisible: false,
+    subjectId: "client-ada",
+    matterId: "matter-001",
+    resourceId: "contact-duplicate-decision-portal-denied",
+    contactId: "contact-ada",
+    rationale:
+      "External portal users cannot use staff duplicate decision routes or widen contact permissions.",
   },
   {
     id: "document:assigned:read-visible",

@@ -9,12 +9,17 @@ import {
   UserPlus,
 } from "lucide-react";
 import {
+  contactDuplicateResolutionActions,
+  contactDuplicateResolutionKey,
   contactDataQualityResolutionActions,
   contactDataQualitySignalKey,
   contactDossierRiskClass,
+  formatContactDuplicateResolutionDecision,
+  formatContactDuplicateResolutionReason,
   formatContactDataQualityResolutionDecision,
   contactReviewQueueRiskClass,
   formatContactReviewSignalKind,
+  latestContactDuplicateResolutionForSignal,
   latestContactDataQualityResolutionForSignal,
   summarizeContactDossier,
   summarizeContactDuplicateReviewCue,
@@ -23,6 +28,7 @@ import {
 import { formatMatterPartyRoleLabel } from "../participant-role-labels";
 import type {
   ContactDataQualityResolutionRecord,
+  ContactDuplicateResolutionRecord,
   ContactDossier,
   ContactDossiersResponse,
   ContactHistoryExportRequest,
@@ -87,6 +93,8 @@ export function ContactsSection({
   contactCreateStatus,
   contactDataQualityResolutions,
   contactDataQualityStatus,
+  contactDuplicateResolutionDecisions,
+  contactDuplicateResolutionStatus,
   contactDossiers,
   contactHistoryExportReason,
   contactHistoryExportRequest,
@@ -115,11 +123,13 @@ export function ContactsSection({
   onCreateMatterFromContact,
   onNewAppointmentForContact,
   onRecordContactDataQualityResolution,
+  onRecordContactDuplicateResolution,
   onContactSearchChange,
   onPrepareConflictCheckFromContact,
   onSelectContact,
   onSelectMatter,
   recordingContactResolutionKey,
+  recordingContactDuplicateResolutionKey,
   exportingContactHistory,
   contactHistoryExportAction = "",
 }: {
@@ -138,6 +148,8 @@ export function ContactsSection({
   contactCreateStatus: string;
   contactDataQualityResolutions: ContactDataQualityResolutionRecord[];
   contactDataQualityStatus: string;
+  contactDuplicateResolutionDecisions: ContactDuplicateResolutionRecord[];
+  contactDuplicateResolutionStatus: string;
   contactDossiers: ContactDossiersResponse;
   contactHistoryExportReason: string;
   contactHistoryExportRequest?: ContactHistoryExportRequest | null;
@@ -169,11 +181,17 @@ export function ContactsSection({
     signal: ContactDossier["qualityReview"]["signals"][number],
     decision: ContactDataQualityResolutionRecord["decision"],
   ) => void;
+  onRecordContactDuplicateResolution: (
+    signal: ContactDossier["qualityReview"]["signals"][number],
+    decision: ContactDuplicateResolutionRecord["decision"],
+    reason: ContactDuplicateResolutionRecord["reason"],
+  ) => void;
   onContactSearchChange: (value: string) => void;
   onPrepareConflictCheckFromContact: () => void;
   onSelectContact: (contactId: string) => void;
   onSelectMatter: (matterId: string) => void;
   recordingContactResolutionKey: string;
+  recordingContactDuplicateResolutionKey: string;
   exportingContactHistory: boolean;
   contactHistoryExportAction?: "poll" | "download" | "";
 }) {
@@ -181,6 +199,13 @@ export function ContactsSection({
   const matterNumberById = new Map(
     (activeContactDossier?.matters ?? []).map((matter) => [matter.matterId, matter.matterNumber]),
   );
+  const resolutionHistoryCount =
+    contactDataQualityResolutions.length + contactDuplicateResolutionDecisions.length;
+  const qualityReviewStatus =
+    contactDuplicateResolutionStatus &&
+    contactDuplicateResolutionStatus !== contactDataQualityStatus
+      ? `${contactDataQualityStatus} / ${contactDuplicateResolutionStatus}`
+      : contactDataQualityStatus;
 
   return (
     <>
@@ -777,7 +802,7 @@ export function ContactsSection({
 
               <div className="section-title">
                 <h3>Quality review</h3>
-                <span>{contactDataQualityStatus}</span>
+                <span>{qualityReviewStatus}</span>
               </div>
               <div className="party-list">
                 {activeContactDossier.qualityReview.signals.map((signal, index) => {
@@ -790,6 +815,18 @@ export function ContactsSection({
                     activeContactDossier.contact.id,
                     signal,
                   );
+                  const duplicateSignalKey = contactDuplicateResolutionKey(
+                    activeContactDossier.contact.id,
+                    signal,
+                  );
+                  const latestDuplicateResolution =
+                    signal.kind === "duplicate_candidate"
+                      ? latestContactDuplicateResolutionForSignal(
+                          contactDuplicateResolutionDecisions,
+                          activeContactDossier.contact.id,
+                          signal,
+                        )
+                      : undefined;
                   return (
                     <div
                       className="party-row"
@@ -812,28 +849,70 @@ export function ContactsSection({
                             · {latestResolution.recordedAt}
                           </small>
                         ) : null}
+                        {latestDuplicateResolution ? (
+                          <small>
+                            Latest decision:{" "}
+                            {formatContactDuplicateResolutionDecision(
+                              latestDuplicateResolution.decision,
+                            )}{" "}
+                            ·{" "}
+                            {formatContactDuplicateResolutionReason(
+                              latestDuplicateResolution.reason,
+                            )}{" "}
+                            · {latestDuplicateResolution.reviewedAt}
+                          </small>
+                        ) : null}
                         {canRecordContactDataQualityResolution ? (
-                          <span className="row-actions contact-resolution-actions">
-                            {contactDataQualityResolutionActions[signal.kind].map((action) => (
-                              <button
-                                className="secondary-button compact-button row-button"
-                                disabled={recordingContactResolutionKey === signalKey}
-                                key={`${signalKey}-${action.decision}`}
-                                onClick={() =>
-                                  onRecordContactDataQualityResolution(signal, action.decision)
-                                }
-                                type="button"
-                              >
-                                {action.decision === "needs_follow_up" ||
-                                action.decision === "revalidation_requested" ? (
-                                  <ClipboardCheck size={14} aria-hidden="true" />
-                                ) : (
-                                  <Check size={14} aria-hidden="true" />
-                                )}
-                                {action.label}
-                              </button>
-                            ))}
-                          </span>
+                          signal.kind === "duplicate_candidate" ? (
+                            <span className="row-actions contact-resolution-actions">
+                              {contactDuplicateResolutionActions.map((action) => (
+                                <button
+                                  className="secondary-button compact-button row-button"
+                                  disabled={
+                                    recordingContactDuplicateResolutionKey === duplicateSignalKey
+                                  }
+                                  key={`${duplicateSignalKey}-${action.decision}-${action.reason}`}
+                                  onClick={() =>
+                                    onRecordContactDuplicateResolution(
+                                      signal,
+                                      action.decision,
+                                      action.reason,
+                                    )
+                                  }
+                                  type="button"
+                                >
+                                  {action.decision === "needs_follow_up" ? (
+                                    <ClipboardCheck size={14} aria-hidden="true" />
+                                  ) : (
+                                    <Check size={14} aria-hidden="true" />
+                                  )}
+                                  {action.label}
+                                </button>
+                              ))}
+                            </span>
+                          ) : (
+                            <span className="row-actions contact-resolution-actions">
+                              {contactDataQualityResolutionActions[signal.kind].map((action) => (
+                                <button
+                                  className="secondary-button compact-button row-button"
+                                  disabled={recordingContactResolutionKey === signalKey}
+                                  key={`${signalKey}-${action.decision}`}
+                                  onClick={() =>
+                                    onRecordContactDataQualityResolution(signal, action.decision)
+                                  }
+                                  type="button"
+                                >
+                                  {action.decision === "needs_follow_up" ||
+                                  action.decision === "revalidation_requested" ? (
+                                    <ClipboardCheck size={14} aria-hidden="true" />
+                                  ) : (
+                                    <Check size={14} aria-hidden="true" />
+                                  )}
+                                  {action.label}
+                                </button>
+                              ))}
+                            </span>
+                          )
                         ) : null}
                       </span>
                       <em className={signal.severity === "blocker" ? "risk" : undefined}>
@@ -988,9 +1067,27 @@ export function ContactsSection({
 
               <div className="section-title">
                 <h3>Resolution history</h3>
-                <span>{contactDataQualityResolutions.length}</span>
+                <span>{resolutionHistoryCount}</span>
               </div>
               <div className="party-list">
+                {contactDuplicateResolutionDecisions.map((decision) => (
+                  <div className="party-row" key={decision.id}>
+                    <span>
+                      <strong>{formatContactDuplicateResolutionDecision(decision.decision)}</strong>
+                      <small>
+                        {[
+                          "duplicate candidate",
+                          "related contact noted",
+                          formatContactDuplicateResolutionReason(decision.reason),
+                          decision.reviewedAt,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </small>
+                    </span>
+                    <em>{decision.reviewedByUserId}</em>
+                  </div>
+                ))}
                 {contactDataQualityResolutions.map((resolution) => (
                   <div className="party-row" key={resolution.id}>
                     <span>
@@ -1012,7 +1109,7 @@ export function ContactsSection({
                     <em>{resolution.recordedByUserId}</em>
                   </div>
                 ))}
-                {contactDataQualityResolutions.length === 0 ? (
+                {resolutionHistoryCount === 0 ? (
                   <p className="inline-empty">No reviewer decisions recorded.</p>
                 ) : null}
               </div>

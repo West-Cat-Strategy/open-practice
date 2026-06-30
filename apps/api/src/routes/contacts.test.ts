@@ -1325,7 +1325,7 @@ describe("contact routes", () => {
     )?.conflictHistory;
     const server = testServer({ repository, user: authUser });
 
-    const duplicate = await server.inject({
+    const duplicateGenericRoute = await server.inject({
       method: "POST",
       url: "/api/contacts/data-quality-resolutions",
       payload: {
@@ -1334,6 +1334,17 @@ describe("contact routes", () => {
         decision: "false_positive",
         relatedContactId: "contact-river",
         resolutionNote: "Synthetic private duplicate note should stay out of audit metadata.",
+      },
+    });
+    const duplicate = await server.inject({
+      method: "POST",
+      url: "/api/contacts/contact-ada/duplicate-resolution-decisions",
+      payload: {
+        id: "contact-duplicate-decision-api-001",
+        relatedContactId: "contact-river",
+        decision: "acknowledged_duplicate_candidate",
+        reason: "safe_identity_match",
+        idempotencyKey: "contact-ada:contact-river:acknowledged",
       },
     });
     const protectedParty = await server.inject({
@@ -1371,25 +1382,46 @@ describe("contact routes", () => {
       },
     });
 
+    expect(duplicateGenericRoute.statusCode).toBe(400);
+    expect(duplicateGenericRoute.json()).toMatchObject({
+      message: "Duplicate-candidate decisions must use the enum-only duplicate resolution endpoint",
+    });
     expect(duplicate.statusCode).toBe(200);
     expect(protectedParty.statusCode).toBe(200);
     expect(revalidation.statusCode).toBe(200);
     expect(retentionHold.statusCode).toBe(200);
     expect(duplicate.json()).toMatchObject({
-      contactId: "contact-ada",
-      signalKind: "duplicate_candidate",
-      decision: "false_positive",
-      relatedContactId: "contact-river",
-      recordedByUserId: "user-licensee",
+      decision: {
+        id: "contact-duplicate-decision-api-001",
+        contactId: "contact-ada",
+        relatedContactId: "contact-river",
+        decision: "acknowledged_duplicate_candidate",
+        reason: "safe_identity_match",
+        reviewedByUserId: "user-licensee",
+        boundaries: {
+          contactMerge: false,
+          contactFieldMutation: "none",
+          hiddenMatterDisclosure: false,
+          rawMatchedValueRetention: false,
+          privateReviewerNoteRetention: false,
+          conflictCheckMutation: "none",
+          portalPermissionWidening: false,
+          contactPermissionWidening: false,
+        },
+      },
     });
     const listResponse = await server.inject({
       method: "GET",
       url: "/api/contacts/data-quality-resolutions?contactId=contact-ada",
     });
+    const duplicateListResponse = await server.inject({
+      method: "GET",
+      url: "/api/contacts/contact-ada/duplicate-resolution-decisions",
+    });
     expect(listResponse.statusCode).toBe(200);
+    expect(duplicateListResponse.statusCode).toBe(200);
     expect(listResponse.json()).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ signalKind: "duplicate_candidate", decision: "false_positive" }),
         expect.objectContaining({ signalKind: "protected_party_cue", decision: "acknowledged" }),
         expect.objectContaining({
           signalKind: "conflict_revalidation",
@@ -1401,6 +1433,19 @@ describe("contact routes", () => {
         }),
       ]),
     );
+    expect(JSON.stringify(listResponse.json())).not.toContain("duplicate_candidate");
+    expect(duplicateListResponse.json()).toMatchObject({
+      reviewOnly: true,
+      decisions: [
+        expect.objectContaining({
+          id: "contact-duplicate-decision-api-001",
+          contactId: "contact-ada",
+          relatedContactId: "contact-river",
+          decision: "acknowledged_duplicate_candidate",
+          reason: "safe_identity_match",
+        }),
+      ],
+    });
     await expect(repository.getContact("firm-west-legal", "contact-ada")).resolves.toEqual(
       beforeContact,
     );
@@ -1412,11 +1457,171 @@ describe("contact routes", () => {
     const resolutionAudit = audit.events.filter(
       (event) => event.action === "contact.data_quality_resolution.recorded",
     );
-    expect(resolutionAudit).toHaveLength(4);
-    const auditJson = JSON.stringify(resolutionAudit);
+    const duplicateAudit = audit.events.filter(
+      (event) => event.action === "contact.duplicate_resolution_decision.recorded",
+    );
+    expect(resolutionAudit).toHaveLength(3);
+    expect(duplicateAudit).toHaveLength(1);
+    expect(duplicateAudit[0]?.metadata).toMatchObject({
+      contactId: "contact-ada",
+      relatedContactId: "contact-river",
+      decision: "acknowledged_duplicate_candidate",
+      reason: "safe_identity_match",
+      idempotencyKeyPresent: true,
+      contactMerge: false,
+      contactFieldMutation: "none",
+      hiddenMatterDisclosure: false,
+      rawMatchedValueRetention: false,
+      privateReviewerNoteRetention: false,
+      conflictCheckMutation: "none",
+      portalPermissionWidening: false,
+      contactPermissionWidening: false,
+    });
+    const auditJson = JSON.stringify([...resolutionAudit, ...duplicateAudit]);
     expect(auditJson).not.toContain("Synthetic private");
     expect(auditJson).not.toContain("ada@example.test");
     expect(auditJson).not.toContain("Possible duplicate");
+    expect(JSON.stringify(duplicateAudit)).not.toContain("resolutionNote");
+  });
+
+  it("enforces duplicate resolution visible cues, idempotency, and staff-only access", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const visibleContacts = (repository as unknown as { contacts: Contact[] }).contacts;
+    const riverContact = visibleContacts.find((contact) => contact.id === "contact-river");
+    if (!riverContact) throw new Error("Expected sample contact-river fixture");
+    riverContact.identifiers = [{ type: "email", value: "ada@example.test" }];
+    const staffServer = testServer({
+      repository,
+      user: user("licensee", ["matter-001"]),
+    });
+
+    const created = await staffServer.inject({
+      method: "POST",
+      url: "/api/contacts/contact-ada/duplicate-resolution-decisions",
+      payload: {
+        id: "contact-duplicate-decision-visibility",
+        relatedContactId: "contact-river",
+        decision: "needs_follow_up",
+        reason: "reviewer_follow_up_required",
+        idempotencyKey: "contact-ada:contact-river:follow-up",
+      },
+    });
+    const replay = await staffServer.inject({
+      method: "POST",
+      url: "/api/contacts/contact-ada/duplicate-resolution-decisions",
+      payload: {
+        id: "contact-duplicate-decision-replay",
+        relatedContactId: "contact-river",
+        decision: "needs_follow_up",
+        reason: "reviewer_follow_up_required",
+        idempotencyKey: "contact-ada:contact-river:follow-up",
+      },
+    });
+    const conflict = await staffServer.inject({
+      method: "POST",
+      url: "/api/contacts/contact-ada/duplicate-resolution-decisions",
+      payload: {
+        relatedContactId: "contact-river",
+        decision: "not_duplicate",
+        reason: "distinct_contact_verified",
+        idempotencyKey: "contact-ada:contact-river:follow-up",
+      },
+    });
+    const privateNoteAttempt = await staffServer.inject({
+      method: "POST",
+      url: "/api/contacts/contact-ada/duplicate-resolution-decisions",
+      payload: {
+        relatedContactId: "contact-river",
+        decision: "not_duplicate",
+        reason: "distinct_contact_verified",
+        idempotencyKey: "contact-ada:contact-river:private-note-attempt",
+        resolutionNote: "Synthetic private note should not be accepted.",
+      },
+    });
+    const hiddenCue = await staffServer.inject({
+      method: "POST",
+      url: "/api/contacts/contact-ada/duplicate-resolution-decisions",
+      payload: {
+        relatedContactId: "contact-northstar",
+        decision: "not_duplicate",
+        reason: "distinct_contact_verified",
+        idempotencyKey: "contact-ada:contact-northstar:not-duplicate",
+      },
+    });
+    const hiddenContactList = await staffServer.inject({
+      method: "GET",
+      url: "/api/contacts/contact-northstar/duplicate-resolution-decisions",
+    });
+    const visibleList = await staffServer.inject({
+      method: "GET",
+      url: "/api/contacts/contact-ada/duplicate-resolution-decisions",
+    });
+    const portalServer = testServer({
+      repository,
+      user: user("client_external", ["matter-001"]),
+    });
+    const portalList = await portalServer.inject({
+      method: "GET",
+      url: "/api/contacts/contact-ada/duplicate-resolution-decisions",
+    });
+    const portalCreate = await portalServer.inject({
+      method: "POST",
+      url: "/api/contacts/contact-ada/duplicate-resolution-decisions",
+      payload: {
+        relatedContactId: "contact-river",
+        decision: "needs_follow_up",
+        reason: "reviewer_follow_up_required",
+        idempotencyKey: "contact-ada:contact-river:portal-denied",
+      },
+    });
+
+    expect(created.statusCode).toBe(200);
+    expect(created.json()).toMatchObject({
+      decision: {
+        id: "contact-duplicate-decision-visibility",
+        contactId: "contact-ada",
+        relatedContactId: "contact-river",
+        decision: "needs_follow_up",
+        reason: "reviewer_follow_up_required",
+      },
+    });
+    expect(replay.statusCode).toBe(200);
+    expect(replay.json()).toMatchObject({
+      decision: { id: "contact-duplicate-decision-visibility" },
+    });
+    expect(conflict.statusCode).toBe(409);
+    expect(conflict.json()).toMatchObject({
+      message: "Idempotency key was reused with a different payload",
+    });
+    expect(privateNoteAttempt.statusCode).toBe(400);
+    expect(privateNoteAttempt.json()).toMatchObject({ message: "Invalid request body" });
+    expect(hiddenCue.statusCode).toBe(403);
+    expect(hiddenCue.json()).toMatchObject({
+      message: "Contact duplicate resolution requires a visible duplicate cue",
+    });
+    expect(hiddenContactList.statusCode).toBe(403);
+    expect(portalList.statusCode).toBe(403);
+    expect(portalCreate.statusCode).toBe(403);
+    expect(visibleList.statusCode).toBe(200);
+    expect(visibleList.json()).toMatchObject({
+      reviewOnly: true,
+      decisions: [
+        expect.objectContaining({
+          id: "contact-duplicate-decision-visibility",
+          contactId: "contact-ada",
+          relatedContactId: "contact-river",
+        }),
+      ],
+    });
+    const serialized = JSON.stringify({
+      created: created.json(),
+      visibleList: visibleList.json(),
+    });
+    expect(serialized).not.toContain("ada@example.test");
+    expect(serialized).not.toContain("Synthetic private note");
+    expect(serialized).not.toContain('"matchedValue"');
+    expect(serialized).not.toContain('"matchedFields"');
+    expect(serialized).not.toContain("matter-002");
   });
 
   it("allows firm-wide contact data-quality history for auditors while denying decisions", async () => {
@@ -1526,6 +1731,12 @@ describe("contact routes", () => {
     const resolutions = await testServer({
       user: user("client_external", ["matter-001"]),
     }).inject({ method: "GET", url: "/api/contacts/data-quality-resolutions" });
+    const duplicateDecisions = await testServer({
+      user: user("client_external", ["matter-001"]),
+    }).inject({
+      method: "GET",
+      url: "/api/contacts/contact-ada/duplicate-resolution-decisions",
+    });
     const createContact = await testServer({
       user: user("client_external", ["matter-001"]),
     }).inject({
@@ -1544,6 +1755,10 @@ describe("contact routes", () => {
     });
     expect(resolutions.statusCode).toBe(403);
     expect(resolutions.json()).toMatchObject({
+      message: "Contact access required",
+    });
+    expect(duplicateDecisions.statusCode).toBe(403);
+    expect(duplicateDecisions.json()).toMatchObject({
       message: "Contact access required",
     });
     expect(createContact.statusCode).toBe(403);

@@ -1,5 +1,6 @@
 import type {
   ContactDataQualityResolutionRecord,
+  ContactDuplicateResolutionRecord,
   ContactDossier,
   ContactReviewQueueItem,
 } from "./_features/contacts/models";
@@ -196,14 +197,15 @@ export interface ContactDataQualityResolutionAction {
   label: string;
 }
 
-export const contactDataQualityResolutionActions: Record<
+type ContactNonDuplicateQualitySignalKind = Exclude<
   ContactDossier["qualityReview"]["signals"][number]["kind"],
+  "duplicate_candidate"
+>;
+
+export const contactDataQualityResolutionActions: Record<
+  ContactNonDuplicateQualitySignalKind,
   ContactDataQualityResolutionAction[]
 > = {
-  duplicate_candidate: [
-    { decision: "false_positive", label: "Not duplicate" },
-    { decision: "needs_follow_up", label: "Needs review" },
-  ],
   protected_party_cue: [
     { decision: "acknowledged", label: "Acknowledge" },
     { decision: "needs_follow_up", label: "Follow up" },
@@ -217,6 +219,29 @@ export const contactDataQualityResolutionActions: Record<
     { decision: "needs_follow_up", label: "Follow up" },
   ],
 };
+
+export type ContactDuplicateResolutionPayload = {
+  relatedContactId: string;
+  decision: ContactDuplicateResolutionRecord["decision"];
+  reason: ContactDuplicateResolutionRecord["reason"];
+  idempotencyKey: string;
+};
+
+export interface ContactDuplicateResolutionAction {
+  decision: ContactDuplicateResolutionRecord["decision"];
+  reason: ContactDuplicateResolutionRecord["reason"];
+  label: string;
+}
+
+export const contactDuplicateResolutionActions: ContactDuplicateResolutionAction[] = [
+  {
+    decision: "acknowledged_duplicate_candidate",
+    reason: "safe_identity_match",
+    label: "Acknowledge cue",
+  },
+  { decision: "not_duplicate", reason: "distinct_contact_verified", label: "Not duplicate" },
+  { decision: "needs_follow_up", reason: "reviewer_follow_up_required", label: "Needs review" },
+];
 
 export function formatContactDataQualityResolutionDecision(
   decision: ContactDataQualityResolutionRecord["decision"],
@@ -235,6 +260,36 @@ export function formatContactDataQualityResolutionDecision(
   }
 }
 
+export function formatContactDuplicateResolutionDecision(
+  decision: ContactDuplicateResolutionRecord["decision"],
+): string {
+  switch (decision) {
+    case "acknowledged_duplicate_candidate":
+      return "acknowledged duplicate cue";
+    case "not_duplicate":
+      return "not duplicate";
+    case "needs_follow_up":
+      return "needs follow-up";
+  }
+}
+
+export function formatContactDuplicateResolutionReason(
+  reason: ContactDuplicateResolutionRecord["reason"],
+): string {
+  switch (reason) {
+    case "safe_identity_match":
+      return "safe identity match";
+    case "shared_visible_matter":
+      return "shared visible matter";
+    case "distinct_contact_verified":
+      return "distinct contact verified";
+    case "insufficient_safe_evidence":
+      return "insufficient safe evidence";
+    case "reviewer_follow_up_required":
+      return "reviewer follow-up required";
+  }
+}
+
 export function contactDataQualitySignalKey(
   contactId: string,
   signal: ContactDossier["qualityReview"]["signals"][number],
@@ -245,6 +300,17 @@ export function contactDataQualitySignalKey(
     signal.matterId ?? "contact",
     signal.relatedContactIds?.[0] ?? "no-related-contact",
     signal.sourceRecordId ?? "no-source-record",
+  ].join(":");
+}
+
+export function contactDuplicateResolutionKey(
+  contactId: string,
+  signal: ContactDossier["qualityReview"]["signals"][number],
+): string {
+  return [
+    "duplicate",
+    contactId,
+    signal.relatedContactIds?.[0] ?? signal.duplicateReview?.candidate.contactId ?? "no-related",
   ].join(":");
 }
 
@@ -263,6 +329,16 @@ export function contactDataQualityResolutionMatchesSignal(
   return !signal.relatedContactIds?.length;
 }
 
+export function contactDuplicateResolutionMatchesSignal(
+  decision: ContactDuplicateResolutionRecord,
+  signal: ContactDossier["qualityReview"]["signals"][number],
+): boolean {
+  return (
+    signal.kind === "duplicate_candidate" &&
+    (signal.relatedContactIds ?? []).includes(decision.relatedContactId)
+  );
+}
+
 export function latestContactDataQualityResolutionForSignal(
   resolutions: ContactDataQualityResolutionRecord[],
   contactId: string,
@@ -275,6 +351,20 @@ export function latestContactDataQualityResolutionForSignal(
         contactDataQualityResolutionMatchesSignal(resolution, signal),
     )
     .sort((left, right) => Date.parse(right.recordedAt) - Date.parse(left.recordedAt))[0];
+}
+
+export function latestContactDuplicateResolutionForSignal(
+  decisions: ContactDuplicateResolutionRecord[],
+  contactId: string,
+  signal: ContactDossier["qualityReview"]["signals"][number],
+): ContactDuplicateResolutionRecord | undefined {
+  return decisions
+    .filter(
+      (decision) =>
+        decision.contactId === contactId &&
+        contactDuplicateResolutionMatchesSignal(decision, signal),
+    )
+    .sort((left, right) => Date.parse(right.reviewedAt) - Date.parse(left.reviewedAt))[0];
 }
 
 export function buildContactDataQualityResolutionPayload(
@@ -292,5 +382,30 @@ export function buildContactDataQualityResolutionPayload(
     resolutionNote: `Contacts dashboard reviewer marked ${formatContactDataQualityResolutionDecision(
       decision,
     )} for ${formatContactReviewSignalKind(signal.kind)}.`,
+  };
+}
+
+export function buildContactDuplicateResolutionPayload(
+  dossier: ContactDossier,
+  signal: ContactDossier["qualityReview"]["signals"][number],
+  decision: ContactDuplicateResolutionRecord["decision"],
+  reason: ContactDuplicateResolutionRecord["reason"],
+): ContactDuplicateResolutionPayload {
+  const relatedContactId =
+    signal.relatedContactIds?.[0] ?? signal.duplicateReview?.candidate.contactId;
+  if (!relatedContactId) {
+    throw new Error("Duplicate resolution requires a related contact cue.");
+  }
+  return {
+    relatedContactId,
+    decision,
+    reason,
+    idempotencyKey: [
+      "contact-duplicate-resolution",
+      dossier.contact.id,
+      relatedContactId,
+      decision,
+      reason,
+    ].join(":"),
   };
 }
