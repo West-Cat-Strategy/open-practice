@@ -4,6 +4,7 @@ import {
   defaultPaymentImportDepositMatchReviewBoundary,
   defaultPaymentImportRefundChargebackReviewBoundary,
   defaultPaymentImportReviewBoundary,
+  paymentImportDepositMatchReconciliationReadiness,
   paymentImportDepositMatchReviewDecisions,
   paymentImportDepositMatchReviewReasons,
   paymentImportEventFamilies,
@@ -108,6 +109,12 @@ const refundChargebackReviewBodySchema = z
     decision: z.enum(paymentImportRefundChargebackReviewDecisions),
     reason: z.enum(paymentImportRefundChargebackReviewReasons),
     idempotencyKey: safeExternalIdSchema,
+  })
+  .strict();
+
+const reconcileManualPaymentBodySchema = z
+  .object({
+    reconciledAt: z.string().datetime().optional(),
   })
   .strict();
 
@@ -269,6 +276,24 @@ function assertCandidateSupportedAllowed(input: {
       "Candidate support requires matching import and manual-payment amounts",
     );
   }
+}
+
+async function findManualPayment(input: {
+  repository: ApiRouteDependencies["repository"];
+  firmId: string;
+  paymentId: string;
+}): Promise<ManualPaymentRecord | undefined> {
+  return (await input.repository.listPayments(input.firmId)).find(
+    (candidate) => candidate.id === input.paymentId,
+  );
+}
+
+function latestDepositMatchReview(
+  reviews: PaymentImportDepositMatchReviewRecord[],
+): PaymentImportDepositMatchReviewRecord | undefined {
+  return [...reviews].sort(
+    (left, right) => Date.parse(right.reviewedAt) - Date.parse(left.reviewedAt),
+  )[0];
 }
 
 type RegisterBillingPaymentImportReviewRoutesOptions = Pick<ApiRouteDependencies, "repository">;
@@ -660,6 +685,149 @@ export function registerBillingPaymentImportReviewRoutes(
         }),
       });
       return { review: created };
+    },
+  );
+
+  server.post(
+    "/api/billing/payment-import-review-records/:recordId/reconcile-manual-payment",
+    async (request) => {
+      const params = parseRequestPart(
+        paymentImportReviewRecordParamsSchema,
+        request.params,
+        "params",
+      );
+      const body = parseRequestPart(reconcileManualPaymentBodySchema, request.body, "body");
+      const staffAccess = requireStaffAccess(request.auth);
+      if (!staffAccess.ok) throw staffAccess.error;
+
+      const importRecord = await repository.getPaymentImportReviewRecord(
+        request.auth.firmId,
+        params.recordId,
+      );
+      if (!importRecord) {
+        throw new ApiHttpError(
+          404,
+          "PAYMENT_IMPORT_REVIEW_RECORD_NOT_FOUND",
+          "Payment import review record was not found",
+        );
+      }
+      assertMatterAccess(request.auth, {
+        resource: "expense_entry",
+        action: "create",
+        matterId: importRecord.matterId,
+      });
+      assertDepositMatchReviewRecord(importRecord);
+
+      const latestReview = latestDepositMatchReview(
+        await repository.listPaymentImportDepositMatchReviews(request.auth.firmId, {
+          paymentImportReviewRecordId: importRecord.id,
+        }),
+      );
+      if (
+        latestReview &&
+        (latestReview.currency !== importRecord.currency || latestReview.currency !== "CAD")
+      ) {
+        throw new ApiHttpError(
+          409,
+          "PAYMENT_IMPORT_DEPOSIT_MATCH_RECONCILE_NOT_ELIGIBLE",
+          "Deposit-match review is not eligible for manual payment reconciliation",
+          {
+            readiness: compactMetadata({
+              eligible: false,
+              reason: "currency_mismatch",
+              mutation: "none",
+              candidateManualPaymentId: latestReview.candidateManualPaymentId,
+              candidateInvoiceId:
+                latestReview.candidateInvoiceId ?? importRecord.candidateInvoiceId,
+              amountCents: latestReview.manualPaymentAmountCents,
+              importCurrency: importRecord.currency,
+              reviewCurrency: latestReview.currency,
+            }),
+          },
+        );
+      }
+      const currentManualPayment = latestReview
+        ? await findManualPayment({
+            repository,
+            firmId: request.auth.firmId,
+            paymentId: latestReview.candidateManualPaymentId,
+          })
+        : undefined;
+      const currentInvoiceId =
+        currentManualPayment?.invoiceId ??
+        latestReview?.candidateInvoiceId ??
+        importRecord.candidateInvoiceId;
+      const currentInvoice = currentInvoiceId
+        ? await repository.getInvoice(request.auth.firmId, currentInvoiceId)
+        : undefined;
+      const readiness = paymentImportDepositMatchReconciliationReadiness({
+        importRecord,
+        latestReview,
+        manualPayment: currentManualPayment,
+        invoice: currentInvoice,
+      });
+      if (!readiness.eligible || !latestReview || !currentManualPayment) {
+        throw new ApiHttpError(
+          409,
+          "PAYMENT_IMPORT_DEPOSIT_MATCH_RECONCILE_NOT_ELIGIBLE",
+          "Deposit-match review is not eligible for manual payment reconciliation",
+          { readiness },
+        );
+      }
+
+      const reconciled = await repository.reconcilePayment({
+        firmId: request.auth.firmId,
+        paymentId: currentManualPayment.id,
+        reconciledByUserId: request.auth.user.id,
+        reconciledAt: body.reconciledAt ?? new Date().toISOString(),
+        evidence: compactMetadata({
+          source: "payment_import_deposit_match_review",
+          paymentImportReviewRecordId: importRecord.id,
+          paymentImportDepositMatchReviewId: latestReview.id,
+          candidateManualPaymentId: latestReview.candidateManualPaymentId,
+          candidateInvoiceId: readiness.candidateInvoiceId,
+          decision: latestReview.decision,
+          reason: latestReview.reason,
+          amountCents: latestReview.manualPaymentAmountCents,
+          currency: latestReview.currency,
+          readinessReason: readiness.reason,
+        }),
+      });
+
+      await appendRouteAuditEvent(repository, request.auth, {
+        action: "manual_payment.reconciled",
+        resourceType: "manual_payment",
+        resourceId: reconciled.id,
+        metadata: compactMetadata({
+          matterId: reconciled.matterId,
+          paymentId: reconciled.id,
+          invoiceId: reconciled.invoiceId,
+          status: reconciled.status,
+          amountCents: reconciled.amountCents,
+          allocationCount: reconciled.allocations.length,
+          evidencePresent: true,
+          paymentImportReviewRecordId: importRecord.id,
+          paymentImportDepositMatchReviewId: latestReview.id,
+          depositMatchDecision: latestReview.decision,
+          depositMatchReason: latestReview.reason,
+          currency: latestReview.currency,
+          readinessReason: readiness.reason,
+          providerCommand: "none",
+          clientNotification: "none",
+          trustPosting: "none",
+        }),
+      });
+      return {
+        payment: reconciled,
+        consumedDecision: {
+          paymentImportReviewRecordId: importRecord.id,
+          paymentImportDepositMatchReviewId: latestReview.id,
+          decision: latestReview.decision,
+          reason: latestReview.reason,
+          currency: latestReview.currency,
+          readiness,
+        },
+      };
     },
   );
 

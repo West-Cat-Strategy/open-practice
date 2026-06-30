@@ -109,6 +109,15 @@ deposits, call providers, notify clients, handle refunds or chargebacks, post tr
 retain raw provider payloads. Proof is recorded in
 [OP-T162 deposit-match review command boundary proof](validation/OP-T162_DEPOSIT_MATCH_REVIEW_COMMAND_BOUNDARY_PROOF_2026-06-27.md).
 
+The 2026-06-30 deposit-match manual-payment reconcile command adds one staff-only API command that
+consumes the latest existing supported deposit-match decision only after current manual-payment,
+invoice, amount, CAD currency posture, matter scope, pending-status, duplicate/conflict, and
+invoice-balance readiness still pass. It delegates allocation and invoice paid/balance mutation to
+the existing manual-payment reconciliation path and preserves no provider calls, live settlement,
+bank-feed automation, broad auto-matching, client notifications, trust transfers, or trust posting.
+Proof is recorded in
+[deposit-match manual-payment reconcile command proof](validation/OP_DEPOSIT_MATCH_MANUAL_PAYMENT_RECONCILE_COMMAND_PROOF_2026-06-30.md).
+
 The 2026-06-28 refund/chargeback review cue surface stays on the same provider-neutral payment
 import boundary. Existing normalized payment import review records with `eventFamily=payment` and
 `eventStatus=refund_observed` or `eventStatus=chargeback_observed` now derive reviewer cue counts,
@@ -842,6 +851,13 @@ now ineligible while preserving no live settlement, provider commands, raw provi
 retention, invoice-balance mutation, reconciliation automation, refund/chargeback workflow, client
 notifications, trust transfers, or trust posting. Proof is recorded in
 [OP-T162 deposit-match review command boundary proof](validation/OP-T162_DEPOSIT_MATCH_REVIEW_COMMAND_BOUNDARY_PROOF_2026-06-27.md).
+
+The 2026-06-30 deposit-match manual-payment reconcile command consumes that existing supported
+decision as derived reviewer evidence for the existing manual-payment reconcile path only when
+current eligibility still passes. The strict API-only command adds no migration, UI button,
+provider call, live settlement, bank-feed automation, broad matching, client notification, trust
+transfer, or trust posting. Proof is recorded in
+[deposit-match manual-payment reconcile command proof](validation/OP_DEPOSIT_MATCH_MANUAL_PAYMENT_RECONCILE_COMMAND_PROOF_2026-06-30.md).
 
 The 2026-06-28 refund/chargeback review cue surface derives provider-neutral dashboard counts, row
 cue metadata, and safe payment-import audit metadata from existing normalized payment import review

@@ -64,6 +64,12 @@ export const BILLING_ROUTE_AUTHORIZATION_MANIFEST = [
     "derived",
   ),
   paymentRoute(
+    "POST",
+    "/api/billing/payment-import-review-records/:recordId/reconcile-manual-payment",
+    "create",
+    "derived",
+  ),
+  paymentRoute(
     "GET",
     "/api/billing/payment-import-review-records/:recordId/refund-chargeback-reviews",
     "read",

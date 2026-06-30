@@ -256,6 +256,82 @@ function refundChargebackReviewRecord(
   };
 }
 
+async function seedDepositMatchReconcileTarget(
+  repository: InMemoryOpenPracticeRepository,
+  input: {
+    recordId: string;
+    manualPaymentId: string;
+    reviewId: string;
+    amountCents?: number;
+    importAmountCents?: number;
+    manualPaymentStatus?: "pending_reconciliation" | "received" | "void";
+    decision?: "candidate_supported" | "candidate_rejected" | "needs_more_evidence";
+    reason?:
+      | "candidate_evidence_matches"
+      | "amount_mismatch"
+      | "status_conflict"
+      | "duplicate_or_conflict"
+      | "manual_payment_not_pending"
+      | "invoice_candidate_mismatch"
+      | "missing_reviewer_evidence";
+    currency?: PaymentImportDepositMatchReviewRecord["currency"];
+    reviewedAt?: string;
+  },
+): Promise<void> {
+  const amountCents = input.amountCents ?? 2500;
+  const importAmountCents = input.importAmountCents ?? amountCents;
+  const decision = input.decision ?? "candidate_supported";
+  const reason =
+    input.reason ??
+    (decision === "candidate_supported" ? "candidate_evidence_matches" : "amount_mismatch");
+  await repository.createPayment({
+    payment: {
+      id: input.manualPaymentId,
+      firmId,
+      matterId: "matter-001",
+      invoiceId: "invoice-001",
+      receivedAt: "2026-06-30T12:01:00.000Z",
+      amountCents,
+      method: "eft",
+      status: input.manualPaymentStatus ?? "pending_reconciliation",
+      receivedByUserId: "user-licensee",
+      evidence: { source: "synthetic-deposit-match-reconcile" },
+    },
+    allocations: [],
+  });
+  await repository.createPaymentImportReviewRecord(
+    paymentImportReviewRecord({
+      id: input.recordId,
+      matterId: "matter-001",
+      eventFamily: "deposit",
+      eventStatus: "deposit_observed",
+      externalEventId: syntheticExternalEventId(input.recordId),
+      externalDepositId: `dep_${input.recordId.replace(/[^a-zA-Z0-9]+/g, "_")}`,
+      amountCents: importAmountCents,
+      observedAt: "2026-06-30T12:00:00.000Z",
+      candidateInvoiceId: "invoice-001",
+      candidateManualPaymentId: input.manualPaymentId,
+    }),
+  );
+  await repository.createPaymentImportDepositMatchReview(
+    depositMatchReviewRecord({
+      id: input.reviewId,
+      matterId: "matter-001",
+      paymentImportReviewRecordId: input.recordId,
+      candidateManualPaymentId: input.manualPaymentId,
+      candidateInvoiceId: "invoice-001",
+      decision,
+      reason,
+      importAmountCents,
+      manualPaymentAmountCents: amountCents,
+      currency: input.currency ?? "CAD",
+      candidateManualPaymentStatus: "pending_reconciliation",
+      reviewedAt: input.reviewedAt ?? "2026-06-30T12:05:00.000Z",
+      createdAt: input.reviewedAt ?? "2026-06-30T12:05:00.000Z",
+    }),
+  );
+}
+
 async function seedDepositMatchAuthorizationTarget(
   repository: InMemoryOpenPracticeRepository,
   input: { recordId: string; manualPaymentId: string; matterId: string; reviewId?: string },
@@ -3930,6 +4006,253 @@ describe("billing routes", () => {
     expect(JSON.stringify(await auditEvents(repository))).not.toContain(
       "Synthetic private deposit review payload",
     );
+  });
+
+  it("reconciles a supported deposit-match candidate through the manual-payment review path", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository });
+    await seedDepositMatchReconcileTarget(repository, {
+      recordId: "payment-import-reconcile-supported",
+      manualPaymentId: "manual-payment-reconcile-supported",
+      reviewId: "deposit-match-reconcile-supported",
+    });
+    const invoiceBefore = await server.inject({ method: "GET", url: "/api/invoices/invoice-001" });
+    const ledgerBefore = await server.inject({ method: "GET", url: "/api/ledger" });
+    const beforeEntryCount = ledgerBefore.json<{ entries: unknown[] }>().entries.length;
+
+    const strictBodyRejected = await server.inject({
+      method: "POST",
+      url: "/api/billing/payment-import-review-records/payment-import-reconcile-supported/reconcile-manual-payment",
+      payload: {
+        reconciledAt: "2026-06-30T12:10:00.000Z",
+        evidence: { source: "synthetic-extra-reconcile-evidence" },
+      },
+    });
+    expect(strictBodyRejected.statusCode).toBe(400);
+
+    await repository.createUser({
+      id: "user-deposit-match-reconcile-other",
+      firmId,
+      displayName: "Synthetic Other Reconcile Reviewer",
+      email: "deposit-match-reconcile-other@example.test",
+      role: "licensee",
+      assignedMatterIds: ["matter-002"],
+      mfaEnabled: true,
+    });
+    const crossMatter = await server.inject({
+      method: "POST",
+      url: "/api/billing/payment-import-review-records/payment-import-reconcile-supported/reconcile-manual-payment",
+      headers: authHeaders("user-deposit-match-reconcile-other"),
+      payload: { reconciledAt: "2026-06-30T12:10:00.000Z" },
+    });
+    expect(crossMatter.statusCode).toBe(403);
+
+    const reconciled = await server.inject({
+      method: "POST",
+      url: "/api/billing/payment-import-review-records/payment-import-reconcile-supported/reconcile-manual-payment",
+      payload: { reconciledAt: "2026-06-30T12:10:00.000Z" },
+    });
+    expect(reconciled.statusCode).toBe(200);
+    expect(reconciled.json()).toMatchObject({
+      payment: {
+        id: "manual-payment-reconcile-supported",
+        status: "received",
+        reconciledAt: "2026-06-30T12:10:00.000Z",
+        reconciledByUserId: "user-admin",
+        reconciliationEvidence: {
+          source: "payment_import_deposit_match_review",
+          paymentImportReviewRecordId: "payment-import-reconcile-supported",
+          paymentImportDepositMatchReviewId: "deposit-match-reconcile-supported",
+          candidateManualPaymentId: "manual-payment-reconcile-supported",
+          candidateInvoiceId: "invoice-001",
+          decision: "candidate_supported",
+          reason: "candidate_evidence_matches",
+          amountCents: 2500,
+          currency: "CAD",
+          readinessReason: "supported_candidate_ready",
+        },
+        allocations: [expect.objectContaining({ invoiceId: "invoice-001", amountCents: 2500 })],
+      },
+      consumedDecision: {
+        paymentImportReviewRecordId: "payment-import-reconcile-supported",
+        paymentImportDepositMatchReviewId: "deposit-match-reconcile-supported",
+        decision: "candidate_supported",
+        reason: "candidate_evidence_matches",
+        currency: "CAD",
+        readiness: expect.objectContaining({
+          eligible: true,
+          reason: "supported_candidate_ready",
+          mutation: "none",
+        }),
+      },
+    });
+
+    const invoiceAfter = await server.inject({ method: "GET", url: "/api/invoices/invoice-001" });
+    expect(invoiceAfter.json()).toMatchObject({
+      status: "partially_paid",
+      paidCents: invoiceBefore.json<{ paidCents: number }>().paidCents + 2500,
+      balanceDueCents: invoiceBefore.json<{ balanceDueCents: number }>().balanceDueCents - 2500,
+    });
+
+    const replay = await server.inject({
+      method: "POST",
+      url: "/api/billing/payment-import-review-records/payment-import-reconcile-supported/reconcile-manual-payment",
+      payload: { reconciledAt: "2026-06-30T12:11:00.000Z" },
+    });
+    expect(replay.statusCode).toBe(409);
+    expect(replay.json()).toMatchObject({
+      code: "PAYMENT_IMPORT_DEPOSIT_MATCH_RECONCILE_NOT_ELIGIBLE",
+      details: {
+        readiness: expect.objectContaining({
+          eligible: false,
+          reason: "manual_payment_not_pending",
+        }),
+      },
+    });
+    const paymentAfterReplay = (
+      await repository.listPayments(firmId, { invoiceId: "invoice-001" })
+    ).find((payment) => payment.id === "manual-payment-reconcile-supported");
+    expect(paymentAfterReplay?.allocations).toHaveLength(1);
+
+    const ledgerAfter = await server.inject({ method: "GET", url: "/api/ledger" });
+    expect(ledgerAfter.json<{ entries: unknown[] }>().entries).toHaveLength(beforeEntryCount);
+    const audit = (await auditEvents(repository)).find(
+      (event) =>
+        event.action === "manual_payment.reconciled" &&
+        event.resourceId === "manual-payment-reconcile-supported",
+    );
+    expect(audit).toMatchObject({
+      metadata: expect.objectContaining({
+        paymentImportReviewRecordId: "payment-import-reconcile-supported",
+        paymentImportDepositMatchReviewId: "deposit-match-reconcile-supported",
+        depositMatchDecision: "candidate_supported",
+        depositMatchReason: "candidate_evidence_matches",
+        currency: "CAD",
+        readinessReason: "supported_candidate_ready",
+        providerCommand: "none",
+        clientNotification: "none",
+        trustPosting: "none",
+      }),
+    });
+    expect(JSON.stringify(await auditEvents(repository))).not.toContain(
+      "synthetic-extra-reconcile-evidence",
+    );
+  });
+
+  it("rejects deposit-match reconciliation when the supported decision or candidate state drifts", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository });
+    const invoiceBefore = await server.inject({ method: "GET", url: "/api/invoices/invoice-001" });
+
+    await repository.createPayment({
+      payment: {
+        id: "manual-payment-reconcile-no-review",
+        firmId,
+        matterId: "matter-001",
+        invoiceId: "invoice-001",
+        receivedAt: "2026-06-30T13:01:00.000Z",
+        amountCents: 2500,
+        method: "eft",
+        status: "pending_reconciliation",
+        receivedByUserId: "user-licensee",
+        evidence: { source: "synthetic-deposit-match-reconcile-no-review" },
+      },
+      allocations: [],
+    });
+    await repository.createPaymentImportReviewRecord(
+      paymentImportReviewRecord({
+        id: "payment-import-reconcile-no-review",
+        matterId: "matter-001",
+        eventFamily: "deposit",
+        eventStatus: "deposit_observed",
+        externalDepositId: "dep_payment_import_reconcile_no_review",
+        amountCents: 2500,
+        candidateInvoiceId: "invoice-001",
+        candidateManualPaymentId: "manual-payment-reconcile-no-review",
+      }),
+    );
+
+    await seedDepositMatchReconcileTarget(repository, {
+      recordId: "payment-import-reconcile-latest-rejected",
+      manualPaymentId: "manual-payment-reconcile-latest-rejected",
+      reviewId: "deposit-match-reconcile-earlier-supported",
+      reviewedAt: "2026-06-30T13:05:00.000Z",
+    });
+    await repository.createPaymentImportDepositMatchReview(
+      depositMatchReviewRecord({
+        id: "deposit-match-reconcile-latest-rejected",
+        paymentImportReviewRecordId: "payment-import-reconcile-latest-rejected",
+        candidateManualPaymentId: "manual-payment-reconcile-latest-rejected",
+        candidateInvoiceId: "invoice-001",
+        decision: "candidate_rejected",
+        reason: "amount_mismatch",
+        importAmountCents: 2500,
+        manualPaymentAmountCents: 2500,
+        reviewedAt: "2026-06-30T13:06:00.000Z",
+        createdAt: "2026-06-30T13:06:00.000Z",
+      }),
+    );
+
+    await seedDepositMatchReconcileTarget(repository, {
+      recordId: "payment-import-reconcile-not-pending",
+      manualPaymentId: "manual-payment-reconcile-not-pending",
+      reviewId: "deposit-match-reconcile-not-pending",
+      manualPaymentStatus: "received",
+    });
+    await seedDepositMatchReconcileTarget(repository, {
+      recordId: "payment-import-reconcile-amount-drift",
+      manualPaymentId: "manual-payment-reconcile-amount-drift",
+      reviewId: "deposit-match-reconcile-amount-drift",
+      importAmountCents: 2501,
+    });
+    await seedDepositMatchReconcileTarget(repository, {
+      recordId: "payment-import-reconcile-currency-drift",
+      manualPaymentId: "manual-payment-reconcile-currency-drift",
+      reviewId: "deposit-match-reconcile-currency-drift",
+      currency: "USD" as PaymentImportDepositMatchReviewRecord["currency"],
+    });
+    await seedDepositMatchReconcileTarget(repository, {
+      recordId: "payment-import-reconcile-balance-drift",
+      manualPaymentId: "manual-payment-reconcile-balance-drift",
+      reviewId: "deposit-match-reconcile-balance-drift",
+      amountCents: invoiceBefore.json<{ balanceDueCents: number }>().balanceDueCents + 1,
+    });
+
+    for (const [recordId, reason] of [
+      ["payment-import-reconcile-no-review", "no_supported_decision"],
+      ["payment-import-reconcile-latest-rejected", "candidate_not_supported"],
+      ["payment-import-reconcile-not-pending", "manual_payment_not_pending"],
+      ["payment-import-reconcile-amount-drift", "amount_mismatch"],
+      ["payment-import-reconcile-currency-drift", "currency_mismatch"],
+      ["payment-import-reconcile-balance-drift", "invoice_balance_insufficient"],
+    ] as const) {
+      const response = await server.inject({
+        method: "POST",
+        url: `/api/billing/payment-import-review-records/${recordId}/reconcile-manual-payment`,
+        payload: { reconciledAt: "2026-06-30T13:10:00.000Z" },
+      });
+      expect(response.statusCode).toBe(409);
+      expect(response.json()).toMatchObject({
+        code: "PAYMENT_IMPORT_DEPOSIT_MATCH_RECONCILE_NOT_ELIGIBLE",
+        details: {
+          readiness: expect.objectContaining({
+            eligible: false,
+            reason,
+            mutation: "none",
+          }),
+        },
+      });
+    }
+
+    const invoiceAfter = await server.inject({ method: "GET", url: "/api/invoices/invoice-001" });
+    expect(invoiceAfter.json()).toMatchObject({
+      status: invoiceBefore.json<{ status: string }>().status,
+      paidCents: invoiceBefore.json<{ paidCents: number }>().paidCents,
+      balanceDueCents: invoiceBefore.json<{ balanceDueCents: number }>().balanceDueCents,
+    });
+    expect(
+      (await auditEvents(repository)).some((event) => event.action === "manual_payment.reconciled"),
+    ).toBe(false);
   });
 
   it("keeps Stripe checkout creation disabled when no processor is configured", async () => {
