@@ -516,6 +516,98 @@ describe("DocumentsSection", () => {
     expect(html.match(/data-action-key="document_retention_hold_review\.record"/g)).toHaveLength(1);
   });
 
+  it("renders disposition rollup counts from visible document-processing rows", () => {
+    const workbench = buildSyntheticDocumentProcessingWorkbench();
+    const firstDocument = workbench.documents[0];
+    expect(firstDocument).toBeDefined();
+    const rows = ([
+      {
+        candidateState: "ready_for_reviewer_packet",
+        status: "ready_for_reviewer_packet",
+        id: "doc_synthetic_ready_packet",
+      },
+      {
+        candidateState: "blocked_by_hold",
+        status: "blocked_by_hold",
+        id: "doc_synthetic_blocked_hold",
+      },
+      {
+        candidateState: "not_ready",
+        status: "needs_review",
+        id: "doc_synthetic_not_ready",
+      },
+      {
+        candidateState: "reviewed_keep",
+        status: "reviewed_keep",
+        id: "doc_synthetic_reviewed_keep",
+      },
+      {
+        candidateState: "reviewed_superseded",
+        status: "reviewed_superseded",
+        id: "doc_synthetic_reviewed_superseded",
+      },
+    ] as const).map(({ candidateState, status, id }) => ({
+      ...firstDocument!,
+      document: {
+        ...firstDocument!.document,
+        id,
+      },
+      retentionHoldReview: {
+        ...firstDocument!.retentionHoldReview!,
+        status,
+        blockers: candidateState === "blocked_by_hold" ? ["legal_hold"] : [],
+        dispositionMetadata: {
+          ...firstDocument!.retentionHoldReview!.dispositionMetadata,
+          candidateState,
+          readyForReviewerPacket: candidateState === "ready_for_reviewer_packet",
+          blockerCounts:
+            candidateState === "blocked_by_hold"
+              ? { total: 1, legalHold: 1, uploadIntegrity: 0, reviewState: 0 }
+              : { total: 0, legalHold: 0, uploadIntegrity: 0, reviewState: 0 },
+        },
+      },
+    }));
+    const html = renderToStaticMarkup(
+      createElement(
+        DocumentsSection,
+        buildDocumentsSectionProps({
+          activeDocumentProcessing: { ...workbench, documents: rows },
+          activeDocumentProcessingRows: rows,
+        }),
+      ),
+    );
+    const rollupHtml = html.slice(
+      html.indexOf('aria-label="Document disposition rollup"'),
+      html.indexOf("Document assembly"),
+    );
+
+    expect(rollupHtml).toContain("Document disposition rollup");
+    expect(rollupHtml).toContain(
+      '<span class="field-label">Ready for packet</span><strong>1</strong>',
+    );
+    expect(rollupHtml).toContain(
+      '<span class="field-label">Blocked by hold</span><strong>1</strong>',
+    );
+    expect(rollupHtml).toContain(
+      '<span class="field-label">Not ready</span><strong>1</strong>',
+    );
+    expect(rollupHtml).toContain(
+      '<span class="field-label">Reviewed keep</span><strong>1</strong>',
+    );
+    expect(rollupHtml).toContain(
+      '<span class="field-label">Reviewed superseded</span><strong>1</strong>',
+    );
+    expect(rollupHtml).not.toContain("deletion");
+    expect(rollupHtml).not.toContain("deadline enforcement");
+    expect(rollupHtml).not.toContain("hold release");
+    expect(rollupHtml).not.toContain("export body");
+    expect(rollupHtml).not.toContain("provider payload");
+    expect(rollupHtml).not.toContain("raw OCR");
+    expect(rollupHtml).not.toContain("free-form");
+    expect(rollupHtml).not.toContain("compliance");
+    expect(html.match(/data-action-key="document_retention_hold_review\.record"/g)).toHaveLength(5);
+  });
+
   it("describes rejected conversion review readiness without exposing provider evidence", () => {
     expect(
       describeDocumentConversionReview({

@@ -11,6 +11,7 @@ import type {
   DocumentProcessingLatestExtraction,
   DocumentProcessingLatestJob,
   DocumentConversionReviewSummary,
+  DocumentDispositionCandidateState,
   DocumentMetadataSearchFilters,
   DocumentMetadataSearchPosture,
   DocumentMetadataTag,
@@ -45,6 +46,26 @@ export const documentReviewSuggestionGroupOrder: DocumentReviewSuggestionGroup[]
   "missing_metadata",
   "retention_review",
 ];
+
+export const documentDispositionRollupOrder: DocumentDispositionCandidateState[] = [
+  "ready_for_reviewer_packet",
+  "blocked_by_hold",
+  "not_ready",
+  "reviewed_keep",
+  "reviewed_superseded",
+];
+
+export type DocumentDispositionRollup = Record<DocumentDispositionCandidateState, number>;
+
+function emptyDocumentDispositionRollup(): DocumentDispositionRollup {
+  return {
+    ready_for_reviewer_packet: 0,
+    blocked_by_hold: 0,
+    not_ready: 0,
+    reviewed_keep: 0,
+    reviewed_superseded: 0,
+  };
+}
 
 export function buildDocumentProcessingWorkbenchPath(
   matterId: string,
@@ -337,6 +358,17 @@ export function summarizeDocumentReviewSuggestions(
   );
   if (total === 0) return "No reviewer suggestion cues.";
   return `${total} reviewer suggestion cues. ${duplicateOrSupersession} duplicate or supersession. ${missingMetadata} missing metadata. ${retentionReview} retention review.`;
+}
+
+export function summarizeDocumentDispositionRollup(
+  rows: DocumentProcessingWorkbenchItem[],
+): DocumentDispositionRollup {
+  const counts = emptyDocumentDispositionRollup();
+  for (const row of rows) {
+    const candidateState = row.retentionHoldReview?.dispositionMetadata?.candidateState;
+    if (candidateState) counts[candidateState] += 1;
+  }
+  return counts;
 }
 
 export function documentMetadataSearchFilterCount(
