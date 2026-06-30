@@ -64,6 +64,22 @@ function fixtureSubject(item: ReturnType<typeof fixtureCase>): User {
       mfaEnabled: true,
     };
   }
+  if (item.subjectId.startsWith("user-") && !sampleUsers.some((user) => user.id === item.subjectId)) {
+    const role = item.subjectId.includes("bookkeeper")
+      ? "billing_bookkeeper"
+      : item.subjectId.includes("client-external")
+        ? "client_external"
+        : "auditor";
+    return {
+      id: item.subjectId,
+      firmId: sampleFirm.id,
+      displayName: "Synthetic authorization fixture user",
+      email: `${item.subjectId}@example.test`,
+      role,
+      assignedMatterIds: role === "client_external" && item.matterId ? [item.matterId] : [],
+      mfaEnabled: true,
+    };
+  }
   const subject = sampleUser(item.subjectId);
   if (item.relation === "firm_wide_reviewer") return { ...subject, assignedMatterIds: [] };
   return subject;
@@ -98,6 +114,8 @@ describe("authorization fixture catalogue", () => {
     expect(Object.keys(authorizationRelationVocabulary).sort()).toEqual([
       "account_bound_portal_grant_holder",
       "assigned_matter_staff",
+      "auditor_reviewer",
+      "billing_bookkeeper",
       "expired_public_share_token_holder",
       "external_portal_contact",
       "firm_wide_reviewer",
@@ -148,10 +166,34 @@ describe("authorization fixture catalogue", () => {
       "refund-chargeback-review:assigned:list-visible",
       "refund-chargeback-review:unassigned:list-hidden",
       "refund-chargeback-review:portal-client:staff-list-denied",
+      "refund-chargeback-review:auditor:list-visible",
+      "refund-chargeback-review:portal-client:list-denied",
       "refund-chargeback-review:firm-wide:create",
       "refund-chargeback-review:assigned:create",
       "refund-chargeback-review:unassigned:create-denied",
+      "refund-chargeback-review:auditor:create-denied",
       "refund-chargeback-review:portal-client:create-denied",
+      "trust-transfer-review:assigned:list-visible",
+      "trust-transfer-review:assigned:approve",
+      "trust-transfer-review:auditor:approve-denied",
+      "trust-transfer-review:bookkeeper:approve-denied",
+      "trust-transfer-review:portal-client:staff-list-denied",
+      "staff-report-export:auditor:workspace-visible",
+      "staff-report-export:bookkeeper:create",
+      "staff-report-export:assigned:create-denied",
+      "staff-report-export:portal-client:create-denied",
+      "audit-export:auditor:create",
+      "audit-export:bookkeeper:create-denied",
+      "audit-export:assigned:create-denied",
+      "audit-export:portal-client:create-denied",
+      "billing-export:assigned:matter-create",
+      "billing-export:auditor:firm-create",
+      "billing-export:bookkeeper:firm-create",
+      "billing-export:portal-client:create-denied",
+      "jurisdictional-trust-export:auditor:report-visible",
+      "jurisdictional-trust-export:bookkeeper:create",
+      "jurisdictional-trust-export:assigned:create-denied",
+      "jurisdictional-trust-export:portal-client:create-denied",
       "portal-link:public-share:metadata-visible",
       "portal-link:expired-share:hidden",
       "portal-link:revoked-share:hidden",

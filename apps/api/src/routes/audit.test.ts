@@ -2,15 +2,16 @@ import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
 import { InMemoryOpenPracticeRepository } from "@open-practice/database";
 import type { ProfessionalRole, User } from "@open-practice/domain";
+import { authorizationFixtureCases } from "@open-practice/domain/authorization-fixtures";
 import { registerAuditRoutes } from "./audit.js";
 import type { ApiJobQueue } from "./types.js";
 
 const firmId = "firm-west-legal";
 const servers: FastifyInstance[] = [];
 
-function user(role: ProfessionalRole): User {
+function user(role: ProfessionalRole, id = `user-${role}`): User {
   return {
-    id: `user-${role}`,
+    id,
     firmId,
     displayName: `Test ${role}`,
     email: `${role}@example.test`,
@@ -53,10 +54,11 @@ function testServer(input: {
   repository: InMemoryOpenPracticeRepository;
   reportJobQueue?: ApiJobQueue;
   role?: ProfessionalRole;
+  userId?: string;
 }): FastifyInstance {
   const server = Fastify({ logger: false });
   server.addHook("preHandler", async (request) => {
-    request.auth = { firmId, user: user(input.role ?? "owner_admin") };
+    request.auth = { firmId, user: user(input.role ?? "owner_admin", input.userId) };
   });
   registerAuditRoutes(server, input);
   servers.push(server);
@@ -66,6 +68,12 @@ function testServer(input: {
 afterEach(async () => {
   await Promise.all(servers.splice(0).map((server) => server.close()));
 });
+
+function authorizationFixtureCase(id: string) {
+  const match = authorizationFixtureCases.find((candidate) => candidate.id === id);
+  if (!match) throw new Error(`Missing authorization fixture case ${id}`);
+  return match;
+}
 
 describe("audit routes", () => {
   it("returns audit events without raw metadata values", async () => {
@@ -348,6 +356,64 @@ describe("audit routes", () => {
     expect(event).toHaveProperty("metadataKeys");
     expect(event).not.toHaveProperty("metadata");
     expect(JSON.stringify(downloaded.json())).not.toContain("Synthetic billing audit time entry");
+  });
+
+  it("matches audit export authorization fixtures without creating denied jobs", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const queuedReports: Array<{ name: string; data: unknown; jobId?: string }> = [];
+    const fixtureIds = authorizationFixtureCases
+      .filter((item) => item.family === "audit_export")
+      .map((item) => item.id);
+    expect(fixtureIds).toEqual([
+      "audit-export:auditor:create",
+      "audit-export:bookkeeper:create-denied",
+      "audit-export:assigned:create-denied",
+      "audit-export:portal-client:create-denied",
+    ]);
+    const auditorCase = authorizationFixtureCase("audit-export:auditor:create");
+    const bookkeeperCase = authorizationFixtureCase("audit-export:bookkeeper:create-denied");
+    const assignedCase = authorizationFixtureCase("audit-export:assigned:create-denied");
+    const portalCase = authorizationFixtureCase("audit-export:portal-client:create-denied");
+
+    const auditor = await testServer({
+      repository,
+      reportJobQueue: fakeReportQueue(queuedReports),
+      role: "auditor",
+      userId: auditorCase.subjectId,
+    }).inject({
+      method: "POST",
+      url: "/api/audit/export-requests",
+      payload: { idempotencyKey: auditorCase.resourceId },
+    });
+    expect(auditor.statusCode).toBe(202);
+    expect(auditor.json()).toMatchObject({ exportRequest: { status: "queued" } });
+    expect(queuedReports).toHaveLength(1);
+
+    const beforeDenied = await repository.listJobLifecycleRecords(firmId, {
+      queueName: "reports",
+    });
+    for (const fixture of [
+      { case: bookkeeperCase, role: "billing_bookkeeper" as const },
+      { case: assignedCase, role: "firm_member" as const },
+      { case: portalCase, role: "client_external" as const },
+    ]) {
+      const denied = await testServer({
+        repository,
+        reportJobQueue: fakeReportQueue(queuedReports),
+        role: fixture.role,
+        userId: fixture.case.subjectId,
+      }).inject({
+        method: "POST",
+        url: "/api/audit/export-requests",
+        payload: { idempotencyKey: fixture.case.resourceId },
+      });
+      expect(denied.statusCode).toBe(403);
+      expect(denied.json()).toMatchObject({ message: "Audit log access required" });
+    }
+    await expect(
+      repository.listJobLifecycleRecords(firmId, { queueName: "reports" }),
+    ).resolves.toHaveLength(beforeDenied.length);
+    expect(queuedReports).toHaveLength(1);
   });
 
   it("denies audit export requests to users without export permission", async () => {

@@ -10,6 +10,7 @@ import {
   financialCommandJournalActions,
   type LedgerReconciliationRecord,
 } from "@open-practice/domain";
+import { authorizationFixtureCases } from "@open-practice/domain/authorization-fixtures";
 import { registerLedgerRoutes } from "./ledger.js";
 import type { ApiJobQueue } from "./types.js";
 
@@ -67,6 +68,36 @@ function fakeReportQueue(jobs: QueuedReportJob[] = []): ApiJobQueue {
       return { id: options?.jobId ?? "report-job" };
     },
   };
+}
+
+function authHeaders(userId: string) {
+  return {
+    "x-open-practice-user-id": userId,
+    "x-open-practice-firm-id": "firm-west-legal",
+  };
+}
+
+function authorizationFixtureCase(id: string) {
+  const match = authorizationFixtureCases.find((candidate) => candidate.id === id);
+  if (!match) throw new Error(`Missing authorization fixture case ${id}`);
+  return match;
+}
+
+async function createAuthorizationFixtureUser(input: {
+  repository: InMemoryOpenPracticeRepository;
+  id: string;
+  role: "auditor" | "billing_bookkeeper" | "client_external";
+  assignedMatterIds?: string[];
+}): Promise<void> {
+  await input.repository.createUser({
+    id: input.id,
+    firmId: "firm-west-legal",
+    displayName: `Synthetic ${input.role} authorization fixture`,
+    email: `${input.id}@example.test`,
+    role: input.role,
+    assignedMatterIds: input.assignedMatterIds ?? [],
+    mfaEnabled: true,
+  });
 }
 
 class FinancialCommandAuditReadRepository extends InMemoryOpenPracticeRepository {
@@ -1062,6 +1093,93 @@ describe("ledger routes", () => {
     });
     expect(serializedAuditAndJobs).not.toContain("synthetic-april-trust.pdf");
     expect(serializedAuditAndJobs).not.toContain("fieldKeys");
+  });
+
+  it("matches jurisdictional trust report and export authorization fixtures", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const queuedReports: QueuedReportJob[] = [];
+    await createAuthorizationFixtureUser({
+      repository,
+      id: "user-jurisdictional-trust-auditor",
+      role: "auditor",
+    });
+    await createAuthorizationFixtureUser({
+      repository,
+      id: "user-jurisdictional-trust-bookkeeper",
+      role: "billing_bookkeeper",
+    });
+    await createAuthorizationFixtureUser({
+      repository,
+      id: "user-jurisdictional-trust-client-external",
+      role: "client_external",
+      assignedMatterIds: ["matter-001"],
+    });
+    const fixtureIds = authorizationFixtureCases
+      .filter((item) => item.family === "jurisdictional_trust_export")
+      .map((item) => item.id);
+    expect(fixtureIds).toEqual([
+      "jurisdictional-trust-export:auditor:report-visible",
+      "jurisdictional-trust-export:bookkeeper:create",
+      "jurisdictional-trust-export:assigned:create-denied",
+      "jurisdictional-trust-export:portal-client:create-denied",
+    ]);
+    const auditorCase = authorizationFixtureCase(
+      "jurisdictional-trust-export:auditor:report-visible",
+    );
+    const bookkeeperCase = authorizationFixtureCase(
+      "jurisdictional-trust-export:bookkeeper:create",
+    );
+    const assignedCase = authorizationFixtureCase(
+      "jurisdictional-trust-export:assigned:create-denied",
+    );
+    const portalCase = authorizationFixtureCase(
+      "jurisdictional-trust-export:portal-client:create-denied",
+    );
+    const server = testServer({
+      repository,
+      reportJobQueue: fakeReportQueue(queuedReports),
+    });
+
+    const auditorReport = await server.inject({
+      method: "GET",
+      url: "/api/ledger/reports/jurisdictional-trust",
+      headers: authHeaders(auditorCase.subjectId),
+    });
+    expect(auditorReport.statusCode).toBe(200);
+    expect(auditorReport.json()).toMatchObject({
+      compliancePosture: "operational_controls_only_not_jurisdiction_certified",
+      summaries: expect.any(Array),
+    });
+
+    const bookkeeperExport = await server.inject({
+      method: "POST",
+      url: "/api/ledger/reports/jurisdictional-trust/export-requests",
+      headers: authHeaders(bookkeeperCase.subjectId),
+      payload: { jurisdiction: "BC", idempotencyKey: bookkeeperCase.resourceId },
+    });
+    expect(bookkeeperExport.statusCode).toBe(202);
+    expect(bookkeeperExport.json()).toMatchObject({
+      exportRequest: { status: "queued" },
+    });
+    expect(queuedReports).toHaveLength(1);
+
+    const beforeDenied = await repository.listJobLifecycleRecords("firm-west-legal", {
+      queueName: "reports",
+    });
+    for (const fixture of [assignedCase, portalCase]) {
+      const denied = await server.inject({
+        method: "POST",
+        url: "/api/ledger/reports/jurisdictional-trust/export-requests",
+        headers: authHeaders(fixture.subjectId),
+        payload: { jurisdiction: "BC", idempotencyKey: fixture.resourceId },
+      });
+      expect(denied.statusCode).toBe(403);
+      expect(denied.json()).toMatchObject({ message: "Trust ledger access required" });
+    }
+    await expect(
+      repository.listJobLifecycleRecords("firm-west-legal", { queueName: "reports" }),
+    ).resolves.toHaveLength(beforeDenied.length);
+    expect(queuedReports).toHaveLength(1);
   });
 
   it("denies jurisdictional trust reports to matter-scoped users", async () => {

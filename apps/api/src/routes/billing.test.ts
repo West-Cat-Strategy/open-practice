@@ -117,6 +117,23 @@ async function seedPaymentImportAuthorizationUsers(
   });
 }
 
+async function createAuthorizationFixtureUser(input: {
+  repository: InMemoryOpenPracticeRepository;
+  id: string;
+  role: "auditor" | "billing_bookkeeper" | "client_external";
+  assignedMatterIds?: string[];
+}): Promise<void> {
+  await input.repository.createUser({
+    id: input.id,
+    firmId,
+    displayName: `Synthetic ${input.role} authorization fixture`,
+    email: `${input.id}@example.test`,
+    role: input.role,
+    assignedMatterIds: input.assignedMatterIds ?? [],
+    mfaEnabled: true,
+  });
+}
+
 function syntheticExternalEventId(id: string): string {
   return `evt_synthetic_${id.replace(/[^a-zA-Z0-9]+/g, "_")}`;
 }
@@ -977,6 +994,8 @@ describe("billing routes", () => {
       "refund-chargeback-review:assigned:list-visible",
       "refund-chargeback-review:unassigned:list-hidden",
       "refund-chargeback-review:portal-client:staff-list-denied",
+      "refund-chargeback-review:auditor:list-visible",
+      "refund-chargeback-review:portal-client:list-denied",
     ]);
     const firmWideCase = authorizationFixtureCase("refund-chargeback-review:firm-wide:list-all");
     const assignedCase = authorizationFixtureCase("refund-chargeback-review:assigned:list-visible");
@@ -1054,6 +1073,7 @@ describe("billing routes", () => {
       "refund-chargeback-review:firm-wide:create",
       "refund-chargeback-review:assigned:create",
       "refund-chargeback-review:unassigned:create-denied",
+      "refund-chargeback-review:auditor:create-denied",
       "refund-chargeback-review:portal-client:create-denied",
     ]);
     const firmWideCase = authorizationFixtureCase("refund-chargeback-review:firm-wide:create");
@@ -1163,6 +1183,98 @@ describe("billing routes", () => {
         paymentImportReviewRecordId: "payment-import-refund-auth-assigned",
       }),
     ).resolves.toHaveLength(assignedCountBefore);
+  });
+
+  it("matches refund/chargeback auditor fixtures without granting mutation access", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await seedPaymentImportAuthorizationUsers(repository);
+    await createAuthorizationFixtureUser({
+      repository,
+      id: "user-refund-chargeback-auditor",
+      role: "auditor",
+    });
+    await createAuthorizationFixtureUser({
+      repository,
+      id: "user-refund-chargeback-client-external",
+      role: "client_external",
+      assignedMatterIds: ["matter-001"],
+    });
+    const assignedListCase = authorizationFixtureCase(
+      "refund-chargeback-review:assigned:list-visible",
+    );
+    const auditorListCase = authorizationFixtureCase(
+      "refund-chargeback-review:auditor:list-visible",
+    );
+    const assignedCreateCase = authorizationFixtureCase("refund-chargeback-review:assigned:create");
+    const auditorCreateCase = authorizationFixtureCase(
+      "refund-chargeback-review:auditor:create-denied",
+    );
+    const portalListCase = authorizationFixtureCase(
+      "refund-chargeback-review:portal-client:list-denied",
+    );
+    const refundRecordId = auditorListCase.resourceId!;
+    await seedRefundChargebackAuthorizationTarget(repository, {
+      recordId: refundRecordId,
+      matterId: assignedListCase.matterId!,
+      eventStatus: "refund_observed",
+      reviewId: assignedCreateCase.resourceId,
+    });
+    const server = testServer({ repository });
+
+    const assignedList = await server.inject({
+      method: "GET",
+      url: `/api/billing/payment-import-review-records/${refundRecordId}/refund-chargeback-reviews`,
+      headers: authHeaders(assignedListCase.subjectId),
+    });
+    expect(assignedList.statusCode).toBe(200);
+    expect(assignedList.json()).toMatchObject({
+      reviewOnly: true,
+      reviews: [expect.objectContaining({ id: assignedCreateCase.resourceId })],
+    });
+
+    const auditorList = await server.inject({
+      method: "GET",
+      url: `/api/billing/payment-import-review-records/${refundRecordId}/refund-chargeback-reviews`,
+      headers: authHeaders(auditorListCase.subjectId),
+    });
+    expect(auditorList.statusCode).toBe(200);
+    expect(auditorList.json()).toMatchObject({
+      reviewOnly: true,
+      reviews: [expect.objectContaining({ id: assignedCreateCase.resourceId })],
+    });
+
+    const beforeDeniedCreates = (
+      await repository.listPaymentImportRefundChargebackReviews(firmId, {
+        paymentImportReviewRecordId: refundRecordId,
+      })
+    ).length;
+    const auditorCreate = await server.inject({
+      method: "POST",
+      url: `/api/billing/payment-import-review-records/${refundRecordId}/refund-chargeback-reviews`,
+      headers: authHeaders(auditorCreateCase.subjectId),
+      payload: {
+        id: auditorCreateCase.resourceId,
+        decision: "exception_confirmed",
+        reason: "refund_observed",
+        idempotencyKey: "synthetic-refund-chargeback-auth-auditor-denied",
+      },
+    });
+    expect(auditorCreate.statusCode).toBe(403);
+    expect(auditorCreate.json()).toMatchObject({ message: "Expense entry access required" });
+
+    const portalList = await server.inject({
+      method: "GET",
+      url: `/api/billing/payment-import-review-records/${portalListCase.resourceId}/refund-chargeback-reviews`,
+      headers: authHeaders(portalListCase.subjectId),
+    });
+    expect(portalList.statusCode).toBe(403);
+    expect(portalList.json()).toMatchObject({ message: "Staff access required" });
+
+    await expect(
+      repository.listPaymentImportRefundChargebackReviews(firmId, {
+        paymentImportReviewRecordId: refundRecordId,
+      }),
+    ).resolves.toHaveLength(beforeDeniedCreates);
   });
 
   it("denies non-billing roles from the billing dashboard", async () => {
@@ -3853,18 +3965,80 @@ describe("billing routes", () => {
     expect(serializedAuditAndJobs).not.toContain("fieldKeys");
   });
 
-  it("denies billing export requests to non-billing roles", async () => {
-    const response = await testServer().inject({
+  it("matches billing export fixtures across assigned staff, auditor, bookkeeper, and external users", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await createAuthorizationFixtureUser({
+      repository,
+      id: "user-billing-export-auditor",
+      role: "auditor",
+    });
+    await createAuthorizationFixtureUser({
+      repository,
+      id: "user-billing-export-bookkeeper",
+      role: "billing_bookkeeper",
+    });
+    await createAuthorizationFixtureUser({
+      repository,
+      id: "user-billing-export-client-external",
+      role: "client_external",
+      assignedMatterIds: ["matter-001"],
+    });
+    const fixtureIds = authorizationFixtureCases
+      .filter((item) => item.family === "billing_export")
+      .map((item) => item.id);
+    expect(fixtureIds).toEqual([
+      "billing-export:assigned:matter-create",
+      "billing-export:auditor:firm-create",
+      "billing-export:bookkeeper:firm-create",
+      "billing-export:portal-client:create-denied",
+    ]);
+    const assignedCase = authorizationFixtureCase("billing-export:assigned:matter-create");
+    const auditorCase = authorizationFixtureCase("billing-export:auditor:firm-create");
+    const bookkeeperCase = authorizationFixtureCase("billing-export:bookkeeper:firm-create");
+    const portalCase = authorizationFixtureCase("billing-export:portal-client:create-denied");
+    const server = testServer({ repository });
+
+    const assigned = await server.inject({
       method: "POST",
       url: "/api/billing/export-requests",
-      headers: {
-        "x-open-practice-user-id": "user-staff",
-        "x-open-practice-firm-id": "firm-west-legal",
+      headers: authHeaders(assignedCase.subjectId),
+      payload: {
+        matterId: assignedCase.matterId,
+        idempotencyKey: assignedCase.resourceId,
       },
-      payload: { matterId: "matter-001" },
     });
+    expect(assigned.statusCode).toBe(202);
 
-    expect(response.statusCode).toBe(403);
+    const auditor = await server.inject({
+      method: "POST",
+      url: "/api/billing/export-requests",
+      headers: authHeaders(auditorCase.subjectId),
+      payload: { idempotencyKey: auditorCase.resourceId },
+    });
+    expect(auditor.statusCode).toBe(202);
+
+    const bookkeeper = await server.inject({
+      method: "POST",
+      url: "/api/billing/export-requests",
+      headers: authHeaders(bookkeeperCase.subjectId),
+      payload: { idempotencyKey: bookkeeperCase.resourceId },
+    });
+    expect(bookkeeper.statusCode).toBe(202);
+
+    const beforeDenied = await repository.listJobLifecycleRecords(firmId, {
+      queueName: "reports",
+    });
+    const portal = await server.inject({
+      method: "POST",
+      url: "/api/billing/export-requests",
+      headers: authHeaders(portalCase.subjectId),
+      payload: { matterId: portalCase.matterId, idempotencyKey: portalCase.resourceId },
+    });
+    expect(portal.statusCode).toBe(403);
+    expect(portal.json()).toMatchObject({ message: "Trust ledger access required" });
+    await expect(
+      repository.listJobLifecycleRecords(firmId, { queueName: "reports" }),
+    ).resolves.toHaveLength(beforeDenied.length);
   });
 
   it("keeps trust transfer request creation review-gated and unlinked", async () => {
@@ -3944,35 +4118,109 @@ describe("billing routes", () => {
     });
   });
 
-  it("requires trust ledger approval for trust transfer review and link routes", async () => {
-    const server = testServer();
+  it("matches trust-transfer review fixtures without granting auditor, bookkeeper, or portal commands", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await createAuthorizationFixtureUser({
+      repository,
+      id: "user-trust-transfer-auditor",
+      role: "auditor",
+    });
+    await createAuthorizationFixtureUser({
+      repository,
+      id: "user-trust-transfer-bookkeeper",
+      role: "billing_bookkeeper",
+      assignedMatterIds: ["matter-001"],
+    });
+    await createAuthorizationFixtureUser({
+      repository,
+      id: "user-trust-transfer-client-external",
+      role: "client_external",
+      assignedMatterIds: ["matter-001"],
+    });
+    const fixtureIds = authorizationFixtureCases
+      .filter((item) => item.family === "trust_transfer_review")
+      .map((item) => item.id);
+    expect(fixtureIds).toEqual([
+      "trust-transfer-review:assigned:list-visible",
+      "trust-transfer-review:assigned:approve",
+      "trust-transfer-review:auditor:approve-denied",
+      "trust-transfer-review:bookkeeper:approve-denied",
+      "trust-transfer-review:portal-client:staff-list-denied",
+    ]);
+    const assignedListCase = authorizationFixtureCase(
+      "trust-transfer-review:assigned:list-visible",
+    );
+    const assignedApproveCase = authorizationFixtureCase("trust-transfer-review:assigned:approve");
+    const auditorCase = authorizationFixtureCase("trust-transfer-review:auditor:approve-denied");
+    const bookkeeperCase = authorizationFixtureCase(
+      "trust-transfer-review:bookkeeper:approve-denied",
+    );
+    const portalCase = authorizationFixtureCase(
+      "trust-transfer-review:portal-client:staff-list-denied",
+    );
+    const server = testServer({ repository });
+
+    const assignedList = await server.inject({
+      method: "GET",
+      url: `/api/billing/trust-transfer-requests?matterId=${assignedListCase.matterId}`,
+      headers: authHeaders(assignedListCase.subjectId),
+    });
+    expect(assignedList.statusCode).toBe(200);
+    expect(
+      assignedList.json<{ requests: Array<{ id: string }> }>().requests.map((item) => item.id),
+    ).toContain(assignedListCase.resourceId);
+
+    const assignedApprove = await server.inject({
+      method: "POST",
+      url: `/api/billing/trust-transfer-requests/${assignedApproveCase.resourceId}/approve`,
+      headers: authHeaders(assignedApproveCase.subjectId),
+      payload: {},
+    });
+    expect(assignedApprove.statusCode).toBe(200);
+    expect(assignedApprove.json()).toMatchObject({
+      id: assignedApproveCase.resourceId,
+      status: "approved",
+      reviewedByUserId: assignedApproveCase.subjectId,
+    });
 
     for (const request of [
       {
-        url: "/api/billing/trust-transfer-requests/trust-transfer-request-001/approve",
+        url: `/api/billing/trust-transfer-requests/${auditorCase.resourceId}/approve`,
+        userId: auditorCase.subjectId,
         payload: {},
       },
       {
-        url: "/api/billing/trust-transfer-requests/trust-transfer-request-001/reject",
+        url: `/api/billing/trust-transfer-requests/${auditorCase.resourceId}/reject`,
+        userId: auditorCase.subjectId,
         payload: {},
       },
       {
-        url: "/api/billing/trust-transfer-requests/trust-transfer-request-001/link",
+        url: `/api/billing/trust-transfer-requests/${bookkeeperCase.resourceId}/link`,
+        userId: bookkeeperCase.subjectId,
         payload: { ledgerTransactionId: "trust-retainer" },
       },
     ]) {
       const response = await server.inject({
         method: "POST",
         url: request.url,
-        headers: {
-          "x-open-practice-user-id": "user-staff",
-          "x-open-practice-firm-id": "firm-west-legal",
-        },
+        headers: authHeaders(request.userId),
         payload: request.payload,
       });
       expect(response.statusCode).toBe(403);
       expect(response.json()).toMatchObject({ message: "Trust ledger access required" });
     }
+    const portalList = await server.inject({
+      method: "GET",
+      url: "/api/billing/trust-transfer-requests",
+      headers: authHeaders(portalCase.subjectId),
+    });
+    expect(portalList.statusCode).toBe(403);
+    expect(portalList.json()).toMatchObject({ message: "Staff access required" });
+    const requestAfterDeniedLink = await repository.getTrustTransferRequest(
+      firmId,
+      bookkeeperCase.resourceId!,
+    );
+    expect(requestAfterDeniedLink?.ledgerTransactionId).toBeUndefined();
   });
 
   it("approves pending trust transfer requests without linking or posting ledger entries", async () => {
