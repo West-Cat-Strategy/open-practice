@@ -158,7 +158,6 @@ export function registerDocumentProcessingReviewRoutes(
       const body = parseRequestPart(conversionReviewDecisionBodySchema, request.body ?? {}, "body");
       const artifacts = await repository.listLegalResearchArtifacts(request.auth.firmId, {
         matterId: document.matterId,
-        kind: "document_analysis_status",
       });
       const artifact = conversionReviewArtifactForDocument(document, artifacts);
       if (!artifact) {

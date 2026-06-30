@@ -152,6 +152,39 @@ function buildSyntheticDocumentProcessingWorkbench(): DocumentProcessingWorkbenc
             providerEvidenceStored: false,
             rawOcrTextReturned: false,
           },
+          semanticReviewReadiness: {
+            documentId: "doc_synthetic",
+            artifactId: "artifact_conversion_review_synthetic",
+            jobId: "job_conversion_review_synthetic",
+            counts: {
+              sourceTextLength: 1800,
+              wordCount: 260,
+              estimatedPageCount: 1,
+            },
+            checkpointCount: 0,
+            posture: "ready",
+            conversionReviewStatus: "reviewed",
+            artifactStatus: "metadata_only",
+            staffReviewRequired: true,
+            reviewOnly: true,
+            metadataOnly: true,
+            providerActivated: false,
+            downstreamMutation: false,
+            providerEvidenceStored: false,
+            rawOcrTextReturned: false,
+            rawOcrTextStoredInMetadata: false,
+            rawMarkdownStored: false,
+            convertedMarkdownStored: false,
+            annotationBodiesStored: false,
+            annotationSpansStored: false,
+            chunksStored: false,
+            embeddingsStored: false,
+            promptsStored: false,
+            providerPayloadsStored: false,
+            storageKeysStored: false,
+            objectBodiesStored: false,
+            generatedSummariesStored: false,
+          },
           latestDecision: {
             artifactId: "artifact_conversion_review_synthetic",
             decision: "reviewed",
@@ -326,6 +359,7 @@ function buildDocumentsSectionProps(
     portalDocumentAccessStatus: "No files are visible to this portal contact.",
     queueingDocumentId: "",
     retentionHoldReviewBusyId: "",
+    semanticReviewCheckpointBusyId: "",
     selectedClientPortalContactId: "contact_synthetic",
     selectedClientPortalContactLabel: "Ada Morgan",
     onClearDocumentMetadataSearch: noop,
@@ -336,6 +370,7 @@ function buildDocumentsSectionProps(
     onDocumentMetadataReviewStatusFilterChange: noop,
     onDocumentMetadataScanStatusFilterChange: noop,
     onGrantPortalDocumentAccess: noop,
+    onCreateSemanticReviewCheckpoint: noop,
     onQueueDocumentOcr: noop,
     onRecordRetentionHoldDecision: noop,
     onRefreshDocumentMetadataSearch: noop,
@@ -391,7 +426,7 @@ describe("DocumentsSection", () => {
     expect(html).toContain("Revoke portal");
     expect(html).toContain("Ready to process");
     expect(html).toContain(
-      "Conversion review reviewed · 1800 chars · 260 words · 1 estimated pages · artifact metadata only · OP-authored metadata only · metadata only · latest decision reviewed at 2026-06-26T18:30:00.000Z · reviewer user_synthetic · 1 decision cue · decision metadata only · decision review only · decision no downstream mutation · decision no provider evidence · decision no raw OCR returned · readiness reviewed · reviewed 2026-06-26T18:30:00.000Z · staff review required · terminal review · review only · no downstream mutation · no provider evidence · no raw OCR returned",
+      "Conversion review reviewed · 1800 chars · 260 words · 1 estimated pages · artifact metadata only · OP-authored metadata only · metadata only · latest decision reviewed at 2026-06-26T18:30:00.000Z · reviewer user_synthetic · 1 decision cue · decision metadata only · decision review only · decision no downstream mutation · decision no provider evidence · decision no raw OCR returned · semantic ready · 0 semantic checkpoints · readiness reviewed · reviewed 2026-06-26T18:30:00.000Z · staff review required · terminal review · review only · no downstream mutation · no provider evidence · no raw OCR returned",
     );
     expect(html).toContain("Reviewer suggestions");
     expect(html).toContain("Extraction suggests financial");
@@ -402,6 +437,10 @@ describe("DocumentsSection", () => {
     expect(html).toContain("no deletion");
     expect(html).toContain("no deadline enforcement");
     expect(html).toContain("Queue OCR");
+    expect(html).toContain("Create checkpoint");
+    expect(html).toContain(
+      'data-action-key="document_conversion_semantic_review_checkpoint.create"',
+    );
     expect(html).toContain("needs review");
     expect(html).toContain('data-action-key="document_retention_hold_review.record"');
     expect(html).toContain('aria-label="needs review"');
@@ -454,6 +493,76 @@ describe("DocumentsSection", () => {
     expect(html).toContain("Retention/hold needs review");
     expect(html).toContain("no deletion");
     expect(html).toContain("Grant portal");
+  });
+
+  it("renders semantic review checkpoint counts and busy states", () => {
+    const workbench = buildSyntheticDocumentProcessingWorkbench();
+    const firstDocument = workbench.documents[0];
+    expect(firstDocument).toBeDefined();
+    const checkpointedDocument = {
+      ...firstDocument!,
+      conversionReview: {
+        ...firstDocument!.conversionReview!,
+        semanticReviewReadiness: {
+          ...firstDocument!.conversionReview!.semanticReviewReadiness!,
+          checkpointCount: 1,
+          latestCheckpoint: {
+            checkpointId: "checkpoint_synthetic",
+            status: "ready_for_review",
+            createdAt: "2026-06-29T12:00:00.000Z",
+            createdByUserId: "user_synthetic",
+            assignedUserId: "user_synthetic",
+            conversionReviewArtifactId: "artifact_conversion_review_synthetic",
+            reviewOnly: true,
+            metadataOnly: true,
+            providerActivated: false,
+            downstreamMutation: false,
+            providerEvidenceStored: false,
+            rawOcrTextReturned: false,
+            rawOcrTextStoredInMetadata: false,
+            rawMarkdownStored: false,
+            convertedMarkdownStored: false,
+            annotationBodiesStored: false,
+            annotationSpansStored: false,
+            chunksStored: false,
+            embeddingsStored: false,
+            promptsStored: false,
+            providerPayloadsStored: false,
+            storageKeysStored: false,
+            objectBodiesStored: false,
+            generatedSummariesStored: false,
+          } as const,
+        },
+      },
+    };
+    const checkpointedHtml = renderToStaticMarkup(
+      createElement(
+        DocumentsSection,
+        buildDocumentsSectionProps({
+          activeDocumentProcessing: { ...workbench, documents: [checkpointedDocument] },
+          activeDocumentProcessingRows: [checkpointedDocument],
+        }),
+      ),
+    );
+    const busyHtml = renderToStaticMarkup(
+      createElement(
+        DocumentsSection,
+        buildDocumentsSectionProps({
+          semanticReviewCheckpointBusyId: "doc_synthetic",
+        }),
+      ),
+    );
+
+    expect(checkpointedHtml).toContain("Checkpoint exists");
+    expect(checkpointedHtml).toContain(
+      "semantic ready · 1 semantic checkpoint · latest checkpoint ready for review at 2026-06-29T12:00:00.000Z · checkpoint reviewer user_synthetic · checkpoint metadata only · checkpoint review only · checkpoint no provider · checkpoint no downstream mutation · checkpoint no raw OCR returned",
+    );
+    expect(checkpointedHtml).not.toContain("raw text");
+    expect(busyHtml).toContain('aria-label="Creating..."');
+    expect(busyHtml).toContain(">Creating...</button>");
+    expect(
+      busyHtml.match(/data-action-key="document_conversion_semantic_review_checkpoint\.create"/g),
+    ).toHaveLength(1);
   });
 
   it("renders scheduled disposition reviewer-packet metadata without adding controls", () => {

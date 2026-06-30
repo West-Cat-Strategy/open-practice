@@ -69,10 +69,7 @@ export function registerDocumentProcessingWorkbenchRoutes(
     const documents = await repository.listMatterDocuments(request.auth.firmId, query.matterId);
     const conversionReviewArtifacts = await repository.listLegalResearchArtifacts(
       request.auth.firmId,
-      {
-        matterId: query.matterId,
-        kind: "document_analysis_status",
-      },
+      { matterId: query.matterId },
     );
     const documentIds = new Set(documents.map((document) => document.id));
     const jobs = (await repository.listJobLifecycleRecords(request.auth.firmId)).filter(

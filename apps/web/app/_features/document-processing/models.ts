@@ -274,11 +274,40 @@ export interface DocumentConversionReviewDecisionCue {
   rawOcrTextReturned: false;
 }
 
+export interface DocumentConversionReviewSemanticReviewCheckpointCue {
+  checkpointId: string;
+  status: string;
+  createdAt: string;
+  createdByUserId: string;
+  assignedUserId?: string;
+  conversionReviewArtifactId: string;
+  reviewOnly: true;
+  metadataOnly: true;
+  providerActivated: false;
+  downstreamMutation: false;
+  providerEvidenceStored: false;
+  rawOcrTextReturned: false;
+  rawOcrTextStoredInMetadata: false;
+  rawMarkdownStored: false;
+  convertedMarkdownStored: false;
+  annotationBodiesStored: false;
+  annotationSpansStored: false;
+  chunksStored: false;
+  embeddingsStored: false;
+  promptsStored: false;
+  providerPayloadsStored: false;
+  storageKeysStored: false;
+  objectBodiesStored: false;
+  generatedSummariesStored: false;
+}
+
 export interface DocumentConversionReviewSemanticReviewReadiness {
   documentId: string;
   artifactId?: string;
   jobId?: string;
   counts?: DocumentConversionReviewCounts;
+  checkpointCount: number;
+  latestCheckpoint?: DocumentConversionReviewSemanticReviewCheckpointCue;
   posture: "ready" | "blocked";
   conversionReviewStatus:
     | "blocked"

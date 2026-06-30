@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { registerDocumentProcessingQueueRoutes } from "./document-processing/queue.js";
 import { registerDocumentProcessingReviewRoutes } from "./document-processing/review.js";
+import { registerDocumentProcessingSemanticCheckpointRoutes } from "./document-processing/semantic-checkpoints.js";
 import { registerDocumentProcessingSettingsRoutes } from "./document-processing/settings.js";
 import { registerDocumentProcessingStatusRoutes } from "./document-processing/status.js";
 import { registerDocumentProcessingWorkbenchRoutes } from "./document-processing/workbench.js";
@@ -17,4 +18,5 @@ export function registerDocumentProcessingRoutes(
   registerDocumentProcessingWorkbenchRoutes(server, dependencies);
   registerDocumentProcessingQueueRoutes(server, dependencies);
   registerDocumentProcessingReviewRoutes(server, dependencies);
+  registerDocumentProcessingSemanticCheckpointRoutes(server, dependencies);
 }

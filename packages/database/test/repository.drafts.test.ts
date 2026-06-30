@@ -193,5 +193,58 @@ describe("repository drafts", () => {
     ).resolves.toEqual(
       expect.arrayContaining([expect.objectContaining({ id: "legal-research-source-note-001" })]),
     );
+
+    const checkpoint = await repository.createLegalResearchArtifact({
+      id: "legal-research-semantic-checkpoint-test",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      kind: "review_checkpoint",
+      status: "ready_for_review",
+      title: "Document semantic review checkpoint",
+      sourceReferences: [],
+      contextLinks: [
+        { resourceType: "document", resourceId: "doc-001" },
+        { resourceType: "legal_research_artifact", resourceId: "legal-research-test" },
+      ],
+      checkpoint: { checkpointType: "document_analysis", assignedUserId: "user-admin" },
+      createdByUserId: "user-admin",
+      createdAt: now,
+      updatedAt: now,
+      reviewOnly: true,
+      metadata: {
+        source: "document_conversion_semantic_review_checkpoint",
+        documentId: "doc-001",
+        conversionReviewArtifactId: "legal-research-test",
+        counts: { sourceTextLength: 47, wordCount: 6 },
+        metadataOnly: true,
+        reviewOnly: true,
+        downstreamMutation: false,
+        providerPayloadsStored: false,
+        generatedSummariesStored: false,
+      },
+    });
+
+    expect(checkpoint).toMatchObject({
+      kind: "review_checkpoint",
+      status: "ready_for_review",
+      sourceReferences: [],
+      contextLinks: [
+        { resourceType: "document", resourceId: "doc-001" },
+        { resourceType: "legal_research_artifact", resourceId: "legal-research-test" },
+      ],
+      checkpoint: { checkpointType: "document_analysis", assignedUserId: "user-admin" },
+      metadata: expect.objectContaining({
+        source: "document_conversion_semantic_review_checkpoint",
+        metadataOnly: true,
+        reviewOnly: true,
+      }),
+    });
+    await expect(
+      repository.listLegalResearchArtifacts("firm-west-legal", { kind: "review_checkpoint" }),
+    ).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "legal-research-semantic-checkpoint-test" }),
+      ]),
+    );
   });
 });

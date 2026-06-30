@@ -1,4 +1,4 @@
-import { Eye, EyeOff, Search, ShieldCheck, X } from "lucide-react";
+import { Eye, EyeOff, FileCheck, Search, ShieldCheck, X } from "lucide-react";
 import {
   compactDocumentRetentionHoldReviewActionReason,
   describeDocumentRetentionHoldReviewAction,
@@ -60,6 +60,7 @@ interface DocumentsSectionProps {
   portalDocumentAccessStatus: string;
   queueingDocumentId: string;
   retentionHoldReviewBusyId: string;
+  semanticReviewCheckpointBusyId: string;
   selectedClientPortalContactId: string;
   selectedClientPortalContactLabel: string;
   onClearDocumentMetadataSearch: () => Promise<void> | void;
@@ -70,6 +71,7 @@ interface DocumentsSectionProps {
   onDocumentMetadataReviewStatusFilterChange: (value: string) => void;
   onDocumentMetadataScanStatusFilterChange: (value: string) => void;
   onQueueDocumentOcr: (documentId: string) => Promise<void> | void;
+  onCreateSemanticReviewCheckpoint: (documentId: string) => Promise<void> | void;
   onGrantPortalDocumentAccess: (documentId: string) => Promise<void> | void;
   onRefreshDocumentMetadataSearch: () => Promise<void> | void;
   onRecordRetentionHoldDecision: (
@@ -178,6 +180,7 @@ export function DocumentsSection({
   portalDocumentAccessStatus,
   queueingDocumentId,
   retentionHoldReviewBusyId,
+  semanticReviewCheckpointBusyId,
   selectedClientPortalContactId,
   selectedClientPortalContactLabel,
   onClearDocumentMetadataSearch,
@@ -188,6 +191,7 @@ export function DocumentsSection({
   onDocumentMetadataReviewStatusFilterChange,
   onDocumentMetadataScanStatusFilterChange,
   onQueueDocumentOcr,
+  onCreateSemanticReviewCheckpoint,
   onGrantPortalDocumentAccess,
   onRefreshDocumentMetadataSearch,
   onRecordRetentionHoldDecision,
@@ -469,6 +473,20 @@ export function DocumentsSection({
                       retentionAction.disabledReason,
                     )}`
                   : retentionAction.label;
+                const semanticReviewReadiness = item.conversionReview?.semanticReviewReadiness;
+                const semanticCheckpointCount = semanticReviewReadiness?.checkpointCount ?? 0;
+                const semanticCheckpointBusy = semanticReviewCheckpointBusyId === item.document.id;
+                const semanticCheckpointAvailable =
+                  semanticReviewReadiness?.posture === "ready" &&
+                  semanticCheckpointCount === 0 &&
+                  semanticReviewCheckpointBusyId.length === 0;
+                const semanticCheckpointLabel = semanticCheckpointBusy
+                  ? "Creating..."
+                  : semanticCheckpointCount > 0
+                    ? "Checkpoint exists"
+                    : semanticReviewReadiness?.posture === "ready"
+                      ? "Create checkpoint"
+                      : "Checkpoint blocked";
                 const activeAccess = activePortalDocumentAccess.find(
                   (access) => access.documentId === item.document.id,
                 );
@@ -568,6 +586,17 @@ export function DocumentsSection({
                       >
                         <ShieldCheck aria-hidden="true" size={16} />
                         {retentionAction.label}
+                      </button>
+                      <button
+                        aria-label={semanticCheckpointLabel}
+                        className="secondary-button compact-button row-button"
+                        data-action-key="document_conversion_semantic_review_checkpoint.create"
+                        disabled={!semanticCheckpointAvailable}
+                        onClick={() => void onCreateSemanticReviewCheckpoint(item.document.id)}
+                        type="button"
+                      >
+                        <FileCheck aria-hidden="true" size={16} />
+                        {semanticCheckpointLabel}
                       </button>
                       {selectedClientPortalContactId ? (
                         activeAccess ? (

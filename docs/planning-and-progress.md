@@ -83,6 +83,17 @@ missing, draft, or otherwise not-ready states. The packet carries only IDs, coun
 statuses, and fixed no-provider/no-raw-text/no-Markdown/no-annotation/no-chunk/no-embedding/
 no-prompt/no-payload/no-storage/no-summary/no-downstream-mutation flags. Proof is recorded in
 [provider document conversion semantic-review readiness proof](validation/OP_PROVIDER_DOCUMENT_CONVERSION_SEMANTIC_REVIEW_READINESS_PROOF_2026-06-29.md).
+The 2026-06-29 checkpoint follow-up makes semantic review checkpoints an explicit staff action:
+`POST /api/document-processing/documents/:documentId/conversion-review/semantic-review/checkpoints`
+creates or replays one reviewer-owned `review_checkpoint` artifact for the latest same-matter
+ready/reviewed conversion-review artifact. It adds only bounded checkpoint count/latest-cue metadata
+to `conversionReview.semanticReviewReadiness` and the Documents dashboard action; records keep fixed
+title/context links, no note/source references, reviewer IDs, counts/lengths/statuses/timestamps, and
+fixed no-provider/no-raw-text/no-downstream flags. It preserves no providers, queues, object-body or
+text-extraction reads, raw text, Markdown, annotations, chunks, embeddings, prompts, payloads,
+storage keys, generated summaries, downstream source mutation, schema, migration, dependency, or
+automatic checkpoint creation. Proof is recorded in
+[provider document conversion semantic-review checkpoints proof](validation/OP_PROVIDER_DOCUMENT_CONVERSION_SEMANTIC_REVIEW_CHECKPOINTS_PROOF_2026-06-29.md).
 
 The 2026-06-29 legal-research artifact review action-descriptor follow-up keeps those review
 commands and provider/document-processing boundaries unchanged while moving the existing Research

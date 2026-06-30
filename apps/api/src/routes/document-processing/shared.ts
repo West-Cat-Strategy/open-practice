@@ -195,11 +195,40 @@ export interface DocumentConversionReviewDecisionCue {
   rawOcrTextReturned: false;
 }
 
+export interface DocumentConversionReviewSemanticReviewCheckpointCue {
+  checkpointId: string;
+  status: LegalResearchArtifactRecord["status"];
+  createdAt: string;
+  createdByUserId: string;
+  assignedUserId?: string;
+  conversionReviewArtifactId: string;
+  reviewOnly: true;
+  metadataOnly: true;
+  providerActivated: false;
+  downstreamMutation: false;
+  providerEvidenceStored: false;
+  rawOcrTextReturned: false;
+  rawOcrTextStoredInMetadata: false;
+  rawMarkdownStored: false;
+  convertedMarkdownStored: false;
+  annotationBodiesStored: false;
+  annotationSpansStored: false;
+  chunksStored: false;
+  embeddingsStored: false;
+  promptsStored: false;
+  providerPayloadsStored: false;
+  storageKeysStored: false;
+  objectBodiesStored: false;
+  generatedSummariesStored: false;
+}
+
 export interface DocumentConversionReviewSemanticReviewReadiness {
   documentId: string;
   artifactId?: string;
   jobId?: string;
   counts?: DocumentConversionReviewCounts;
+  checkpointCount: number;
+  latestCheckpoint?: DocumentConversionReviewSemanticReviewCheckpointCue;
   posture: "ready" | "blocked";
   conversionReviewStatus: DocumentConversionReviewPosture;
   artifactStatus: DocumentConversionReviewArtifactStatus;
@@ -755,6 +784,7 @@ function buildDocumentConversionReviewSemanticReviewReadiness(input: {
   document: DocumentRecord;
   status: DocumentConversionReviewPosture;
   artifact?: LegalResearchArtifactRecord;
+  artifacts?: LegalResearchArtifactRecord[];
   jobId?: string;
   counts?: DocumentConversionReviewCounts;
 }): DocumentConversionReviewSemanticReviewReadiness {
@@ -764,11 +794,24 @@ function buildDocumentConversionReviewSemanticReviewReadiness(input: {
   });
   const ready =
     input.artifact?.status === "ready_for_review" || input.artifact?.status === "reviewed";
+  const checkpoints = semanticReviewCheckpointsForConversionReview({
+    document: input.document,
+    artifact: input.artifact,
+    artifacts: input.artifacts,
+  });
+  const latestCheckpoint = checkpoints[0]
+    ? semanticReviewCheckpointCue({
+        checkpoint: checkpoints[0],
+        conversionReviewArtifactId: input.artifact?.id,
+      })
+    : undefined;
   return {
     documentId: input.document.id,
     ...(input.artifact ? { artifactId: input.artifact.id } : {}),
     ...(input.jobId ? { jobId: input.jobId } : {}),
     ...(input.counts ? { counts: input.counts } : {}),
+    checkpointCount: checkpoints.length,
+    ...(latestCheckpoint ? { latestCheckpoint } : {}),
     posture: ready ? "ready" : "blocked",
     conversionReviewStatus,
     artifactStatus: input.artifact ? artifactStatusFromRecord(input.artifact) : "not_created",
@@ -813,6 +856,68 @@ export function conversionReviewArtifactForDocument(
     ),
     (artifact) => artifact.updatedAt,
   );
+}
+
+function semanticReviewCheckpointSource(artifact: LegalResearchArtifactRecord): boolean {
+  return artifact.metadata.source === "document_conversion_semantic_review_checkpoint";
+}
+
+export function semanticReviewCheckpointsForConversionReview(input: {
+  document: DocumentRecord;
+  artifact?: LegalResearchArtifactRecord;
+  artifacts?: LegalResearchArtifactRecord[];
+}): LegalResearchArtifactRecord[] {
+  if (!input.artifact) return [];
+  return (input.artifacts ?? [])
+    .filter(
+      (artifact) =>
+        artifact.kind === "review_checkpoint" &&
+        artifact.matterId === input.document.matterId &&
+        artifact.checkpoint?.checkpointType === "document_analysis" &&
+        semanticReviewCheckpointSource(artifact) &&
+        artifact.metadata.documentId === input.document.id &&
+        artifact.metadata.conversionReviewArtifactId === input.artifact?.id,
+    )
+    .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+}
+
+function semanticReviewCheckpointCue(input: {
+  checkpoint: LegalResearchArtifactRecord;
+  conversionReviewArtifactId?: string;
+}): DocumentConversionReviewSemanticReviewCheckpointCue | undefined {
+  const conversionReviewArtifactId =
+    typeof input.checkpoint.metadata.conversionReviewArtifactId === "string"
+      ? input.checkpoint.metadata.conversionReviewArtifactId
+      : input.conversionReviewArtifactId;
+  if (!conversionReviewArtifactId) return undefined;
+  return {
+    checkpointId: input.checkpoint.id,
+    status: input.checkpoint.status,
+    createdAt: input.checkpoint.createdAt,
+    createdByUserId: input.checkpoint.createdByUserId,
+    ...(input.checkpoint.checkpoint?.assignedUserId
+      ? { assignedUserId: input.checkpoint.checkpoint.assignedUserId }
+      : {}),
+    conversionReviewArtifactId,
+    reviewOnly: true,
+    metadataOnly: true,
+    providerActivated: false,
+    downstreamMutation: false,
+    providerEvidenceStored: false,
+    rawOcrTextReturned: false,
+    rawOcrTextStoredInMetadata: false,
+    rawMarkdownStored: false,
+    convertedMarkdownStored: false,
+    annotationBodiesStored: false,
+    annotationSpansStored: false,
+    chunksStored: false,
+    embeddingsStored: false,
+    promptsStored: false,
+    providerPayloadsStored: false,
+    storageKeysStored: false,
+    objectBodiesStored: false,
+    generatedSummariesStored: false,
+  };
 }
 
 const maxConversionReviewDecisionHistory = 5;
@@ -899,6 +1004,7 @@ export function buildDocumentConversionReviewSummary(input: {
         document: input.document,
         status: posture,
         artifact: input.artifact,
+        artifacts: input.artifacts,
         jobId,
         counts: artifactCounts,
       }),
@@ -920,6 +1026,7 @@ export function buildDocumentConversionReviewSummary(input: {
       semanticReviewReadiness: buildDocumentConversionReviewSemanticReviewReadiness({
         document: input.document,
         status: "queued",
+        artifacts: input.artifacts,
         jobId: input.latestJob.id,
         counts,
       }),
@@ -940,6 +1047,7 @@ export function buildDocumentConversionReviewSummary(input: {
       semanticReviewReadiness: buildDocumentConversionReviewSemanticReviewReadiness({
         document: input.document,
         status: "failed",
+        artifacts: input.artifacts,
         jobId: input.latestJob.id,
         counts,
       }),
@@ -960,6 +1068,7 @@ export function buildDocumentConversionReviewSummary(input: {
       semanticReviewReadiness: buildDocumentConversionReviewSemanticReviewReadiness({
         document: input.document,
         status: "ready_for_review",
+        artifacts: input.artifacts,
         jobId: input.latestJob.id,
         counts,
       }),
@@ -982,6 +1091,7 @@ export function buildDocumentConversionReviewSummary(input: {
       semanticReviewReadiness: buildDocumentConversionReviewSemanticReviewReadiness({
         document: input.document,
         status: "blocked",
+        artifacts: input.artifacts,
       }),
       ...decisionCues,
       policy: documentConversionReviewPolicy,
@@ -999,6 +1109,7 @@ export function buildDocumentConversionReviewSummary(input: {
     semanticReviewReadiness: buildDocumentConversionReviewSemanticReviewReadiness({
       document: input.document,
       status: "not_requested",
+      artifacts: input.artifacts,
       counts,
     }),
     ...decisionCues,

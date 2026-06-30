@@ -62,6 +62,12 @@ export function buildDocumentProcessingQueuePath(documentId: string): string {
   return `/api/document-processing/documents/${encodeURIComponent(documentId)}/queue`;
 }
 
+export function buildDocumentSemanticReviewCheckpointPath(documentId: string): string {
+  return `/api/document-processing/documents/${encodeURIComponent(
+    documentId,
+  )}/conversion-review/semantic-review/checkpoints`;
+}
+
 export function buildDocumentRetentionHoldDecisionPath(documentId: string): string {
   return `/api/documents/${encodeURIComponent(documentId)}/retention-hold-decisions`;
 }
@@ -445,6 +451,29 @@ export function describeDocumentConversionReview(
     : [];
   const staffReview =
     readiness && readiness.staffReviewRequired ? "staff review required" : undefined;
+  const semanticReadiness = conversionReview.semanticReviewReadiness;
+  const checkpoint = semanticReadiness?.latestCheckpoint;
+  const checkpointParts = semanticReadiness
+    ? [
+        `semantic ${compactDocumentProcessingReason(semanticReadiness.posture)}`,
+        `${semanticReadiness.checkpointCount} semantic checkpoint${
+          semanticReadiness.checkpointCount === 1 ? "" : "s"
+        }`,
+        checkpoint
+          ? `latest checkpoint ${compactDocumentProcessingReason(checkpoint.status)} at ${
+              checkpoint.createdAt
+            }`
+          : undefined,
+        checkpoint?.createdByUserId
+          ? `checkpoint reviewer ${checkpoint.createdByUserId}`
+          : undefined,
+        checkpoint?.metadataOnly ? "checkpoint metadata only" : undefined,
+        checkpoint?.reviewOnly ? "checkpoint review only" : undefined,
+        checkpoint?.providerActivated === false ? "checkpoint no provider" : undefined,
+        checkpoint?.downstreamMutation === false ? "checkpoint no downstream mutation" : undefined,
+        checkpoint?.rawOcrTextReturned === false ? "checkpoint no raw OCR returned" : undefined,
+      ]
+    : [];
   const readinessParts = readiness
     ? [
         `readiness ${compactDocumentProcessingReason(readiness.status)}`,
@@ -464,6 +493,7 @@ export function describeDocumentConversionReview(
     summaryPosture,
     conversionReview.policy.metadataOnly ? "metadata only" : undefined,
     ...latestDecisionParts,
+    ...checkpointParts,
     ...readinessParts,
   ]
     .filter(Boolean)

@@ -51,6 +51,7 @@ export interface LegalResearchSourceReference {
 export type LegalResearchContextResourceType =
   | "matter"
   | "document"
+  | "legal_research_artifact"
   | "draft"
   | "contact"
   | "task"
@@ -198,12 +199,41 @@ export interface LegalResearchWorkspace {
   providerJobSummary: LegalResearchProviderJobSummary;
 }
 
+export interface DocumentConversionSemanticReviewCheckpointMetadataInput {
+  matterId: string;
+  documentId: string;
+  conversionReviewArtifactId: string;
+  jobId?: string;
+  sourceTextLength?: number;
+  wordCount?: number;
+  lineCount?: number;
+  nonEmptyLineCount?: number;
+  pageBreakCount?: number;
+  estimatedPageCount?: number;
+  conversionReviewStatus: string;
+  artifactStatus: string;
+  createdByUserId: string;
+  assignedUserId: string;
+  createdAt: string;
+  conversionReviewReviewedAt?: string;
+  conversionReviewReviewedByUserId?: string;
+}
+
 const artifactKindSet = new Set<string>(legalResearchArtifactKinds);
 const artifactStatusSet = new Set<string>(legalResearchArtifactStatuses);
 const reviewDecisionSet = new Set<string>(legalResearchReviewDecisions);
 const sourceTypeSet = new Set<string>(legalResearchSourceTypes);
 const providerJobRequestTypeSet = new Set<string>(legalResearchProviderJobRequestTypes);
 const maxNoteLength = 4000;
+
+function compactRecord(metadata: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(metadata).filter(([, value]) => value !== undefined));
+}
+
+function safeNonNegativeInteger(value: number | undefined): number | undefined {
+  if (typeof value !== "number") return undefined;
+  return Number.isInteger(value) && value >= 0 ? value : undefined;
+}
 
 export function assertLegalResearchArtifactKind(
   value: string,
@@ -314,12 +344,67 @@ export function buildLegalResearchArtifactAuditMetadata(
     documentId: record.documentAnalysis?.documentId,
     documentAnalysisStatus: record.documentAnalysis?.status,
     sourceTextLength: record.documentAnalysis?.sourceTextLength,
+    checkpointType: record.checkpoint?.checkpointType,
+    checkpointAssignedUserId: record.checkpoint?.assignedUserId,
     titleLength: record.title.length,
     noteLength: record.note?.length ?? 0,
     createdByUserId: record.createdByUserId,
     reviewedByUserId: record.reviewedByUserId,
     reviewOnly: record.reviewOnly,
   };
+}
+
+export function buildDocumentConversionSemanticReviewCheckpointMetadata(
+  input: DocumentConversionSemanticReviewCheckpointMetadataInput,
+): Record<string, unknown> {
+  const counts = compactRecord({
+    sourceTextLength: safeNonNegativeInteger(input.sourceTextLength),
+    wordCount: safeNonNegativeInteger(input.wordCount),
+    lineCount: safeNonNegativeInteger(input.lineCount),
+    nonEmptyLineCount: safeNonNegativeInteger(input.nonEmptyLineCount),
+    pageBreakCount: safeNonNegativeInteger(input.pageBreakCount),
+    estimatedPageCount: safeNonNegativeInteger(input.estimatedPageCount),
+  });
+
+  return compactRecord({
+    source: "document_conversion_semantic_review_checkpoint",
+    matterId: input.matterId,
+    documentId: input.documentId,
+    conversionReviewArtifactId: input.conversionReviewArtifactId,
+    jobId: input.jobId,
+    counts: Object.keys(counts).length > 0 ? counts : undefined,
+    conversionReviewStatus: input.conversionReviewStatus,
+    artifactStatus: input.artifactStatus,
+    checkpointType: "document_analysis",
+    checkpointStatus: "ready_for_review",
+    createdByUserId: input.createdByUserId,
+    assignedUserId: input.assignedUserId,
+    createdAt: input.createdAt,
+    conversionReviewReviewedAt: input.conversionReviewReviewedAt,
+    conversionReviewReviewedByUserId: input.conversionReviewReviewedByUserId,
+    semanticReviewReady: true,
+    staffReviewRequired: true,
+    metadataOnly: true,
+    reviewOnly: true,
+    providerActivated: false,
+    downstreamMutation: false,
+    providerEvidenceStored: false,
+    rawTextStored: false,
+    rawTextReturned: false,
+    rawOcrTextReturned: false,
+    rawOcrTextStoredInMetadata: false,
+    rawMarkdownStored: false,
+    convertedMarkdownStored: false,
+    annotationBodiesStored: false,
+    annotationSpansStored: false,
+    chunksStored: false,
+    embeddingsStored: false,
+    promptsStored: false,
+    providerPayloadsStored: false,
+    storageKeysStored: false,
+    objectBodiesStored: false,
+    generatedSummariesStored: false,
+  });
 }
 
 export function summarizeLegalResearchArtifacts(

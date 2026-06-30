@@ -169,6 +169,7 @@ import {
   buildDocumentRetentionHoldDecisionPath,
   buildDocumentProcessingOcrProviderPath,
   buildDocumentProcessingQueuePath,
+  buildDocumentSemanticReviewCheckpointPath,
   buildDocumentProcessingWorkbenchPath,
   documentMetadataSearchFilterCount,
   documentProcessingRowsForMatter,
@@ -250,6 +251,7 @@ import {
 } from "./ai-operational-proposals-dashboard";
 import {
   buildLegalResearchReviewPath,
+  buildLegalResearchWorkspacePath,
   canReviewLegalResearch,
   emptyLegalResearchWorkspace,
   replaceLegalResearchArtifact,
@@ -461,6 +463,7 @@ import type {
   IntakeVariableProposalsResponse,
   InboundEmailMatterDraft,
   LegalResearchDashboardResponse,
+  LegalResearchWorkspaceResponse,
   WorkerHealthResponse,
   WorkerRunQueueFilter,
   WorkerRunsDashboardResponse,
@@ -1336,6 +1339,7 @@ export default function DashboardClient({
   const [documentMetadataTagFilter, setDocumentMetadataTagFilter] = useState("");
   const [queueingDocumentId, setQueueingDocumentId] = useState("");
   const [retentionHoldReviewBusyId, setRetentionHoldReviewBusyId] = useState("");
+  const [semanticReviewCheckpointBusyId, setSemanticReviewCheckpointBusyId] = useState("");
   const [trustControlsByMatterId, setTrustControlsByMatterId] = useState<
     Record<string, TrustControlsDashboardResponse>
   >(() => (matters[0] ? { [matters[0].id]: trustControls } : {}));
@@ -4359,6 +4363,28 @@ export default function DashboardClient({
     return payload;
   }
 
+  async function refreshLegalResearchWorkspace(
+    matterId: string,
+  ): Promise<LegalResearchWorkspaceResponse | null> {
+    const response = await fetch(`${apiBaseUrl}${buildLegalResearchWorkspacePath(matterId)}`, {
+      credentials: "include",
+      headers: devHeaders,
+    });
+
+    if (!response.ok) {
+      const fallback = emptyLegalResearchWorkspace(
+        matterId,
+        response.status === 403 ? "access_denied" : "unavailable",
+      );
+      setLegalResearchByMatterId((current) => ({ ...current, [matterId]: fallback }));
+      return null;
+    }
+
+    const payload = (await response.json()) as LegalResearchWorkspaceResponse;
+    setLegalResearchByMatterId((current) => ({ ...current, [matterId]: payload }));
+    return payload;
+  }
+
   async function refreshDocumentMetadataSearch(
     filters: DocumentMetadataSearchFilters = activeDocumentMetadataSearchFilters,
   ): Promise<void> {
@@ -4413,6 +4439,46 @@ export default function DashboardClient({
       refreshed ? "OCR queued; workbench refreshed." : "OCR queued; workbench unavailable.",
     );
     setQueueingDocumentId("");
+  }
+
+  async function createSemanticReviewCheckpoint(documentId: string): Promise<void> {
+    if (!activeMatter) return;
+    setSemanticReviewCheckpointBusyId(documentId);
+    setDocumentProcessingStatus("Creating semantic review checkpoint...");
+    try {
+      const response = await fetch(
+        `${apiBaseUrl}${buildDocumentSemanticReviewCheckpointPath(documentId)}`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: {
+            ...devHeaders,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({}),
+        },
+      );
+
+      if (!response.ok) {
+        setDocumentProcessingStatus(`Semantic review checkpoint failed: ${response.status}`);
+        return;
+      }
+
+      const refreshed = await refreshDocumentProcessingWorkbench(activeMatter.id);
+      await refreshLegalResearchWorkspace(activeMatter.id);
+      setDocumentProcessingStatus(
+        refreshed
+          ? "Semantic review checkpoint recorded; workbench refreshed."
+          : "Semantic review checkpoint recorded; workbench unavailable.",
+      );
+      setLegalResearchStatus("Semantic review checkpoint recorded for research workspace.");
+    } catch (error) {
+      setDocumentProcessingStatus(
+        `Semantic review checkpoint failed: ${dashboardApiStatus(error)}`,
+      );
+    } finally {
+      setSemanticReviewCheckpointBusyId("");
+    }
   }
 
   async function recordDocumentRetentionHoldDecision(
@@ -7618,6 +7684,7 @@ export default function DashboardClient({
                   portalDocumentAccessStatus={portalDocumentAccessStatus}
                   queueingDocumentId={queueingDocumentId}
                   retentionHoldReviewBusyId={retentionHoldReviewBusyId}
+                  semanticReviewCheckpointBusyId={semanticReviewCheckpointBusyId}
                   selectedClientPortalContactId={selectedClientPortalContactId}
                   selectedClientPortalContactLabel={selectedClientPortalContactLabel}
                   onClearDocumentMetadataSearch={() => void clearDocumentMetadataSearch()}
@@ -7631,6 +7698,9 @@ export default function DashboardClient({
                   onDocumentMetadataScanStatusFilterChange={setDocumentMetadataScanStatusFilter}
                   onGrantPortalDocumentAccess={(documentId) =>
                     void grantPortalDocumentAccess(documentId)
+                  }
+                  onCreateSemanticReviewCheckpoint={(documentId) =>
+                    void createSemanticReviewCheckpoint(documentId)
                   }
                   onQueueDocumentOcr={(documentId) => void queueDocumentOcr(documentId)}
                   onRefreshDocumentMetadataSearch={() => void refreshDocumentMetadataSearch()}

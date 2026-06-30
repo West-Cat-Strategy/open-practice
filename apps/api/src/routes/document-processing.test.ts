@@ -75,6 +75,8 @@ const semanticReviewReadinessAllowedKeys = new Set([
   "artifactId",
   "jobId",
   "counts",
+  "checkpointCount",
+  "latestCheckpoint",
   "posture",
   "conversionReviewStatus",
   "artifactStatus",
@@ -264,6 +266,22 @@ async function createVerifiedSyntheticDocumentWithExtraction(
     createdAt: "2026-06-29T12:00:00.000Z",
     completedAt: "2026-06-29T12:01:00.000Z",
   });
+}
+
+async function listSemanticReviewCheckpoints(
+  repository: InMemoryOpenPracticeRepository,
+  conversionReviewArtifactId?: string,
+) {
+  const artifacts = await repository.listLegalResearchArtifacts(firmId, {
+    matterId: "matter-001",
+    kind: "review_checkpoint",
+  });
+  return artifacts.filter(
+    (artifact) =>
+      artifact.metadata?.source === "document_conversion_semantic_review_checkpoint" &&
+      (!conversionReviewArtifactId ||
+        artifact.metadata.conversionReviewArtifactId === conversionReviewArtifactId),
+  );
 }
 
 async function conversionReviewMutationSnapshot(
@@ -1793,6 +1811,309 @@ describe("document processing routes", () => {
     expect(responseJson).not.toContain("Synthetic failed OCR text must stay private.");
     expect(responseJson).not.toContain('"providerPayload":');
     expect(responseJson).not.toContain("Synthetic failed generated summary");
+  });
+
+  it.each(["ready_for_review", "reviewed"] as const)(
+    "creates metadata-only semantic review checkpoints for %s conversion-review artifacts",
+    async (status) => {
+      const repository = new InMemoryOpenPracticeRepository();
+      await createConversionReviewArtifact(repository, {
+        id: `artifact-conversion-review-checkpoint-${status}`,
+        status,
+        reviewedAt: "2026-06-29T14:00:00.000Z",
+      });
+      repository.getDocumentTextExtractions = async () => {
+        throw new Error("semantic checkpoint creation must not read extraction text");
+      };
+      const before = await conversionReviewMutationSnapshot(repository);
+
+      const response = await testServer({ repository, ocrJobQueue: undefined }).inject({
+        method: "POST",
+        url: "/api/document-processing/documents/doc-001/conversion-review/semantic-review/checkpoints",
+        payload: {},
+      });
+
+      expect(response.statusCode).toBe(201);
+      const payload = response.json();
+      expect(payload).toMatchObject({
+        status: "created",
+        task: "document_conversion_semantic_review_checkpoint",
+        documentId: "doc-001",
+        checkpoint: {
+          kind: "review_checkpoint",
+          status: "ready_for_review",
+          title: "Document semantic review checkpoint",
+          sourceReferences: [],
+          contextLinks: [
+            { resourceType: "document", resourceId: "doc-001" },
+            {
+              resourceType: "legal_research_artifact",
+              resourceId: `artifact-conversion-review-checkpoint-${status}`,
+            },
+          ],
+          checkpoint: {
+            checkpointType: "document_analysis",
+            assignedUserId: "user-owner_admin",
+          },
+          createdByUserId: "user-owner_admin",
+          reviewOnly: true,
+          metadata: expect.objectContaining({
+            source: "document_conversion_semantic_review_checkpoint",
+            matterId: "matter-001",
+            documentId: "doc-001",
+            conversionReviewArtifactId: `artifact-conversion-review-checkpoint-${status}`,
+            jobId: "job-conversion-review-decision",
+            conversionReviewStatus: status,
+            artifactStatus: "metadata_only",
+            checkpointType: "document_analysis",
+            checkpointStatus: "ready_for_review",
+            createdByUserId: "user-owner_admin",
+            assignedUserId: "user-owner_admin",
+            semanticReviewReady: true,
+            staffReviewRequired: true,
+            metadataOnly: true,
+            reviewOnly: true,
+            providerActivated: false,
+            downstreamMutation: false,
+            providerEvidenceStored: false,
+            rawTextStored: false,
+            rawTextReturned: false,
+            rawOcrTextReturned: false,
+            rawOcrTextStoredInMetadata: false,
+            rawMarkdownStored: false,
+            convertedMarkdownStored: false,
+            annotationBodiesStored: false,
+            annotationSpansStored: false,
+            chunksStored: false,
+            embeddingsStored: false,
+            promptsStored: false,
+            providerPayloadsStored: false,
+            storageKeysStored: false,
+            objectBodiesStored: false,
+            generatedSummariesStored: false,
+          }),
+        },
+        conversionReview: {
+          semanticReviewReadiness: {
+            documentId: "doc-001",
+            artifactId: `artifact-conversion-review-checkpoint-${status}`,
+            checkpointCount: 1,
+            latestCheckpoint: {
+              checkpointId: expect.any(String),
+              status: "ready_for_review",
+              createdByUserId: "user-owner_admin",
+              assignedUserId: "user-owner_admin",
+              conversionReviewArtifactId: `artifact-conversion-review-checkpoint-${status}`,
+              reviewOnly: true,
+              metadataOnly: true,
+              providerActivated: false,
+              downstreamMutation: false,
+              providerEvidenceStored: false,
+              rawOcrTextReturned: false,
+              rawOcrTextStoredInMetadata: false,
+              rawMarkdownStored: false,
+              convertedMarkdownStored: false,
+              annotationBodiesStored: false,
+              annotationSpansStored: false,
+              chunksStored: false,
+              embeddingsStored: false,
+              promptsStored: false,
+              providerPayloadsStored: false,
+              storageKeysStored: false,
+              objectBodiesStored: false,
+              generatedSummariesStored: false,
+            },
+          },
+        },
+      });
+      expect(payload.checkpoint.metadata.counts).toEqual({
+        sourceTextLength: 47,
+        wordCount: 6,
+        lineCount: 2,
+        nonEmptyLineCount: 2,
+      });
+      expectSemanticReviewReadinessSafe(payload.conversionReview.semanticReviewReadiness);
+
+      const checkpoints = await listSemanticReviewCheckpoints(
+        repository,
+        `artifact-conversion-review-checkpoint-${status}`,
+      );
+      expect(checkpoints).toHaveLength(1);
+      expect(checkpoints[0]?.note).toBeUndefined();
+      expect(checkpoints[0]?.metadata).not.toHaveProperty("provider");
+      expect(checkpoints[0]?.metadata).not.toHaveProperty("providerStatus");
+      for (const key of [
+        "rawOcrText",
+        "rawMarkdown",
+        "convertedMarkdown",
+        "providerEvidence",
+        "providerPayload",
+        "providerPayloads",
+        "annotationSpans",
+        "annotations",
+        "prompt",
+        "chunks",
+        "embeddings",
+        "storageKey",
+        "objectKey",
+        "objectBody",
+        "privateExcerpt",
+        "generatedSummary",
+      ]) {
+        expect(checkpoints[0]?.metadata).not.toHaveProperty(key);
+      }
+      const responseJson = JSON.stringify(payload);
+      for (const fragment of unsafeConversionReviewFragments) {
+        expect(responseJson).not.toContain(fragment);
+      }
+      expect(responseJson).not.toContain('"providerPayload":');
+      expect(responseJson).not.toContain('"storageKey":');
+      expect(responseJson).not.toContain('"generatedSummary":');
+
+      const audit = await repository.listAuditEvents(firmId);
+      expect(audit.events).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            action: "legal_research.artifact.created",
+            resourceType: "legal_research",
+            resourceId: payload.checkpoint.id,
+            metadata: expect.objectContaining({
+              matterId: "matter-001",
+              artifactKind: "review_checkpoint",
+              status: "ready_for_review",
+              checkpointType: "document_analysis",
+              checkpointAssignedUserId: "user-owner_admin",
+              sourceReferenceCount: 0,
+              contextLinkCount: 2,
+              noteLength: 0,
+              createdByUserId: "user-owner_admin",
+              reviewOnly: true,
+            }),
+          }),
+        ]),
+      );
+      expect(JSON.stringify(audit.events)).not.toContain("Synthetic provider payload");
+      await expect(conversionReviewMutationSnapshot(repository)).resolves.toBe(before);
+    },
+  );
+
+  it("returns existing semantic review checkpoints without rewriting", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await createConversionReviewArtifact(repository, {
+      id: "artifact-conversion-review-checkpoint-existing",
+    });
+    const server = testServer({ repository, ocrJobQueue: undefined });
+
+    const created = await server.inject({
+      method: "POST",
+      url: "/api/document-processing/documents/doc-001/conversion-review/semantic-review/checkpoints",
+      payload: {},
+    });
+    const replay = await server.inject({
+      method: "POST",
+      url: "/api/document-processing/documents/doc-001/conversion-review/semantic-review/checkpoints",
+      payload: {},
+    });
+
+    expect(created.statusCode).toBe(201);
+    expect(replay.statusCode).toBe(200);
+    expect(replay.json()).toMatchObject({
+      status: "existing",
+      task: "document_conversion_semantic_review_checkpoint",
+      documentId: "doc-001",
+      checkpoint: {
+        id: created.json().checkpoint.id,
+        metadata: {
+          conversionReviewArtifactId: "artifact-conversion-review-checkpoint-existing",
+          metadataOnly: true,
+          reviewOnly: true,
+          downstreamMutation: false,
+          providerPayloadsStored: false,
+          generatedSummariesStored: false,
+        },
+      },
+      conversionReview: {
+        semanticReviewReadiness: {
+          checkpointCount: 1,
+          latestCheckpoint: {
+            checkpointId: created.json().checkpoint.id,
+            conversionReviewArtifactId: "artifact-conversion-review-checkpoint-existing",
+          },
+        },
+      },
+    });
+    await expect(
+      listSemanticReviewCheckpoints(repository, "artifact-conversion-review-checkpoint-existing"),
+    ).resolves.toHaveLength(1);
+  });
+
+  it("blocks semantic review checkpoints without a ready same-matter conversion-review artifact", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await createVerifiedSyntheticDocumentWithExtraction(
+      repository,
+      "doc-semantic-checkpoint-missing",
+    );
+    await createConversionReviewArtifact(repository, {
+      id: "artifact-conversion-review-checkpoint-rejected",
+      status: "rejected",
+    });
+
+    const missingArtifact = await testServer({ repository, ocrJobQueue: undefined }).inject({
+      method: "POST",
+      url: "/api/document-processing/documents/doc-semantic-checkpoint-missing/conversion-review/semantic-review/checkpoints",
+      payload: {},
+    });
+    const rejectedArtifact = await testServer({ repository, ocrJobQueue: undefined }).inject({
+      method: "POST",
+      url: "/api/document-processing/documents/doc-001/conversion-review/semantic-review/checkpoints",
+      payload: {},
+    });
+    const missingDocument = await testServer({ repository, ocrJobQueue: undefined }).inject({
+      method: "POST",
+      url: "/api/document-processing/documents/doc-missing/conversion-review/semantic-review/checkpoints",
+      payload: {},
+    });
+
+    expect(missingArtifact.statusCode).toBe(409);
+    expect(missingArtifact.json()).toMatchObject({
+      message: "Document conversion review artifact is not ready for semantic review",
+    });
+    expect(rejectedArtifact.statusCode).toBe(409);
+    expect(rejectedArtifact.json()).toMatchObject({
+      message: "Document conversion review artifact is not ready for semantic review",
+    });
+    expect(missingDocument.statusCode).toBe(404);
+    await expect(listSemanticReviewCheckpoints(repository)).resolves.toHaveLength(0);
+  });
+
+  it("enforces matter scope and legal research create access for semantic review checkpoints", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await createConversionReviewArtifact(repository, {
+      id: "artifact-conversion-review-checkpoint-auth",
+    });
+
+    const crossMatter = await testServer({
+      repository,
+      authUser: user("firm_member", ["matter-002"]),
+      ocrJobQueue: undefined,
+    }).inject({
+      method: "POST",
+      url: "/api/document-processing/documents/doc-001/conversion-review/semantic-review/checkpoints",
+      payload: {},
+    });
+    const auditor = await testServer({
+      repository,
+      authUser: user("auditor", []),
+      ocrJobQueue: undefined,
+    }).inject({
+      method: "POST",
+      url: "/api/document-processing/documents/doc-001/conversion-review/semantic-review/checkpoints",
+      payload: {},
+    });
+
+    expect(crossMatter.statusCode).toBe(403);
+    expect(auditor.statusCode).toBe(403);
+    await expect(listSemanticReviewCheckpoints(repository)).resolves.toHaveLength(0);
   });
 
   it("rejects opposite terminal conversion review decisions", async () => {

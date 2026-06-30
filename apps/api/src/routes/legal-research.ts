@@ -49,6 +49,7 @@ const contextLinkSchema = z
     resourceType: z.enum([
       "matter",
       "document",
+      "legal_research_artifact",
       "draft",
       "contact",
       "task",
