@@ -21,7 +21,7 @@ API contracts, database schema changes, auth changes, or release handoff.
 | OSV advisory scan        | `pnpm deps:osv`                                    | Runs optional local OSV lockfile scanning when `osv-scanner` is installed.                                                                                                                                                                                                                                                                                                                                      |
 | Dead-code gate           | `pnpm deadcode:check`                              | Runs Knip against unused files, dependencies, unlisted dependencies, unresolved imports, and binaries.                                                                                                                                                                                                                                                                                                          |
 | Toolchain policy         | `pnpm toolchain:check`                             | Verifies local Node.js is at least 24 and the installed pnpm version matches `package.json` plus the Dockerfile build argument.                                                                                                                                                                                                                                                                                 |
-| Env surface policy       | `pnpm env:check`                                   | Compares runtime environment names against `.env.example` plus the repo-owned allowlist in `scripts/check-env-surface.mjs`.                                                                                                                                                                                                                                                                                     |
+| Env surface policy       | `pnpm env:check`                                   | Compares runtime environment names against `.env.example` and self-host operator names against `docker/selfhost.example.env`, plus the repo-owned allowlists in `scripts/check-env-surface.mjs`.                                                                                                                                                                                                                |
 | Selective validation     | `pnpm verify:select -- --base <git-ref>`           | Prints recommended commands for changed files without running them.                                                                                                                                                                                                                                                                                                                                             |
 | Selected validation      | `pnpm verify:run -- --files <paths...>`            | Runs selector-chosen commands and writes ignored command logs under `.tmp/validation-runs/<timestamp>/`.                                                                                                                                                                                                                                                                                                        |
 | Final-path selection     | `pnpm verify:select -- --base-plus-dirty <ref>`    | Prints one deterministic command set for a branch diff plus staged, unstaged, and untracked files.                                                                                                                                                                                                                                                                                                              |
@@ -267,10 +267,12 @@ local Open Practice images, then common local service images, then the first non
 image. If capacity is below the default 8 GiB threshold, reclaim Docker storage and rerun the Docker
 validation command. The helper does not run `docker system prune` or remove data automatically.
 
-`pnpm selfhost:check -- --env-file <path>` validates the focused self-host profile before startup.
-Use `-- --env-file docker/selfhost.example.env --allow-synthetic-example` only for the checked-in
-synthetic render proof; real deployments must use an ignored env file with unique secrets and HTTPS
-origins.
+`pnpm selfhost:check -- --env-file <path>` validates self-host env values and the rendered Compose
+posture before startup. `pnpm env:check` owns the separate name-surface check that self-host
+operator variables used by Compose and self-host scripts are documented in `docker/selfhost.example.env`
+or explicitly allowlisted. Use `-- --env-file docker/selfhost.example.env --allow-synthetic-example`
+only for the checked-in synthetic render proof; real deployments must use an ignored env file with
+unique secrets and HTTPS origins.
 
 ## Change-Type Guidance
 

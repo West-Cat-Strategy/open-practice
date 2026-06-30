@@ -23,6 +23,13 @@ const ENV_SURFACE_FILES = [
   "scripts/create-release-proof.mjs",
 ];
 
+const SELFHOST_ENV_SURFACE_FILES = [
+  "docker-compose.selfhost.yml",
+  "docker/selfhost.example.env",
+  "scripts/selfhost-check.mjs",
+  "scripts/selfhost-restore-drill.mjs",
+];
+
 export const ENV_ALLOWLIST = {
   DOCASSEMBLE_API_KEY: "deprecated provider env intentionally omitted from local defaults",
   DOCASSEMBLE_BASE_URL: "deprecated provider env intentionally omitted from local defaults",
@@ -95,6 +102,8 @@ export const ENV_ALLOWLIST = {
   WEBAUTHN_RP_NAME: "advanced WebAuthn relying-party override; local default is Open Practice",
 };
 
+export const SELFHOST_ENV_ALLOWLIST = {};
+
 function lines(text) {
   return text.split(/\r?\n/);
 }
@@ -109,20 +118,34 @@ export function envExampleNames(text) {
   );
 }
 
-export function envNamesFromText(text) {
-  const names = new Set();
-  const patterns = [
+function envScanModeForFile(file) {
+  return /\.(?:cjs|cts|js|jsx|mjs|mts|ts|tsx)$/.test(file) ? "javascript" : "config";
+}
+
+function patternsForMode(mode) {
+  const javascriptPatterns = [
     /\bprocess\.env\.([A-Z][A-Z0-9_]*)\b/g,
     /\bprocess\.env\[['"]([A-Z][A-Z0-9_]*)['"]\]/g,
     /\benv\.([A-Z][A-Z0-9_]*)\b/g,
+  ];
+  const configPatterns = [
+    /^\s*([A-Z][A-Z0-9_]*)=/gm,
     /^\s*([A-Z][A-Z0-9_]*):/gm,
     /\$\{([A-Z][A-Z0-9_]*)(?::[-?][^}]*)?\}/g,
     /^\s*-\s*([A-Z][A-Z0-9_]*)=/gm,
-    /^\s*ARG\s+([A-Z][A-Z0-9_]*)=/gm,
-    /^\s*ENV\s+([A-Z][A-Z0-9_]*)=/gm,
+    /^\s*ARG\s+([A-Z][A-Z0-9_]*)(?:=|\s|$)/gm,
+    /^\s*ENV\s+([A-Z][A-Z0-9_]*)(?:=|\s|$)/gm,
   ];
 
-  for (const pattern of patterns) {
+  if (mode === "javascript") return javascriptPatterns;
+  if (mode === "config") return configPatterns;
+  return [...javascriptPatterns, ...configPatterns];
+}
+
+export function envNamesFromText(text, { mode = "mixed" } = {}) {
+  const names = new Set();
+
+  for (const pattern of patternsForMode(mode)) {
     pattern.lastIndex = 0;
     for (const match of text.matchAll(pattern)) names.add(match[1]);
   }
@@ -130,40 +153,77 @@ export function envNamesFromText(text) {
   return names;
 }
 
-export function collectEnvSurface({ files, exampleText, allowlist = ENV_ALLOWLIST }) {
+function addUsed(used, name, file) {
+  if (!used.has(name)) used.set(name, new Set());
+  used.get(name).add(file);
+}
+
+function usedEntries(used) {
+  return [...used.entries()].map(([name, paths]) => ({ name, paths: [...paths].sort() }));
+}
+
+function isSelfhostOperatorName(name) {
+  return name.startsWith("OPEN_PRACTICE_SELFHOST_");
+}
+
+export function collectEnvSurface({
+  files,
+  exampleText,
+  selfhostExampleText = "",
+  allowlist = ENV_ALLOWLIST,
+  selfhostAllowlist = SELFHOST_ENV_ALLOWLIST,
+  selfhostFiles = new Set(SELFHOST_ENV_SURFACE_FILES),
+}) {
   const documented = envExampleNames(exampleText);
+  const documentedSelfhost = envExampleNames(selfhostExampleText);
   const used = new Map();
+  const usedSelfhost = new Map();
 
   for (const [file, text] of Object.entries(files)) {
-    for (const name of envNamesFromText(text)) {
-      if (!used.has(name)) used.set(name, new Set());
-      used.get(name).add(file);
+    for (const name of envNamesFromText(text, { mode: envScanModeForFile(file) })) {
+      addUsed(used, name, file);
+      if (selfhostFiles.has(file) && isSelfhostOperatorName(name)) {
+        addUsed(usedSelfhost, name, file);
+      }
     }
   }
 
   const allowlisted = new Set(Object.keys(allowlist));
+  const selfhostAllowlisted = new Set(Object.keys(selfhostAllowlist));
   const missing = [...used.keys()]
     .filter((name) => !documented.has(name) && !allowlisted.has(name))
+    .filter((name) => !usedSelfhost.has(name))
+    .sort();
+  const missingSelfhost = [...usedSelfhost.keys()]
+    .filter((name) => !documentedSelfhost.has(name) && !selfhostAllowlisted.has(name))
     .sort();
   const staleAllowlist = [...allowlisted].filter((name) => !used.has(name)).sort();
+  const staleSelfhostAllowlist = [...selfhostAllowlisted]
+    .filter((name) => !usedSelfhost.has(name))
+    .sort();
 
   return {
     documented: [...documented].sort(),
-    used: [...used.entries()].map(([name, paths]) => ({ name, paths: [...paths].sort() })),
+    documentedSelfhost: [...documentedSelfhost].sort(),
+    used: usedEntries(used),
+    usedSelfhost: usedEntries(usedSelfhost),
     missing,
+    missingSelfhost,
     staleAllowlist,
+    staleSelfhostAllowlist,
   };
 }
 
 export function checkEnvSurface({ cwd = process.cwd(), read = readFileSync } = {}) {
   const exampleText = read(join(cwd, ".env.example"), "utf8");
+  const selfhostExampleText = read(join(cwd, "docker/selfhost.example.env"), "utf8");
+  const surfaceFiles = [...ENV_SURFACE_FILES, ...SELFHOST_ENV_SURFACE_FILES];
   const files = Object.fromEntries(
-    ENV_SURFACE_FILES.filter((file) => file !== ".env.example").map((file) => [
-      file,
-      read(join(cwd, file), "utf8"),
-    ]),
+    surfaceFiles
+      .filter((file) => file !== ".env.example" && file !== "docker/selfhost.example.env")
+      .map((file) => [file, read(join(cwd, file), "utf8")]),
   );
-  return collectEnvSurface({ files, exampleText });
+  return collectEnvSurface({ files, exampleText, selfhostExampleText });
 }
 
 function runCli() {
@@ -176,6 +236,13 @@ function runCli() {
       )}`,
     );
   }
+  if (result.missingSelfhost.length > 0) {
+    failures.push(
+      `Self-host env vars need docker/selfhost.example.env entries or SELFHOST_ENV_ALLOWLIST reasons: ${result.missingSelfhost.join(
+        ", ",
+      )}`,
+    );
+  }
 
   if (failures.length > 0) {
     console.error("Environment surface validation failed:");
@@ -184,7 +251,7 @@ function runCli() {
   }
 
   console.log(
-    `Environment surface passed: ${result.documented.length} .env.example entries, ${result.used.length} used names, ${Object.keys(ENV_ALLOWLIST).length} documented allowlist entries.`,
+    `Environment surface passed: ${result.documented.length} .env.example entries, ${result.documentedSelfhost.length} docker/selfhost.example.env entries, ${result.used.length} used names, ${Object.keys(ENV_ALLOWLIST).length} runtime allowlist entries, ${Object.keys(SELFHOST_ENV_ALLOWLIST).length} self-host allowlist entries.`,
   );
 }
 
