@@ -70,6 +70,24 @@ function compareValueLabel(value: EmailTemplateComparisonField["draftValue"]): s
   return value;
 }
 
+function isEmailTemplateBodyComparisonField(
+  field: EmailTemplateComparisonField,
+): field is EmailTemplateComparisonField & { field: "textBody" | "htmlBody" } {
+  return field.field === "textBody" || field.field === "htmlBody";
+}
+
+function bodyComparisonContentTypeLabel(field: "textBody" | "htmlBody"): string {
+  return field === "textBody" ? "text/plain" : "text/html";
+}
+
+function bodyComparisonLength(value: EmailTemplateComparisonField["draftValue"]): number {
+  return typeof value === "string" ? value.length : 0;
+}
+
+function bodyComparisonPresence(value: EmailTemplateComparisonField["draftValue"]): string {
+  return bodyComparisonLength(value) > 0 ? "present" : "absent";
+}
+
 export function EmailTemplateDraftsPanel({
   activeMatterId,
   templateDrafts,
@@ -297,13 +315,33 @@ export function EmailTemplateDraftsPanel({
               <div className="email-template-compare-grid">
                 {comparison.fields.map((field) => (
                   <div className="party-row email-template-compare-row" key={field.field}>
-                    <span>
-                      <strong>{field.label}</strong>
-                      <small>Saved draft</small>
-                      <pre>{compareValueLabel(field.draftValue)}</pre>
-                      <small>Published version</small>
-                      <pre>{compareValueLabel(field.publishedValue)}</pre>
-                    </span>
+                    {isEmailTemplateBodyComparisonField(field) ? (
+                      <span>
+                        <strong>{field.label}</strong>
+                        <small>
+                          {field.changed ? "Changed" : "Unchanged"} · Body content redacted;
+                          metadata-only comparison
+                        </small>
+                        <small>
+                          Saved draft · {bodyComparisonLength(field.draftValue)} characters ·{" "}
+                          {bodyComparisonContentTypeLabel(field.field)}{" "}
+                          {bodyComparisonPresence(field.draftValue)}
+                        </small>
+                        <small>
+                          Published version · {bodyComparisonLength(field.publishedValue)}{" "}
+                          characters · {bodyComparisonContentTypeLabel(field.field)}{" "}
+                          {bodyComparisonPresence(field.publishedValue)}
+                        </small>
+                      </span>
+                    ) : (
+                      <span>
+                        <strong>{field.label}</strong>
+                        <small>Saved draft</small>
+                        <pre>{compareValueLabel(field.draftValue)}</pre>
+                        <small>Published version</small>
+                        <pre>{compareValueLabel(field.publishedValue)}</pre>
+                      </span>
+                    )}
                     <em>{field.changed ? "Changed" : "Same"}</em>
                   </div>
                 ))}

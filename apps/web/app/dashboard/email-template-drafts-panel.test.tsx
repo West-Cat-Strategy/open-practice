@@ -21,8 +21,8 @@ describe("EmailTemplateDraftsPanel", () => {
             templateKey: "matter.update",
             from: "Open Practice <no-reply@open-practice.local>",
             subject: "Updated synthetic subject",
-            textBody: "Updated synthetic body",
-            htmlBody: "<p>Updated synthetic body</p>",
+            textBody: "Draft private compare body",
+            htmlBody: "<p>Draft private compare body</p>",
             recipientHints: ["primary_client", "assistant"],
             relatedResourceType: "document",
             status: "draft",
@@ -41,8 +41,8 @@ describe("EmailTemplateDraftsPanel", () => {
           templateKey: "matter.update",
           from: "Open Practice <no-reply@open-practice.local>",
           subject: "Updated synthetic subject",
-          textBody: "Updated synthetic body",
-          htmlBody: "<p>Updated synthetic body</p>",
+          textBody: "Editor text body value may render",
+          htmlBody: "<p>Editor HTML body value may render</p>",
           recipientHints: "primary_client, assistant",
         },
         previewSnapshots: [
@@ -95,8 +95,8 @@ describe("EmailTemplateDraftsPanel", () => {
             templateKey: "matter.update",
             from: "Open Practice <no-reply@open-practice.local>",
             subject: "Published synthetic subject",
-            textBody: "Published synthetic body",
-            htmlBody: "<p>Published synthetic body</p>",
+            textBody: "Published private compare body",
+            htmlBody: "<p>Published private compare body</p>",
             recipientHints: ["primary_client"],
             publishedByUserId: "user-admin",
             publishedAt: "2026-06-16T10:08:00.000Z",
@@ -126,8 +126,16 @@ describe("EmailTemplateDraftsPanel", () => {
     expect(html).toContain("6 changed fields");
     expect(html).toContain("Updated synthetic subject");
     expect(html).toContain("Published synthetic subject");
-    expect(html).toContain("&lt;p&gt;Updated synthetic body&lt;/p&gt;");
-    expect(html).toContain("&lt;p&gt;Published synthetic body&lt;/p&gt;");
+    expect(html).toContain("Body content redacted;");
+    expect(html).toContain("metadata-only comparison");
+    expect(html).toContain("Saved draft · 26 characters · text/plain present");
+    expect(html).toContain("Published version · 30 characters · text/plain present");
+    expect(html).toContain("Saved draft · 33 characters · text/html present");
+    expect(html).toContain("Published version · 37 characters · text/html present");
+    expect(html).not.toContain("Draft private compare body");
+    expect(html).not.toContain("&lt;p&gt;Draft private compare body&lt;/p&gt;");
+    expect(html).not.toContain("Published private compare body");
+    expect(html).not.toContain("&lt;p&gt;Published private compare body&lt;/p&gt;");
     expect(html).toContain("Same");
     expect(html).toContain("Changed");
     expect(html).toContain("Preview snapshots");
