@@ -140,6 +140,44 @@ const workspace: LegalResearchWorkspaceResponse = {
     latestQueuedAt: "2026-06-04T18:00:00.000Z",
     reviewOnly: true,
   },
+  citationPacketReadiness: {
+    sourceReferenceCount: 1,
+    sourceReferenceCountsByType: {
+      case_law: 0,
+      statute: 1,
+      regulation: 0,
+      policy: 0,
+      secondary_source: 0,
+      internal_note: 0,
+      unknown: 0,
+    },
+    readyForReviewArtifactCount: 1,
+    readyForReviewArtifactIds: ["legal-research-source-note-001"],
+    openCheckpointCount: 0,
+    openCheckpointArtifactIds: [],
+    contextLinkCount: 2,
+    contextLinkCountsByType: {
+      matter: 1,
+      document: 1,
+      draft: 0,
+      contact: 0,
+      task: 0,
+      calendar_event: 0,
+      intake_session: 0,
+    },
+    staffReviewReady: true,
+    blockedReasons: [],
+    reservedProviderJobPosture: "reserved_no_provider_execution",
+    providerExecuted: false,
+    authorityScraped: false,
+    sourceTextStored: false,
+    promptStored: false,
+    providerEvidenceStored: false,
+    citationVerificationClaimed: false,
+    legalAdviceGenerated: false,
+    downstreamMutation: false,
+    reviewOnly: true,
+  },
 };
 
 describe("ResearchSection", () => {
@@ -164,6 +202,17 @@ describe("ResearchSection", () => {
     );
 
     expect(writableHtml).toContain("Research workspace");
+    expect(writableHtml).toContain("Citation packet");
+    expect(writableHtml).toContain("staff review ready");
+    expect(writableHtml).toContain("0 case");
+    expect(writableHtml).toContain("1 statute");
+    expect(writableHtml).toContain("0 open checkpoints");
+    expect(writableHtml).toContain("1 matters");
+    expect(writableHtml).toContain("1 documents");
+    expect(writableHtml).toContain("reserved no provider execution");
+    expect(writableHtml).toContain("No provider run");
+    expect(writableHtml).toContain("no verification claim");
+    expect(writableHtml).toContain("no legal advice");
     expect(writableHtml).toContain("1 provider jobs recorded");
     expect(writableHtml).toContain("Citation review");
     expect(writableHtml).toContain("citation review");
@@ -173,6 +222,8 @@ describe("ResearchSection", () => {
     expect(writableHtml).toContain("no provider evidence");
     expect(writableHtml).toContain("no downstream mutation");
     expect(writableHtml).toContain("no raw OCR returned");
+    expect(writableHtml).not.toContain("Synthetic staff-authored note.");
+    expect(writableHtml).not.toContain("Staff source label");
     expect(writableHtml).not.toContain("Synthetic raw OCR text must not render.");
     expect(writableHtml).not.toContain("Synthetic provider OCR body must not render.");
     expect(writableHtml).not.toContain("Synthetic provider payload must not render.");

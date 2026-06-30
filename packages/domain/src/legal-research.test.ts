@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   assertLegalResearchArtifactKind,
   assertLegalResearchProviderJobRequestType,
+  buildLegalResearchCitationPacketReadiness,
   buildDocumentConversionSemanticReviewCheckpointMetadata,
   buildLegalResearchProviderJobMetadata,
   buildLegalResearchArtifactAuditMetadata,
@@ -241,6 +242,81 @@ describe("legal research artifacts", () => {
     });
   });
 
+  it("builds citation packet readiness from metadata only", () => {
+    const checkpoint: LegalResearchArtifactRecord = {
+      ...baseArtifact,
+      id: "research-artifact-003",
+      kind: "review_checkpoint",
+      sourceReferences: [{ sourceType: "case_law", label: "Synthetic source label must not leak" }],
+      contextLinks: [
+        { resourceType: "task", resourceId: "task-001", label: "Synthetic task label" },
+      ],
+      checkpoint: { checkpointType: "source_review", assignedUserId: "user-admin" },
+      metadata: {
+        prompt: "Synthetic prompt must not leak",
+        providerEvidence: "Synthetic provider evidence must not leak",
+        sourceText: "Synthetic source text must not leak",
+      },
+    };
+
+    const readiness = buildLegalResearchCitationPacketReadiness([baseArtifact, checkpoint]);
+
+    expect(readiness).toMatchObject({
+      sourceReferenceCount: 2,
+      sourceReferenceCountsByType: {
+        case_law: 1,
+        statute: 1,
+      },
+      readyForReviewArtifactCount: 2,
+      readyForReviewArtifactIds: ["research-artifact-001", "research-artifact-003"],
+      openCheckpointCount: 1,
+      openCheckpointArtifactIds: ["research-artifact-003"],
+      contextLinkCount: 3,
+      contextLinkCountsByType: {
+        matter: 1,
+        document: 1,
+        task: 1,
+      },
+      staffReviewReady: false,
+      blockedReasons: ["open_checkpoints"],
+      reservedProviderJobPosture: "reserved_no_provider_execution",
+      providerExecuted: false,
+      authorityScraped: false,
+      sourceTextStored: false,
+      promptStored: false,
+      providerEvidenceStored: false,
+      citationVerificationClaimed: false,
+      legalAdviceGenerated: false,
+      downstreamMutation: false,
+      reviewOnly: true,
+    });
+    expect(JSON.stringify(readiness)).not.toContain(baseArtifact.note);
+    expect(JSON.stringify(readiness)).not.toContain("Residential Tenancy Act review label");
+    expect(JSON.stringify(readiness)).not.toContain("Staff-entered citation label");
+    expect(JSON.stringify(readiness)).not.toContain("Synthetic source label must not leak");
+    expect(JSON.stringify(readiness)).not.toContain("Synthetic prompt must not leak");
+    expect(JSON.stringify(readiness)).not.toContain("Synthetic provider evidence must not leak");
+    expect(JSON.stringify(readiness)).not.toContain("Synthetic source text must not leak");
+  });
+
+  it("reports citation packet readiness blockers and ready posture", () => {
+    expect(buildLegalResearchCitationPacketReadiness([])).toMatchObject({
+      staffReviewReady: false,
+      blockedReasons: ["no_source_references", "no_ready_for_review_artifacts"],
+    });
+    expect(
+      buildLegalResearchCitationPacketReadiness([{ ...baseArtifact, status: "draft" }]),
+    ).toMatchObject({
+      staffReviewReady: false,
+      blockedReasons: ["no_ready_for_review_artifacts"],
+    });
+    expect(buildLegalResearchCitationPacketReadiness([baseArtifact])).toMatchObject({
+      staffReviewReady: true,
+      blockedReasons: [],
+      readyForReviewArtifactIds: ["research-artifact-001"],
+    });
+  });
+
   it("summarizes the reserved provider job boundary with citation review controls", () => {
     expect(() => assertLegalResearchProviderJobRequestType("citation_review")).not.toThrow();
     expect(() => assertLegalResearchProviderJobRequestType("prompt_completion")).toThrow(
@@ -321,6 +397,17 @@ describe("legal research artifacts", () => {
       total: 1,
       skipped: 1,
       latestQueuedAt: "2026-06-04T18:00:00.000Z",
+      reviewOnly: true,
+    });
+    expect(workspace.citationPacketReadiness).toMatchObject({
+      sourceReferenceCount: 1,
+      readyForReviewArtifactCount: 1,
+      staffReviewReady: true,
+      reservedProviderJobPosture: "reserved_no_provider_execution",
+      providerExecuted: false,
+      citationVerificationClaimed: false,
+      legalAdviceGenerated: false,
+      downstreamMutation: false,
       reviewOnly: true,
     });
   });

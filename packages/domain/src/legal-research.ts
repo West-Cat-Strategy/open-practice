@@ -183,6 +183,34 @@ export interface LegalResearchProviderJobSummary {
   reviewOnly: true;
 }
 
+export type LegalResearchCitationPacketReadinessBlockedReason =
+  | "no_source_references"
+  | "no_ready_for_review_artifacts"
+  | "open_checkpoints";
+
+export interface LegalResearchCitationPacketReadiness {
+  sourceReferenceCount: number;
+  sourceReferenceCountsByType: Record<LegalResearchSourceType, number>;
+  readyForReviewArtifactCount: number;
+  readyForReviewArtifactIds: string[];
+  openCheckpointCount: number;
+  openCheckpointArtifactIds: string[];
+  contextLinkCount: number;
+  contextLinkCountsByType: Record<LegalResearchContextResourceType, number>;
+  staffReviewReady: boolean;
+  blockedReasons: LegalResearchCitationPacketReadinessBlockedReason[];
+  reservedProviderJobPosture: "reserved_no_provider_execution";
+  providerExecuted: false;
+  authorityScraped: false;
+  sourceTextStored: false;
+  promptStored: false;
+  providerEvidenceStored: false;
+  citationVerificationClaimed: false;
+  legalAdviceGenerated: false;
+  downstreamMutation: false;
+  reviewOnly: true;
+}
+
 export interface LegalResearchWorkspace {
   matterId: string;
   artifacts: LegalResearchArtifactRecord[];
@@ -197,6 +225,7 @@ export interface LegalResearchWorkspace {
   providerJobBoundary: LegalResearchProviderJobBoundary;
   providerJobs: LegalResearchProviderJobRecord[];
   providerJobSummary: LegalResearchProviderJobSummary;
+  citationPacketReadiness: LegalResearchCitationPacketReadiness;
 }
 
 export interface DocumentConversionSemanticReviewCheckpointMetadataInput {
@@ -225,6 +254,15 @@ const reviewDecisionSet = new Set<string>(legalResearchReviewDecisions);
 const sourceTypeSet = new Set<string>(legalResearchSourceTypes);
 const providerJobRequestTypeSet = new Set<string>(legalResearchProviderJobRequestTypes);
 const maxNoteLength = 4000;
+const legalResearchContextResourceTypes = [
+  "matter",
+  "document",
+  "draft",
+  "contact",
+  "task",
+  "calendar_event",
+  "intake_session",
+] as const satisfies LegalResearchContextResourceType[];
 
 function compactRecord(metadata: Record<string, unknown>): Record<string, unknown> {
   return Object.fromEntries(Object.entries(metadata).filter(([, value]) => value !== undefined));
@@ -508,6 +546,68 @@ export function summarizeLegalResearchProviderJobs(
   };
 }
 
+export function buildLegalResearchCitationPacketReadiness(
+  records: LegalResearchArtifactRecord[],
+): LegalResearchCitationPacketReadiness {
+  const sourceReferenceCountsByType = Object.fromEntries(
+    legalResearchSourceTypes.map((sourceType) => [sourceType, 0]),
+  ) as Record<LegalResearchSourceType, number>;
+  const contextLinkCountsByType = Object.fromEntries(
+    legalResearchContextResourceTypes.map((resourceType) => [resourceType, 0]),
+  ) as Record<LegalResearchContextResourceType, number>;
+  const readyForReviewArtifactIds: string[] = [];
+  const openCheckpointArtifactIds: string[] = [];
+
+  for (const record of records) {
+    for (const source of record.sourceReferences) {
+      sourceReferenceCountsByType[source.sourceType] += 1;
+    }
+    for (const link of record.contextLinks) {
+      contextLinkCountsByType[link.resourceType] += 1;
+    }
+    if (record.status === "ready_for_review") {
+      readyForReviewArtifactIds.push(record.id);
+    }
+    if (record.checkpoint && record.status !== "reviewed" && record.status !== "rejected") {
+      openCheckpointArtifactIds.push(record.id);
+    }
+  }
+
+  const sourceReferenceCount = records.reduce(
+    (total, record) => total + record.sourceReferences.length,
+    0,
+  );
+  const openCheckpointCount = openCheckpointArtifactIds.length;
+  const readyForReviewArtifactCount = readyForReviewArtifactIds.length;
+  const blockedReasons: LegalResearchCitationPacketReadinessBlockedReason[] = [];
+  if (sourceReferenceCount === 0) blockedReasons.push("no_source_references");
+  if (readyForReviewArtifactCount === 0) blockedReasons.push("no_ready_for_review_artifacts");
+  if (openCheckpointCount > 0) blockedReasons.push("open_checkpoints");
+
+  return {
+    sourceReferenceCount,
+    sourceReferenceCountsByType,
+    readyForReviewArtifactCount,
+    readyForReviewArtifactIds,
+    openCheckpointCount,
+    openCheckpointArtifactIds,
+    contextLinkCount: records.reduce((total, record) => total + record.contextLinks.length, 0),
+    contextLinkCountsByType,
+    staffReviewReady: blockedReasons.length === 0,
+    blockedReasons,
+    reservedProviderJobPosture: "reserved_no_provider_execution",
+    providerExecuted: false,
+    authorityScraped: false,
+    sourceTextStored: false,
+    promptStored: false,
+    providerEvidenceStored: false,
+    citationVerificationClaimed: false,
+    legalAdviceGenerated: false,
+    downstreamMutation: false,
+    reviewOnly: true,
+  };
+}
+
 export function serializeLegalResearchProviderJob(
   job: JobLifecycleRecord,
   metadata: Record<string, unknown>,
@@ -572,5 +672,6 @@ export function buildLegalResearchWorkspace(input: {
     },
     providerJobs,
     providerJobSummary: summarizeLegalResearchProviderJobs(providerJobs),
+    citationPacketReadiness: buildLegalResearchCitationPacketReadiness(input.artifacts),
   };
 }
