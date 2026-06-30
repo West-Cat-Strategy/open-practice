@@ -40,10 +40,12 @@ accounting/tax advice, or automatic trust-ledger posting from billing actions.
 
 Open Practice now carries an OP-authored fixture catalogue for relation vocabulary plus denial and
 list-visible expectations across matters, contact dossier/list queries, documents, jobs, AI
-operational proposal list queries, and portal links. The catalogue is test coverage for the current
-behavior, not a shipped ReBAC policy engine or canonical-only authorization rewrite. Runtime
-authorization is still enforced through route-level `requireAccess`/`canAccess` checks, repository
-list projections, matter-scope checks, public-token policies, account-bound portal grants, per-file
+operational proposal list queries, payment-import review decisions, trust-transfer review commands,
+staff report exports, audit exports, billing exports, jurisdictional trust exports, and portal
+links. The catalogue is test coverage for the current behavior, not a shipped ReBAC policy engine,
+canonical-only authorization rewrite, OpenFGA runtime, or route/policy change. Runtime authorization
+is still enforced through route-level `requireAccess`/`canAccess` checks, repository list
+projections, matter-scope checks, public-token policies, account-bound portal grants, per-file
 portal document access, and job lifecycle helpers described below.
 
 API route inventory rows intentionally use compact notation where several manifest entries share the

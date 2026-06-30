@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { InMemoryOpenPracticeRepository } from "@open-practice/database";
+import { authorizationFixtureCases } from "@open-practice/domain/authorization-fixtures";
 import { createApiServer } from "../server.js";
 
 const servers: Array<{ close: () => Promise<void> }> = [];
@@ -36,6 +37,36 @@ function fakeReportQueue(
 
 async function auditEvents(repository: InMemoryOpenPracticeRepository) {
   return (await repository.listAuditEvents("firm-west-legal")).events;
+}
+
+function authHeaders(userId: string) {
+  return {
+    "x-open-practice-user-id": userId,
+    "x-open-practice-firm-id": "firm-west-legal",
+  };
+}
+
+function authorizationFixtureCase(id: string) {
+  const match = authorizationFixtureCases.find((candidate) => candidate.id === id);
+  if (!match) throw new Error(`Missing authorization fixture case ${id}`);
+  return match;
+}
+
+async function createAuthorizationFixtureUser(input: {
+  repository: InMemoryOpenPracticeRepository;
+  id: string;
+  role: "auditor" | "billing_bookkeeper" | "client_external";
+  assignedMatterIds?: string[];
+}): Promise<void> {
+  await input.repository.createUser({
+    id: input.id,
+    firmId: "firm-west-legal",
+    displayName: `Synthetic ${input.role} authorization fixture`,
+    email: `${input.id}@example.test`,
+    role: input.role,
+    assignedMatterIds: input.assignedMatterIds ?? [],
+    mfaEnabled: true,
+  });
 }
 
 afterEach(async () => {
@@ -568,6 +599,91 @@ describe("staff reporting routes", () => {
     await expect(
       repository.listJobLifecycleRecords("firm-west-legal", { queueName: "reports" }),
     ).resolves.toHaveLength(2);
+  });
+
+  it("matches staff report export authorization fixtures", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const queuedReports: QueuedReportJob[] = [];
+    await createAuthorizationFixtureUser({
+      repository,
+      id: "user-report-auditor",
+      role: "auditor",
+    });
+    await createAuthorizationFixtureUser({
+      repository,
+      id: "user-report-bookkeeper",
+      role: "billing_bookkeeper",
+    });
+    await createAuthorizationFixtureUser({
+      repository,
+      id: "user-report-client-external",
+      role: "client_external",
+      assignedMatterIds: ["matter-001"],
+    });
+    const fixtureIds = authorizationFixtureCases
+      .filter((item) => item.family === "staff_report_export")
+      .map((item) => item.id);
+    expect(fixtureIds).toEqual([
+      "staff-report-export:auditor:workspace-visible",
+      "staff-report-export:bookkeeper:create",
+      "staff-report-export:assigned:create-denied",
+      "staff-report-export:portal-client:create-denied",
+    ]);
+    const auditorCase = authorizationFixtureCase("staff-report-export:auditor:workspace-visible");
+    const bookkeeperCase = authorizationFixtureCase("staff-report-export:bookkeeper:create");
+    const assignedCase = authorizationFixtureCase("staff-report-export:assigned:create-denied");
+    const portalCase = authorizationFixtureCase("staff-report-export:portal-client:create-denied");
+    const server = testServer({ repository, reportJobQueue: fakeReportQueue(queuedReports) });
+
+    const workspace = await server.inject({
+      method: "GET",
+      url: "/api/reports/workspace",
+      headers: authHeaders(auditorCase.subjectId),
+    });
+    expect(workspace.statusCode).toBe(200);
+    expect(workspace.json()).toMatchObject({
+      exportJobPosture: expect.objectContaining({ boundedMetadataOnly: true }),
+    });
+
+    const bookkeeperExport = await server.inject({
+      method: "POST",
+      url: "/api/reports/export-requests",
+      headers: authHeaders(bookkeeperCase.subjectId),
+      payload: {
+        reportDefinitionKey: "productivity",
+        exportProfileId: "summary_json",
+        groupingKey: "staff_member",
+        idempotencyKey: bookkeeperCase.resourceId,
+      },
+    });
+    expect(bookkeeperExport.statusCode).toBe(202);
+    expect(bookkeeperExport.json()).toMatchObject({
+      exportRequest: { status: "queued" },
+    });
+    expect(queuedReports).toHaveLength(1);
+
+    const beforeDenied = await repository.listJobLifecycleRecords("firm-west-legal", {
+      queueName: "reports",
+    });
+    for (const fixture of [assignedCase, portalCase]) {
+      const denied = await server.inject({
+        method: "POST",
+        url: "/api/reports/export-requests",
+        headers: authHeaders(fixture.subjectId),
+        payload: {
+          reportDefinitionKey: "productivity",
+          exportProfileId: "summary_json",
+          groupingKey: "staff_member",
+          idempotencyKey: fixture.resourceId,
+        },
+      });
+      expect(denied.statusCode).toBe(403);
+      expect(denied.json()).toMatchObject({ message: "Report access required" });
+    }
+    await expect(
+      repository.listJobLifecycleRecords("firm-west-legal", { queueName: "reports" }),
+    ).resolves.toHaveLength(beforeDenied.length);
+    expect(queuedReports).toHaveLength(1);
   });
 
   it("denies staff reports to users without firm reporting access", async () => {
