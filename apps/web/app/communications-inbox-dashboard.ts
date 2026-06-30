@@ -3,6 +3,7 @@ import type {
   CommunicationsInboxDashboardResponse,
   CommunicationsInboxMatterResponse,
   CommunicationsInboxOutboundDelivery,
+  InboundEmailMatterDraft,
 } from "./_features/communications/models";
 import { describeEmailDeliveryHandoff } from "./email-delivery-dashboard";
 import type { MatterSummary } from "./types";
@@ -34,6 +35,43 @@ export function describeCommunicationsHistoryState(item: CommunicationsChannelHi
     return { label: item.status.replaceAll("_", " "), tone: "risk" };
   }
   return { label: item.status.replaceAll("_", " ") };
+}
+
+const checklistStateOrder = ["complete", "needs_attention", "review"] as const;
+
+export interface InboundEmailMatterDraftReviewCueDisplaySummary {
+  duplicateCandidates: string;
+  existingMatterCandidates: string;
+  checklistStates: string;
+  boundary: string;
+}
+
+function pluralized(count: number, label: string): string {
+  return `${count} ${label}${count === 1 ? "" : "s"}`;
+}
+
+export function summarizeInboundEmailMatterDraftReviewCues(
+  draft?: InboundEmailMatterDraft,
+): InboundEmailMatterDraftReviewCueDisplaySummary | undefined {
+  const cues = draft?.reviewCues;
+  if (!cues) return undefined;
+  const checklistCounts = new Map<(typeof checklistStateOrder)[number], number>(
+    checklistStateOrder.map((state) => [state, 0]),
+  );
+  for (const cue of cues.checklist) {
+    checklistCounts.set(cue.state, (checklistCounts.get(cue.state) ?? 0) + 1);
+  }
+  return {
+    duplicateCandidates: pluralized(cues.duplicateCandidates.length, "duplicate candidate"),
+    existingMatterCandidates: pluralized(
+      cues.existingMatterCandidates.length,
+      "existing matter candidate",
+    ),
+    checklistStates: checklistStateOrder
+      .map((state) => `${checklistCounts.get(state) ?? 0} ${state.replaceAll("_", " ")}`)
+      .join(" · "),
+    boundary: "no auto-create · no permission widening",
+  };
 }
 
 export async function loadCommunicationsInboxDashboardData(input: {

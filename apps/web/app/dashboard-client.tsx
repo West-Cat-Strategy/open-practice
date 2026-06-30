@@ -313,6 +313,7 @@ import {
   formatSavedOperationalViewDefinition,
   minutes,
 } from "./_features/dashboard/formatters";
+import { summarizeInboundEmailMatterDraftReviewCues } from "./communications-inbox-dashboard";
 import {
   buildDashboardShellNavigationModel,
   dashboardActiveSectionLabel,
@@ -633,48 +634,25 @@ export function InboundEmailMatterDraftReviewCueSummary({
 }: {
   draft?: InboundEmailMatterDraft;
 }) {
-  const cues = draft?.reviewCues;
-  if (!cues) return null;
-  const duplicateNames = cues.duplicateCandidates
-    .slice(0, 2)
-    .map((candidate) => candidate.displayName)
-    .join(", ");
-  const existingMatterLabels = cues.existingMatterCandidates
-    .slice(0, 2)
-    .map((candidate) => `${candidate.number} ${candidate.title}`)
-    .join(", ");
-  const checklistLabels = cues.checklist
-    .slice(0, 3)
-    .map((cue) => `${cue.label}: ${cue.state.replaceAll("_", " ")}`)
-    .join(", ");
+  const reviewCues = summarizeInboundEmailMatterDraftReviewCues(draft);
+  if (!reviewCues) return null;
   return (
     <div className="detail-grid compact-detail-grid">
       <span>
         <strong>Duplicate review</strong>
-        <small>
-          {cues.duplicateCandidates.length} candidate
-          {cues.duplicateCandidates.length === 1 ? "" : "s"}
-          {duplicateNames ? ` · ${duplicateNames}` : ""}
-        </small>
+        <small>{reviewCues.duplicateCandidates}</small>
       </span>
       <span>
         <strong>Existing matters</strong>
-        <small>
-          {cues.existingMatterCandidates.length} visible candidate
-          {cues.existingMatterCandidates.length === 1 ? "" : "s"}
-          {existingMatterLabels ? ` · ${existingMatterLabels}` : ""}
-        </small>
+        <small>{reviewCues.existingMatterCandidates}</small>
       </span>
       <span>
         <strong>Checklist</strong>
-        <small>
-          {cues.checklist.length} cue{cues.checklist.length === 1 ? "" : "s"}
-          {checklistLabels ? ` · ${checklistLabels}` : ""}
-        </small>
+        <small>{reviewCues.checklistStates}</small>
       </span>
       <span>
         <strong>Boundary</strong>
-        <small>review only · permissions unchanged · body and metadata redacted</small>
+        <small>{reviewCues.boundary}</small>
       </span>
     </div>
   );
