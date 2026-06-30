@@ -31,6 +31,7 @@ import {
   paymentImportReviewHasConflict,
   paymentImportRefundChargebackReviewDecisionMatchesCue,
   paymentImportRefundChargebackReviewCue,
+  paymentImportRefundChargebackResolutionPacketPreview,
   resolveBillingRateRule,
   summarizeTrustTransferLedgerLink,
   timerDraftMinutesFromWindow,
@@ -532,6 +533,136 @@ describe("billing period locks and rate rules", () => {
         reason: "status_unclear",
       }),
     ).toBe(true);
+  });
+
+  it("builds read-only refund and chargeback resolution packet previews from enum decisions", () => {
+    const refundImportRecord = {
+      id: "payment-import-review-refund-domain",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      providerLabel: "synthetic_processor",
+      eventFamily: "payment",
+      eventStatus: "refund_observed",
+      externalEventId: "evt_synthetic_refund_domain",
+      externalPaymentId: "pay_synthetic_refund_domain",
+      amountCents: 2500,
+      currency: "CAD",
+      importedAt: "2026-06-30T12:00:00.000Z",
+      importedByUserId: "user-licensee",
+      candidateInvoiceId: "invoice-001",
+      reviewState: "needs_review",
+      normalizedEvidenceFingerprint: "synthetic-refund-domain-fingerprint",
+      boundaries: defaultPaymentImportReviewBoundary(),
+      updatedAt: "2026-06-30T12:00:00.000Z",
+    } satisfies PaymentImportReviewRecord;
+    const awaitingPreview = paymentImportRefundChargebackResolutionPacketPreview({
+      importRecord: refundImportRecord,
+      reviews: [],
+    });
+    expect(awaitingPreview).toEqual({
+      reviewOnly: true,
+      paymentImportReviewRecordId: "payment-import-review-refund-domain",
+      matterId: "matter-001",
+      candidateInvoiceId: "invoice-001",
+      category: "refund",
+      cueStatus: "needs_review",
+      resolutionPosture: "awaiting_decision",
+      reasonCategories: [],
+      noSideEffectFlags: {
+        rawProviderPayloadRetained: false,
+        invoiceBalanceMutation: "none",
+        ledgerReversal: "none",
+        providerCommand: "none",
+        refundArtifactStorage: false,
+        disputeArtifactStorage: false,
+        freeFormNotes: false,
+        clientNotification: "none",
+        trustPosting: "none",
+        fundsMovement: "none",
+      },
+    });
+
+    const refundReview = {
+      id: "refund-chargeback-review-domain",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      paymentImportReviewRecordId: refundImportRecord.id,
+      category: "refund",
+      decision: "exception_confirmed",
+      reason: "refund_observed",
+      reviewerEvidencePresent: true,
+      idempotencyKey: "synthetic-refund-review",
+      decisionFingerprint: "synthetic-refund-fingerprint",
+      boundaries: defaultPaymentImportRefundChargebackReviewBoundary(),
+      reviewedByUserId: "user-licensee",
+      reviewedAt: "2026-06-30T12:05:00.000Z",
+      createdAt: "2026-06-30T12:05:00.000Z",
+    } satisfies PaymentImportRefundChargebackReviewRecord;
+    expect(
+      paymentImportRefundChargebackResolutionPacketPreview({
+        importRecord: refundImportRecord,
+        reviews: [refundReview],
+      }),
+    ).toMatchObject({
+      latestReviewId: "refund-chargeback-review-domain",
+      resolutionPosture: "confirmed_exception",
+      reasonCategories: ["refund_observed"],
+      latestReviewerMetadata: {
+        decision: "exception_confirmed",
+        reason: "refund_observed",
+        reviewedByUserId: "user-licensee",
+        reviewedAt: "2026-06-30T12:05:00.000Z",
+        reviewerEvidencePresent: true,
+      },
+      noSideEffectFlags: {
+        providerCommand: "none",
+        freeFormNotes: false,
+        fundsMovement: "none",
+      },
+    });
+
+    const chargebackImportRecord = {
+      ...refundImportRecord,
+      id: "payment-import-review-chargeback-domain",
+      eventStatus: "chargeback_observed",
+      externalEventId: "evt_synthetic_chargeback_domain",
+      externalPaymentId: "pay_synthetic_chargeback_domain",
+    } satisfies PaymentImportReviewRecord;
+    const chargebackReview = {
+      ...refundReview,
+      id: "chargeback-review-domain",
+      paymentImportReviewRecordId: chargebackImportRecord.id,
+      category: "chargeback",
+      decision: "needs_more_evidence",
+      reason: "status_unclear",
+      idempotencyKey: "synthetic-chargeback-review",
+      decisionFingerprint: "synthetic-chargeback-fingerprint",
+      reviewedAt: "2026-06-30T12:10:00.000Z",
+      createdAt: "2026-06-30T12:10:00.000Z",
+    } satisfies PaymentImportRefundChargebackReviewRecord;
+    expect(
+      paymentImportRefundChargebackResolutionPacketPreview({
+        importRecord: chargebackImportRecord,
+        reviews: [refundReview, chargebackReview],
+      }),
+    ).toMatchObject({
+      paymentImportReviewRecordId: "payment-import-review-chargeback-domain",
+      category: "chargeback",
+      latestReviewId: "chargeback-review-domain",
+      resolutionPosture: "needs_more_evidence",
+      reasonCategories: ["status_unclear"],
+    });
+    expect(
+      paymentImportRefundChargebackResolutionPacketPreview({
+        importRecord: {
+          ...refundImportRecord,
+          id: "payment-import-review-deposit-domain",
+          eventFamily: "deposit",
+          eventStatus: "deposit_observed",
+        },
+        reviews: [refundReview],
+      }),
+    ).toBeUndefined();
   });
 
   it("classifies OP-T162 deposit-match decisions as read-only manual reconcile cues", () => {

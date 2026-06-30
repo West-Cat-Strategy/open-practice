@@ -6,6 +6,7 @@ import {
   hasHostedPaymentRequestEvidence,
   paymentImportDepositMatchReconciliationReadiness,
   paymentImportRefundChargebackReviewCue,
+  paymentImportRefundChargebackResolutionPacketPreview,
 } from "@open-practice/domain";
 import { requireAccess } from "../../http/auth-guards.js";
 import type { ApiRouteDependencies } from "../types.js";
@@ -214,6 +215,11 @@ export function registerBillingDashboardRoutes(
               reviewState: record.reviewState,
               boundaries: record.boundaries,
               refundChargebackReviewCue: paymentImportRefundChargebackReviewCue(record),
+              refundChargebackResolutionPacketPreview:
+                paymentImportRefundChargebackResolutionPacketPreview({
+                  importRecord: record,
+                  reviews: recordRefundChargebackReviews,
+                }),
               refundChargebackReviewDecisionCount: recordRefundChargebackReviews.length,
               latestRefundChargebackReview: latestRefundChargebackReview
                 ? {

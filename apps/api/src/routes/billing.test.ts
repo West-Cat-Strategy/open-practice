@@ -2639,6 +2639,14 @@ describe("billing routes", () => {
     expect(unsupportedRefundChargebackReview.json()).toMatchObject({
       code: "PAYMENT_IMPORT_REFUND_CHARGEBACK_REVIEW_UNSUPPORTED",
     });
+    const unsupportedRefundChargebackPreview = await server.inject({
+      method: "GET",
+      url: "/api/billing/payment-import-review-records/payment-import-review-payment-only/refund-chargeback-resolution-packet-preview",
+    });
+    expect(unsupportedRefundChargebackPreview.statusCode).toBe(409);
+    expect(unsupportedRefundChargebackPreview.json()).toMatchObject({
+      code: "PAYMENT_IMPORT_REFUND_CHARGEBACK_REVIEW_UNSUPPORTED",
+    });
 
     const refundCueRecord = await server.inject({
       method: "POST",
@@ -2673,6 +2681,39 @@ describe("billing routes", () => {
         }),
       },
     });
+    const auditCountBeforeRefundPacketPreview = (await auditEvents(repository)).length;
+    const refundPacketPreviewBeforeDecision = await server.inject({
+      method: "GET",
+      url: "/api/billing/payment-import-review-records/payment-import-review-refund-cue/refund-chargeback-resolution-packet-preview",
+    });
+    expect(refundPacketPreviewBeforeDecision.statusCode).toBe(200);
+    expect(refundPacketPreviewBeforeDecision.json()).toEqual({
+      packetPreview: {
+        reviewOnly: true,
+        paymentImportReviewRecordId: "payment-import-review-refund-cue",
+        matterId: "matter-001",
+        candidateInvoiceId: "invoice-001",
+        category: "refund",
+        cueStatus: "needs_review",
+        resolutionPosture: "awaiting_decision",
+        reasonCategories: [],
+        noSideEffectFlags: {
+          rawProviderPayloadRetained: false,
+          invoiceBalanceMutation: "none",
+          ledgerReversal: "none",
+          providerCommand: "none",
+          refundArtifactStorage: false,
+          disputeArtifactStorage: false,
+          freeFormNotes: false,
+          clientNotification: "none",
+          trustPosting: "none",
+          fundsMovement: "none",
+        },
+      },
+    });
+    await expect(auditEvents(repository)).resolves.toHaveLength(
+      auditCountBeforeRefundPacketPreview,
+    );
     const refundChargebackReview = await server.inject({
       method: "POST",
       url: "/api/billing/payment-import-review-records/payment-import-review-refund-cue/refund-chargeback-reviews",
@@ -2704,6 +2745,42 @@ describe("billing routes", () => {
           fundsMovement: "none",
           refundHandling: "review_decision_only",
           chargebackHandling: "review_decision_only",
+        },
+      },
+    });
+    const confirmedRefundPacketPreview = await server.inject({
+      method: "GET",
+      url: "/api/billing/payment-import-review-records/payment-import-review-refund-cue/refund-chargeback-resolution-packet-preview",
+    });
+    expect(confirmedRefundPacketPreview.statusCode).toBe(200);
+    expect(confirmedRefundPacketPreview.json()).toMatchObject({
+      packetPreview: {
+        reviewOnly: true,
+        paymentImportReviewRecordId: "payment-import-review-refund-cue",
+        matterId: "matter-001",
+        candidateInvoiceId: "invoice-001",
+        latestReviewId: "refund-chargeback-review-route-test",
+        category: "refund",
+        cueStatus: "needs_review",
+        resolutionPosture: "confirmed_exception",
+        reasonCategories: ["refund_observed"],
+        latestReviewerMetadata: {
+          decision: "exception_confirmed",
+          reason: "refund_observed",
+          reviewedByUserId: "user-admin",
+          reviewerEvidencePresent: true,
+        },
+        noSideEffectFlags: {
+          rawProviderPayloadRetained: false,
+          invoiceBalanceMutation: "none",
+          ledgerReversal: "none",
+          providerCommand: "none",
+          refundArtifactStorage: false,
+          disputeArtifactStorage: false,
+          freeFormNotes: false,
+          clientNotification: "none",
+          trustPosting: "none",
+          fundsMovement: "none",
         },
       },
     });
@@ -2832,6 +2909,33 @@ describe("billing routes", () => {
         }),
       },
     });
+    const chargebackPacketPreview = await server.inject({
+      method: "GET",
+      url: "/api/billing/payment-import-review-records/payment-import-review-chargeback-cue/refund-chargeback-resolution-packet-preview",
+    });
+    expect(chargebackPacketPreview.statusCode).toBe(200);
+    expect(chargebackPacketPreview.json()).toMatchObject({
+      packetPreview: {
+        paymentImportReviewRecordId: "payment-import-review-chargeback-cue",
+        matterId: "matter-001",
+        candidateInvoiceId: "invoice-001",
+        latestReviewId: "chargeback-review-route-test",
+        category: "chargeback",
+        resolutionPosture: "needs_more_evidence",
+        reasonCategories: ["status_unclear"],
+        latestReviewerMetadata: {
+          decision: "needs_more_evidence",
+          reason: "status_unclear",
+          reviewedByUserId: "user-admin",
+          reviewerEvidencePresent: true,
+        },
+        noSideEffectFlags: expect.objectContaining({
+          providerCommand: "none",
+          freeFormNotes: false,
+          fundsMovement: "none",
+        }),
+      },
+    });
 
     const depositWithoutCandidateRecord = await server.inject({
       method: "POST",
@@ -2873,6 +2977,14 @@ describe("billing routes", () => {
     });
     expect(depositRefundChargebackReview.statusCode).toBe(409);
     expect(depositRefundChargebackReview.json()).toMatchObject({
+      code: "PAYMENT_IMPORT_REFUND_CHARGEBACK_REVIEW_UNSUPPORTED",
+    });
+    const depositRefundChargebackPacketPreview = await server.inject({
+      method: "GET",
+      url: "/api/billing/payment-import-review-records/payment-import-review-route-test/refund-chargeback-resolution-packet-preview",
+    });
+    expect(depositRefundChargebackPacketPreview.statusCode).toBe(409);
+    expect(depositRefundChargebackPacketPreview.json()).toMatchObject({
       code: "PAYMENT_IMPORT_REFUND_CHARGEBACK_REVIEW_UNSUPPORTED",
     });
 
@@ -2966,6 +3078,15 @@ describe("billing routes", () => {
       },
     });
     expect(crossMatterRefundChargebackReview.statusCode).toBe(403);
+    const crossMatterRefundChargebackPacketPreview = await server.inject({
+      method: "GET",
+      url: "/api/billing/payment-import-review-records/payment-import-review-refund-cue/refund-chargeback-resolution-packet-preview",
+      headers: {
+        "x-open-practice-user-id": "user-other-licensee",
+        "x-open-practice-firm-id": "firm-west-legal",
+      },
+    });
+    expect(crossMatterRefundChargebackPacketPreview.statusCode).toBe(403);
 
     await repository.createPayment({
       payment: {
@@ -3099,6 +3220,11 @@ describe("billing routes", () => {
                 reason: string;
                 boundaries: { providerCommand: string; fundsMovement: string };
               };
+              refundChargebackResolutionPacketPreview?: {
+                resolutionPosture: string;
+                reasonCategories: string[];
+                noSideEffectFlags: { providerCommand: string; freeFormNotes: boolean };
+              };
               reconciliationReadiness?: {
                 eligible: boolean;
                 reason: string;
@@ -3184,6 +3310,20 @@ describe("billing routes", () => {
               fundsMovement: "none",
             }),
           }),
+          refundChargebackResolutionPacketPreview: expect.objectContaining({
+            resolutionPosture: "confirmed_exception",
+            reasonCategories: ["refund_observed"],
+            latestReviewerMetadata: expect.objectContaining({
+              decision: "exception_confirmed",
+              reason: "refund_observed",
+              reviewerEvidencePresent: true,
+            }),
+            noSideEffectFlags: expect.objectContaining({
+              providerCommand: "none",
+              freeFormNotes: false,
+              fundsMovement: "none",
+            }),
+          }),
           boundaries: expect.objectContaining({
             rawProviderPayloadRetained: false,
             trustPosting: "none",
@@ -3200,6 +3340,14 @@ describe("billing routes", () => {
             category: "chargeback",
             decision: "needs_more_evidence",
             reason: "status_unclear",
+          }),
+          refundChargebackResolutionPacketPreview: expect.objectContaining({
+            resolutionPosture: "needs_more_evidence",
+            reasonCategories: ["status_unclear"],
+            noSideEffectFlags: expect.objectContaining({
+              providerCommand: "none",
+              freeFormNotes: false,
+            }),
           }),
         }),
       ]),

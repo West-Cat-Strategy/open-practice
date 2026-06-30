@@ -26,6 +26,7 @@ import type {
   LedgerStatementImportBatchRecord,
   LedgerStatementMatchRuleProfileRecord,
   LedgerTransactionApprovalRecord,
+  PaymentImportRefundChargebackResolutionPacketPreview,
   PaymentImportReviewBoundary,
   PaymentPlanPlaceholder,
 } from "../../types";
@@ -242,6 +243,7 @@ export interface BillingPaymentImportReviewSummary {
   reviewState: "needs_review";
   boundaries: PaymentImportReviewBoundary;
   refundChargebackReviewCue?: BillingPaymentImportRefundChargebackReviewCue;
+  refundChargebackResolutionPacketPreview?: PaymentImportRefundChargebackResolutionPacketPreview;
   refundChargebackReviewDecisionCount?: number;
   latestRefundChargebackReview?: BillingPaymentImportRefundChargebackReviewSummary;
   depositMatchReviewCount?: number;

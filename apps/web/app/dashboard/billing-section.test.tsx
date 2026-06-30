@@ -494,6 +494,36 @@ function buildSyntheticBillingDashboard(): BillingDashboardResponse {
                 chargebackHandling: "review_decision_only",
               },
             },
+            refundChargebackResolutionPacketPreview: {
+              reviewOnly: true,
+              paymentImportReviewRecordId: "payment_import_refund_review_synthetic",
+              matterId: "matter_synthetic",
+              candidateInvoiceId: "invoice_synthetic",
+              latestReviewId: "refund_chargeback_review_synthetic",
+              category: "refund",
+              cueStatus: "needs_review",
+              resolutionPosture: "confirmed_exception",
+              reasonCategories: ["refund_observed"],
+              latestReviewerMetadata: {
+                decision: "exception_confirmed",
+                reason: "refund_observed",
+                reviewedByUserId: "user_synthetic",
+                reviewedAt: "2026-06-07T01:10:00.000Z",
+                reviewerEvidencePresent: true,
+              },
+              noSideEffectFlags: {
+                rawProviderPayloadRetained: false,
+                invoiceBalanceMutation: "none",
+                ledgerReversal: "none",
+                providerCommand: "none",
+                refundArtifactStorage: false,
+                disputeArtifactStorage: false,
+                freeFormNotes: false,
+                clientNotification: "none",
+                trustPosting: "none",
+                fundsMovement: "none",
+              },
+            },
           },
           {
             id: "payment_import_chargeback_review_synthetic",
@@ -552,6 +582,36 @@ function buildSyntheticBillingDashboard(): BillingDashboardResponse {
                 fundsMovement: "none",
                 refundHandling: "review_decision_only",
                 chargebackHandling: "review_decision_only",
+              },
+            },
+            refundChargebackResolutionPacketPreview: {
+              reviewOnly: true,
+              paymentImportReviewRecordId: "payment_import_chargeback_review_synthetic",
+              matterId: "matter_synthetic",
+              candidateInvoiceId: "invoice_synthetic",
+              latestReviewId: "chargeback_review_synthetic",
+              category: "chargeback",
+              cueStatus: "needs_review",
+              resolutionPosture: "needs_more_evidence",
+              reasonCategories: ["status_unclear"],
+              latestReviewerMetadata: {
+                decision: "needs_more_evidence",
+                reason: "status_unclear",
+                reviewedByUserId: "user_synthetic",
+                reviewedAt: "2026-06-07T01:20:00.000Z",
+                reviewerEvidencePresent: true,
+              },
+              noSideEffectFlags: {
+                rawProviderPayloadRetained: false,
+                invoiceBalanceMutation: "none",
+                ledgerReversal: "none",
+                providerCommand: "none",
+                refundArtifactStorage: false,
+                disputeArtifactStorage: false,
+                freeFormNotes: false,
+                clientNotification: "none",
+                trustPosting: "none",
+                fundsMovement: "none",
               },
             },
           },
@@ -700,6 +760,15 @@ describe("BillingSection", () => {
     expect(html).toContain("Latest exception decision:");
     expect(html).toContain("exception confirmed");
     expect(html).toContain("needs more evidence");
+    expect(html).toContain("Resolution packet preview:");
+    expect(html).toContain("confirmed exception");
+    expect(html).toContain("status unclear");
+    expect(html).toContain("reviewed by user_synthetic");
+    expect(html).toContain("No ledger reversal");
+    expect(html).toContain("No refund artifact storage");
+    expect(html).toContain("No dispute artifact storage");
+    expect(html).toContain("No free-form notes");
+    expect(html).toContain("No client notification");
     expect(html).toContain("No funds movement");
     expect(html).toContain("refund · needs review · No provider command");
     expect(html).toContain("chargeback · needs review · No provider command");

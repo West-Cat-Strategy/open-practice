@@ -56,6 +56,7 @@ import type {
   Matter,
   MatterLifecycleTransitionRecord,
   MatterParty,
+  PaymentImportRefundChargebackResolutionPacketPreview,
   PaymentImportReviewBoundary,
   MatterSetupProfile,
   PaymentPlanPlaceholder,
@@ -115,6 +116,7 @@ export type {
   LedgerStatementImportBatchRecord,
   LedgerStatementMatchRuleProfileRecord,
   LedgerTransactionApprovalRecord,
+  PaymentImportRefundChargebackResolutionPacketPreview,
   PaymentImportReviewBoundary,
   PaymentPlanPlaceholder,
 };
