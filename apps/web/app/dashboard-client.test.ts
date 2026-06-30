@@ -113,6 +113,7 @@ import {
   emptyDocumentProcessingWorkbench,
   loadDocumentProcessingDashboardData,
   replaceDocumentProcessingWorkbench,
+  summarizeDocumentDispositionRollup,
   summarizeDocumentMetadataSearch,
   summarizeDocumentReviewSuggestions,
   summarizeDocumentProcessingWorkbench,
@@ -368,6 +369,11 @@ import type {
   TaskDeadlineWorkbenchResponse,
   WorkerRunsDashboardResponse,
 } from "./types";
+import type {
+  DocumentDispositionCandidateState,
+  DocumentProcessingWorkbenchItem,
+  DocumentRetentionHoldReviewDecision,
+} from "./_features/document-processing/models";
 import type { ConnectorOperationsResponse } from "./_features/connectors/models";
 
 const capabilityResources: Record<DashboardSectionKey, DashboardSectionCapability["resource"]> = {
@@ -901,6 +907,56 @@ function documentProcessingWorkbench(
       },
     ],
     ...overrides,
+  };
+}
+
+function documentProcessingRowWithDisposition(
+  base: DocumentProcessingWorkbenchItem,
+  candidateState: DocumentDispositionCandidateState,
+  status: DocumentRetentionHoldReviewDecision,
+  id: string,
+): DocumentProcessingWorkbenchItem {
+  const sourceCueCounts = base.reviewSuggestions?.summaryCounts ?? {
+    classification: 0,
+    duplicate_or_supersession: 0,
+    matter_contact: 0,
+    missing_metadata: 0,
+    retention_review: 0,
+    total: 0,
+  };
+  return {
+    ...base,
+    document: {
+      ...base.document,
+      id,
+    },
+    retentionHoldReview: {
+      reviewerOnly: true,
+      mutating: false,
+      destructiveAction: false,
+      retentionDeadlineEnforced: false,
+      legalHoldOverride: false,
+      retainedExportBody: false,
+      status,
+      blockers: candidateState === "blocked_by_hold" ? ["legal_hold"] : [],
+      sourceCueCounts,
+      dispositionMetadata: {
+        candidateState,
+        readyForReviewerPacket: candidateState === "ready_for_reviewer_packet",
+        blockerCounts:
+          candidateState === "blocked_by_hold"
+            ? { total: 1, legalHold: 1, uploadIntegrity: 0, reviewState: 0 }
+            : { total: 0, legalHold: 0, uploadIntegrity: 0, reviewState: 0 },
+        sourceCueCounts,
+        destructiveAction: false,
+        objectDeletion: false,
+        retentionDeadlineEnforced: false,
+        legalHoldReleaseCommand: false,
+        retainedExportBody: false,
+        rawPayloadRetention: false,
+        complianceClaim: false,
+      },
+    },
   };
 }
 
@@ -4777,6 +4833,49 @@ describe("dashboard client behavior", () => {
     expect(summarizeDocumentReviewSuggestions(workbench.documents)).toBe(
       "2 reviewer suggestion cues. 0 duplicate or supersession. 0 missing metadata. 0 retention review.",
     );
+    expect(summarizeDocumentDispositionRollup(workbench.documents)).toEqual({
+      ready_for_reviewer_packet: 0,
+      blocked_by_hold: 0,
+      not_ready: 0,
+      reviewed_keep: 0,
+      reviewed_superseded: 0,
+    });
+    expect(
+      summarizeDocumentDispositionRollup([
+        documentProcessingRowWithDisposition(
+          item,
+          "ready_for_reviewer_packet",
+          "ready_for_reviewer_packet",
+          "doc-ready-packet",
+        ),
+        documentProcessingRowWithDisposition(
+          item,
+          "blocked_by_hold",
+          "blocked_by_hold",
+          "doc-blocked-hold",
+        ),
+        documentProcessingRowWithDisposition(item, "not_ready", "needs_review", "doc-not-ready"),
+        documentProcessingRowWithDisposition(
+          item,
+          "reviewed_keep",
+          "reviewed_keep",
+          "doc-reviewed-keep",
+        ),
+        documentProcessingRowWithDisposition(
+          item,
+          "reviewed_superseded",
+          "reviewed_superseded",
+          "doc-reviewed-superseded",
+        ),
+        item,
+      ]),
+    ).toEqual({
+      ready_for_reviewer_packet: 1,
+      blocked_by_hold: 1,
+      not_ready: 1,
+      reviewed_keep: 1,
+      reviewed_superseded: 1,
+    });
     expect(
       summarizeDocumentReviewSuggestions([
         {

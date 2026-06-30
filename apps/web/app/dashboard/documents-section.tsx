@@ -14,6 +14,7 @@ import {
   documentMetadataScanStatusOptions,
 } from "../_features/dashboard/formatters";
 import type {
+  DocumentDispositionCandidateState,
   DocumentDispositionMetadata,
   DocumentRetentionHoldReviewDecision,
   DocumentRetentionHoldReviewReason,
@@ -29,11 +30,13 @@ import {
   describeDocumentReviewSuggestion,
   describeLatestDocumentJob,
   describeLatestExtraction,
+  documentDispositionRollupOrder,
   documentProcessingGroupLabel,
   documentProcessingGroupOrder,
   documentReviewSuggestionGroupLabel,
   documentReviewSuggestionGroupOrder,
   emptyDocumentReviewSuggestions,
+  summarizeDocumentDispositionRollup,
 } from "../document-processing-dashboard";
 import { DocumentAssemblyDashboardBlock } from "./document-assembly-dashboard-block";
 import type { PortalDocumentAccessSummary } from "../types";
@@ -89,6 +92,14 @@ function portalDocumentAccessActive(access: PortalDocumentAccessSummary, nowMs: 
 
 function compactRetentionHoldStatus(value?: string): string {
   return value ? value.replaceAll("_", " ") : "needs review";
+}
+
+function documentDispositionRollupLabel(state: DocumentDispositionCandidateState): string {
+  if (state === "ready_for_reviewer_packet") return "Ready for packet";
+  if (state === "blocked_by_hold") return "Blocked by hold";
+  if (state === "not_ready") return "Not ready";
+  if (state === "reviewed_keep") return "Reviewed keep";
+  return "Reviewed superseded";
 }
 
 function describeDispositionMetadata(metadata?: DocumentDispositionMetadata): string {
@@ -202,6 +213,7 @@ export function DocumentsSection({
   const activePortalDocumentAccess = portalDocumentAccess.filter((access) =>
     portalDocumentAccessActive(access, nowMs),
   );
+  const dispositionRollup = summarizeDocumentDispositionRollup(activeDocumentProcessingRows);
   return (
     <>
       <div className="detail-grid">
@@ -245,6 +257,14 @@ export function DocumentsSection({
       <p className="inline-empty" role="status" aria-live="polite" aria-atomic="true">
         {documentProcessingStatus} {documentProcessingSummary} {documentReviewSuggestionsSummary}
       </p>
+      <div className="detail-grid" aria-label="Document disposition rollup">
+        {documentDispositionRollupOrder.map((state) => (
+          <div key={state}>
+            <span className="field-label">{documentDispositionRollupLabel(state)}</span>
+            <strong>{dispositionRollup[state]}</strong>
+          </div>
+        ))}
+      </div>
       <DocumentAssemblyDashboardBlock workbench={activeDocumentAssembly} />
       <div className="document-metadata-search-panel">
         <label className="search-field compact">
