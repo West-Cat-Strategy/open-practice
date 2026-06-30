@@ -1289,7 +1289,32 @@ describe("billing routes", () => {
     expect(dashboard.json()).toMatchObject({
       summary: expect.objectContaining({ lockedPeriodCount: 1 }),
       periodLocks: [expect.objectContaining({ id: "billing-lock-april" })],
+      billingPeriodLockImpact: expect.objectContaining({
+        definitionKey: "billing_period_lock_impact",
+        rows: expect.arrayContaining([
+          expect.objectContaining({
+            safeIds: expect.arrayContaining(["time-locked-existing"]),
+            metadata: expect.objectContaining({
+              lockId: "billing-lock-april",
+              sourceType: "time_entry",
+              matterNumber: "2026-0001",
+            }),
+          }),
+          expect.objectContaining({
+            safeIds: expect.arrayContaining(["expense-locked-existing"]),
+            metadata: expect.objectContaining({
+              sourceType: "expense_entry",
+            }),
+          }),
+        ]),
+      }),
     });
+    expect(JSON.stringify(dashboard.json().billingPeriodLockImpact)).not.toContain(
+      "Synthetic existing locked time.",
+    );
+    expect(JSON.stringify(dashboard.json().billingPeriodLockImpact)).not.toContain(
+      "Synthetic existing locked expense.",
+    );
   });
 
   it("creates timer and expense-profile drafts as review-only billing capture rows", async () => {

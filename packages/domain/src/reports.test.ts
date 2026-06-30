@@ -7,6 +7,7 @@ import {
 } from "./reports.js";
 import {
   sampleContacts,
+  sampleExpenseEntries,
   sampleInvoices,
   sampleLegalClinicMatterProfiles,
   sampleLedgerAccounts,
@@ -69,6 +70,7 @@ describe("staff reporting workspace", () => {
     expect(STAFF_SAVED_REPORT_DEFINITIONS.map((definition) => definition.key)).toEqual([
       "invoice_aging",
       "aged_receivables",
+      "billing_period_lock_impact",
       "reconciliation_freshness",
       "productivity",
       "operational_follow_up",
@@ -104,6 +106,21 @@ describe("staff reporting workspace", () => {
             expect.objectContaining({ key: "matter" }),
             expect.objectContaining({ key: "invoice" }),
             expect.objectContaining({ key: "aging_bucket" }),
+          ]),
+          exportProfileIds: ["summary_json", "review_csv"],
+        }),
+        expect.objectContaining({
+          key: "billing_period_lock_impact",
+          defaultGrouping: "lock",
+          filters: expect.arrayContaining([
+            expect.objectContaining({ key: "sourceTypes" }),
+            expect.objectContaining({ key: "recordStatuses" }),
+          ]),
+          groupings: expect.arrayContaining([
+            expect.objectContaining({ key: "lock" }),
+            expect.objectContaining({ key: "status" }),
+            expect.objectContaining({ key: "matter" }),
+            expect.objectContaining({ key: "source_type" }),
           ]),
           exportProfileIds: ["summary_json", "review_csv"],
         }),
@@ -181,11 +198,12 @@ describe("staff reporting workspace", () => {
       rawReportBodiesInJobMetadata: false,
     });
     expect(workspace.scheduleReadinessSummary).toMatchObject({
-      totalDefinitions: 5,
-      manualExportReadyDefinitions: 5,
+      totalDefinitions: 6,
+      manualExportReadyDefinitions: 6,
       manualOnlyDefinitionKeys: [
         "invoice_aging",
         "aged_receivables",
+        "billing_period_lock_impact",
         "reconciliation_freshness",
         "productivity",
         "operational_follow_up",
@@ -199,8 +217,8 @@ describe("staff reporting workspace", () => {
     expect(workspace.reportBuilderPosture).toMatchObject({
       status: "metadata_only",
       savedDefinitionsOnly: true,
-      filterCount: 30,
-      groupingCount: 32,
+      filterCount: 37,
+      groupingCount: 40,
       exportProfileCount: 2,
       customSql: false,
       biEmbeds: false,
@@ -547,6 +565,204 @@ describe("staff reporting workspace", () => {
       "91_plus",
       "current",
     ]);
+  });
+
+  it("builds read-only billing period lock impact rows with safe IDs and visible matter filtering", () => {
+    const billingPeriodLocks = [
+      {
+        id: "billing-lock-april",
+        firmId: "firm-west-legal",
+        periodStart: "2026-04-01T00:00:00.000Z",
+        periodEnd: "2026-05-01T00:00:00.000Z",
+        reason: "Synthetic closed April.",
+        lockedByUserId: "user-admin",
+        lockedAt: "2026-05-01T00:00:00.000Z",
+      },
+    ];
+    const hiddenTimeEntry = {
+      ...sampleTimeEntries[0]!,
+      id: "time-hidden-locked",
+      matterId: "matter-hidden",
+      narrative: "Synthetic hidden matter time narrative",
+    };
+    const hiddenExpenseEntry = {
+      ...sampleExpenseEntries[0]!,
+      id: "expense-hidden-locked",
+      matterId: "matter-hidden",
+      description: "Synthetic hidden matter expense description",
+    };
+    const invoiceSourceOnly = {
+      ...sampleInvoices[0]!,
+      id: "invoice-source-only",
+      invoiceNumber: "INV-SOURCE-ONLY",
+      status: "approved" as const,
+      createdAt: "2026-06-01T00:00:00.000Z",
+      approvedAt: "2026-06-02T00:00:00.000Z",
+      issuedAt: undefined,
+      dueAt: "2026-06-30T00:00:00.000Z",
+      memo: "Synthetic invoice source memo",
+      lines: [{ timeEntryId: "time-001" }],
+    };
+    const invoiceLifecycle = {
+      ...sampleInvoices[0]!,
+      id: "invoice-lifecycle-locked",
+      invoiceNumber: "INV-LIFECYCLE-LOCKED",
+      status: "issued" as const,
+      createdAt: "2026-04-06T17:00:00.000Z",
+      approvedAt: "2026-04-07T17:00:00.000Z",
+      issuedAt: "2026-04-08T17:00:00.000Z",
+      dueAt: "2026-05-06T17:00:00.000Z",
+      memo: "Synthetic invoice lifecycle memo",
+      lines: [],
+    };
+    const hiddenInvoice = {
+      ...sampleInvoices[0]!,
+      id: "invoice-hidden-locked",
+      matterId: "matter-hidden",
+      memo: "Synthetic hidden matter invoice memo",
+      lines: [{ timeEntryId: "time-hidden-locked" }],
+    };
+
+    const projection = buildStaffReportProjection({
+      firmId: "firm-west-legal",
+      generatedAt,
+      definitionKey: "billing_period_lock_impact",
+      matters: sampleMatters,
+      users: sampleUsers,
+      invoices: [invoiceSourceOnly, invoiceLifecycle, hiddenInvoice],
+      ledgerAccounts: sampleLedgerAccounts,
+      ledgerEntries: sampleLedgerEntries,
+      reconciliations,
+      legalClinicMatterProfiles: sampleLegalClinicMatterProfiles,
+      billingPeriodLocks,
+      timeEntries: [...sampleTimeEntries, hiddenTimeEntry],
+      expenseEntries: [...sampleExpenseEntries, hiddenExpenseEntry],
+      taskDeadlines: sampleTaskDeadlines,
+    });
+
+    expect(projection).toMatchObject({
+      definitionKey: "billing_period_lock_impact",
+      groupingKey: "lock",
+      summary: {
+        metrics: expect.objectContaining({
+          impactRowCount: 4,
+          impactedLockCount: 1,
+          impactedMatterCount: 1,
+          totalSafeIdCount: 4,
+          timeEntryImpactCount: 1,
+          expenseEntryImpactCount: 1,
+          invoiceImpactCount: 2,
+        }),
+      },
+    });
+    expect(projection.rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          safeIds: ["time-001"],
+          metadata: expect.objectContaining({
+            lockId: "billing-lock-april",
+            sourceType: "time_entry",
+            status: "approved",
+            matterNumber: "2026-0001",
+            safeIdCount: 1,
+            firstSafeId: "time-001",
+          }),
+        }),
+        expect.objectContaining({
+          safeIds: ["expense-001"],
+          metadata: expect.objectContaining({
+            sourceType: "expense_entry",
+            status: "approved",
+          }),
+        }),
+        expect.objectContaining({
+          safeIds: ["invoice-lifecycle-locked"],
+          metadata: expect.objectContaining({
+            sourceType: "invoice",
+            status: "issued",
+          }),
+        }),
+        expect.objectContaining({
+          safeIds: ["invoice-source-only"],
+          metadata: expect.objectContaining({
+            sourceType: "invoice",
+            status: "approved",
+          }),
+        }),
+      ]),
+    );
+
+    const byStatus = buildStaffReportProjection({
+      firmId: "firm-west-legal",
+      generatedAt,
+      definitionKey: "billing_period_lock_impact",
+      groupingKey: "status",
+      matters: sampleMatters,
+      users: sampleUsers,
+      invoices: [invoiceSourceOnly, invoiceLifecycle],
+      ledgerAccounts: sampleLedgerAccounts,
+      ledgerEntries: sampleLedgerEntries,
+      reconciliations,
+      legalClinicMatterProfiles: sampleLegalClinicMatterProfiles,
+      billingPeriodLocks,
+      timeEntries: sampleTimeEntries,
+      expenseEntries: sampleExpenseEntries,
+      taskDeadlines: sampleTaskDeadlines,
+    });
+    const bySource = buildStaffReportProjection({
+      firmId: "firm-west-legal",
+      generatedAt,
+      definitionKey: "billing_period_lock_impact",
+      groupingKey: "source_type",
+      matters: sampleMatters,
+      users: sampleUsers,
+      invoices: [invoiceSourceOnly, invoiceLifecycle],
+      ledgerAccounts: sampleLedgerAccounts,
+      ledgerEntries: sampleLedgerEntries,
+      reconciliations,
+      legalClinicMatterProfiles: sampleLegalClinicMatterProfiles,
+      billingPeriodLocks,
+      timeEntries: sampleTimeEntries,
+      expenseEntries: sampleExpenseEntries,
+      taskDeadlines: sampleTaskDeadlines,
+    });
+    const byMatter = buildStaffReportProjection({
+      firmId: "firm-west-legal",
+      generatedAt,
+      definitionKey: "billing_period_lock_impact",
+      groupingKey: "matter",
+      matters: sampleMatters,
+      users: sampleUsers,
+      invoices: [invoiceSourceOnly, invoiceLifecycle],
+      ledgerAccounts: sampleLedgerAccounts,
+      ledgerEntries: sampleLedgerEntries,
+      reconciliations,
+      legalClinicMatterProfiles: sampleLegalClinicMatterProfiles,
+      billingPeriodLocks,
+      timeEntries: sampleTimeEntries,
+      expenseEntries: sampleExpenseEntries,
+      taskDeadlines: sampleTaskDeadlines,
+    });
+
+    expect(new Set(byStatus.summary.groups.map((group) => group.key))).toEqual(
+      new Set(["approved", "issued"]),
+    );
+    expect(new Set(bySource.summary.groups.map((group) => group.key))).toEqual(
+      new Set(["time_entry", "expense_entry", "invoice"]),
+    );
+    expect(byMatter.summary.groups[0]).toMatchObject({
+      key: "matter-001",
+      label: "2026-0001 Morgan tenancy dispute",
+    });
+    const serialized = JSON.stringify(projection);
+    expect(serialized).not.toContain("Reviewed tenancy branch materials");
+    expect(serialized).not.toContain("Tribunal evidence package");
+    expect(serialized).not.toContain("Synthetic invoice source memo");
+    expect(serialized).not.toContain("Synthetic invoice lifecycle memo");
+    expect(serialized).not.toContain("matter-hidden");
+    expect(serialized).not.toContain("time-hidden-locked");
+    expect(serialized).not.toContain("expense-hidden-locked");
+    expect(serialized).not.toContain("invoice-hidden-locked");
   });
 
   it("groups and filters staff report projections by derived read-only dimensions", () => {

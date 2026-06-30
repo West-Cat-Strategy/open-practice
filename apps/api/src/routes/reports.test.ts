@@ -65,6 +65,15 @@ describe("staff reporting routes", () => {
         rowCount: 1,
       },
     });
+    await repository.createBillingPeriodLock({
+      id: "billing-lock-report-april",
+      firmId: "firm-west-legal",
+      periodStart: "2026-04-01T00:00:00.000Z",
+      periodEnd: "2026-05-01T00:00:00.000Z",
+      reason: "Synthetic April close.",
+      lockedByUserId: "user-admin",
+      lockedAt: "2026-05-01T00:00:00.000Z",
+    });
 
     const response = await testServer({ repository }).inject({
       method: "GET",
@@ -96,6 +105,16 @@ describe("staff reporting routes", () => {
             expect.objectContaining({ key: "matter" }),
             expect.objectContaining({ key: "invoice" }),
             expect.objectContaining({ key: "aging_bucket" }),
+          ]),
+        }),
+        expect.objectContaining({
+          key: "billing_period_lock_impact",
+          defaultGrouping: "lock",
+          groupings: expect.arrayContaining([
+            expect.objectContaining({ key: "lock" }),
+            expect.objectContaining({ key: "status" }),
+            expect.objectContaining({ key: "matter" }),
+            expect.objectContaining({ key: "source_type" }),
           ]),
         }),
       ]),
@@ -169,6 +188,26 @@ describe("staff reporting routes", () => {
             }),
           ]),
         }),
+        expect.objectContaining({
+          definitionKey: "billing_period_lock_impact",
+          groupingKey: "lock",
+          rows: expect.arrayContaining([
+            expect.objectContaining({
+              safeIds: expect.arrayContaining(["time-001"]),
+              metadata: expect.objectContaining({
+                lockId: "billing-lock-report-april",
+                sourceType: "time_entry",
+                matterNumber: "2026-0001",
+              }),
+            }),
+            expect.objectContaining({
+              safeIds: expect.arrayContaining(["expense-001"]),
+              metadata: expect.objectContaining({
+                sourceType: "expense_entry",
+              }),
+            }),
+          ]),
+        }),
       ]),
       history: [
         expect.objectContaining({
@@ -184,8 +223,8 @@ describe("staff reporting routes", () => {
         rawReportBodiesInJobMetadata: false,
       },
       scheduleReadinessSummary: expect.objectContaining({
-        totalDefinitions: 5,
-        manualExportReadyDefinitions: 5,
+        totalDefinitions: 6,
+        manualExportReadyDefinitions: 6,
         recentExportRequestCount: 1,
         scheduledDefinitionCount: 0,
         automaticExecution: false,
@@ -464,6 +503,99 @@ describe("staff reporting routes", () => {
       expect(JSON.stringify(payload)).not.toContain("Initial tenancy dispute invoice");
       expect(JSON.stringify(payload)).not.toContain("Reviewed tenancy branch materials");
     }
+  });
+
+  it("downloads billing period lock impact exports with safe IDs only", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createBillingPeriodLock({
+      id: "billing-lock-export-april",
+      firmId: "firm-west-legal",
+      periodStart: "2026-04-01T00:00:00.000Z",
+      periodEnd: "2026-05-01T00:00:00.000Z",
+      reason: "Synthetic April close.",
+      lockedByUserId: "user-admin",
+      lockedAt: "2026-05-01T00:00:00.000Z",
+    });
+    const server = testServer({ repository });
+
+    const created = await server.inject({
+      method: "POST",
+      url: "/api/reports/export-requests",
+      payload: {
+        reportDefinitionKey: "billing_period_lock_impact",
+        exportProfileId: "summary_json",
+        groupingKey: "source_type",
+        idempotencyKey: "staff-report-billing-lock-impact",
+      },
+    });
+
+    expect(created.statusCode).toBe(202);
+    const exportRequest = created.json<{ exportRequest: { jobId: string } }>().exportRequest;
+    const [job] = await repository.listJobLifecycleRecords("firm-west-legal", {
+      queueName: "reports",
+    });
+    expect(job).toMatchObject({
+      status: "completed",
+      metadata: expect.objectContaining({
+        reportDefinitionKey: "billing_period_lock_impact",
+        exportProfileId: "summary_json",
+        groupingKey: "source_type",
+        requestedByUserId: "user-admin",
+      }),
+    });
+    expect(JSON.stringify(job?.metadata)).not.toContain("Ada Morgan");
+    expect(JSON.stringify(job?.metadata)).not.toContain("Reviewed tenancy branch materials");
+    expect(JSON.stringify(job?.metadata)).not.toContain("Tribunal evidence package");
+
+    const downloaded = await server.inject({
+      method: "GET",
+      url: `/api/reports/export-requests/${exportRequest.jobId}/download`,
+    });
+
+    expect(downloaded.statusCode).toBe(200);
+    const payload = downloaded.json();
+    expect(payload).toMatchObject({
+      export: {
+        report: expect.objectContaining({
+          definitionKey: "billing_period_lock_impact",
+          groupingKey: "source_type",
+          summary: expect.objectContaining({
+            metrics: expect.objectContaining({
+              impactedLockCount: 1,
+              timeEntryImpactCount: 1,
+              expenseEntryImpactCount: 1,
+              invoiceImpactCount: 1,
+            }),
+          }),
+          rows: expect.arrayContaining([
+            expect.objectContaining({
+              safeIds: ["time-001"],
+              metadata: expect.objectContaining({
+                lockId: "billing-lock-export-april",
+                sourceType: "time_entry",
+                matterNumber: "2026-0001",
+              }),
+            }),
+            expect.objectContaining({
+              safeIds: ["expense-001"],
+              metadata: expect.objectContaining({
+                sourceType: "expense_entry",
+              }),
+            }),
+            expect.objectContaining({
+              safeIds: ["invoice-001"],
+              metadata: expect.objectContaining({
+                sourceType: "invoice",
+              }),
+            }),
+          ]),
+        }),
+      },
+    });
+    expect(JSON.stringify(payload)).not.toContain("ada@example.test");
+    expect(JSON.stringify(payload)).not.toContain("Reviewed tenancy branch materials");
+    expect(JSON.stringify(payload)).not.toContain("Tribunal evidence package");
+    expect(JSON.stringify(payload)).not.toContain("Initial tenancy dispute invoice");
   });
 
   it("replays matching report export idempotency keys without duplicate queue or audit work", async () => {

@@ -20,6 +20,24 @@ import type {
 } from "../_features/billing/models";
 import type { MatterSummary } from "../types";
 
+function compactBillingText(value: string): string {
+  return value.replaceAll("_", " ");
+}
+
+function billingImpactMetadataText(
+  metadata: Record<string, string | number | boolean | undefined>,
+  key: string,
+): string | undefined {
+  const value = metadata[key];
+  return typeof value === "string" && value.trim().length > 0 ? value : undefined;
+}
+
+function billingImpactSafeIdSummary(safeIds: string[] | undefined): string {
+  if (!safeIds || safeIds.length === 0) return "No safe IDs";
+  const sample = safeIds.slice(0, 4).join(", ");
+  return safeIds.length > 4 ? `${sample}, +${safeIds.length - 4}` : sample;
+}
+
 interface BillingSectionProps {
   activeBalanceDueCents: number;
   activeCaptureReviewCount: number;
@@ -277,6 +295,37 @@ export function BillingSection({
         ))}
         {billingDashboard.periodLocks.length === 0 && billingDashboard.rateRules.length === 0 ? (
           <p className="inline-empty">No billing locks or rate rules are active.</p>
+        ) : null}
+      </div>
+
+      <div className="section-title">
+        <h3>Lock impact projection</h3>
+        <span>
+          {billingDashboard.billingPeriodLockImpact.summary.metrics.totalSafeIdCount ?? 0} safe IDs
+        </span>
+      </div>
+      <div className="party-list">
+        {billingDashboard.billingPeriodLockImpact.rows.slice(0, 6).map((row) => {
+          const sourceType = billingImpactMetadataText(row.metadata, "sourceType");
+          const lockId = billingImpactMetadataText(row.metadata, "lockId");
+          return (
+            <div className="party-row" key={row.id}>
+              <span>
+                <strong>{row.groupLabel}</strong>
+                <small>
+                  {sourceType ? compactBillingText(sourceType) : "source"} ·{" "}
+                  {compactBillingText(row.status)}
+                  {row.matterNumber ? ` · ${row.matterNumber}` : ""}
+                  {lockId ? ` · ${lockId}` : ""}
+                </small>
+                <small>Safe IDs: {billingImpactSafeIdSummary(row.safeIds)}</small>
+              </span>
+              <em>{row.metricCount ?? 0} affected</em>
+            </div>
+          );
+        })}
+        {billingDashboard.billingPeriodLockImpact.rows.length === 0 ? (
+          <p className="inline-empty">No visible billing records overlap locked periods.</p>
         ) : null}
       </div>
 

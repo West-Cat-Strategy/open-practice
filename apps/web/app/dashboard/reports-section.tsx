@@ -73,6 +73,27 @@ function agedReceivablesDetail(row: StaffReportProjectionRow): string | undefine
   return details.length > 0 ? details.join(" · ") : undefined;
 }
 
+function safeIdSummary(safeIds: string[] | undefined): string | undefined {
+  if (!safeIds || safeIds.length === 0) return undefined;
+  const sample = safeIds.slice(0, 4).join(", ");
+  return safeIds.length > 4 ? `${sample}, +${safeIds.length - 4}` : sample;
+}
+
+function billingPeriodLockImpactDetail(row: StaffReportProjectionRow): string | undefined {
+  const sourceType = metadataText(row.metadata, "sourceType");
+  const lockId = metadataText(row.metadata, "lockId");
+  const lockStart = metadataText(row.metadata, "lockPeriodStart");
+  const lockEnd = metadataText(row.metadata, "lockPeriodEnd");
+  const safeIds = safeIdSummary(row.safeIds);
+  const details = [
+    sourceType ? compactReportText(sourceType) : undefined,
+    lockId,
+    lockStart && lockEnd ? `${lockStart.slice(0, 10)} to ${lockEnd.slice(0, 10)}` : undefined,
+    safeIds ? `safe IDs ${safeIds}` : undefined,
+  ].filter((detail): detail is string => Boolean(detail));
+  return details.length > 0 ? details.join(" · ") : undefined;
+}
+
 export function ReportsSection({
   compactDate,
   cents,
@@ -305,6 +326,10 @@ export function ReportsSection({
           report.rows.slice(0, 3).map((row) => {
             const receivablesDetail =
               report.definitionKey === "aged_receivables" ? agedReceivablesDetail(row) : undefined;
+            const lockImpactDetail =
+              report.definitionKey === "billing_period_lock_impact"
+                ? billingPeriodLockImpactDetail(row)
+                : undefined;
             return (
               <div className="party-row" key={`${report.definitionKey}:${row.id}`}>
                 <span>
@@ -322,6 +347,7 @@ export function ReportsSection({
                         : "current projection"}
                   </small>
                   {receivablesDetail ? <small>{receivablesDetail}</small> : null}
+                  {lockImpactDetail ? <small>{lockImpactDetail}</small> : null}
                   {row.dimensions ? (
                     <small>
                       {row.dimensions.jurisdiction} · {row.dimensions.practiceArea} ·{" "}

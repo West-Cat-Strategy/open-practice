@@ -3,6 +3,7 @@ import {
   billingDateFallsInsideLock,
   billingExpenseCategoryProfileFromRecord,
   billingTimerDraftPolicy,
+  buildBillingPeriodLockImpactProjection,
   hasHostedPaymentRequestEvidence,
   paymentImportDepositMatchReconciliationReadiness,
   paymentImportRefundChargebackReviewCue,
@@ -36,9 +37,9 @@ export function registerBillingDashboardRoutes(
       rateRules,
       expenseCategories,
     ] = await Promise.all([
-      repository.listTimeEntries(request.auth.firmId),
-      repository.listExpenseEntries(request.auth.firmId),
-      repository.listInvoices(request.auth.firmId),
+      repository.listTimeEntries(request.auth.firmId, { matterIds }),
+      repository.listExpenseEntries(request.auth.firmId, { matterIds }),
+      repository.listInvoices(request.auth.firmId, { matterIds }),
       repository.listPayments(request.auth.firmId),
       repository.listHostedPaymentRequests(request.auth.firmId),
       repository.listPaymentImportReviewRecords(request.auth.firmId),
@@ -260,6 +261,20 @@ export function registerBillingDashboardRoutes(
     const visiblePaymentImportReviewRecords = matterSummaries.flatMap(
       (matter) => matter.paymentImportReviewRecords,
     );
+    const billingPeriodLockImpact = buildBillingPeriodLockImpactProjection({
+      firmId: request.auth.firmId,
+      generatedAt: now,
+      groupingKey: "lock",
+      matters,
+      users: [],
+      invoices,
+      ledgerAccounts: [],
+      reconciliations: [],
+      billingPeriodLocks: periodLocks,
+      timeEntries,
+      expenseEntries,
+      taskDeadlines: [],
+    });
     return {
       canView: true,
       summary: {
@@ -322,6 +337,7 @@ export function registerBillingDashboardRoutes(
         ),
       },
       periodLocks,
+      billingPeriodLockImpact,
       rateRules,
       timerDraftPolicy: billingTimerDraftPolicy,
       expenseCategories,

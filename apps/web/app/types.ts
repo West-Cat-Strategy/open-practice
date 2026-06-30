@@ -117,6 +117,7 @@ export type {
   LedgerTransactionApprovalRecord,
   PaymentImportReviewBoundary,
   PaymentPlanPlaceholder,
+  StaffReportProjection,
 };
 
 export type EmailSettings = RedactedSmtpProviderSettings;

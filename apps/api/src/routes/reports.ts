@@ -26,6 +26,7 @@ import type { ApiRouteDependencies } from "./types.js";
 const reportDefinitionKeySchema = z.enum([
   "invoice_aging",
   "aged_receivables",
+  "billing_period_lock_impact",
   "reconciliation_freshness",
   "productivity",
   "operational_follow_up",
@@ -40,7 +41,10 @@ const groupingKeySchema = z.enum([
   "staff_member",
   "priority",
   "invoice",
+  "lock",
   "matter",
+  "source_type",
+  "status",
   "jurisdiction",
   "practiceArea",
   "clinicProgramId",
@@ -180,17 +184,28 @@ async function loadStaffReportProjectionInput(input: {
   auth: ApiAuthContext;
 }) {
   const overview = await input.repository.getOverview(input.auth.firmId);
-  const [matters, contacts, invoices, ledger, reconciliations, timeEntries, taskDeadlines] =
-    await Promise.all([
-      input.repository.listMattersForUser(input.auth.user),
-      input.repository.listContactsForUser(input.auth.user),
-      input.repository.listInvoices(input.auth.firmId),
-      input.repository.getLedger(input.auth.firmId),
-      input.repository.listLedgerReconciliations(input.auth.firmId),
-      input.repository.listTimeEntries(input.auth.firmId),
-      input.repository.listTaskDeadlines(input.auth.firmId, { includeCompleted: true }),
-    ]);
+  const matters = await input.repository.listMattersForUser(input.auth.user);
   const visibleMatterIds = new Set(matters.map((matter) => matter.id));
+  const visibleMatterIdList = [...visibleMatterIds];
+  const [
+    contacts,
+    invoices,
+    ledger,
+    reconciliations,
+    timeEntries,
+    expenseEntries,
+    billingPeriodLocks,
+    taskDeadlines,
+  ] = await Promise.all([
+    input.repository.listContactsForUser(input.auth.user),
+    input.repository.listInvoices(input.auth.firmId, { matterIds: visibleMatterIdList }),
+    input.repository.getLedger(input.auth.firmId),
+    input.repository.listLedgerReconciliations(input.auth.firmId),
+    input.repository.listTimeEntries(input.auth.firmId, { matterIds: visibleMatterIdList }),
+    input.repository.listExpenseEntries(input.auth.firmId, { matterIds: visibleMatterIdList }),
+    input.repository.listBillingPeriodLocks(input.auth.firmId),
+    input.repository.listTaskDeadlines(input.auth.firmId, { includeCompleted: true }),
+  ]);
   const canViewFirmWideLedgerReports =
     input.auth.user.role === "owner_admin" || input.auth.user.role === "auditor";
   const legalClinicMatterProfiles = (
@@ -206,12 +221,14 @@ async function loadStaffReportProjectionInput(input: {
     matters,
     contacts: contacts.map((contact) => ({ id: contact.id, displayName: contact.displayName })),
     users: overview.users,
-    invoices: invoices.filter((invoice) => visibleMatterIds.has(invoice.matterId)),
+    invoices,
     ledgerAccounts: canViewFirmWideLedgerReports ? ledger.accounts : [],
     ledgerEntries: canViewFirmWideLedgerReports ? ledger.entries : [],
     reconciliations: canViewFirmWideLedgerReports ? reconciliations : [],
     legalClinicMatterProfiles,
-    timeEntries: timeEntries.filter((entry) => visibleMatterIds.has(entry.matterId)),
+    billingPeriodLocks,
+    timeEntries,
+    expenseEntries,
     taskDeadlines: taskDeadlines.filter((task) => visibleMatterIds.has(task.matterId)),
   };
 }

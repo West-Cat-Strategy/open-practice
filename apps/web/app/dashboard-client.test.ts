@@ -3176,6 +3176,29 @@ describe("dashboard client behavior", () => {
       timerDraftPolicy: billingTimerDraftPolicy,
       expenseCategories: syntheticExpenseCategories,
       expenseCategoryProfiles: expenseCategoryProfileCues,
+      billingPeriodLockImpact: {
+        definitionKey: "billing_period_lock_impact",
+        groupingKey: "lock",
+        generatedAt: "2026-06-17T00:00:00.000Z",
+        filters: {
+          asOf: "2026-06-17T00:00:00.000Z",
+          sourceTypes: "time_entry,expense_entry,invoice",
+        },
+        rowCount: 0,
+        dimensionFilters: {},
+        rows: [],
+        summary: {
+          totalRows: 0,
+          groups: [],
+          metrics: {},
+        },
+        projectionPolicy: {
+          customSql: false,
+          biEmbed: false,
+          rawBodiesStoredInJobMetadata: false,
+          scheduledEmailDelivery: false,
+        },
+      },
       matters: [
         {
           matterId: "matter-001",
@@ -3414,6 +3437,29 @@ describe("dashboard client behavior", () => {
       timerDraftPolicy: billingTimerDraftPolicy,
       expenseCategories: syntheticExpenseCategories,
       expenseCategoryProfiles: expenseCategoryProfileCues,
+      billingPeriodLockImpact: {
+        definitionKey: "billing_period_lock_impact",
+        groupingKey: "lock",
+        generatedAt: "2026-06-17T00:00:00.000Z",
+        filters: {
+          asOf: "2026-06-17T00:00:00.000Z",
+          sourceTypes: "time_entry,expense_entry,invoice",
+        },
+        rowCount: 0,
+        dimensionFilters: {},
+        rows: [],
+        summary: {
+          totalRows: 0,
+          groups: [],
+          metrics: {},
+        },
+        projectionPolicy: {
+          customSql: false,
+          biEmbed: false,
+          rawBodiesStoredInJobMetadata: false,
+          scheduledEmailDelivery: false,
+        },
+      },
       matters: [
         {
           matterId: "matter-001",
