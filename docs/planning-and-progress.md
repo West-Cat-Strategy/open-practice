@@ -10,7 +10,7 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 | Snapshot              | Value                                                                |
 | --------------------- | -------------------------------------------------------------------- |
-| Current focus         | 2026-06-30 all-worktree mainline integration in progress.            |
+| Current focus         | 2026-06-30 all-worktree mainline integration blocked before push.    |
 | Next recommended pick | Pick the next small row from the candidate backlog.                  |
 | Ready rows            | 0                                                                    |
 | Candidate rows        | 0                                                                    |
@@ -21,6 +21,14 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 | Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`     |
 
 ## Current Handoff Notes
+
+The 2026-06-30 `integrate/open-practice-all-worktrees-20260630` branch commits and integrates the
+selected dirty sibling worktree lanes, including the `0078` contact duplicate resolution migration
+and `0079` email-template reviewed outbound preview migration. Final publication is blocked before
+push because required validation stops on unrelated central OSS reference-lock drift and the local
+Docker residual-watch readiness candidate. No merge to `main`, push, prune, branch deletion, or
+stash rewrite was performed. Evidence is recorded in
+[2026-06-30 all-worktree mainline proof](validation/OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-30.md).
 
 The 2026-06-29 `feat/financial-command-fresh-auth-20260629` branch reuses the
 existing fresh-session step-up guard for high-risk financial command mutations: manual payment
