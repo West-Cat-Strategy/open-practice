@@ -2,6 +2,7 @@ import type {
   EmailTemplateDraftRecord,
   EmailTemplatePublishedVersionRecord,
   EmailTemplatePreviewSnapshotRecord,
+  EmailTemplateReviewedOutboundPreviewRecord,
 } from "@open-practice/domain";
 import { clone } from "../contracts.js";
 import type { EmailTemplateDraftRepository } from "../email-template-drafts-contracts.js";
@@ -10,6 +11,7 @@ export interface MemoryEmailTemplateDraftStore {
   emailTemplateDrafts: EmailTemplateDraftRecord[];
   emailTemplatePreviewSnapshots: EmailTemplatePreviewSnapshotRecord[];
   emailTemplatePublishedVersions: EmailTemplatePublishedVersionRecord[];
+  emailTemplateReviewedOutboundPreviews: EmailTemplateReviewedOutboundPreviewRecord[];
 }
 
 export function listMemoryEmailTemplateDrafts(
@@ -162,6 +164,50 @@ export function getLatestMemoryEmailTemplatePublishedVersion(
   return listMemoryEmailTemplatePublishedVersions(store, firmId, templateDraftId, { limit: 1 })[0];
 }
 
+export function getMemoryEmailTemplatePublishedVersion(
+  store: MemoryEmailTemplateDraftStore,
+  firmId: string,
+  templateDraftId: string,
+  publishedVersionId: string,
+): EmailTemplatePublishedVersionRecord | undefined {
+  return clone(
+    store.emailTemplatePublishedVersions.find(
+      (version) =>
+        version.firmId === firmId &&
+        version.templateDraftId === templateDraftId &&
+        version.id === publishedVersionId,
+    ),
+  );
+}
+
+export function createMemoryEmailTemplateReviewedOutboundPreview(
+  store: MemoryEmailTemplateDraftStore,
+  record: EmailTemplateReviewedOutboundPreviewRecord,
+): EmailTemplateReviewedOutboundPreviewRecord {
+  store.emailTemplateReviewedOutboundPreviews.push(clone(record));
+  return clone(record);
+}
+
+export function listMemoryEmailTemplateReviewedOutboundPreviews(
+  store: MemoryEmailTemplateDraftStore,
+  firmId: string,
+  templateDraftId: string,
+  options: { matterId?: string; limit?: number } = {},
+): EmailTemplateReviewedOutboundPreviewRecord[] {
+  const limit = options.limit ?? 25;
+  return clone(
+    store.emailTemplateReviewedOutboundPreviews
+      .filter((preview) => {
+        if (preview.firmId !== firmId) return false;
+        if (preview.templateDraftId !== templateDraftId) return false;
+        if (options.matterId && preview.matterId !== options.matterId) return false;
+        return true;
+      })
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+      .slice(0, limit),
+  );
+}
+
 export function createMemoryEmailTemplateDraftRepository(
   store: MemoryEmailTemplateDraftStore,
 ): EmailTemplateDraftRepository {
@@ -188,5 +234,15 @@ export function createMemoryEmailTemplateDraftRepository(
       ),
     getLatestEmailTemplatePublishedVersion: (firmId, templateDraftId) =>
       Promise.resolve(getLatestMemoryEmailTemplatePublishedVersion(store, firmId, templateDraftId)),
+    getEmailTemplatePublishedVersion: (firmId, templateDraftId, publishedVersionId) =>
+      Promise.resolve(
+        getMemoryEmailTemplatePublishedVersion(store, firmId, templateDraftId, publishedVersionId),
+      ),
+    createEmailTemplateReviewedOutboundPreview: (record) =>
+      Promise.resolve(createMemoryEmailTemplateReviewedOutboundPreview(store, record)),
+    listEmailTemplateReviewedOutboundPreviews: (firmId, templateDraftId, options) =>
+      Promise.resolve(
+        listMemoryEmailTemplateReviewedOutboundPreviews(store, firmId, templateDraftId, options),
+      ),
   };
 }

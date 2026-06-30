@@ -304,6 +304,7 @@ import type {
   EmailTemplateDraftMutationResponse,
   EmailTemplatePublishResponse,
   EmailTemplatePreviewSnapshotMutationResponse,
+  EmailTemplateReviewedOutboundPreviewMutationResponse,
 } from "./_features/email-templates/models";
 import {
   cents,
@@ -501,6 +502,29 @@ function parseEmailTemplateRecipientHints(value: string): string[] {
     .split(",")
     .map((hint) => hint.trim())
     .filter(Boolean);
+}
+
+interface EmailTemplateReviewedPreviewRecipientOption {
+  key: string;
+  contactId: string;
+  contactMethodId: string;
+  label: string;
+}
+
+function buildEmailTemplateReviewedPreviewRecipientOptions(
+  matter?: MatterSummary,
+): EmailTemplateReviewedPreviewRecipientOption[] {
+  if (!matter) return [];
+  return matter.parties.flatMap((party) =>
+    (party.contact.contactMethods ?? [])
+      .filter((method) => method.type === "email" && method.value && !method.doNotContact)
+      .map((method) => ({
+        key: `${party.contactId}:${method.id}`,
+        contactId: party.contactId,
+        contactMethodId: method.id,
+        label: `${party.contact.displayName} · ${method.label}`,
+      })),
+  );
 }
 
 function csvCell(value: string | number | boolean | undefined): string {
@@ -1057,9 +1081,17 @@ export default function DashboardClient({
     useState(emailTemplates.previewSnapshotsByMatterId);
   const [emailTemplatePublishedVersionsByDraftId, setEmailTemplatePublishedVersionsByDraftId] =
     useState(emailTemplates.publishedVersionsByTemplateDraftId);
+  const [
+    emailTemplateReviewedOutboundPreviewsByMatterId,
+    setEmailTemplateReviewedOutboundPreviewsByMatterId,
+  ] = useState(emailTemplates.reviewedOutboundPreviewsByMatterId);
   const [selectedEmailTemplateDraftId, setSelectedEmailTemplateDraftId] = useState(
     emailTemplates.templateDrafts[0]?.id ?? "",
   );
+  const [
+    selectedEmailTemplateReviewedPreviewRecipientKey,
+    setSelectedEmailTemplateReviewedPreviewRecipientKey,
+  ] = useState("");
   const [emailTemplateDraftForm, setEmailTemplateDraftForm] = useState(() =>
     emailTemplateDraftFormFromRecord(emailTemplates.templateDrafts[0]),
   );
@@ -1069,6 +1101,10 @@ export default function DashboardClient({
   const [savingEmailTemplateDraft, setSavingEmailTemplateDraft] = useState(false);
   const [savingEmailTemplatePreviewSnapshot, setSavingEmailTemplatePreviewSnapshot] =
     useState(false);
+  const [
+    creatingEmailTemplateReviewedOutboundPreview,
+    setCreatingEmailTemplateReviewedOutboundPreview,
+  ] = useState(false);
   const [publishingEmailTemplateDraft, setPublishingEmailTemplateDraft] = useState(false);
   const [operationalViews, setOperationalViews] = useState(initialOperationalViews);
   const [reportingWorkspace, setReportingWorkspace] = useState(initialReportingWorkspace);
@@ -1833,8 +1869,32 @@ export default function DashboardClient({
   const activeEmailTemplatePreviewSnapshots = activeMatter
     ? (emailTemplatePreviewSnapshotsByMatterId[activeMatter.id] ?? [])
     : [];
+  const activeEmailTemplateReviewedOutboundPreviews = activeMatter
+    ? (emailTemplateReviewedOutboundPreviewsByMatterId[activeMatter.id] ?? [])
+    : [];
   const activeEmailTemplatePublishedVersions =
     emailTemplatePublishedVersionsByDraftId[selectedEmailTemplateDraftId] ?? [];
+  const activeEmailTemplateReviewedPreviewRecipientOptions = useMemo(
+    () => buildEmailTemplateReviewedPreviewRecipientOptions(activeMatter),
+    [activeMatter],
+  );
+
+  useEffect(() => {
+    if (
+      activeEmailTemplateReviewedPreviewRecipientOptions.some(
+        (option) => option.key === selectedEmailTemplateReviewedPreviewRecipientKey,
+      )
+    ) {
+      return;
+    }
+    setSelectedEmailTemplateReviewedPreviewRecipientKey(
+      activeEmailTemplateReviewedPreviewRecipientOptions[0]?.key ?? "",
+    );
+  }, [
+    activeEmailTemplateReviewedPreviewRecipientOptions,
+    selectedEmailTemplateReviewedPreviewRecipientKey,
+  ]);
+
   function selectEmailTemplateDraft(templateDraftId: string): void {
     const draft = emailTemplateDrafts.find((candidate) => candidate.id === templateDraftId);
     setSelectedEmailTemplateDraftId(templateDraftId);
@@ -1977,6 +2037,55 @@ export default function DashboardClient({
       setEmailTemplateDraftStatus(`Preview snapshot failed (${dashboardApiStatus(error)}).`);
     } finally {
       setSavingEmailTemplatePreviewSnapshot(false);
+    }
+  }
+
+  async function createEmailTemplateReviewedOutboundPreview(input: {
+    publishedVersionId: string;
+    contactId: string;
+    contactMethodId: string;
+  }): Promise<void> {
+    if (!activeMatter || !selectedEmailTemplateDraftId || !input.publishedVersionId) {
+      setEmailTemplateDraftStatus(
+        "Select a matter, saved email template draft, and published version first.",
+      );
+      return;
+    }
+
+    setCreatingEmailTemplateReviewedOutboundPreview(true);
+    setEmailTemplateDraftStatus("Creating reviewed preview.");
+    try {
+      const response =
+        await requestDashboardJson<EmailTemplateReviewedOutboundPreviewMutationResponse>(
+          apiBaseUrl,
+          `/api/email/template-drafts/${encodeURIComponent(
+            selectedEmailTemplateDraftId,
+          )}/versions/${encodeURIComponent(input.publishedVersionId)}/reviewed-outbound-previews`,
+          {
+            method: "POST",
+            headers: devHeaders,
+            payload: {
+              matterId: activeMatter.id,
+              contactId: input.contactId,
+              contactMethodId: input.contactMethodId,
+            },
+          },
+        );
+      setEmailTemplateReviewedOutboundPreviewsByMatterId((current) => {
+        const existing = current[activeMatter.id] ?? [];
+        return {
+          ...current,
+          [activeMatter.id]: [
+            response.reviewedOutboundPreview,
+            ...existing.filter((preview) => preview.id !== response.reviewedOutboundPreview.id),
+          ].slice(0, 5),
+        };
+      });
+      setEmailTemplateDraftStatus("Reviewed preview created.");
+    } catch (error) {
+      setEmailTemplateDraftStatus(`Reviewed preview failed (${dashboardApiStatus(error)}).`);
+    } finally {
+      setCreatingEmailTemplateReviewedOutboundPreview(false);
     }
   }
 
@@ -7342,18 +7451,30 @@ export default function DashboardClient({
                   emailTemplateDraftsPanel={
                     <EmailTemplateDraftsPanel
                       activeMatterId={activeMatter?.id}
+                      creatingReviewedPreview={creatingEmailTemplateReviewedOutboundPreview}
                       form={emailTemplateDraftForm}
+                      onCreateReviewedOutboundPreview={createEmailTemplateReviewedOutboundPreview}
                       onCreatePreviewSnapshot={createEmailTemplatePreviewSnapshot}
                       onFieldChange={updateEmailTemplateDraftForm}
                       onNewDraft={startNewEmailTemplateDraft}
                       onPublishDraft={publishEmailTemplateDraft}
+                      onReviewedPreviewRecipientChange={
+                        setSelectedEmailTemplateReviewedPreviewRecipientKey
+                      }
                       onSaveDraft={saveEmailTemplateDraft}
                       onSelectDraft={selectEmailTemplateDraft}
                       publishedVersions={activeEmailTemplatePublishedVersions}
                       previewSnapshots={activeEmailTemplatePreviewSnapshots}
                       previewing={savingEmailTemplatePreviewSnapshot}
                       publishing={publishingEmailTemplateDraft}
+                      reviewedOutboundPreviews={activeEmailTemplateReviewedOutboundPreviews}
+                      reviewedPreviewRecipientOptions={
+                        activeEmailTemplateReviewedPreviewRecipientOptions
+                      }
                       saving={savingEmailTemplateDraft}
+                      selectedReviewedPreviewRecipientKey={
+                        selectedEmailTemplateReviewedPreviewRecipientKey
+                      }
                       selectedTemplateDraftId={selectedEmailTemplateDraftId}
                       status={emailTemplateDraftStatus}
                       templateDrafts={emailTemplateDrafts}
@@ -7394,18 +7515,30 @@ export default function DashboardClient({
                   emailTemplateDraftsPanel={
                     <EmailTemplateDraftsPanel
                       activeMatterId={activeMatter?.id}
+                      creatingReviewedPreview={creatingEmailTemplateReviewedOutboundPreview}
                       form={emailTemplateDraftForm}
+                      onCreateReviewedOutboundPreview={createEmailTemplateReviewedOutboundPreview}
                       onCreatePreviewSnapshot={createEmailTemplatePreviewSnapshot}
                       onFieldChange={updateEmailTemplateDraftForm}
                       onNewDraft={startNewEmailTemplateDraft}
                       onPublishDraft={publishEmailTemplateDraft}
+                      onReviewedPreviewRecipientChange={
+                        setSelectedEmailTemplateReviewedPreviewRecipientKey
+                      }
                       onSaveDraft={saveEmailTemplateDraft}
                       onSelectDraft={selectEmailTemplateDraft}
                       publishedVersions={activeEmailTemplatePublishedVersions}
                       previewSnapshots={activeEmailTemplatePreviewSnapshots}
                       previewing={savingEmailTemplatePreviewSnapshot}
                       publishing={publishingEmailTemplateDraft}
+                      reviewedOutboundPreviews={activeEmailTemplateReviewedOutboundPreviews}
+                      reviewedPreviewRecipientOptions={
+                        activeEmailTemplateReviewedPreviewRecipientOptions
+                      }
                       saving={savingEmailTemplateDraft}
+                      selectedReviewedPreviewRecipientKey={
+                        selectedEmailTemplateReviewedPreviewRecipientKey
+                      }
                       selectedTemplateDraftId={selectedEmailTemplateDraftId}
                       status={emailTemplateDraftStatus}
                       templateDrafts={emailTemplateDrafts}

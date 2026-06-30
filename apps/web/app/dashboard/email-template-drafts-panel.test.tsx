@@ -64,6 +64,30 @@ describe("EmailTemplateDraftsPanel", () => {
             createdAt: "2026-06-16T10:05:00.000Z",
           },
         ],
+        reviewedOutboundPreviews: [
+          {
+            id: "reviewed-preview-001",
+            firmId: "firm-west-legal",
+            templateDraftId: "template-draft-001",
+            publishedVersionId: "published-version-002",
+            publishedVersion: 2,
+            matterId: "matter-001",
+            contactId: "contact-ada",
+            contactMethodId: "contact-method-ada-email",
+            createdByUserId: "user-admin",
+            templateKey: "matter.update",
+            subjectPreview: "Reviewed synthetic subject",
+            body: {
+              textPreview: "Synthetic reviewed preview",
+              contentTypes: { text: true, html: false },
+            },
+            recipientSummary: { toCount: 1, ccCount: 0, bccCount: 0, recipientCount: 1 },
+            reviewStatus: "reviewed_preview",
+            warnings: [],
+            delivery: { persisted: true, queued: false },
+            createdAt: "2026-06-16T10:09:00.000Z",
+          },
+        ],
         publishedVersions: [
           {
             id: "published-version-001",
@@ -102,16 +126,28 @@ describe("EmailTemplateDraftsPanel", () => {
             publishedAt: "2026-06-16T10:08:00.000Z",
           },
         ],
+        reviewedPreviewRecipientOptions: [
+          {
+            key: "contact-ada:contact-method-ada-email",
+            contactId: "contact-ada",
+            contactMethodId: "contact-method-ada-email",
+            label: "Ada Morgan · work",
+          },
+        ],
+        selectedReviewedPreviewRecipientKey: "contact-ada:contact-method-ada-email",
         status: "Saved",
         saving: false,
         previewing: false,
         publishing: false,
+        creatingReviewedPreview: false,
         onSelectDraft: noop,
         onNewDraft: noop,
         onFieldChange: noop,
         onSaveDraft: noop,
         onCreatePreviewSnapshot: noop,
         onPublishDraft: noop,
+        onReviewedPreviewRecipientChange: noop,
+        onCreateReviewedOutboundPreview: noop,
       }),
     );
 
@@ -139,12 +175,87 @@ describe("EmailTemplateDraftsPanel", () => {
     expect(html).toContain("Same");
     expect(html).toContain("Changed");
     expect(html).toContain("Preview snapshots");
+    expect(html).toContain("Reviewed previews");
+    expect(html).toContain("Matter contact");
+    expect(html).toContain("Ada Morgan · work");
+    expect(html).toContain("Create reviewed preview");
+    expect(html).toContain("Reviewed synthetic subject");
+    expect(html).toContain("matter.update · published v2 · 1 recipient");
+    expect(html).toContain("reviewed");
     expect(html).not.toContain("Confirm and send");
     expect(html).not.toContain("campaign");
     expect(html).not.toContain("Bulk send");
     expect(html).not.toContain("Provider delivery");
     expect(html).not.toContain("Queue job");
     expect(html).not.toContain("Send job");
+    expect(html).not.toContain("Subscription");
+  });
+
+  it("keeps reviewed preview creation disabled without a published version or eligible recipient", () => {
+    const html = renderToStaticMarkup(
+      createElement(EmailTemplateDraftsPanel, {
+        activeMatterId: "matter-001",
+        templateDrafts: [
+          {
+            id: "template-draft-001",
+            firmId: "firm-west-legal",
+            name: "Matter update",
+            category: "matter_update",
+            templateKey: "matter.update",
+            from: "Open Practice <no-reply@open-practice.local>",
+            subject: "Updated synthetic subject",
+            textBody: "Editor text body value may render",
+            htmlBody: "",
+            recipientHints: ["primary_client"],
+            status: "draft",
+            version: 1,
+            createdByUserId: "user-admin",
+            updatedByUserId: "user-admin",
+            createdAt: "2026-06-16T10:00:00.000Z",
+            updatedAt: "2026-06-16T10:00:00.000Z",
+          },
+        ],
+        selectedTemplateDraftId: "template-draft-001",
+        form: {
+          id: "template-draft-001",
+          name: "Matter update",
+          category: "matter_update",
+          templateKey: "matter.update",
+          from: "Open Practice <no-reply@open-practice.local>",
+          subject: "Updated synthetic subject",
+          textBody: "Editor text body value may render",
+          htmlBody: "",
+          recipientHints: "primary_client",
+        },
+        previewSnapshots: [],
+        reviewedOutboundPreviews: [],
+        publishedVersions: [],
+        reviewedPreviewRecipientOptions: [],
+        selectedReviewedPreviewRecipientKey: "",
+        status: undefined,
+        saving: false,
+        previewing: false,
+        publishing: false,
+        creatingReviewedPreview: false,
+        onSelectDraft: noop,
+        onNewDraft: noop,
+        onFieldChange: noop,
+        onSaveDraft: noop,
+        onCreatePreviewSnapshot: noop,
+        onPublishDraft: noop,
+        onReviewedPreviewRecipientChange: noop,
+        onCreateReviewedOutboundPreview: noop,
+      }),
+    );
+
+    expect(html).toContain("No published template versions.");
+    expect(html).toContain("No reviewed previews for this matter.");
+    expect(html).toContain('<select disabled=""');
+    expect(html).toContain('<button class="secondary-button compact-button" disabled=""');
+    expect(html).not.toContain("Confirm and send");
+    expect(html).not.toContain("Bulk send");
+    expect(html).not.toContain("Provider delivery");
+    expect(html).not.toContain("Queue job");
     expect(html).not.toContain("Subscription");
   });
 });

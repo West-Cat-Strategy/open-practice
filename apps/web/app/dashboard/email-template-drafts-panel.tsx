@@ -10,6 +10,7 @@ import type {
   EmailTemplateDraftItem,
   EmailTemplatePublishedVersionItem,
   EmailTemplatePreviewSnapshotItem,
+  EmailTemplateReviewedOutboundPreviewItem,
 } from "../_features/email-templates/models";
 
 export interface EmailTemplateDraftFormState {
@@ -24,23 +25,40 @@ export interface EmailTemplateDraftFormState {
   recipientHints: string;
 }
 
+export interface EmailTemplateReviewedPreviewRecipientOption {
+  key: string;
+  contactId: string;
+  contactMethodId: string;
+  label: string;
+}
+
 export interface EmailTemplateDraftsPanelProps {
   activeMatterId?: string;
   templateDrafts: EmailTemplateDraftItem[];
   selectedTemplateDraftId?: string;
   form: EmailTemplateDraftFormState;
   previewSnapshots: EmailTemplatePreviewSnapshotItem[];
+  reviewedOutboundPreviews: EmailTemplateReviewedOutboundPreviewItem[];
   publishedVersions: EmailTemplatePublishedVersionItem[];
+  reviewedPreviewRecipientOptions: EmailTemplateReviewedPreviewRecipientOption[];
+  selectedReviewedPreviewRecipientKey: string;
   status?: string;
   saving: boolean;
   previewing: boolean;
   publishing: boolean;
+  creatingReviewedPreview: boolean;
   onSelectDraft: (templateDraftId: string) => void;
   onNewDraft: () => void;
   onFieldChange: (field: keyof EmailTemplateDraftFormState, value: string) => void;
   onSaveDraft: () => void;
   onCreatePreviewSnapshot: () => void;
   onPublishDraft: () => void;
+  onReviewedPreviewRecipientChange: (recipientKey: string) => void;
+  onCreateReviewedOutboundPreview: (input: {
+    publishedVersionId: string;
+    contactId: string;
+    contactMethodId: string;
+  }) => void;
 }
 
 function compactDate(value: string): string {
@@ -94,17 +112,23 @@ export function EmailTemplateDraftsPanel({
   selectedTemplateDraftId,
   form,
   previewSnapshots,
+  reviewedOutboundPreviews,
   publishedVersions,
+  reviewedPreviewRecipientOptions,
+  selectedReviewedPreviewRecipientKey,
   status,
   saving,
   previewing,
   publishing,
+  creatingReviewedPreview,
   onSelectDraft,
   onNewDraft,
   onFieldChange,
   onSaveDraft,
   onCreatePreviewSnapshot,
   onPublishDraft,
+  onReviewedPreviewRecipientChange,
+  onCreateReviewedOutboundPreview,
 }: EmailTemplateDraftsPanelProps) {
   const [selectedPublishedVersionId, setSelectedPublishedVersionId] = useState("");
   const selectedDraft = templateDrafts.find((draft) => draft.id === selectedTemplateDraftId);
@@ -122,6 +146,10 @@ export function EmailTemplateDraftsPanel({
     if (!selectedDraft || !selectedPublishedVersion) return undefined;
     return compareEmailTemplateDraftWithPublishedVersion(selectedDraft, selectedPublishedVersion);
   }, [selectedDraft, selectedPublishedVersion]);
+  const selectedReviewedPreviewRecipient =
+    reviewedPreviewRecipientOptions.find(
+      (option) => option.key === selectedReviewedPreviewRecipientKey,
+    ) ?? reviewedPreviewRecipientOptions[0];
   const canSave =
     form.name.trim().length > 0 &&
     form.templateKey.trim().length > 0 &&
@@ -375,6 +403,65 @@ export function EmailTemplateDraftsPanel({
         ))}
         {previewSnapshots.length === 0 ? (
           <p className="inline-empty">No saved preview snapshots for this matter.</p>
+        ) : null}
+      </div>
+
+      <div className="section-title">
+        <h3>Reviewed previews</h3>
+        <span>{reviewedOutboundPreviews.length} recent</span>
+      </div>
+      <div className="party-list">
+        <label className="search-field compact">
+          <span>Matter contact</span>
+          <select
+            disabled={reviewedPreviewRecipientOptions.length === 0}
+            onChange={(event) => onReviewedPreviewRecipientChange(event.target.value)}
+            value={selectedReviewedPreviewRecipient?.key ?? ""}
+          >
+            {reviewedPreviewRecipientOptions.map((option) => (
+              <option key={option.key} value={option.key}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          className="secondary-button compact-button"
+          disabled={
+            !activeMatterId ||
+            !selectedDraft ||
+            !selectedPublishedVersion ||
+            !selectedReviewedPreviewRecipient ||
+            creatingReviewedPreview
+          }
+          onClick={() => {
+            if (!selectedPublishedVersion || !selectedReviewedPreviewRecipient) return;
+            onCreateReviewedOutboundPreview({
+              publishedVersionId: selectedPublishedVersion.id,
+              contactId: selectedReviewedPreviewRecipient.contactId,
+              contactMethodId: selectedReviewedPreviewRecipient.contactMethodId,
+            });
+          }}
+          type="button"
+        >
+          {creatingReviewedPreview ? "Creating preview" : "Create reviewed preview"}
+        </button>
+        {reviewedOutboundPreviews.map((preview) => (
+          <div className="party-row" key={preview.id}>
+            <span>
+              <strong>{preview.subjectPreview}</strong>
+              <small>
+                {preview.templateKey} · published v{preview.publishedVersion} ·{" "}
+                {preview.recipientSummary.recipientCount} recipient ·{" "}
+                {compactDate(preview.createdAt)}
+              </small>
+              {preview.warnings.length > 0 ? <small>{preview.warnings.join(", ")}</small> : null}
+            </span>
+            <em>{preview.reviewStatus === "reviewed_preview" ? "reviewed" : "preview"}</em>
+          </div>
+        ))}
+        {reviewedOutboundPreviews.length === 0 ? (
+          <p className="inline-empty">No reviewed previews for this matter.</p>
         ) : null}
       </div>
     </section>

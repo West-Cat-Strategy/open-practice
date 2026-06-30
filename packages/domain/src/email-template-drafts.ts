@@ -69,6 +69,43 @@ export interface EmailTemplatePreviewSnapshotRecord {
   metadata: Record<string, unknown>;
 }
 
+export type EmailTemplateReviewedOutboundPreviewStatus = "reviewed_preview";
+
+export interface EmailTemplateReviewedOutboundPreviewRecord {
+  id: string;
+  firmId: string;
+  templateDraftId: string;
+  publishedVersionId: string;
+  publishedVersion: number;
+  matterId: string;
+  contactId: string;
+  contactMethodId: string;
+  createdByUserId: string;
+  templateKey: string;
+  subjectPreview: string;
+  body: {
+    textPreview?: string;
+    htmlPreview?: string;
+    contentTypes: {
+      text: boolean;
+      html: boolean;
+    };
+  };
+  recipientSummary: EmailTemplateRecipientSummary;
+  reviewStatus: EmailTemplateReviewedOutboundPreviewStatus;
+  relatedResource?: {
+    type: string;
+    id: string;
+  };
+  warnings: string[];
+  delivery: {
+    persisted: true;
+    queued: false;
+  };
+  createdAt: string;
+  metadata: Record<string, unknown>;
+}
+
 export interface EmailTemplatePublishedVersionRecord {
   id: string;
   firmId: string;
@@ -206,6 +243,90 @@ export function buildEmailTemplatePreviewSnapshot(input: {
       warningCount: warnings.length,
       persisted: true,
       queued: false,
+      ...(input.metadata ?? {}),
+    },
+  };
+}
+
+export function buildEmailTemplateReviewedOutboundPreview(input: {
+  id: string;
+  firmId: string;
+  publishedVersion: EmailTemplatePublishedVersionRecord;
+  matterId: string;
+  contactId: string;
+  contactMethodId: string;
+  createdByUserId: string;
+  relatedResource?: {
+    type: string;
+    id: string;
+  };
+  createdAt: string;
+  metadata?: Record<string, unknown>;
+}): EmailTemplateReviewedOutboundPreviewRecord {
+  const textPreview = normalizeEmailTemplateTextPreview(input.publishedVersion.textBody);
+  const htmlPreview = normalizeEmailTemplateHtmlPreview(input.publishedVersion.htmlBody);
+  const recipientSummary = summarizeEmailTemplateRecipients({
+    to: [input.contactMethodId],
+  });
+  const warnings = emailTemplatePreviewWarningCodes({
+    recipientCount: recipientSummary.recipientCount,
+    textTruncated: Boolean(textPreview?.truncated),
+    htmlSanitized: Boolean(htmlPreview?.sanitized),
+    htmlTruncated: Boolean(htmlPreview?.truncated),
+  });
+
+  return {
+    id: input.id,
+    firmId: input.firmId,
+    templateDraftId: input.publishedVersion.templateDraftId,
+    publishedVersionId: input.publishedVersion.id,
+    publishedVersion: input.publishedVersion.version,
+    matterId: input.matterId,
+    contactId: input.contactId,
+    contactMethodId: input.contactMethodId,
+    createdByUserId: input.createdByUserId,
+    templateKey: input.publishedVersion.templateKey,
+    subjectPreview: input.publishedVersion.subject.replace(/\s+/g, " ").trim().slice(0, 240),
+    body: {
+      textPreview: textPreview?.value,
+      htmlPreview: htmlPreview?.value,
+      contentTypes: {
+        text: Boolean(textPreview),
+        html: Boolean(htmlPreview),
+      },
+    },
+    recipientSummary,
+    reviewStatus: "reviewed_preview",
+    relatedResource: input.relatedResource,
+    warnings,
+    delivery: {
+      persisted: true,
+      queued: false,
+    },
+    createdAt: input.createdAt,
+    metadata: {
+      reviewedOutboundPreviewId: input.id,
+      publishedVersionId: input.publishedVersion.id,
+      templateDraftId: input.publishedVersion.templateDraftId,
+      publishedVersion: input.publishedVersion.version,
+      matterId: input.matterId,
+      contactId: input.contactId,
+      contactMethodId: input.contactMethodId,
+      templateKey: input.publishedVersion.templateKey,
+      subjectLength: input.publishedVersion.subject.length,
+      textLength: input.publishedVersion.textBody.length,
+      htmlLength: input.publishedVersion.htmlBody.length,
+      recipientCount: recipientSummary.recipientCount,
+      warningCount: warnings.length,
+      reviewStatus: "reviewed_preview",
+      providerNeutral: true,
+      persisted: true,
+      queued: false,
+      deliveryQueued: false,
+      providerDeliverySideEffect: false,
+      campaignAutomation: false,
+      bulkSend: false,
+      subscriptionManagement: false,
       ...(input.metadata ?? {}),
     },
   };

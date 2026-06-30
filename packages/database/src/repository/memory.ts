@@ -51,6 +51,7 @@ import {
   type EmailTemplateDraftRecord,
   type EmailTemplatePublishedVersionRecord,
   type EmailTemplatePreviewSnapshotRecord,
+  type EmailTemplateReviewedOutboundPreviewRecord,
   type ExpenseEntry,
   type ExternalUploadLinkRecord,
   type Firm,
@@ -690,6 +691,9 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   declare createEmailTemplatePublishedVersion: EmailTemplateDraftRepository["createEmailTemplatePublishedVersion"];
   declare listEmailTemplatePublishedVersions: EmailTemplateDraftRepository["listEmailTemplatePublishedVersions"];
   declare getLatestEmailTemplatePublishedVersion: EmailTemplateDraftRepository["getLatestEmailTemplatePublishedVersion"];
+  declare getEmailTemplatePublishedVersion: EmailTemplateDraftRepository["getEmailTemplatePublishedVersion"];
+  declare createEmailTemplateReviewedOutboundPreview: EmailTemplateDraftRepository["createEmailTemplateReviewedOutboundPreview"];
+  declare listEmailTemplateReviewedOutboundPreviews: EmailTemplateDraftRepository["listEmailTemplateReviewedOutboundPreviews"];
   declare getFirmSettings: FirmSettingsRepository["getFirmSettings"];
   declare updateDispositionReviewScheduleProfile: FirmSettingsRepository["updateDispositionReviewScheduleProfile"];
   declare listProviderSettings: ProviderSettingsRepository["listProviderSettings"];
@@ -779,6 +783,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private emailTemplateDrafts: EmailTemplateDraftRecord[] = [];
   private emailTemplatePreviewSnapshots: EmailTemplatePreviewSnapshotRecord[] = [];
   private emailTemplatePublishedVersions: EmailTemplatePublishedVersionRecord[] = [];
+  private emailTemplateReviewedOutboundPreviews: EmailTemplateReviewedOutboundPreviewRecord[] = [];
   private authAccounts: AuthAccountRecord[] = [];
   private authSessions: AuthSessionRecord[] = [];
   private calendarCredentials: CalendarCredentialRecord[] = [];
@@ -1472,6 +1477,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
       emailTemplateDrafts: this.emailTemplateDrafts,
       emailTemplatePreviewSnapshots: this.emailTemplatePreviewSnapshots,
       emailTemplatePublishedVersions: this.emailTemplatePublishedVersions,
+      emailTemplateReviewedOutboundPreviews: this.emailTemplateReviewedOutboundPreviews,
     };
   }
 

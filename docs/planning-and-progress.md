@@ -652,6 +652,12 @@ persisted saved drafts and selected immutable published versions in
 It uses already-loaded draft/version data, keeps previews render-only, and adds no API route,
 database, migration, route-catalog, provider-delivery, queue, send-job, campaign, bulk-send, or
 subscription behavior.
+The 2026-06-30 reviewed outbound preview handoff adds a staff-only, matter/contact-authorized bridge
+from an immutable published version into a persisted single-recipient reviewed preview in
+[email template reviewed outbound preview handoff proof](validation/OP_EMAIL_TEMPLATE_REVIEWED_OUTBOUND_PREVIEW_HANDOFF_PROOF_2026-06-30.md).
+It preserves render-only preview boundaries and adds no send, outbox, provider-call,
+provider-settings inspection, queue/job, campaign, bulk-send, subscription, automation, raw
+template-body audit metadata, or permission-widening behavior.
 
 The 2026-06-16 financial command approval journal branch adds a read-only `financialCommandJournal`
 projection to the existing trust controls payload. It normalizes existing audit metadata for
