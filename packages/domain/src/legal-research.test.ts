@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   assertLegalResearchArtifactKind,
   assertLegalResearchProviderJobRequestType,
+  buildDocumentConversionSemanticReviewCheckpointMetadata,
   buildLegalResearchProviderJobMetadata,
   buildLegalResearchArtifactAuditMetadata,
   buildLegalResearchWorkspace,
@@ -100,6 +101,93 @@ describe("legal research artifacts", () => {
     expect(JSON.stringify(metadata)).not.toContain("Staff-entered citation label");
   });
 
+  it("builds metadata-only document semantic review checkpoint records", () => {
+    const metadata = buildDocumentConversionSemanticReviewCheckpointMetadata({
+      matterId: "matter-001",
+      documentId: "doc-001",
+      conversionReviewArtifactId: "artifact-conversion-review-001",
+      jobId: "job-conversion-review-001",
+      sourceTextLength: 1800,
+      wordCount: 260,
+      lineCount: 34,
+      nonEmptyLineCount: 28,
+      pageBreakCount: 1,
+      estimatedPageCount: 2,
+      conversionReviewStatus: "reviewed",
+      artifactStatus: "metadata_only",
+      createdByUserId: "user-admin",
+      assignedUserId: "user-admin",
+      createdAt: "2026-06-29T18:00:00.000Z",
+      conversionReviewReviewedAt: "2026-06-29T17:00:00.000Z",
+      conversionReviewReviewedByUserId: "user-reviewer",
+    });
+
+    expect(metadata).toEqual({
+      source: "document_conversion_semantic_review_checkpoint",
+      matterId: "matter-001",
+      documentId: "doc-001",
+      conversionReviewArtifactId: "artifact-conversion-review-001",
+      jobId: "job-conversion-review-001",
+      counts: {
+        sourceTextLength: 1800,
+        wordCount: 260,
+        lineCount: 34,
+        nonEmptyLineCount: 28,
+        pageBreakCount: 1,
+        estimatedPageCount: 2,
+      },
+      conversionReviewStatus: "reviewed",
+      artifactStatus: "metadata_only",
+      checkpointType: "document_analysis",
+      checkpointStatus: "ready_for_review",
+      createdByUserId: "user-admin",
+      assignedUserId: "user-admin",
+      createdAt: "2026-06-29T18:00:00.000Z",
+      conversionReviewReviewedAt: "2026-06-29T17:00:00.000Z",
+      conversionReviewReviewedByUserId: "user-reviewer",
+      semanticReviewReady: true,
+      staffReviewRequired: true,
+      metadataOnly: true,
+      reviewOnly: true,
+      providerActivated: false,
+      downstreamMutation: false,
+      providerEvidenceStored: false,
+      rawTextStored: false,
+      rawTextReturned: false,
+      rawOcrTextReturned: false,
+      rawOcrTextStoredInMetadata: false,
+      rawMarkdownStored: false,
+      convertedMarkdownStored: false,
+      annotationBodiesStored: false,
+      annotationSpansStored: false,
+      chunksStored: false,
+      embeddingsStored: false,
+      promptsStored: false,
+      providerPayloadsStored: false,
+      storageKeysStored: false,
+      objectBodiesStored: false,
+      generatedSummariesStored: false,
+    });
+    for (const key of [
+      "rawOcrText",
+      "rawMarkdown",
+      "convertedMarkdown",
+      "annotationBodies",
+      "annotationSpans",
+      "chunks",
+      "embeddings",
+      "prompt",
+      "prompts",
+      "providerPayload",
+      "providerPayloads",
+      "storageKey",
+      "objectBody",
+      "generatedSummary",
+    ]) {
+      expect(metadata).not.toHaveProperty(key);
+    }
+  });
+
   it("summarizes workspace posture across artifact kinds", () => {
     const documentArtifact: LegalResearchArtifactRecord = {
       ...baseArtifact,
@@ -122,7 +210,9 @@ describe("legal research artifacts", () => {
       kind: "review_checkpoint",
       status: "ready_for_review",
       sourceReferences: [],
-      contextLinks: [],
+      contextLinks: [
+        { resourceType: "legal_research_artifact", resourceId: "research-artifact-002" },
+      ],
       checkpoint: { checkpointType: "supervising_lawyer_review", assignedUserId: "user-admin" },
     };
     const summary = summarizeLegalResearchArtifacts([baseArtifact, documentArtifact, checkpoint]);
@@ -132,7 +222,7 @@ describe("legal research artifacts", () => {
       draft: 1,
       readyForReview: 2,
       sourceReferenceCount: 1,
-      contextLinkCount: 3,
+      contextLinkCount: 4,
       documentAnalysisCount: 1,
       openCheckpointCount: 1,
       reviewOnly: true,

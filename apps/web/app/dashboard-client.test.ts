@@ -100,6 +100,7 @@ import {
 import {
   buildDocumentProcessingQueuePath,
   buildDocumentProcessingOcrProviderPath,
+  buildDocumentSemanticReviewCheckpointPath,
   buildDocumentProcessingWorkbenchPath,
   compactDocumentMetadataTag,
   describeDocumentQueueAction,
@@ -4733,6 +4734,9 @@ describe("dashboard client behavior", () => {
     );
     expect(buildDocumentProcessingQueuePath("doc/001")).toBe(
       "/api/document-processing/documents/doc%2F001/queue",
+    );
+    expect(buildDocumentSemanticReviewCheckpointPath("doc/001")).toBe(
+      "/api/document-processing/documents/doc%2F001/conversion-review/semantic-review/checkpoints",
     );
     expect(rows).toHaveLength(1);
     expect(rows[0]!.document).toEqual(

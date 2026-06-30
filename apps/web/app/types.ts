@@ -146,6 +146,7 @@ export type {
 
 export type {
   DocumentConversionReviewDecisionCue,
+  DocumentConversionReviewSemanticReviewCheckpointCue,
   DocumentConversionReviewCounts,
   DocumentConversionReviewPolicy,
   DocumentConversionReviewSummary,

@@ -184,7 +184,6 @@ export function registerDocumentProcessingQueueRoutes(
 
       const artifacts = await repository.listLegalResearchArtifacts(request.auth.firmId, {
         matterId: document.matterId,
-        kind: "document_analysis_status",
       });
       const existingArtifact = conversionReviewArtifactForDocument(document, artifacts);
       const jobs = await repository.listJobLifecycleRecords(request.auth.firmId, {
