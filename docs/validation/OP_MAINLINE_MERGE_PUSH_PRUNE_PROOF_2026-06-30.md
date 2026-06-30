@@ -3,7 +3,7 @@
 Date: 2026-06-30
 Integration branch: `integrate/open-practice-all-worktrees-20260630`
 Base: `origin/main` at `17fa4098ae73b84ae77ff66c56f848be24342d38`
-Integration head: `1926318de084f7de268fe4a5e82804afc322a98a`
+Validation head before docs-only proof commits: `1926318de084f7de268fe4a5e82804afc322a98a`
 Status: Blocked before push because required validation did not pass. No merge to local `main`,
 no push to `origin/main`, no worktree prune, and no branch deletion were attempted.
 
@@ -220,13 +220,13 @@ explicit reasons above.
 
 ## Publication And Prune Evidence
 
-| Command                                                              | Result                            | Notes                                                                                    |
-| -------------------------------------------------------------------- | --------------------------------- | ---------------------------------------------------------------------------------------- |
-| `git switch main`                                                    | Not run because validation failed | The integration branch stayed checked out at `1926318de084f7de268fe4a5e82804afc322a98a`. |
-| `git merge --ff-only integrate/open-practice-all-worktrees-20260630` | Not run because validation failed | Local `main` was not changed.                                                            |
-| `git push origin main`                                               | Not run because validation failed | Remote `origin/main` stayed at `17fa4098ae73b84ae77ff66c56f848be24342d38`.               |
-| clean merged worktree/branch prune                                   | Not run because validation failed | No sibling worktrees or local branches were removed.                                     |
-| `git worktree prune`                                                 | Not run because validation failed | Worktree metadata was preserved.                                                         |
+| Command                                                              | Result                            | Notes                                                                         |
+| -------------------------------------------------------------------- | --------------------------------- | ----------------------------------------------------------------------------- |
+| `git switch main`                                                    | Not run because validation failed | The integration branch stayed checked out; no switch to `main` was performed. |
+| `git merge --ff-only integrate/open-practice-all-worktrees-20260630` | Not run because validation failed | Local `main` was not changed.                                                 |
+| `git push origin main`                                               | Not run because validation failed | Remote `origin/main` stayed at `17fa4098ae73b84ae77ff66c56f848be24342d38`.    |
+| clean merged worktree/branch prune                                   | Not run because validation failed | No sibling worktrees or local branches were removed.                          |
+| `git worktree prune`                                                 | Not run because validation failed | Worktree metadata was preserved.                                              |
 
 ## Repair Notes
 
