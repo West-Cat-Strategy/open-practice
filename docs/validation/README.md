@@ -18,6 +18,13 @@ skipped-check context. The live workboard remains
 
 ## Current Handoff Notes
 
+The 2026-06-30 verify-run plan mode proof is recorded in
+[OP_VERIFY_RUN_PLAN_MODE_PROOF_2026-06-30.md](OP_VERIFY_RUN_PLAN_MODE_PROOF_2026-06-30.md). It
+covers the print-only `pnpm verify:run -- --plan` mode, including deterministic selector reuse,
+no command execution, no `.tmp/validation-runs` artifact writes, parser rejection of
+artifact-writing runner options, focused script tests, selector-driven validation, and preserved
+normal `verify:run`, `verify:run -- --dry-run`, and `verify:select` semantics.
+
 The 2026-06-29 report export profile alignment proof is recorded in
 [OP_REPORT_EXPORT_PROFILE_ALIGNMENT_PROOF_2026-06-29.md](OP_REPORT_EXPORT_PROFILE_ALIGNMENT_PROOF_2026-06-29.md).
 It covers the read-only staff Reports workspace comparison between manual report export profiles

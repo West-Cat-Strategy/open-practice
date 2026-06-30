@@ -27,7 +27,9 @@ export function parseArgs(rawArgs = process.argv.slice(2)) {
   const args = rawArgs[0] === "--" ? rawArgs.slice(1) : rawArgs;
   const selectorArgs = [];
   let artifactRoot = DEFAULT_ARTIFACT_ROOT;
+  let artifactRootExplicit = false;
   let dryRun = false;
+  let plan = false;
   let selectorMode = false;
 
   for (let index = 0; index < args.length; index += 1) {
@@ -36,9 +38,15 @@ export function parseArgs(rawArgs = process.argv.slice(2)) {
       selectorArgs.push(arg);
       continue;
     }
-    if (arg === "--help" || arg === "-h") return { help: true, artifactRoot, dryRun, selectorArgs };
+    if (arg === "--help" || arg === "-h") {
+      return { help: true, artifactRoot, dryRun, plan, selectorArgs };
+    }
     if (arg === "--dry-run") {
       dryRun = true;
+      continue;
+    }
+    if (arg === "--plan") {
+      plan = true;
       continue;
     }
     if (arg === "--artifact-root") {
@@ -48,6 +56,7 @@ export function parseArgs(rawArgs = process.argv.slice(2)) {
         throw new Error("--artifact-root requires a path.");
       }
       artifactRoot = value;
+      artifactRootExplicit = true;
       continue;
     }
     if (arg === "--") {
@@ -57,16 +66,38 @@ export function parseArgs(rawArgs = process.argv.slice(2)) {
     selectorArgs.push(arg);
   }
 
-  return { help: false, artifactRoot, dryRun, selectorArgs };
+  if (plan && dryRun) {
+    throw new Error("--plan cannot be combined with --dry-run.");
+  }
+  if (plan && artifactRootExplicit) {
+    throw new Error("--plan cannot be combined with --artifact-root.");
+  }
+
+  return { help: false, artifactRoot, dryRun, plan, selectorArgs };
 }
 
 export function usage() {
   return [
     "Usage:",
+    "  node scripts/run-selected-validation.mjs --plan --files <paths...>",
+    "  node scripts/run-selected-validation.mjs --plan --base <git-ref>",
+    "  node scripts/run-selected-validation.mjs --plan --dirty",
     "  node scripts/run-selected-validation.mjs [--dry-run] [--artifact-root <path>] -- --files <paths...>",
     "  node scripts/run-selected-validation.mjs [--dry-run] [--artifact-root <path>] -- --base <git-ref>",
     "  node scripts/run-selected-validation.mjs [--dry-run] [--artifact-root <path>] -- --dirty",
   ].join("\n");
+}
+
+export function formatValidationPlan(commands) {
+  const lines = ["Selected validation plan (print-only; no commands run; no artifacts written):"];
+
+  if (commands.length === 0) {
+    lines.push("(none)");
+  } else {
+    lines.push(...commands);
+  }
+
+  return lines.join("\n");
 }
 
 function runCommand(command, { cwd, outputDir, index, spawn = spawnSync }) {
@@ -186,6 +217,10 @@ export function runCli(rawArgs = process.argv.slice(2)) {
   }
 
   const commands = runSelector(options.selectorArgs);
+  if (options.plan) {
+    console.log(formatValidationPlan(commands));
+    return 0;
+  }
   const metadata = runValidationCommands({ ...options, commands });
   console.log(`Selected validation ${metadata.status}: ${metadata.artifactDir}`);
   if (metadata.failedCommandIds.length > 0) {
