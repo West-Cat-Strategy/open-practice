@@ -5,12 +5,14 @@ Date: 2026-06-17 PDT
 This packet defines the next safe boundary for future payment processor imports, deposit matching,
 refunds, and chargebacks. It began as docs-first policy groundwork and now has four narrow runtime
 slices: staff-only normalized payment import review records for processor evidence cues,
-staff-only deposit-match reviewer decisions over those normalized records, provider-neutral
-refund/chargeback review cues derived from existing payment import records, and staff-only
-refund/chargeback reviewer decisions over those cues. The packet still does not authorize live
-settlement, payment processor webhooks, provider payload persistence, invoice mutation, trust
-posting, bank-feed connections, worker replay, provider commands, refund or chargeback commands, or
-deposit matching automation.
+staff-only deposit-match reviewer decisions over those normalized records, a narrow manual-payment
+reconcile command that consumes an existing supported deposit-match decision through the existing
+manual-payment reconciliation semantics, provider-neutral refund/chargeback review cues derived
+from existing payment import records, and staff-only refund/chargeback reviewer decisions over
+those cues. The packet still does not authorize live settlement, payment processor webhooks,
+provider payload persistence, invoice mutation outside the existing manual-payment reconciliation
+path, trust posting, bank-feed connections, worker replay, provider commands, refund or chargeback
+commands, or deposit matching automation.
 
 ## Source Posture
 
@@ -32,6 +34,14 @@ The boundary builds from the shipped payment and funds proofs:
 - OP-T162 adds provider-neutral deposit-match reviewer decisions over OP-T160 records. They are
   append-only reviewer evidence only and do not apply or reconcile manual payments, mutate invoice
   balances, clear deposits, call providers, notify clients, handle refunds or chargebacks, or post
+  trust entries.
+- The 2026-06-30 deposit-match manual-payment reconcile command consumes the latest existing
+  supported deposit-match decision only after rechecking current manual-payment, invoice, amount,
+  CAD currency, matter scope, pending-status, duplicate/conflict, and invoice-balance readiness. It
+  delegates the effective allocation and invoice paid/balance update to the existing
+  manual-payment reconciliation path and stores only safe derived evidence IDs and enum posture.
+  It does not call providers, clear deposits automatically, run broad matching, connect bank feeds,
+  notify clients, mutate invoices outside that existing reviewed reconciliation semantic, or post
   trust entries.
 - The 2026-06-28 refund/chargeback cue surface derives provider-neutral reviewer cues from existing
   payment import review records with `eventFamily="payment"` and `eventStatus="refund_observed"`
@@ -93,6 +103,13 @@ OP-T162 implements the second runtime slice under this packet:
   ineligible. Eligibility is read from current manual-payment and invoice state, remains advisory,
   and does not invoke `POST /api/payments/:paymentId/reconcile`, allocate funds, clear deposits,
   mutate invoices, or post trust entries.
+- The 2026-06-30 reconcile-command follow-up adds
+  `POST /api/billing/payment-import-review-records/:recordId/reconcile-manual-payment` as an
+  API-only staff command. Its strict body accepts only optional `reconciledAt`; it consumes the
+  latest supported decision as safe reconciliation evidence and calls the existing
+  `reconcilePayment` repository path only when the same readiness checks still pass. It adds no UI
+  button, table, migration, idempotency table, provider call, bank-feed automation, trust posting,
+  client notification, or independent invoice mutation.
 
 ## Refund And Chargeback Cue Surface
 
@@ -230,6 +247,10 @@ Invoice balances can change only through explicit Open Practice workflows with r
   review workflow and explain eligible or ineligible rows with structured safe reason details, but
   the cue itself is read-only and performs no reconciliation, allocation, deposit clearing, invoice
   mutation, provider command, or trust posting.
+- The deposit-match manual-payment reconcile command may use an existing supported decision as safe
+  reviewer evidence for that same manual-payment workflow. It must recheck current eligibility at
+  command time and may mutate invoice paid/balance status only through the existing
+  manual-payment allocation path.
 - Hosted payment requests, processor imports, settlement-event review, deposit-match proposals,
   refunds, and chargeback cues must not independently mutate `paidCents`, `balanceDueCents`, invoice
   lifecycle status, source-entry billing state, or trust-transfer state.

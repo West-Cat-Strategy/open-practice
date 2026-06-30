@@ -427,6 +427,14 @@ surface.
     reconcile review workflow and structured reason details for supported rows that are still
     eligible or have drifted ineligible; the cue does not reconcile payments, mutate invoices, clear
     deposits, call providers, or post trust entries.
+  - **Shipped deposit-match manual reconcile command:** The 2026-06-30 follow-up adds one
+    staff-only API command that consumes the latest existing supported deposit-match decision only
+    when the linked pending manual payment still matches amount, CAD currency posture, matter scope,
+    invoice candidate, and invoice balance readiness. It delegates allocation and invoice
+    paid/balance mutation to the existing manual-payment reconcile path and stores only safe derived
+    evidence IDs and enum posture. It adds no UI button, provider call, bank-feed automation,
+    independent invoice mutation, client notification, broad auto-matching, trust transfer, or trust
+    posting.
   - **Shipped refund/chargeback cue surface:** The 2026-06-28 follow-up adds provider-neutral
     reviewer cue counts and row metadata for existing payment import records with
     `eventStatus=refund_observed` or `eventStatus=chargeback_observed`. The surface is metadata
@@ -438,9 +446,10 @@ surface.
     explicit no-side-effect flags; it does not store amounts, external payment IDs, notes, provider
     payloads, refund artifacts, dispute packets, invoice mutations, ledger reversals, client
     notifications, trust postings, provider commands, or funds movement.
-  - **Remaining boundary:** Deposit matching automation, refund and chargeback command workflows,
-    settlement automation, provider webhook/replay behavior, provider commands, trust posting, and
-    any funds movement remain separate future work after the cue and decision surfaces.
+  - **Remaining boundary:** Deposit matching automation beyond the explicit staff command, refund
+    and chargeback command workflows, settlement automation, provider webhook/replay behavior,
+    provider commands, trust posting, bank-feed automation, client notification, and any funds
+    movement remain separate future work after the cue and decision surfaces.
   - **References:** `opencollective__opencollective-api` settlement/reconciliation concepts and
     `blnkfinance__blnk` reconciliation boundaries.
   - **Reuse and snippets:** Open Collective is MIT but architecture-only in this corpus; Blnk is

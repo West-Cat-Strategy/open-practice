@@ -18,6 +18,15 @@ skipped-check context. The live workboard remains
 
 ## Current Handoff Notes
 
+The 2026-06-30 deposit-match manual-payment reconcile command proof is recorded in
+[OP_DEPOSIT_MATCH_MANUAL_PAYMENT_RECONCILE_COMMAND_PROOF_2026-06-30.md](OP_DEPOSIT_MATCH_MANUAL_PAYMENT_RECONCILE_COMMAND_PROOF_2026-06-30.md).
+It covers the staff-only API command that consumes the latest existing supported deposit-match
+decision only after rechecking current pending manual-payment, amount/CAD currency posture, matter
+scope, invoice, duplicate/conflict, and balance readiness. The command delegates allocation and
+invoice paid/balance mutation to the existing manual-payment reconciliation path while preserving
+no provider calls, live settlement, bank-feed automation, broad auto-matching, client notification,
+trust transfer, trust posting, new migration, or dashboard action.
+
 The 2026-06-29 report export profile alignment proof is recorded in
 [OP_REPORT_EXPORT_PROFILE_ALIGNMENT_PROOF_2026-06-29.md](OP_REPORT_EXPORT_PROFILE_ALIGNMENT_PROOF_2026-06-29.md).
 It covers the read-only staff Reports workspace comparison between manual report export profiles
