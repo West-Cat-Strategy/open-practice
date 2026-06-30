@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import {
   describeCommunicationsDeliveryState,
   describeCommunicationsHistoryState,
+  summarizeInboundEmailMatterDraftReviewCues,
 } from "../communications-inbox-dashboard";
 import { describeEmailDeliveryState } from "../email-delivery-dashboard";
 import type { EmailDeliveryDashboardResponse } from "../_features/email-delivery/models";
@@ -98,21 +99,30 @@ export function CommunicationsSection({
             </div>
           );
         })}
-        {activeCommunicationsInbox?.inboundEmail.slice(0, 3).map((message) => (
-          <div className="party-row" key={message.id}>
-            <span>
-              <strong>{compactStatus(message.triage?.status ?? message.status)}</strong>
-              <small>
-                received {compactDate(message.receivedAt)} · {message.attachmentCount} attachment
-                {message.attachmentCount === 1 ? "" : "s"}
-              </small>
-              {message.labels.length > 0 ? (
-                <small>{message.labels.map(compactStatus).join(", ")}</small>
-              ) : null}
-            </span>
-            <em>{message.status.replaceAll("_", " ")}</em>
-          </div>
-        ))}
+        {activeCommunicationsInbox?.inboundEmail.slice(0, 3).map((message) => {
+          const reviewCues = summarizeInboundEmailMatterDraftReviewCues(message.matterDraft);
+          return (
+            <div className="party-row" key={message.id}>
+              <span>
+                <strong>{compactStatus(message.triage?.status ?? message.status)}</strong>
+                <small>
+                  received {compactDate(message.receivedAt)} · {message.attachmentCount} attachment
+                  {message.attachmentCount === 1 ? "" : "s"}
+                </small>
+                {message.labels.length > 0 ? (
+                  <small>{message.labels.map(compactStatus).join(", ")}</small>
+                ) : null}
+                {reviewCues ? (
+                  <small>
+                    {reviewCues.duplicateCandidates} · {reviewCues.existingMatterCandidates} ·{" "}
+                    {reviewCues.checklistStates} · {reviewCues.boundary}
+                  </small>
+                ) : null}
+              </span>
+              <em>{message.status.replaceAll("_", " ")}</em>
+            </div>
+          );
+        })}
         {activeCommunicationsInbox?.outboundDeliveryHistory.slice(0, 3).map((email) => {
           const state = describeCommunicationsDeliveryState(email);
           return (

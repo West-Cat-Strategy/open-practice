@@ -4419,12 +4419,15 @@ describe("dashboard client behavior", () => {
     );
 
     expect(html).toContain("Duplicate review");
-    expect(html).toContain("Ada Morgan");
+    expect(html).toContain("1 duplicate candidate");
+    expect(html).not.toContain("Ada Morgan");
     expect(html).toContain("Existing matters");
-    expect(html).toContain("2026-0001 Morgan tenancy dispute");
+    expect(html).toContain("1 existing matter candidate");
+    expect(html).not.toContain("2026-0001 Morgan tenancy dispute");
     expect(html).toContain("Checklist");
-    expect(html).toContain("Attachment review: review");
-    expect(html).toContain("review only");
+    expect(html).toContain("0 complete · 0 needs attention · 1 review");
+    expect(html).not.toContain("Attachment review");
+    expect(html).toContain("no auto-create · no permission widening");
     expect(html).not.toContain("Create matter");
     expect(html).not.toContain("private@example.test");
   });
