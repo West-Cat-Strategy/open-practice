@@ -64,7 +64,10 @@ function fixtureSubject(item: ReturnType<typeof fixtureCase>): User {
       mfaEnabled: true,
     };
   }
-  if (item.subjectId.startsWith("user-") && !sampleUsers.some((user) => user.id === item.subjectId)) {
+  if (
+    item.subjectId.startsWith("user-") &&
+    !sampleUsers.some((user) => user.id === item.subjectId)
+  ) {
     const role = item.subjectId.includes("bookkeeper")
       ? "billing_bookkeeper"
       : item.subjectId.includes("client-external")

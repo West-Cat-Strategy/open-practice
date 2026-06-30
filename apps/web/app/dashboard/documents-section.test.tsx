@@ -629,33 +629,35 @@ describe("DocumentsSection", () => {
     const workbench = buildSyntheticDocumentProcessingWorkbench();
     const firstDocument = workbench.documents[0];
     expect(firstDocument).toBeDefined();
-    const rows = ([
-      {
-        candidateState: "ready_for_reviewer_packet",
-        status: "ready_for_reviewer_packet",
-        id: "doc_synthetic_ready_packet",
-      },
-      {
-        candidateState: "blocked_by_hold",
-        status: "blocked_by_hold",
-        id: "doc_synthetic_blocked_hold",
-      },
-      {
-        candidateState: "not_ready",
-        status: "needs_review",
-        id: "doc_synthetic_not_ready",
-      },
-      {
-        candidateState: "reviewed_keep",
-        status: "reviewed_keep",
-        id: "doc_synthetic_reviewed_keep",
-      },
-      {
-        candidateState: "reviewed_superseded",
-        status: "reviewed_superseded",
-        id: "doc_synthetic_reviewed_superseded",
-      },
-    ] as const).map(({ candidateState, status, id }) => ({
+    const rows = (
+      [
+        {
+          candidateState: "ready_for_reviewer_packet",
+          status: "ready_for_reviewer_packet",
+          id: "doc_synthetic_ready_packet",
+        },
+        {
+          candidateState: "blocked_by_hold",
+          status: "blocked_by_hold",
+          id: "doc_synthetic_blocked_hold",
+        },
+        {
+          candidateState: "not_ready",
+          status: "needs_review",
+          id: "doc_synthetic_not_ready",
+        },
+        {
+          candidateState: "reviewed_keep",
+          status: "reviewed_keep",
+          id: "doc_synthetic_reviewed_keep",
+        },
+        {
+          candidateState: "reviewed_superseded",
+          status: "reviewed_superseded",
+          id: "doc_synthetic_reviewed_superseded",
+        },
+      ] as const
+    ).map(({ candidateState, status, id }) => ({
       ...firstDocument!,
       document: {
         ...firstDocument!.document,
@@ -697,9 +699,7 @@ describe("DocumentsSection", () => {
     expect(rollupHtml).toContain(
       '<span class="field-label">Blocked by hold</span><strong>1</strong>',
     );
-    expect(rollupHtml).toContain(
-      '<span class="field-label">Not ready</span><strong>1</strong>',
-    );
+    expect(rollupHtml).toContain('<span class="field-label">Not ready</span><strong>1</strong>');
     expect(rollupHtml).toContain(
       '<span class="field-label">Reviewed keep</span><strong>1</strong>',
     );

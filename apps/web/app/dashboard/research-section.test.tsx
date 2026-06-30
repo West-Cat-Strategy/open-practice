@@ -164,6 +164,7 @@ const workspace: LegalResearchWorkspaceResponse = {
       task: 0,
       calendar_event: 0,
       intake_session: 0,
+      legal_research_artifact: 0,
     },
     staffReviewReady: true,
     blockedReasons: [],

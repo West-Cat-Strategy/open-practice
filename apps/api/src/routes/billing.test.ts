@@ -4756,7 +4756,7 @@ describe("billing routes", () => {
     const assignedApprove = await server.inject({
       method: "POST",
       url: `/api/billing/trust-transfer-requests/${assignedApproveCase.resourceId}/approve`,
-      headers: authHeaders(assignedApproveCase.subjectId),
+      headers: await freshAuthHeaders(repository, { userId: assignedApproveCase.subjectId }),
       payload: {},
     });
     expect(assignedApprove.statusCode).toBe(200);
