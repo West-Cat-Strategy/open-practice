@@ -3,6 +3,7 @@ import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   InMemoryOpenPracticeRepository,
+  type AuthSessionRecord,
   type OpenPracticeRepository,
 } from "@open-practice/database";
 import {
@@ -22,6 +23,31 @@ interface TestServerOptions {
 }
 
 type QueuedReportJob = { name: string; data: unknown; jobId?: string };
+type TestFreshAuthState = "fresh" | "missing" | "stale";
+
+function testFreshAuthState(headers: Record<string, string | string[] | undefined>) {
+  const value = headers["x-open-practice-test-fresh-auth"];
+  return value === "missing" || value === "stale" ? value : "fresh";
+}
+
+function testAuthSession(
+  firmId: string,
+  userId: string,
+  state: TestFreshAuthState,
+): AuthSessionRecord | undefined {
+  if (state === "missing") return undefined;
+  const now = new Date().toISOString();
+  return {
+    id: `session-${firmId}-${userId}`,
+    firmId,
+    userId,
+    tokenHash: `synthetic-ledger-route-session-${userId}`,
+    createdAt: now,
+    freshAuthenticatedAt:
+      state === "stale" ? new Date(Date.now() - 20 * 60 * 1000).toISOString() : now,
+    expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+  };
+}
 
 async function authenticateTestRequest(
   repository: OpenPracticeRepository,
@@ -35,7 +61,7 @@ async function authenticateTestRequest(
   if (!user) {
     throw Object.assign(new Error("Authenticated user was not found"), { statusCode: 401 });
   }
-  return { user, firmId };
+  return { user, firmId, session: testAuthSession(firmId, user.id, testFreshAuthState(headers)) };
 }
 
 function testServer({
@@ -1874,6 +1900,143 @@ describe("ledger routes", () => {
     });
     expect(JSON.stringify(audit.events)).not.toContain("Synthetic checker note.");
     expect(JSON.stringify(audit.events)).not.toContain("Synthetic rejection reason.");
+  });
+
+  it("requires fresh sessions before trust posting request approval and rejection", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository });
+    const approvePrepare = await server.inject({
+      method: "POST",
+      url: "/api/ledger/posting-requests/prepare",
+      payload: preparedPostingRequestPayload({
+        id: "posting-request-fresh-approve",
+        proposedTransaction: ledgerTransactionPayload({
+          id: "prepared-route-fresh-approve",
+          idempotencyKey: "prepared-route-fresh-approve-key",
+          postedAt: "2026-04-24T14:05:00.000Z",
+          entries: preparedPostingRequestPayload().proposedTransaction.entries,
+        }),
+      }),
+    });
+    expect(approvePrepare.statusCode).toBe(200);
+
+    const missingApproveSession = await server.inject({
+      method: "POST",
+      url: "/api/ledger/posting-requests/posting-request-fresh-approve/approve",
+      headers: {
+        "x-open-practice-user-id": "user-licensee",
+        "x-open-practice-firm-id": "firm-west-legal",
+        "x-open-practice-test-fresh-auth": "missing",
+      },
+      payload: { reviewedAt: "2026-04-24T14:10:00.000Z" },
+    });
+    expect(missingApproveSession.statusCode).toBe(403);
+    expect(missingApproveSession.json()).toMatchObject({
+      message: "Fresh session authentication is required for this credential operation",
+    });
+
+    const staleApproveSession = await server.inject({
+      method: "POST",
+      url: "/api/ledger/posting-requests/posting-request-fresh-approve/approve",
+      headers: {
+        "x-open-practice-user-id": "user-licensee",
+        "x-open-practice-firm-id": "firm-west-legal",
+        "x-open-practice-test-fresh-auth": "stale",
+      },
+      payload: { reviewedAt: "2026-04-24T14:11:00.000Z" },
+    });
+    expect(staleApproveSession.statusCode).toBe(403);
+    expect(staleApproveSession.json()).toMatchObject({
+      message: "Fresh session authentication is required for this credential operation",
+    });
+
+    const freshApproveSession = await server.inject({
+      method: "POST",
+      url: "/api/ledger/posting-requests/posting-request-fresh-approve/approve",
+      headers: {
+        "x-open-practice-user-id": "user-licensee",
+        "x-open-practice-firm-id": "firm-west-legal",
+      },
+      payload: { reviewedAt: "2026-04-24T14:12:00.000Z" },
+    });
+    expect(freshApproveSession.statusCode).toBe(200);
+    expect(freshApproveSession.json()).toMatchObject({
+      id: "posting-request-fresh-approve",
+      status: "posted",
+      reviewedByUserId: "user-licensee",
+      ledgerTransactionId: "prepared-route-fresh-approve",
+    });
+
+    const rejectPrepare = await server.inject({
+      method: "POST",
+      url: "/api/ledger/posting-requests/prepare",
+      payload: preparedPostingRequestPayload({
+        id: "posting-request-fresh-reject",
+        proposedTransaction: ledgerTransactionPayload({
+          id: "prepared-route-fresh-reject",
+          idempotencyKey: "prepared-route-fresh-reject-key",
+          postedAt: "2026-04-24T15:05:00.000Z",
+          entries: preparedPostingRequestPayload().proposedTransaction.entries,
+        }),
+      }),
+    });
+    expect(rejectPrepare.statusCode).toBe(200);
+
+    const missingRejectSession = await server.inject({
+      method: "POST",
+      url: "/api/ledger/posting-requests/posting-request-fresh-reject/reject",
+      headers: {
+        "x-open-practice-user-id": "user-licensee",
+        "x-open-practice-firm-id": "firm-west-legal",
+        "x-open-practice-test-fresh-auth": "missing",
+      },
+      payload: {
+        reviewedAt: "2026-04-24T15:10:00.000Z",
+        rejectionReason: "Synthetic rejection reason.",
+      },
+    });
+    expect(missingRejectSession.statusCode).toBe(403);
+    expect(missingRejectSession.json()).toMatchObject({
+      message: "Fresh session authentication is required for this credential operation",
+    });
+
+    const staleRejectSession = await server.inject({
+      method: "POST",
+      url: "/api/ledger/posting-requests/posting-request-fresh-reject/reject",
+      headers: {
+        "x-open-practice-user-id": "user-licensee",
+        "x-open-practice-firm-id": "firm-west-legal",
+        "x-open-practice-test-fresh-auth": "stale",
+      },
+      payload: {
+        reviewedAt: "2026-04-24T15:11:00.000Z",
+        rejectionReason: "Synthetic rejection reason.",
+      },
+    });
+    expect(staleRejectSession.statusCode).toBe(403);
+    expect(staleRejectSession.json()).toMatchObject({
+      message: "Fresh session authentication is required for this credential operation",
+    });
+
+    const freshRejectSession = await server.inject({
+      method: "POST",
+      url: "/api/ledger/posting-requests/posting-request-fresh-reject/reject",
+      headers: {
+        "x-open-practice-user-id": "user-licensee",
+        "x-open-practice-firm-id": "firm-west-legal",
+      },
+      payload: {
+        reviewedAt: "2026-04-24T15:12:00.000Z",
+        rejectionReason: "Synthetic rejection reason.",
+      },
+    });
+    expect(freshRejectSession.statusCode).toBe(200);
+    expect(freshRejectSession.json()).toMatchObject({
+      id: "posting-request-fresh-reject",
+      status: "rejected",
+      reviewedByUserId: "user-licensee",
+    });
+    expect(freshRejectSession.json()).not.toHaveProperty("ledgerTransactionId");
   });
 
   it("enforces matter-scoped posting request list and decision restrictions", async () => {

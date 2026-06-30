@@ -8,6 +8,7 @@ import {
   type LedgerTransaction,
 } from "@open-practice/domain";
 import { hasFirmWideLedgerAccess } from "../../http/auth-guards.js";
+import { requireFreshAuth } from "../../http/fresh-auth.js";
 import { ApiHttpError } from "../../http/response.js";
 import { parseRequestPart } from "../../http/validation.js";
 import type { ApiAuthContext } from "../../server.js";
@@ -154,6 +155,7 @@ export function registerLedgerPostingRequestRoutes(
       );
     }
 
+    requireFreshAuth(request.auth);
     let approved: Awaited<ReturnType<typeof repository.approveLedgerPostingRequest>>;
     try {
       approved = await repository.approveLedgerPostingRequest(request.auth.firmId, params.id, {
@@ -221,6 +223,7 @@ export function registerLedgerPostingRequestRoutes(
       );
     }
 
+    requireFreshAuth(request.auth);
     let rejected: LedgerPostingRequestRecord;
     try {
       rejected = await repository.rejectLedgerPostingRequest(request.auth.firmId, params.id, {

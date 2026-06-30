@@ -8,6 +8,7 @@ import {
   type TrustTransferRequestRecord,
 } from "@open-practice/domain";
 import { hasFirmWideLedgerAccess, requireStaffAccess } from "../../http/auth-guards.js";
+import { requireFreshAuth } from "../../http/fresh-auth.js";
 import { parseRequestPart } from "../../http/validation.js";
 import { appendRouteAuditEvent } from "../audit-events.js";
 import type { ApiRouteDependencies } from "../types.js";
@@ -186,6 +187,7 @@ export function registerBillingTrustTransferRequestRoutes(
         statusCode: 409,
       });
     }
+    requireFreshAuth(request.auth);
     let updated: TrustTransferRequestRecord;
     try {
       updated = await repository.updateTrustTransferRequest(
@@ -240,6 +242,7 @@ export function registerBillingTrustTransferRequestRoutes(
         statusCode: 409,
       });
     }
+    requireFreshAuth(request.auth);
     let updated: TrustTransferRequestRecord;
     try {
       updated = await repository.updateTrustTransferRequest(
@@ -352,6 +355,7 @@ export function registerBillingTrustTransferRequestRoutes(
         statusCode: 409,
       });
     }
+    requireFreshAuth(request.auth);
     let updated: TrustTransferRequestRecord;
     try {
       updated = await repository.updateTrustTransferRequest(

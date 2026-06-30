@@ -22,6 +22,14 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 ## Current Handoff Notes
 
+The 2026-06-29 `feat/financial-command-fresh-auth-20260629` branch reuses the
+existing fresh-session step-up guard for high-risk financial command mutations: manual payment
+reconciliation, trust-transfer approve/reject/link, and trust posting approve/reject. The guard
+runs before the final mutation while preserving existing role checks, matter scope, lifecycle
+conflicts, self-approval denial, idempotency, no-overdraft and balance checks, audit metadata, and
+no provider settlement or trust-transfer semantic changes. Proof is recorded in
+[financial command fresh-auth proof](validation/OP_FINANCIAL_COMMAND_FRESH_AUTH_PROOF_2026-06-29.md).
+
 The 2026-06-28 `feat/trust-controls-maker-checker-readiness-20260628` branch adds read-only
 Trust Controls maker-checker readiness indicators to the existing controls payload and dashboard.
 The indicators reuse ledger controls, reconciliation packet, posting-request, trust-transfer,

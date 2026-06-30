@@ -10,14 +10,17 @@ import {
   type PaymentProcessorCheckoutSessionInput,
 } from "@open-practice/domain";
 import { authorizationFixtureCases } from "@open-practice/domain/authorization-fixtures";
+import { hashToken } from "../http/auth-helpers.js";
 import { createApiServer } from "../server.js";
 
 const firmId = "firm-west-legal";
 const ownerNoAssignmentUserId = "user-payment-import-owner-no-assignment";
 const clientExternalUserId = "user-payment-import-client-external";
+const financialCommandJwtSecret = "financial-command-fresh-auth-test-secret-at-least-32";
 const servers: Array<{ close: () => Promise<void> }> = [];
 type CreateServerOptions = Parameters<typeof createApiServer>[0];
 type QueuedReportJob = { name: string; data: unknown; jobId?: string };
+let financialCommandSessionCounter = 0;
 
 function futureIso(msFromNow = 60 * 60 * 1000): string {
   return new Date(Date.now() + msFromNow).toISOString();
@@ -29,6 +32,7 @@ function testServer(overrides: Partial<CreateServerOptions> = {}) {
     repository,
     devFirmId: "firm-west-legal",
     devUserId: "user-admin",
+    jwtSecret: financialCommandJwtSecret,
     webAuthn: {
       rpName: "Test RP",
       rpID: "localhost",
@@ -86,6 +90,33 @@ function authHeaders(userId: string) {
     "x-open-practice-user-id": userId,
     "x-open-practice-firm-id": firmId,
   };
+}
+
+async function freshAuthHeaders(
+  repository: InMemoryOpenPracticeRepository,
+  options: {
+    userId?: string;
+    freshAuthenticatedAt?: string;
+  } = {},
+) {
+  const userId = options.userId ?? "user-admin";
+  const index = ++financialCommandSessionCounter;
+  const token = `financial-command-session-${index}`;
+  const now = new Date().toISOString();
+  await repository.createAuthSession({
+    id: `financial-command-session-${index}`,
+    firmId,
+    userId,
+    tokenHash: hashToken(token, financialCommandJwtSecret),
+    createdAt: now,
+    freshAuthenticatedAt: options.freshAuthenticatedAt ?? now,
+    expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+  });
+  return { "x-open-practice-session": token };
+}
+
+function staleFreshAuthenticatedAt(): string {
+  return new Date(Date.now() - 20 * 60 * 1000).toISOString();
 }
 
 function authorizationFixtureCase(id: string) {
@@ -2309,6 +2340,7 @@ describe("billing routes", () => {
     const reconciled = await server.inject({
       method: "POST",
       url: "/api/payments/payment-pending-route-test/reconcile",
+      headers: await freshAuthHeaders(repository),
       payload: {
         reconciledAt: "2026-06-16T13:00:00.000Z",
         notes: "Synthetic reviewer note.",
@@ -2390,6 +2422,61 @@ describe("billing routes", () => {
         }),
       ]),
     );
+  });
+
+  it("requires a fresh session before reconciling pending manual payments", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository });
+
+    const created = await server.inject({
+      method: "POST",
+      url: "/api/payments",
+      payload: {
+        id: "payment-fresh-auth-route-test",
+        matterId: "matter-001",
+        invoiceId: "invoice-001",
+        clientContactId: "contact-ada",
+        amountCents: 1000,
+        method: "eft",
+      },
+    });
+    expect(created.statusCode).toBe(200);
+
+    const missingSession = await server.inject({
+      method: "POST",
+      url: "/api/payments/payment-fresh-auth-route-test/reconcile",
+      payload: { reconciledAt: "2026-06-16T13:00:00.000Z" },
+    });
+    expect(missingSession.statusCode).toBe(403);
+    expect(missingSession.json()).toMatchObject({
+      message: "Fresh session authentication is required for this credential operation",
+    });
+
+    const staleSession = await server.inject({
+      method: "POST",
+      url: "/api/payments/payment-fresh-auth-route-test/reconcile",
+      headers: await freshAuthHeaders(repository, {
+        freshAuthenticatedAt: staleFreshAuthenticatedAt(),
+      }),
+      payload: { reconciledAt: "2026-06-16T13:05:00.000Z" },
+    });
+    expect(staleSession.statusCode).toBe(403);
+    expect(staleSession.json()).toMatchObject({
+      message: "Fresh session authentication is required for this credential operation",
+    });
+
+    const freshSession = await server.inject({
+      method: "POST",
+      url: "/api/payments/payment-fresh-auth-route-test/reconcile",
+      headers: await freshAuthHeaders(repository),
+      payload: { reconciledAt: "2026-06-16T13:10:00.000Z" },
+    });
+    expect(freshSession.statusCode).toBe(200);
+    expect(freshSession.json()).toMatchObject({
+      id: "payment-fresh-auth-route-test",
+      status: "received",
+      reconciledByUserId: "user-admin",
+    });
   });
 
   it("creates Stripe checkout sessions for payment request shells without applying settlement", async () => {
@@ -4223,6 +4310,142 @@ describe("billing routes", () => {
     expect(requestAfterDeniedLink?.ledgerTransactionId).toBeUndefined();
   });
 
+  it("requires fresh sessions before trust transfer review and link mutations", async () => {
+    const approveRepository = new InMemoryOpenPracticeRepository();
+    const approveServer = testServer({ repository: approveRepository });
+
+    const missingApproveSession = await approveServer.inject({
+      method: "POST",
+      url: "/api/billing/trust-transfer-requests/trust-transfer-request-001/approve",
+    });
+    expect(missingApproveSession.statusCode).toBe(403);
+    expect(missingApproveSession.json()).toMatchObject({
+      message: "Fresh session authentication is required for this credential operation",
+    });
+
+    const staleApproveSession = await approveServer.inject({
+      method: "POST",
+      url: "/api/billing/trust-transfer-requests/trust-transfer-request-001/approve",
+      headers: await freshAuthHeaders(approveRepository, {
+        freshAuthenticatedAt: staleFreshAuthenticatedAt(),
+      }),
+    });
+    expect(staleApproveSession.statusCode).toBe(403);
+    expect(staleApproveSession.json()).toMatchObject({
+      message: "Fresh session authentication is required for this credential operation",
+    });
+
+    const freshApproveSession = await approveServer.inject({
+      method: "POST",
+      url: "/api/billing/trust-transfer-requests/trust-transfer-request-001/approve",
+      headers: await freshAuthHeaders(approveRepository),
+    });
+    expect(freshApproveSession.statusCode).toBe(200);
+    expect(freshApproveSession.json()).toMatchObject({
+      id: "trust-transfer-request-001",
+      status: "approved",
+      reviewedByUserId: "user-admin",
+    });
+
+    const rejectRepository = new InMemoryOpenPracticeRepository();
+    const rejectServer = testServer({ repository: rejectRepository });
+    const createRejectTarget = await rejectServer.inject({
+      method: "POST",
+      url: "/api/billing/trust-transfer-requests",
+      payload: {
+        id: "trust-transfer-fresh-reject-route",
+        matterId: "matter-001",
+        invoiceId: "invoice-001",
+        clientContactId: "contact-ada",
+        amountCents: 1000,
+      },
+    });
+    expect(createRejectTarget.statusCode).toBe(200);
+
+    const missingRejectSession = await rejectServer.inject({
+      method: "POST",
+      url: "/api/billing/trust-transfer-requests/trust-transfer-fresh-reject-route/reject",
+    });
+    expect(missingRejectSession.statusCode).toBe(403);
+    expect(missingRejectSession.json()).toMatchObject({
+      message: "Fresh session authentication is required for this credential operation",
+    });
+
+    const staleRejectSession = await rejectServer.inject({
+      method: "POST",
+      url: "/api/billing/trust-transfer-requests/trust-transfer-fresh-reject-route/reject",
+      headers: await freshAuthHeaders(rejectRepository, {
+        freshAuthenticatedAt: staleFreshAuthenticatedAt(),
+      }),
+    });
+    expect(staleRejectSession.statusCode).toBe(403);
+    expect(staleRejectSession.json()).toMatchObject({
+      message: "Fresh session authentication is required for this credential operation",
+    });
+
+    const freshRejectSession = await rejectServer.inject({
+      method: "POST",
+      url: "/api/billing/trust-transfer-requests/trust-transfer-fresh-reject-route/reject",
+      headers: await freshAuthHeaders(rejectRepository),
+    });
+    expect(freshRejectSession.statusCode).toBe(200);
+    expect(freshRejectSession.json()).toMatchObject({
+      id: "trust-transfer-fresh-reject-route",
+      status: "rejected",
+      reviewedByUserId: "user-admin",
+    });
+
+    const linkRepository = new InMemoryOpenPracticeRepository();
+    const linkServer = testServer({ repository: linkRepository });
+    const approvedForLink = await linkServer.inject({
+      method: "POST",
+      url: "/api/billing/trust-transfer-requests/trust-transfer-request-001/approve",
+      headers: await freshAuthHeaders(linkRepository),
+    });
+    expect(approvedForLink.statusCode).toBe(200);
+    await postSyntheticTrustTransferLedger(linkRepository, {
+      id: "trust-transfer-fresh-link-posting",
+    });
+
+    const linkPayload = { ledgerTransactionId: "trust-transfer-fresh-link-posting" };
+    const missingLinkSession = await linkServer.inject({
+      method: "POST",
+      url: "/api/billing/trust-transfer-requests/trust-transfer-request-001/link",
+      payload: linkPayload,
+    });
+    expect(missingLinkSession.statusCode).toBe(403);
+    expect(missingLinkSession.json()).toMatchObject({
+      message: "Fresh session authentication is required for this credential operation",
+    });
+
+    const staleLinkSession = await linkServer.inject({
+      method: "POST",
+      url: "/api/billing/trust-transfer-requests/trust-transfer-request-001/link",
+      headers: await freshAuthHeaders(linkRepository, {
+        freshAuthenticatedAt: staleFreshAuthenticatedAt(),
+      }),
+      payload: linkPayload,
+    });
+    expect(staleLinkSession.statusCode).toBe(403);
+    expect(staleLinkSession.json()).toMatchObject({
+      message: "Fresh session authentication is required for this credential operation",
+    });
+
+    const freshLinkSession = await linkServer.inject({
+      method: "POST",
+      url: "/api/billing/trust-transfer-requests/trust-transfer-request-001/link",
+      headers: await freshAuthHeaders(linkRepository),
+      payload: linkPayload,
+    });
+    expect(freshLinkSession.statusCode).toBe(200);
+    expect(freshLinkSession.json()).toMatchObject({
+      id: "trust-transfer-request-001",
+      status: "linked",
+      reviewedByUserId: "user-admin",
+      ledgerTransactionId: "trust-transfer-fresh-link-posting",
+    });
+  });
+
   it("approves pending trust transfer requests without linking or posting ledger entries", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const server = testServer({ repository });
@@ -4231,6 +4454,7 @@ describe("billing routes", () => {
     const response = await server.inject({
       method: "POST",
       url: "/api/billing/trust-transfer-requests/trust-transfer-request-001/approve",
+      headers: await freshAuthHeaders(repository),
       payload: { evidence: { syntheticReview: true } },
     });
     const ledgerAfter = await repository.getLedger("firm-west-legal");
@@ -4289,6 +4513,7 @@ describe("billing routes", () => {
     const reconciledPayment = await invoiceServer.inject({
       method: "POST",
       url: "/api/payments/payment-before-trust-transfer-approval/reconcile",
+      headers: await freshAuthHeaders(invoiceRepository),
       payload: {
         reconciledAt: "2026-06-16T13:00:00.000Z",
         evidence: { source: "synthetic-trust-transfer-balance-proof" },
@@ -4338,6 +4563,7 @@ describe("billing routes", () => {
     const reject = await server.inject({
       method: "POST",
       url: "/api/billing/trust-transfer-requests/trust-transfer-reject-route/reject",
+      headers: await freshAuthHeaders(repository),
       payload: { evidence: { syntheticDecision: true } },
     });
     const ledgerAfter = await repository.getLedger("firm-west-legal");
@@ -4361,11 +4587,13 @@ describe("billing routes", () => {
     const approve = await server.inject({
       method: "POST",
       url: "/api/billing/trust-transfer-requests/trust-transfer-request-001/approve",
+      headers: await freshAuthHeaders(repository),
     });
     await postSyntheticTrustTransferLedger(repository);
     const link = await server.inject({
       method: "POST",
       url: "/api/billing/trust-transfer-requests/trust-transfer-request-001/link",
+      headers: await freshAuthHeaders(repository),
       payload: {
         ledgerTransactionId: "trust-transfer-link-route-posting",
         evidence: { syntheticLink: true },
@@ -4413,6 +4641,7 @@ describe("billing routes", () => {
     const duplicateApproval = await server.inject({
       method: "POST",
       url: "/api/billing/trust-transfer-requests/trust-transfer-duplicate-ledger-route/approve",
+      headers: await freshAuthHeaders(repository),
     });
     const duplicateLink = await server.inject({
       method: "POST",
@@ -4448,6 +4677,7 @@ describe("billing routes", () => {
     const approve = await server.inject({
       method: "POST",
       url: "/api/billing/trust-transfer-requests/trust-transfer-request-001/approve",
+      headers: await freshAuthHeaders(repository),
     });
     const approveAgain = await server.inject({
       method: "POST",
@@ -4743,6 +4973,7 @@ describe("billing routes", () => {
     const reconciledPayment = await server.inject({
       method: "POST",
       url: "/api/payments/payment-audit-route-test/reconcile",
+      headers: await freshAuthHeaders(repository),
       payload: {
         reconciledAt: "2026-06-16T13:00:00.000Z",
         notes: "Synthetic reviewer note.",

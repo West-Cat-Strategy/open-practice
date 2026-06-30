@@ -6,6 +6,7 @@ import {
   requireAccess,
   requireStaffAccess,
 } from "../../http/auth-guards.js";
+import { requireFreshAuth } from "../../http/fresh-auth.js";
 import { parseRequestPart } from "../../http/validation.js";
 import type { ApiAuthContext } from "../../server.js";
 import { appendRouteAuditEvent } from "../audit-events.js";
@@ -166,6 +167,7 @@ export function registerBillingPaymentRoutes(
         statusCode: 409,
       });
     }
+    requireFreshAuth(request.auth);
     const reconciled = await repository.reconcilePayment({
       firmId: request.auth.firmId,
       paymentId: existing.id,
