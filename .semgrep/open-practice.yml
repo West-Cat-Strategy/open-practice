@@ -22,3 +22,15 @@ rules:
       exclude:
         - "**/*.test.ts"
     pattern-regex: '\bDEV_AUTH_(USER_ID|FIRM_ID)\b'
+
+  - id: open-practice-inbound-email-recovery-raw-storage-key-metadata
+    message: Keep inbound-email raw object pointers out of durable recovery metadata; store only bounded recovery provenance and rawStorageKeyPresent.
+    severity: WARNING
+    languages: [typescript]
+    paths:
+      include:
+        - /apps/api/src/**/*.ts
+        - /apps/worker/src/**/*.ts
+      exclude:
+        - "**/*.test.ts"
+    pattern-regex: '\b(?:createJobLifecycleRecord|updateJobLifecycleRecord|appendRouteAuditEvent)\b[\s\S]{0,900}\bmetadata\s*:\s*\{[\s\S]{0,360}\brawStorageKey\b'
