@@ -1338,6 +1338,26 @@ describe("worker processors", () => {
     });
     expect(JSON.stringify(job.metadata)).not.toContain("Synthetic audit body");
     expect(job.metadata).not.toHaveProperty("rawBody");
+    const audit = await repository.listAuditEvents("firm-west-legal");
+    const downloaded = audit.events.find((event) => event.action === "audit_export.downloaded");
+    expect(downloaded).toMatchObject({
+      actorId: "user-admin",
+      resourceType: "audit_export",
+      resourceId: "audit-export-worker-test",
+      metadata: expect.objectContaining({
+        jobId: "job-audit-export-worker-test",
+        reportType: "audit_log",
+        reportScope: "firm",
+        eventCount: expect.any(Number),
+        retentionPosture: "queued_regenerated_download_no_retained_export_body",
+        storedBody: false,
+        retainedExportArtifact: false,
+        exportBodyStoredInJobMetadata: false,
+      }),
+    });
+    expect(JSON.stringify(downloaded?.metadata)).not.toContain("Synthetic audit body");
+    expect(downloaded?.metadata).not.toHaveProperty("rawBody");
+    expect(downloaded?.metadata).not.toHaveProperty("events");
   });
 
   it("assembles generated intake packages from snapshot IDs without raw job metadata", async () => {
@@ -1657,6 +1677,62 @@ describe("worker processors", () => {
     expect(
       jobs.find((job) => job.id === "job-jurisdictional-trust-export-worker-test")?.metadata,
     ).not.toHaveProperty("statementEvidence");
+    const audit = await repository.listAuditEvents("firm-west-legal");
+    const billingDownloaded = audit.events.find(
+      (event) => event.action === "billing_export.downloaded",
+    );
+    const trustDownloaded = audit.events.find(
+      (event) => event.action === "jurisdictional_trust_export.downloaded",
+    );
+    expect(billingDownloaded).toMatchObject({
+      actorId: "user-admin",
+      resourceType: "billing_export",
+      resourceId: "billing-export-worker-test",
+      metadata: expect.objectContaining({
+        jobId: "job-billing-export-worker-test",
+        reportType: "billing",
+        reportScope: "matter",
+        fieldProfileId: "billing_operational_records_json",
+        matterId: "matter-001",
+        recordCount: expect.any(Number),
+        timeEntryCount: expect.any(Number),
+        expenseEntryCount: expect.any(Number),
+        invoiceCount: expect.any(Number),
+        paymentCount: expect.any(Number),
+        trustTransferRequestCount: expect.any(Number),
+        retentionPosture: "queued_regenerated_download_no_retained_export_body",
+        storedBody: false,
+        retainedExportArtifact: false,
+        exportBodyStoredInJobMetadata: false,
+      }),
+    });
+    expect(trustDownloaded).toMatchObject({
+      actorId: "user-admin",
+      resourceType: "jurisdictional_trust_export",
+      resourceId: "jurisdictional-trust-export-worker-test",
+      metadata: expect.objectContaining({
+        jobId: "job-jurisdictional-trust-export-worker-test",
+        reportType: "jurisdictional_trust",
+        reportScope: "firm",
+        fieldProfileId: "jurisdictional_trust_summary_json",
+        jurisdiction: "BC",
+        ledgerAccountCount: expect.any(Number),
+        ledgerEntryCount: expect.any(Number),
+        balanceCount: expect.any(Number),
+        trustBalanceCount: expect.any(Number),
+        retentionPosture: "queued_regenerated_download_no_retained_export_body",
+        storedBody: false,
+        retainedExportArtifact: false,
+        exportBodyStoredInJobMetadata: false,
+      }),
+    });
+    expect(JSON.stringify(billingDownloaded?.metadata)).not.toContain(
+      "Synthetic billing export body",
+    );
+    expect(JSON.stringify(trustDownloaded?.metadata)).not.toContain("synthetic-april-trust.pdf");
+    expect(JSON.stringify(trustDownloaded?.metadata)).not.toContain("fieldKeys");
+    expect(billingDownloaded?.metadata).not.toHaveProperty("rawBody");
+    expect(trustDownloaded?.metadata).not.toHaveProperty("statementEvidence");
   });
 
   it("completes staff report export jobs with bounded metadata only", async () => {
@@ -1737,6 +1813,30 @@ describe("worker processors", () => {
     });
     expect(JSON.stringify(job.metadata)).not.toContain("Synthetic staff report body");
     expect(job.metadata).not.toHaveProperty("rawBody");
+    const audit = await repository.listAuditEvents("firm-west-legal");
+    const downloaded = audit.events.find(
+      (event) => event.action === "staff_report_export.downloaded",
+    );
+    expect(downloaded).toMatchObject({
+      actorId: "user-admin",
+      resourceType: "staff_report_export",
+      resourceId: "staff-report-export-worker-test",
+      metadata: expect.objectContaining({
+        jobId: "job-staff-report-export-worker-test",
+        reportType: "staff_reporting",
+        reportScope: "firm",
+        reportDefinitionKey: "productivity",
+        exportProfileId: "summary_json",
+        groupingKey: "staff_member",
+        rowCount: expect.any(Number),
+        retentionPosture: "queued_regenerated_download_no_retained_export_body",
+        storedBody: false,
+        retainedExportArtifact: false,
+        exportBodyStoredInJobMetadata: false,
+      }),
+    });
+    expect(JSON.stringify(downloaded?.metadata)).not.toContain("Synthetic staff report body");
+    expect(downloaded?.metadata).not.toHaveProperty("rawBody");
   });
 
   it("completes conversation thread export report jobs with bounded metadata only", async () => {

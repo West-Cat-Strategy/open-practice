@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { OpenPracticeRepository } from "@open-practice/database";
 import {
   buildStaffReportProjection,
@@ -11,6 +12,17 @@ import {
 } from "@open-practice/domain";
 import { compactMetadata, metadataString } from "./metadata.js";
 import type { WorkerJobEnvelope, WorkerJobResult } from "./types.js";
+
+const exportDownloadRetentionPosture = "queued_regenerated_download_no_retained_export_body";
+
+function exportDownloadStorageFlags() {
+  return {
+    retentionPosture: exportDownloadRetentionPosture,
+    storedBody: false,
+    retainedExportArtifact: false,
+    exportBodyStoredInJobMetadata: false,
+  };
+}
 
 function metadataJurisdiction(metadata: Record<string, unknown>): string | undefined {
   const value = metadataString(metadata, "jurisdiction");
@@ -57,15 +69,54 @@ function visibleContactIds(
   return new Set(dossiers.map((dossier) => dossier.contact.id));
 }
 
+async function appendReportDownloadAuditEvent(input: {
+  action: string;
+  jobLifecycleId?: string;
+  data: WorkerJobEnvelope;
+  repository: OpenPracticeRepository;
+  metadata: Record<string, unknown>;
+}): Promise<void> {
+  if (!input.data.resourceType || !input.data.resourceId) return;
+
+  await input.repository.appendAuditEvent({
+    id: randomUUID(),
+    firmId: input.data.firmId,
+    actorId: metadataString(input.data.metadata ?? {}, "requestedByUserId") ?? "worker",
+    occurredAt: new Date().toISOString(),
+    action: input.action,
+    resourceType: input.data.resourceType,
+    resourceId: input.data.resourceId,
+    metadata: compactMetadata({
+      jobId: input.jobLifecycleId ?? input.data.resourceId,
+      ...input.metadata,
+      ...exportDownloadStorageFlags(),
+    }),
+  });
+}
+
 export async function processReportJob(input: {
   jobName: string;
   data: WorkerJobEnvelope;
+  jobLifecycleId?: string;
   repository: OpenPracticeRepository;
 }): Promise<WorkerJobResult> {
   const { data, repository } = input;
 
   if (input.jobName === "audit_export" && data.resourceType === "audit_export") {
     const audit = await repository.listAuditEvents(data.firmId);
+    const generatedAt = new Date().toISOString();
+    await appendReportDownloadAuditEvent({
+      action: "audit_export.downloaded",
+      jobLifecycleId: input.jobLifecycleId,
+      data,
+      repository,
+      metadata: {
+        reportType: "audit_log",
+        reportScope: "firm",
+        eventCount: audit.events.length,
+        generatedAt,
+      },
+    });
     return {
       status: "completed",
       metadata: {
@@ -75,7 +126,7 @@ export async function processReportJob(input: {
         reportType: "audit_log",
         reportScope: "firm",
         eventCount: audit.events.length,
-        generatedAt: new Date().toISOString(),
+        generatedAt,
       },
     };
   }
@@ -96,6 +147,27 @@ export async function processReportJob(input: {
       invoices.length +
       payments.length +
       trustTransferRequests.length;
+    const generatedAt = new Date().toISOString();
+    const fieldProfileId = financialExportFieldProfiles.billingOperationalRecordsJson.id;
+    await appendReportDownloadAuditEvent({
+      action: "billing_export.downloaded",
+      jobLifecycleId: input.jobLifecycleId,
+      data,
+      repository,
+      metadata: {
+        reportType: "billing",
+        reportScope: matterId ? "matter" : "firm",
+        fieldProfileId,
+        matterId,
+        recordCount,
+        timeEntryCount: timeEntries.length,
+        expenseEntryCount: expenseEntries.length,
+        invoiceCount: invoices.length,
+        paymentCount: payments.length,
+        trustTransferRequestCount: trustTransferRequests.length,
+        generatedAt,
+      },
+    });
     return {
       status: "completed",
       metadata: compactMetadata({
@@ -104,7 +176,7 @@ export async function processReportJob(input: {
         resourceId: data.resourceId,
         reportType: "billing",
         reportScope: matterId ? "matter" : "firm",
-        fieldProfileId: financialExportFieldProfiles.billingOperationalRecordsJson.id,
+        fieldProfileId,
         matterId,
         recordCount,
         timeEntryCount: timeEntries.length,
@@ -112,7 +184,7 @@ export async function processReportJob(input: {
         invoiceCount: invoices.length,
         paymentCount: payments.length,
         trustTransferRequestCount: trustTransferRequests.length,
-        generatedAt: new Date().toISOString(),
+        generatedAt,
       }),
     };
   }
@@ -122,6 +194,26 @@ export async function processReportJob(input: {
     data.resourceType === "jurisdictional_trust_export"
   ) {
     const jurisdiction = metadataJurisdiction(data.metadata ?? {});
+    const ledger = await repository.getLedger(data.firmId);
+    const generatedAt = new Date().toISOString();
+    const fieldProfileId = financialExportFieldProfiles.jurisdictionalTrustSummaryJson.id;
+    await appendReportDownloadAuditEvent({
+      action: "jurisdictional_trust_export.downloaded",
+      jobLifecycleId: input.jobLifecycleId,
+      data,
+      repository,
+      metadata: {
+        reportType: "jurisdictional_trust",
+        reportScope: "firm",
+        fieldProfileId,
+        jurisdiction,
+        ledgerAccountCount: ledger.accounts.length,
+        ledgerEntryCount: ledger.entries.length,
+        balanceCount: Object.keys(ledger.balances).length,
+        trustBalanceCount: Object.keys(ledger.trustBalances).length,
+        generatedAt,
+      },
+    });
     return {
       status: "completed",
       metadata: compactMetadata({
@@ -130,9 +222,9 @@ export async function processReportJob(input: {
         resourceId: data.resourceId,
         reportType: "jurisdictional_trust",
         reportScope: "firm",
-        fieldProfileId: financialExportFieldProfiles.jurisdictionalTrustSummaryJson.id,
+        fieldProfileId,
         jurisdiction,
-        generatedAt: new Date().toISOString(),
+        generatedAt,
       }),
     };
   }
@@ -190,6 +282,21 @@ export async function processReportJob(input: {
       legalClinicMatterProfiles,
       timeEntries,
       taskDeadlines,
+    });
+    await appendReportDownloadAuditEvent({
+      action: "staff_report_export.downloaded",
+      jobLifecycleId: input.jobLifecycleId,
+      data,
+      repository,
+      metadata: {
+        reportType: "staff_reporting",
+        reportScope: "firm",
+        reportDefinitionKey,
+        exportProfileId,
+        groupingKey,
+        rowCount: projection.rowCount,
+        generatedAt: projection.generatedAt,
+      },
     });
     return {
       status: "completed",

@@ -462,14 +462,16 @@ surface.
 
 - **Financial export field profiles**
   - **Status:** Shipped first slice on 2026-06-17, with a read-only staff reporting alignment view
-    added on 2026-06-29; keep future work focused on true format negotiation only after comparing
-    against this profile metadata.
+    and safe report export download audit events added on 2026-06-29; keep future work focused on
+    true format negotiation only after comparing against this profile metadata.
   - **Shipped boundary:** Billing and jurisdictional trust downloads now include OP-authored
     reusable field-profile metadata with allowlisted generated-projection keys. Job lifecycle,
     queue, and audit metadata carry profile IDs only, and downloads still regenerate current local
     projections without retained export bodies or serialization rewrites. The Reports workspace now
     compares manual report export profiles with financial field profiles using metadata, counts,
-    bounded field-key samples, and disabled-safeguard flags only.
+    bounded field-key samples, and disabled-safeguard flags only. Completed audit, billing, staff
+    report, and jurisdictional trust export jobs now append safe downloaded audit events with
+    job/profile/scope/count metadata and explicit no-storage flags only.
   - **References:** `opencollective__opencollective-api` export-request patterns and
     `kimai__kimai` spreadsheet column vocabulary.
   - **Reuse and snippets:** Open Collective is MIT/architecture-only; Kimai is AGPL/reference-only.

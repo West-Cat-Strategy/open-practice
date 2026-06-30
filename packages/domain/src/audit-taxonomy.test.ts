@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { appendAuditEvent, verifyAuditChain, type AuditEvent } from "./audit.js";
-import { classifyAuditEvent, summarizeAuditEventTaxonomy } from "./audit-taxonomy.js";
+import {
+  auditEventTaxonomyDefinitions,
+  classifyAuditEvent,
+  summarizeAuditEventTaxonomy,
+} from "./audit-taxonomy.js";
 import { sampleAuditEvents } from "./sample-data.js";
 
 function auditEvent(overrides: Partial<AuditEvent> = {}): AuditEvent {
@@ -1047,6 +1051,166 @@ describe("audit event taxonomy", () => {
     expect(classification.metadataHints.resource).not.toEqual(
       expect.arrayContaining(["displayName", "email", "phone", "address", "exportBody"]),
     );
+  });
+
+  it("classifies report export downloads with safe no-storage metadata hints", () => {
+    const cases = [
+      {
+        action: "audit_export.downloaded",
+        category: "audit_integrity",
+        resourceType: "audit_export",
+        matterScope: "firm",
+        metadata: {
+          jobId: "job-audit-export",
+          reportType: "audit_log",
+          reportScope: "firm",
+          eventCount: 12,
+          generatedAt: "2026-06-29T12:00:00.000Z",
+          retentionPosture: "queued_regenerated_download_no_retained_export_body",
+          storedBody: false,
+          retainedExportArtifact: false,
+          exportBodyStoredInJobMetadata: false,
+        },
+        expectedHints: ["eventCount"],
+      },
+      {
+        action: "billing_export.downloaded",
+        category: "billing",
+        resourceType: "billing_export",
+        matterScope: "optional_matter",
+        metadata: {
+          jobId: "job-billing-export",
+          reportType: "billing",
+          reportScope: "matter",
+          fieldProfileId: "billing_operational_records_json",
+          matterId: "matter-001",
+          recordCount: 8,
+          timeEntryCount: 2,
+          expenseEntryCount: 1,
+          invoiceCount: 3,
+          paymentCount: 1,
+          trustTransferRequestCount: 1,
+          generatedAt: "2026-06-29T12:00:00.000Z",
+          retentionPosture: "queued_regenerated_download_no_retained_export_body",
+          storedBody: false,
+          retainedExportArtifact: false,
+          exportBodyStoredInJobMetadata: false,
+        },
+        expectedHints: [
+          "fieldProfileId",
+          "matterId",
+          "recordCount",
+          "timeEntryCount",
+          "expenseEntryCount",
+          "invoiceCount",
+          "paymentCount",
+          "trustTransferRequestCount",
+        ],
+      },
+      {
+        action: "staff_report_export.downloaded",
+        category: "operations",
+        resourceType: "staff_report_export",
+        matterScope: "firm",
+        metadata: {
+          jobId: "job-staff-report-export",
+          reportType: "staff_reporting",
+          reportScope: "firm",
+          reportDefinitionKey: "productivity",
+          exportProfileId: "summary_json",
+          groupingKey: "staff_member",
+          rowCount: 4,
+          generatedAt: "2026-06-29T12:00:00.000Z",
+          retentionPosture: "queued_regenerated_download_no_retained_export_body",
+          storedBody: false,
+          retainedExportArtifact: false,
+          exportBodyStoredInJobMetadata: false,
+        },
+        expectedHints: ["reportDefinitionKey", "exportProfileId", "groupingKey", "rowCount"],
+      },
+      {
+        action: "jurisdictional_trust_export.downloaded",
+        category: "trust",
+        resourceType: "jurisdictional_trust_export",
+        matterScope: "firm",
+        metadata: {
+          jobId: "job-jurisdictional-trust-export",
+          reportType: "jurisdictional_trust",
+          reportScope: "firm",
+          fieldProfileId: "jurisdictional_trust_summary_json",
+          jurisdiction: "BC",
+          ledgerAccountCount: 5,
+          ledgerEntryCount: 7,
+          balanceCount: 3,
+          trustBalanceCount: 2,
+          generatedAt: "2026-06-29T12:00:00.000Z",
+          retentionPosture: "queued_regenerated_download_no_retained_export_body",
+          storedBody: false,
+          retainedExportArtifact: false,
+          exportBodyStoredInJobMetadata: false,
+        },
+        expectedHints: [
+          "fieldProfileId",
+          "jurisdiction",
+          "ledgerAccountCount",
+          "ledgerEntryCount",
+          "balanceCount",
+          "trustBalanceCount",
+        ],
+      },
+    ] as const;
+
+    for (const item of cases) {
+      const classification = classifyAuditEvent(
+        auditEvent({
+          action: item.action,
+          resourceType: item.resourceType,
+          resourceId: `${item.resourceType}-001`,
+          metadata: item.metadata,
+        }),
+      );
+
+      expect(classification).toMatchObject({
+        action: item.action,
+        category: item.category,
+        known: true,
+        matterScope: item.matterScope,
+        resourceTypeMatches: true,
+      });
+      expect(classification.metadataHints.resource).toEqual(
+        expect.arrayContaining([
+          "jobId",
+          "reportType",
+          "reportScope",
+          "generatedAt",
+          "retentionPosture",
+          "storedBody",
+          "retainedExportArtifact",
+          "exportBodyStoredInJobMetadata",
+          ...item.expectedHints,
+        ]),
+      );
+      for (const unsafeKey of [
+        "rawBody",
+        "exportBody",
+        "fieldKeys",
+        "statementEvidence",
+        "events",
+        "auditEvents",
+        "rawAuditPayload",
+        "privateMetadata",
+      ]) {
+        expect(classification.metadataHints.resource).not.toContain(unsafeKey);
+      }
+    }
+  });
+
+  it("keeps one billing export request taxonomy entry", () => {
+    expect(
+      auditEventTaxonomyDefinitions.filter(
+        (definition) => definition.action === "billing_export.requested",
+      ),
+    ).toHaveLength(1);
   });
 
   it("classifies trust transfer review events with safe metadata hints", () => {
