@@ -2,8 +2,10 @@ import { afterEach, describe, expect, it } from "vitest";
 import { InMemoryOpenPracticeRepository } from "@open-practice/database";
 import {
   defaultPaymentImportDepositMatchReviewBoundary,
+  defaultPaymentImportRefundChargebackReviewBoundary,
   defaultPaymentImportReviewBoundary,
   type PaymentImportDepositMatchReviewRecord,
+  type PaymentImportRefundChargebackReviewRecord,
   type PaymentImportReviewRecord,
   type PaymentProcessorCheckoutSessionInput,
 } from "@open-practice/domain";
@@ -183,6 +185,29 @@ function depositMatchReviewRecord(
   };
 }
 
+function refundChargebackReviewRecord(
+  overrides: Partial<PaymentImportRefundChargebackReviewRecord> = {},
+): PaymentImportRefundChargebackReviewRecord {
+  const id = overrides.id ?? "refund-chargeback-review-auth-assigned";
+  return {
+    id,
+    firmId,
+    matterId: "matter-001",
+    paymentImportReviewRecordId: "payment-import-review-refund-auth-assigned",
+    category: "refund",
+    decision: "needs_more_evidence",
+    reason: "status_unclear",
+    reviewerEvidencePresent: true,
+    idempotencyKey: `synthetic-${id}-key`,
+    decisionFingerprint: `synthetic-${id}-fingerprint`,
+    boundaries: defaultPaymentImportRefundChargebackReviewBoundary(),
+    reviewedByUserId: "user-licensee",
+    reviewedAt: "2026-06-29T12:06:00.000Z",
+    createdAt: "2026-06-29T12:06:00.000Z",
+    ...overrides,
+  };
+}
+
 async function seedDepositMatchAuthorizationTarget(
   repository: InMemoryOpenPracticeRepository,
   input: { recordId: string; manualPaymentId: string; matterId: string; reviewId?: string },
@@ -218,6 +243,36 @@ async function seedDepositMatchAuthorizationTarget(
         matterId: input.matterId,
         paymentImportReviewRecordId: input.recordId,
         candidateManualPaymentId: input.manualPaymentId,
+      }),
+    );
+  }
+}
+
+async function seedRefundChargebackAuthorizationTarget(
+  repository: InMemoryOpenPracticeRepository,
+  input: {
+    recordId: string;
+    matterId: string;
+    eventStatus: "refund_observed" | "chargeback_observed";
+    reviewId?: string;
+  },
+): Promise<void> {
+  await repository.createPaymentImportReviewRecord(
+    paymentImportReviewRecord({
+      id: input.recordId,
+      matterId: input.matterId,
+      eventFamily: "payment",
+      eventStatus: input.eventStatus,
+      externalPaymentId: `pay_${input.recordId.replace(/[^a-zA-Z0-9]+/g, "_")}`,
+    }),
+  );
+  if (input.reviewId) {
+    await repository.createPaymentImportRefundChargebackReview(
+      refundChargebackReviewRecord({
+        id: input.reviewId,
+        matterId: input.matterId,
+        paymentImportReviewRecordId: input.recordId,
+        category: input.eventStatus === "chargeback_observed" ? "chargeback" : "refund",
       }),
     );
   }
@@ -904,6 +959,208 @@ describe("billing routes", () => {
     await expect(
       repository.listPaymentImportDepositMatchReviews(firmId, {
         paymentImportReviewRecordId: "payment-import-review-auth-assigned",
+      }),
+    ).resolves.toHaveLength(assignedCountBefore);
+  });
+
+  it("matches refund/chargeback review list fixtures across firm-wide, assigned, unassigned, and external users", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await seedPaymentImportAuthorizationUsers(repository);
+    const fixtureIds = authorizationFixtureCases
+      .filter(
+        (item) =>
+          item.family === "payment_import_refund_chargeback_review" && item.action === "read",
+      )
+      .map((item) => item.id);
+    expect(fixtureIds).toEqual([
+      "refund-chargeback-review:firm-wide:list-all",
+      "refund-chargeback-review:assigned:list-visible",
+      "refund-chargeback-review:unassigned:list-hidden",
+      "refund-chargeback-review:portal-client:staff-list-denied",
+    ]);
+    const firmWideCase = authorizationFixtureCase("refund-chargeback-review:firm-wide:list-all");
+    const assignedCase = authorizationFixtureCase("refund-chargeback-review:assigned:list-visible");
+    const unassignedCase = authorizationFixtureCase(
+      "refund-chargeback-review:unassigned:list-hidden",
+    );
+    const portalCase = authorizationFixtureCase(
+      "refund-chargeback-review:portal-client:staff-list-denied",
+    );
+    await seedRefundChargebackAuthorizationTarget(repository, {
+      recordId: "payment-import-refund-auth-assigned",
+      matterId: assignedCase.matterId!,
+      eventStatus: "refund_observed",
+      reviewId: assignedCase.resourceId,
+    });
+    await seedRefundChargebackAuthorizationTarget(repository, {
+      recordId: "payment-import-chargeback-auth-unassigned",
+      matterId: unassignedCase.matterId!,
+      eventStatus: "chargeback_observed",
+      reviewId: firmWideCase.resourceId,
+    });
+    const server = testServer({ repository });
+
+    const firmWide = await server.inject({
+      method: "GET",
+      url: "/api/billing/payment-import-review-records/payment-import-chargeback-auth-unassigned/refund-chargeback-reviews",
+      headers: authHeaders(ownerNoAssignmentUserId),
+    });
+    expect(firmWide.statusCode).toBe(200);
+    expect(firmWide.json()).toMatchObject({
+      reviewOnly: true,
+      reviews: [expect.objectContaining({ id: firmWideCase.resourceId })],
+    });
+
+    const assigned = await server.inject({
+      method: "GET",
+      url: "/api/billing/payment-import-review-records/payment-import-refund-auth-assigned/refund-chargeback-reviews",
+      headers: authHeaders(assignedCase.subjectId),
+    });
+    expect(assigned.statusCode).toBe(200);
+    expect(assigned.json()).toMatchObject({
+      reviewOnly: true,
+      reviews: [expect.objectContaining({ id: assignedCase.resourceId })],
+    });
+
+    const unassigned = await server.inject({
+      method: "GET",
+      url: "/api/billing/payment-import-review-records/payment-import-chargeback-auth-unassigned/refund-chargeback-reviews",
+      headers: authHeaders(unassignedCase.subjectId),
+    });
+    expect(unassigned.statusCode).toBe(403);
+    expect(unassigned.json()).toMatchObject({ message: "Expense entry access required" });
+    expect(unassignedCase.listVisible).toBe(false);
+
+    const portalClient = await server.inject({
+      method: "GET",
+      url: "/api/billing/payment-import-review-records/payment-import-refund-auth-assigned/refund-chargeback-reviews",
+      headers: authHeaders(clientExternalUserId),
+    });
+    expect(portalClient.statusCode).toBe(403);
+    expect(portalClient.json()).toMatchObject({ message: "Staff access required" });
+    expect(portalCase.listVisible).toBe(false);
+  });
+
+  it("matches refund/chargeback review create fixtures without creating denied decisions", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await seedPaymentImportAuthorizationUsers(repository);
+    const fixtureIds = authorizationFixtureCases
+      .filter(
+        (item) =>
+          item.family === "payment_import_refund_chargeback_review" && item.action === "create",
+      )
+      .map((item) => item.id);
+    expect(fixtureIds).toEqual([
+      "refund-chargeback-review:firm-wide:create",
+      "refund-chargeback-review:assigned:create",
+      "refund-chargeback-review:unassigned:create-denied",
+      "refund-chargeback-review:portal-client:create-denied",
+    ]);
+    const firmWideCase = authorizationFixtureCase("refund-chargeback-review:firm-wide:create");
+    const assignedCase = authorizationFixtureCase("refund-chargeback-review:assigned:create");
+    const unassignedCase = authorizationFixtureCase(
+      "refund-chargeback-review:unassigned:create-denied",
+    );
+    const portalCase = authorizationFixtureCase(
+      "refund-chargeback-review:portal-client:create-denied",
+    );
+    await seedRefundChargebackAuthorizationTarget(repository, {
+      recordId: "payment-import-refund-auth-assigned",
+      matterId: assignedCase.matterId!,
+      eventStatus: "refund_observed",
+    });
+    await seedRefundChargebackAuthorizationTarget(repository, {
+      recordId: "payment-import-chargeback-auth-unassigned",
+      matterId: unassignedCase.matterId!,
+      eventStatus: "chargeback_observed",
+    });
+    const server = testServer({ repository });
+
+    const firmWide = await server.inject({
+      method: "POST",
+      url: "/api/billing/payment-import-review-records/payment-import-chargeback-auth-unassigned/refund-chargeback-reviews",
+      headers: authHeaders(ownerNoAssignmentUserId),
+      payload: {
+        id: firmWideCase.resourceId,
+        decision: "exception_confirmed",
+        reason: "chargeback_observed",
+        idempotencyKey: "synthetic-refund-chargeback-firm-wide-create",
+      },
+    });
+    expect(firmWide.statusCode).toBe(200);
+    expect(firmWide.json()).toMatchObject({
+      review: {
+        id: firmWideCase.resourceId,
+        paymentImportReviewRecordId: "payment-import-chargeback-auth-unassigned",
+        category: "chargeback",
+      },
+    });
+
+    const assigned = await server.inject({
+      method: "POST",
+      url: "/api/billing/payment-import-review-records/payment-import-refund-auth-assigned/refund-chargeback-reviews",
+      headers: authHeaders(assignedCase.subjectId),
+      payload: {
+        id: assignedCase.resourceId,
+        decision: "exception_confirmed",
+        reason: "refund_observed",
+        idempotencyKey: "synthetic-refund-chargeback-assigned-create",
+      },
+    });
+    expect(assigned.statusCode).toBe(200);
+    expect(assigned.json()).toMatchObject({
+      review: {
+        id: assignedCase.resourceId,
+        paymentImportReviewRecordId: "payment-import-refund-auth-assigned",
+        category: "refund",
+      },
+    });
+
+    const unassignedCountBefore = (
+      await repository.listPaymentImportRefundChargebackReviews(firmId, {
+        paymentImportReviewRecordId: "payment-import-chargeback-auth-unassigned",
+      })
+    ).length;
+    const unassigned = await server.inject({
+      method: "POST",
+      url: "/api/billing/payment-import-review-records/payment-import-chargeback-auth-unassigned/refund-chargeback-reviews",
+      headers: authHeaders(unassignedCase.subjectId),
+      payload: {
+        id: unassignedCase.resourceId,
+        decision: "exception_confirmed",
+        reason: "chargeback_observed",
+        idempotencyKey: "synthetic-refund-chargeback-unassigned-denied",
+      },
+    });
+    expect(unassigned.statusCode).toBe(403);
+    expect(unassigned.json()).toMatchObject({ message: "Expense entry access required" });
+    await expect(
+      repository.listPaymentImportRefundChargebackReviews(firmId, {
+        paymentImportReviewRecordId: "payment-import-chargeback-auth-unassigned",
+      }),
+    ).resolves.toHaveLength(unassignedCountBefore);
+
+    const assignedCountBefore = (
+      await repository.listPaymentImportRefundChargebackReviews(firmId, {
+        paymentImportReviewRecordId: "payment-import-refund-auth-assigned",
+      })
+    ).length;
+    const portalClient = await server.inject({
+      method: "POST",
+      url: "/api/billing/payment-import-review-records/payment-import-refund-auth-assigned/refund-chargeback-reviews",
+      headers: authHeaders(clientExternalUserId),
+      payload: {
+        id: portalCase.resourceId,
+        decision: "exception_confirmed",
+        reason: "refund_observed",
+        idempotencyKey: "synthetic-refund-chargeback-portal-denied",
+      },
+    });
+    expect(portalClient.statusCode).toBe(403);
+    expect(portalClient.json()).toMatchObject({ message: "Staff access required" });
+    await expect(
+      repository.listPaymentImportRefundChargebackReviews(firmId, {
+        paymentImportReviewRecordId: "payment-import-refund-auth-assigned",
       }),
     ).resolves.toHaveLength(assignedCountBefore);
   });
