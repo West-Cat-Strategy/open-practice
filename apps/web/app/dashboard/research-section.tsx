@@ -63,6 +63,7 @@ export function ResearchSection({
     (artifact) => artifact.status === "ready_for_review",
   );
   const providerJobs = workspace.providerJobs.slice(0, 3);
+  const citationReadiness = workspace.citationPacketReadiness;
 
   return (
     <>
@@ -95,6 +96,42 @@ export function ResearchSection({
           <span className="field-label">Citation review</span>
           <strong>{workspace.citationReview.staffReviewRequired ? "required" : "none"}</strong>
           <small>No provider evidence stored</small>
+        </div>
+      </div>
+      <div className="detail-grid compact-detail-grid">
+        <div>
+          <span className="field-label">Citation packet</span>
+          <strong>{citationReadiness.staffReviewReady ? "ready" : "blocked"}</strong>
+          <small>
+            {citationReadiness.blockedReasons.map(formatLegalResearchValue).join(", ") ||
+              "staff review ready"}
+          </small>
+        </div>
+        <div>
+          <span className="field-label">Source refs</span>
+          <strong>{citationReadiness.sourceReferenceCount}</strong>
+          <small>
+            {citationReadiness.sourceReferenceCountsByType.case_law} case ·{" "}
+            {citationReadiness.sourceReferenceCountsByType.statute} statute
+          </small>
+        </div>
+        <div>
+          <span className="field-label">Ready artifacts</span>
+          <strong>{citationReadiness.readyForReviewArtifactCount}</strong>
+          <small>{citationReadiness.openCheckpointCount} open checkpoints</small>
+        </div>
+        <div>
+          <span className="field-label">Context links</span>
+          <strong>{citationReadiness.contextLinkCount}</strong>
+          <small>
+            {citationReadiness.contextLinkCountsByType.matter} matters ·{" "}
+            {citationReadiness.contextLinkCountsByType.document} documents
+          </small>
+        </div>
+        <div>
+          <span className="field-label">Packet flags</span>
+          <strong>{formatLegalResearchValue(citationReadiness.reservedProviderJobPosture)}</strong>
+          <small>No provider run · no verification claim · no legal advice</small>
         </div>
       </div>
       <p className="inline-empty" role="status" aria-live="polite" aria-atomic="true">
@@ -158,9 +195,6 @@ export function ResearchSection({
                 </small>
                 <small>{artifactDetail(artifact)}</small>
                 {documentAnalysisDecision ? <small>{documentAnalysisDecision}</small> : null}
-                {artifact.note && artifact.kind !== "document_analysis_status" ? (
-                  <small>{artifact.note}</small>
-                ) : null}
               </span>
               {showReviewControls ? (
                 <div className="draft-assist-actions">

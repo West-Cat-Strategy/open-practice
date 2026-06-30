@@ -68,7 +68,8 @@ describe("legal research routes", () => {
     });
 
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toMatchObject({
+    const body = response.json();
+    expect(body).toMatchObject({
       status: "available",
       matterId: "matter-001",
       summary: {
@@ -89,7 +90,44 @@ describe("legal research routes", () => {
         citationVerificationClaims: false,
         downstreamMutation: false,
       },
+      citationPacketReadiness: {
+        sourceReferenceCount: 1,
+        sourceReferenceCountsByType: {
+          statute: 1,
+          case_law: 0,
+        },
+        readyForReviewArtifactCount: 1,
+        readyForReviewArtifactIds: ["legal-research-source-note-001"],
+        openCheckpointCount: 0,
+        openCheckpointArtifactIds: [],
+        contextLinkCount: 4,
+        contextLinkCountsByType: {
+          matter: 2,
+          document: 2,
+        },
+        staffReviewReady: true,
+        blockedReasons: [],
+        reservedProviderJobPosture: "reserved_no_provider_execution",
+        providerExecuted: false,
+        authorityScraped: false,
+        sourceTextStored: false,
+        promptStored: false,
+        providerEvidenceStored: false,
+        citationVerificationClaimed: false,
+        legalAdviceGenerated: false,
+        downstreamMutation: false,
+        reviewOnly: true,
+      },
     });
+    expect(JSON.stringify(body.citationPacketReadiness)).not.toContain(
+      "Residential tenancy statute review label",
+    );
+    expect(JSON.stringify(body.citationPacketReadiness)).not.toContain(
+      "Staff-entered citation label",
+    );
+    expect(JSON.stringify(body.citationPacketReadiness)).not.toContain(
+      "Synthetic metadata-only review note",
+    );
   });
 
   it("creates and reviews artifacts without downstream mutations or raw audit text", async () => {
@@ -131,6 +169,23 @@ describe("legal research routes", () => {
       status: "reviewed",
       reviewDecision: "reviewed",
       reviewedByUserId: "user-licensee",
+    });
+    const workspaceResponse = await server.inject({
+      method: "GET",
+      url: "/api/legal-research/workspace?matterId=matter-001",
+    });
+    expect(workspaceResponse.statusCode).toBe(200);
+    expect(workspaceResponse.json()).toMatchObject({
+      citationPacketReadiness: {
+        readyForReviewArtifactCount: 1,
+        readyForReviewArtifactIds: ["legal-research-source-note-001"],
+        sourceReferenceCount: 2,
+        staffReviewReady: true,
+        providerExecuted: false,
+        citationVerificationClaimed: false,
+        legalAdviceGenerated: false,
+        downstreamMutation: false,
+      },
     });
     expect(tasksAfter).toHaveLength(tasksBefore.length);
     const event = repository.events.find(

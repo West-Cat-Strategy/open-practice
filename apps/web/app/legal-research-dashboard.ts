@@ -1,4 +1,9 @@
-import type { LegalResearchArtifactRecord, User } from "@open-practice/domain";
+import type {
+  LegalResearchArtifactRecord,
+  LegalResearchContextResourceType,
+  LegalResearchSourceType,
+  User,
+} from "@open-practice/domain";
 import type {
   LegalResearchDashboardResponse,
   LegalResearchWorkspaceResponse,
@@ -15,6 +20,55 @@ export function buildLegalResearchReviewPath(artifactId: string): string {
 
 export function buildLegalResearchProviderJobPath(): string {
   return "/api/legal-research/provider-jobs";
+}
+
+const legalResearchSourceTypes = [
+  "case_law",
+  "statute",
+  "regulation",
+  "policy",
+  "secondary_source",
+  "internal_note",
+  "unknown",
+] as const satisfies LegalResearchSourceType[];
+
+const legalResearchContextResourceTypes = [
+  "matter",
+  "document",
+  "draft",
+  "contact",
+  "task",
+  "calendar_event",
+  "intake_session",
+] as const satisfies LegalResearchContextResourceType[];
+
+function emptyLegalResearchCitationPacketReadiness(): LegalResearchWorkspaceResponse["citationPacketReadiness"] {
+  return {
+    sourceReferenceCount: 0,
+    sourceReferenceCountsByType: Object.fromEntries(
+      legalResearchSourceTypes.map((sourceType) => [sourceType, 0]),
+    ) as Record<LegalResearchSourceType, number>,
+    readyForReviewArtifactCount: 0,
+    readyForReviewArtifactIds: [],
+    openCheckpointCount: 0,
+    openCheckpointArtifactIds: [],
+    contextLinkCount: 0,
+    contextLinkCountsByType: Object.fromEntries(
+      legalResearchContextResourceTypes.map((resourceType) => [resourceType, 0]),
+    ) as Record<LegalResearchContextResourceType, number>,
+    staffReviewReady: false,
+    blockedReasons: ["no_source_references", "no_ready_for_review_artifacts"],
+    reservedProviderJobPosture: "reserved_no_provider_execution",
+    providerExecuted: false,
+    authorityScraped: false,
+    sourceTextStored: false,
+    promptStored: false,
+    providerEvidenceStored: false,
+    citationVerificationClaimed: false,
+    legalAdviceGenerated: false,
+    downstreamMutation: false,
+    reviewOnly: true,
+  };
 }
 
 export function emptyLegalResearchWorkspace(
@@ -86,6 +140,7 @@ export function emptyLegalResearchWorkspace(
       deadLetter: 0,
       reviewOnly: true,
     },
+    citationPacketReadiness: emptyLegalResearchCitationPacketReadiness(),
   };
 }
 
@@ -110,6 +165,7 @@ export function replaceLegalResearchArtifact(
     ...workspace,
     artifacts,
     summary: summarizeLegalResearchWorkspace(artifacts),
+    citationPacketReadiness: summarizeLegalResearchCitationPacketReadiness(artifacts),
   };
 }
 
@@ -133,6 +189,38 @@ function summarizeLegalResearchWorkspace(
     else summary.rejected += 1;
   }
   return summary;
+}
+
+function summarizeLegalResearchCitationPacketReadiness(
+  artifacts: LegalResearchArtifactRecord[],
+): LegalResearchWorkspaceResponse["citationPacketReadiness"] {
+  const readiness = emptyLegalResearchCitationPacketReadiness();
+  readiness.blockedReasons = [];
+  for (const artifact of artifacts) {
+    readiness.sourceReferenceCount += artifact.sourceReferences.length;
+    readiness.contextLinkCount += artifact.contextLinks.length;
+    for (const source of artifact.sourceReferences) {
+      readiness.sourceReferenceCountsByType[source.sourceType] += 1;
+    }
+    for (const link of artifact.contextLinks) {
+      readiness.contextLinkCountsByType[link.resourceType] += 1;
+    }
+    if (artifact.status === "ready_for_review") {
+      readiness.readyForReviewArtifactIds.push(artifact.id);
+    }
+    if (artifact.checkpoint && !["reviewed", "rejected"].includes(artifact.status)) {
+      readiness.openCheckpointArtifactIds.push(artifact.id);
+    }
+  }
+  readiness.readyForReviewArtifactCount = readiness.readyForReviewArtifactIds.length;
+  readiness.openCheckpointCount = readiness.openCheckpointArtifactIds.length;
+  if (readiness.sourceReferenceCount === 0) readiness.blockedReasons.push("no_source_references");
+  if (readiness.readyForReviewArtifactCount === 0) {
+    readiness.blockedReasons.push("no_ready_for_review_artifacts");
+  }
+  if (readiness.openCheckpointCount > 0) readiness.blockedReasons.push("open_checkpoints");
+  readiness.staffReviewReady = readiness.blockedReasons.length === 0;
+  return readiness;
 }
 
 export function summarizeLegalResearchWorkspaceStatus(

@@ -90,6 +90,16 @@ workspace artifact `Review`/`Reject` button labels, busy/disabled reasons, stabl
 accessible status text into domain-owned operational action descriptors. Proof is recorded in
 [legal research artifact review action descriptors proof](validation/OP_LEGAL_RESEARCH_ARTIFACT_REVIEW_ACTION_DESCRIPTORS_PROOF_2026-06-29.md).
 
+The 2026-06-29 `feat/legal-research-citation-packet-readiness-20260629` branch adds a
+metadata-only `citationPacketReadiness` summary to the existing staff-only Legal Research workspace
+API and Research dashboard. The packet is derived from already-authorized artifacts and carries
+source-reference counts, ready-for-review artifact IDs, open checkpoint IDs, context-link counts,
+reserved provider-job posture, and fixed no-provider/no-scraping/no-source-text/no-prompt/
+no-provider-evidence/no-verification/no-advice/no-downstream-mutation flags. It does not add
+storage, routes, migrations, providers, worker execution, citation verification, legal advice, or
+document/task/draft/message/calendar mutation. Proof is recorded in
+[legal research citation packet readiness proof](validation/OP_LEGAL_RESEARCH_CITATION_PACKET_READINESS_PROOF_2026-06-29.md).
+
 The 2026-06-27 `feat/deposit-match-review-command-boundary-20260627` branch implements OP-T162 as
 the next safe payment import/deposit matching runtime slice after OP-T160. It adds staff-only,
 provider-neutral, append-only deposit-match reviewer decisions over normalized payment import

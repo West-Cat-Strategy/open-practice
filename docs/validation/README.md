@@ -18,6 +18,14 @@ skipped-check context. The live workboard remains
 
 ## Current Handoff Notes
 
+The 2026-06-29 legal-research citation packet readiness proof is recorded in
+[OP_LEGAL_RESEARCH_CITATION_PACKET_READINESS_PROOF_2026-06-29.md](OP_LEGAL_RESEARCH_CITATION_PACKET_READINESS_PROOF_2026-06-29.md).
+It covers the additive, derived `citationPacketReadiness` packet on the staff-only Legal Research
+workspace API and Research dashboard, including source/context counts, ready/open-checkpoint
+artifact IDs, reserved provider-job posture, selector-driven validation, and preserved no provider
+execution, authority scraping, source-text/prompt/provider-evidence storage, citation verification,
+legal advice, downstream mutation, schema/migration, route, worker, or permission widening.
+
 The 2026-06-29 report export profile alignment proof is recorded in
 [OP_REPORT_EXPORT_PROFILE_ALIGNMENT_PROOF_2026-06-29.md](OP_REPORT_EXPORT_PROFILE_ALIGNMENT_PROOF_2026-06-29.md).
 It covers the read-only staff Reports workspace comparison between manual report export profiles

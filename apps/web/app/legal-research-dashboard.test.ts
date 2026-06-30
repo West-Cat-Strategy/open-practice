@@ -41,6 +41,24 @@ describe("legal research dashboard helpers", () => {
       liveResearchProvider: false,
     });
     expect(workspace.providerJobSummary.total).toBe(0);
+    expect(workspace.citationPacketReadiness).toMatchObject({
+      sourceReferenceCount: 0,
+      readyForReviewArtifactCount: 0,
+      openCheckpointCount: 0,
+      contextLinkCount: 0,
+      staffReviewReady: false,
+      blockedReasons: ["no_source_references", "no_ready_for_review_artifacts"],
+      reservedProviderJobPosture: "reserved_no_provider_execution",
+      providerExecuted: false,
+      authorityScraped: false,
+      sourceTextStored: false,
+      promptStored: false,
+      providerEvidenceStored: false,
+      citationVerificationClaimed: false,
+      legalAdviceGenerated: false,
+      downstreamMutation: false,
+      reviewOnly: true,
+    });
     expect(summarizeLegalResearchWorkspaceStatus(workspace)).toBe(
       "Research workspace is not available.",
     );
@@ -86,6 +104,18 @@ describe("legal research dashboard helpers", () => {
 
     expect(updated.summary.reviewed).toBe(1);
     expect(updated.summary.openCheckpointCount).toBe(0);
+    expect(updated.citationPacketReadiness).toMatchObject({
+      sourceReferenceCount: 0,
+      readyForReviewArtifactCount: 0,
+      readyForReviewArtifactIds: [],
+      openCheckpointCount: 0,
+      staffReviewReady: false,
+      blockedReasons: ["no_source_references", "no_ready_for_review_artifacts"],
+      providerExecuted: false,
+      citationVerificationClaimed: false,
+      legalAdviceGenerated: false,
+      downstreamMutation: false,
+    });
     expect(canReviewLegalResearch("firm_member")).toBe(true);
     expect(canReviewLegalResearch("auditor")).toBe(false);
   });
