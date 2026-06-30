@@ -48,6 +48,71 @@ function buildSyntheticBillingDashboard(): BillingDashboardResponse {
         lockedAt: "2026-06-30T00:00:00.000Z",
       },
     ],
+    billingPeriodLockImpact: {
+      definitionKey: "billing_period_lock_impact",
+      generatedAt: "2026-06-30T00:00:00.000Z",
+      groupingKey: "lock",
+      filters: {
+        asOf: "2026-06-30T00:00:00.000Z",
+        sourceTypes: "time_entry,expense_entry,invoice",
+      },
+      rowCount: 1,
+      dimensionFilters: {},
+      summary: {
+        totalRows: 1,
+        metrics: {
+          impactRowCount: 1,
+          impactedLockCount: 1,
+          impactedMatterCount: 1,
+          totalSafeIdCount: 2,
+          timeEntryImpactCount: 2,
+          expenseEntryImpactCount: 0,
+          invoiceImpactCount: 0,
+        },
+        groups: [
+          {
+            key: "lock_synthetic",
+            label: "2026-06-01 to 2026-06-30",
+            rowCount: 1,
+            totalCents: 0,
+            totalMinutes: 0,
+            riskCount: 0,
+          },
+        ],
+      },
+      rows: [
+        {
+          id: "lock_synthetic:time_entry:approved:matter_synthetic",
+          label: "2026-06-01 to 2026-06-30 Time entries",
+          groupKey: "lock_synthetic",
+          groupLabel: "2026-06-01 to 2026-06-30",
+          status: "approved",
+          tone: "neutral",
+          matterId: "matter_synthetic",
+          matterNumber: "2026-0001",
+          occurredAt: "2026-06-06T09:00:00.000Z",
+          metricCount: 2,
+          safeIds: ["time_safe_001", "time_safe_002"],
+          metadata: {
+            lockId: "lock_synthetic",
+            lockPeriodStart: "2026-06-01T00:00:00.000Z",
+            lockPeriodEnd: "2026-06-30T00:00:00.000Z",
+            sourceType: "time_entry",
+            status: "approved",
+            matterId: "matter_synthetic",
+            matterNumber: "2026-0001",
+            safeIdCount: 2,
+            firstSafeId: "time_safe_001",
+          },
+        },
+      ],
+      projectionPolicy: {
+        customSql: false,
+        biEmbed: false,
+        rawBodiesStoredInJobMetadata: false,
+        scheduledEmailDelivery: false,
+      },
+    },
     rateRules: [
       {
         id: "rate_synthetic",
@@ -724,6 +789,10 @@ describe("BillingSection", () => {
     );
 
     expect(html).toContain("Billing controls");
+    expect(html).toContain("Lock impact projection");
+    expect(html).toContain("time entry");
+    expect(html).toContain("time_safe_001");
+    expect(html).toContain("2 affected");
     expect(html).toContain("Local timer");
     expect(html).toContain("Filing and service");
     expect(html).toContain("Attach receipt or registry confirmation before billing approval.");
@@ -780,5 +849,8 @@ describe("BillingSection", () => {
     expect(html).toContain("Pending reconciliation");
     expect(html).toContain("Reconcile");
     expect(html).toContain("No manual payment reconciled.");
+    expect(html).not.toContain("unlock");
+    expect(html).not.toContain("override");
+    expect(html).not.toContain("bypass");
   });
 });

@@ -119,6 +119,7 @@ export type {
   PaymentImportRefundChargebackResolutionPacketPreview,
   PaymentImportReviewBoundary,
   PaymentPlanPlaceholder,
+  StaffReportProjection,
 };
 
 export type EmailSettings = RedactedSmtpProviderSettings;

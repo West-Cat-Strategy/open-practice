@@ -1,4 +1,9 @@
-import type { BillingPeriodLockRecord, InvoiceRecord } from "./billing.js";
+import {
+  billingDateFallsInsideLock,
+  type BillingPeriodLockRecord,
+  type InvoiceLineRecord,
+  type InvoiceRecord,
+} from "./billing.js";
 import {
   financialExportFieldProfiles,
   type FinancialExportFieldProfileId,
@@ -8,6 +13,7 @@ import type { LedgerAccount, LedgerEntry, LedgerReconciliationRecord } from "./l
 import type {
   ActivityTimelineEntry,
   Contact,
+  ExpenseEntry,
   Matter,
   Province,
   TaskDeadlineRecord,
@@ -18,6 +24,7 @@ import type {
 export type StaffReportDefinitionKey =
   | "invoice_aging"
   | "aged_receivables"
+  | "billing_period_lock_impact"
   | "reconciliation_freshness"
   | "productivity"
   | "operational_follow_up";
@@ -33,7 +40,10 @@ export type StaffReportGroupingKey =
   | "staff_member"
   | "priority"
   | "invoice"
+  | "lock"
   | "matter"
+  | "source_type"
+  | "status"
   | "jurisdiction"
   | "practiceArea"
   | "clinicProgramId"
@@ -194,6 +204,7 @@ export interface StaffReportProjectionRow {
   metricCents?: number;
   metricMinutes?: number;
   metricCount?: number;
+  safeIds?: string[];
   dimensions?: StaffReportDimensions;
   metadata: Record<string, string | number | boolean | undefined>;
 }
@@ -312,6 +323,10 @@ export interface StaffReportMatterInput extends Pick<
   activity?: ActivityTimelineEntry[];
 }
 
+export interface StaffReportInvoiceInput extends InvoiceRecord {
+  lines?: Array<Pick<InvoiceLineRecord, "timeEntryId" | "expenseEntryId">>;
+}
+
 export interface BuildStaffReportProjectionInput {
   firmId: string;
   generatedAt?: string;
@@ -320,7 +335,7 @@ export interface BuildStaffReportProjectionInput {
   matters: StaffReportMatterInput[];
   users: User[];
   contacts?: Array<Pick<Contact, "id" | "displayName">>;
-  invoices: InvoiceRecord[];
+  invoices: StaffReportInvoiceInput[];
   ledgerAccounts: LedgerAccount[];
   ledgerEntries?: LedgerEntry[];
   reconciliations: LedgerReconciliationRecord[];
@@ -329,6 +344,7 @@ export interface BuildStaffReportProjectionInput {
   >;
   dimensionFilters?: StaffReportDimensionFilters;
   billingPeriodLocks?: BillingPeriodLockRecord[];
+  expenseEntries?: ExpenseEntry[];
   timeEntries: TimeEntry[];
   taskDeadlines: TaskDeadlineRecord[];
 }
@@ -527,6 +543,56 @@ const STAFF_SAVED_REPORT_DEFINITION_INPUTS: StaffSavedReportDefinitionInput[] = 
     updatedAt: savedDefinitionTimestamp,
   },
   {
+    key: "billing_period_lock_impact",
+    name: "Billing period lock impact",
+    description:
+      "Read-only affected counts and safe source IDs across visible locked billing records.",
+    category: "billing",
+    defaultGrouping: "lock",
+    filters: [
+      { key: "asOf", label: "As of", type: "date", defaultValue: "generatedAt" },
+      {
+        key: "sourceTypes",
+        label: "Source types",
+        type: "enum",
+        options: ["time_entry", "expense_entry", "invoice"],
+      },
+      {
+        key: "recordStatuses",
+        label: "Record statuses",
+        type: "status",
+        options: [
+          "draft",
+          "submitted",
+          "approved",
+          "billed",
+          "written_off",
+          "issued",
+          "partially_paid",
+          "paid",
+          "void",
+        ],
+      },
+      ...STAFF_REPORT_DIMENSION_FILTERS,
+    ],
+    groupings: [
+      { key: "lock", label: "Lock", description: "Group impacted rows by billing period lock." },
+      { key: "status", label: "Status", description: "Group impacted rows by source status." },
+      { key: "matter", label: "Matter", description: "Group impacted rows by visible matter." },
+      {
+        key: "source_type",
+        label: "Source type",
+        description: "Group impacted rows by time, expense, or invoice source type.",
+      },
+      ...STAFF_REPORT_DIMENSION_GROUPINGS,
+    ],
+    exportProfileIds: ["summary_json", "review_csv"],
+    permissionScope: ["report:read", "report:export"],
+    source: "open_practice_builtin",
+    savedAt: savedDefinitionTimestamp,
+    updatedAt: savedDefinitionTimestamp,
+  },
+  {
     key: "reconciliation_freshness",
     name: "Reconciliation freshness",
     description: "Trust asset account reconciliation recency and exception posture.",
@@ -631,7 +697,10 @@ export function isStaffReportGroupingKey(value: string): value is StaffReportGro
     "staff_member",
     "priority",
     "invoice",
+    "lock",
     "matter",
+    "source_type",
+    "status",
     "jurisdiction",
     "practiceArea",
     "clinicProgramId",
@@ -885,6 +954,269 @@ function receivablesBucketAmounts(bucketKey: string, amountCents: number): Recor
         : 0,
     ]),
   );
+}
+
+type BillingPeriodLockImpactSourceType = "time_entry" | "expense_entry" | "invoice";
+
+interface BillingPeriodLockImpactCandidate {
+  lock: BillingPeriodLockRecord;
+  sourceType: BillingPeriodLockImpactSourceType;
+  status: string;
+  matterId: string;
+  occurredAt: string;
+  safeId: string;
+}
+
+function billingPeriodLockLabel(lock: BillingPeriodLockRecord): string {
+  return `${lock.periodStart.slice(0, 10)} to ${lock.periodEnd.slice(0, 10)}`;
+}
+
+function billingPeriodLockImpactSourceLabel(sourceType: BillingPeriodLockImpactSourceType): string {
+  if (sourceType === "time_entry") return "Time entries";
+  if (sourceType === "expense_entry") return "Expense entries";
+  return "Invoices";
+}
+
+function billingPeriodLockImpactStatusLabel(status: string): string {
+  return status.replaceAll("_", " ");
+}
+
+function lockCandidatesForTimestamp(input: {
+  locks: BillingPeriodLockRecord[];
+  timestamp: string | undefined;
+}): BillingPeriodLockRecord[] {
+  if (!input.timestamp) return [];
+  return input.locks.filter((lock) => billingDateFallsInsideLock(input.timestamp!, lock));
+}
+
+function addBillingPeriodLockImpactCandidate(
+  candidates: BillingPeriodLockImpactCandidate[],
+  input: {
+    locks: BillingPeriodLockRecord[];
+    timestamp: string | undefined;
+    sourceType: BillingPeriodLockImpactSourceType;
+    status: string;
+    matterId: string;
+    safeId: string;
+  },
+): void {
+  for (const lock of lockCandidatesForTimestamp({
+    locks: input.locks,
+    timestamp: input.timestamp,
+  })) {
+    candidates.push({
+      lock,
+      sourceType: input.sourceType,
+      status: input.status,
+      matterId: input.matterId,
+      occurredAt: input.timestamp!,
+      safeId: input.safeId,
+    });
+  }
+}
+
+export function buildBillingPeriodLockImpactProjection(
+  input: Omit<BuildStaffReportProjectionInput, "definitionKey"> & {
+    definitionKey?: "billing_period_lock_impact";
+  },
+): StaffReportProjection {
+  const generatedAt = input.generatedAt ?? new Date().toISOString();
+  const definition = getStaffSavedReportDefinition("billing_period_lock_impact");
+  const groupingKey = input.groupingKey ?? definition.defaultGrouping;
+  if (!definition.groupings.some((grouping) => grouping.key === groupingKey)) {
+    throw new Error(`Unsupported grouping ${groupingKey} for report ${definition.key}`);
+  }
+
+  const locks = input.billingPeriodLocks ?? [];
+  const matters = matterById(input.matters);
+  const profiles = legalClinicProfileByMatterId(input.legalClinicMatterProfiles);
+  const visibleMatterIds = new Set(input.matters.map((matter) => matter.id));
+  const visibleTimeEntries = input.timeEntries.filter((entry) =>
+    visibleMatterIds.has(entry.matterId),
+  );
+  const visibleExpenseEntries = (input.expenseEntries ?? []).filter((entry) =>
+    visibleMatterIds.has(entry.matterId),
+  );
+  const visibleInvoices = input.invoices.filter((invoice) =>
+    visibleMatterIds.has(invoice.matterId),
+  );
+  const timeEntryById = new Map(visibleTimeEntries.map((entry) => [entry.id, entry]));
+  const expenseEntryById = new Map(visibleExpenseEntries.map((entry) => [entry.id, entry]));
+  const candidates: BillingPeriodLockImpactCandidate[] = [];
+
+  for (const entry of visibleTimeEntries) {
+    addBillingPeriodLockImpactCandidate(candidates, {
+      locks,
+      timestamp: entry.performedAt,
+      sourceType: "time_entry",
+      status: entry.billingStatus,
+      matterId: entry.matterId,
+      safeId: entry.id,
+    });
+  }
+  for (const entry of visibleExpenseEntries) {
+    addBillingPeriodLockImpactCandidate(candidates, {
+      locks,
+      timestamp: entry.incurredAt,
+      sourceType: "expense_entry",
+      status: entry.billingStatus,
+      matterId: entry.matterId,
+      safeId: entry.id,
+    });
+  }
+  for (const invoice of visibleInvoices) {
+    for (const timestamp of [
+      invoice.createdAt,
+      invoice.approvedAt,
+      invoice.issuedAt,
+      invoice.dueAt,
+    ]) {
+      addBillingPeriodLockImpactCandidate(candidates, {
+        locks,
+        timestamp,
+        sourceType: "invoice",
+        status: invoice.status,
+        matterId: invoice.matterId,
+        safeId: invoice.id,
+      });
+    }
+    for (const line of invoice.lines ?? []) {
+      if (line.timeEntryId) {
+        const entry = timeEntryById.get(line.timeEntryId);
+        addBillingPeriodLockImpactCandidate(candidates, {
+          locks,
+          timestamp: entry?.performedAt,
+          sourceType: "invoice",
+          status: invoice.status,
+          matterId: invoice.matterId,
+          safeId: invoice.id,
+        });
+      }
+      if (line.expenseEntryId) {
+        const entry = expenseEntryById.get(line.expenseEntryId);
+        addBillingPeriodLockImpactCandidate(candidates, {
+          locks,
+          timestamp: entry?.incurredAt,
+          sourceType: "invoice",
+          status: invoice.status,
+          matterId: invoice.matterId,
+          safeId: invoice.id,
+        });
+      }
+    }
+  }
+
+  const aggregates = new Map<string, BillingPeriodLockImpactCandidate & { safeIds: Set<string> }>();
+  for (const candidate of candidates) {
+    const matter = matters.get(candidate.matterId);
+    const dimensions = dimensionsForMatter(matter, profiles.get(candidate.matterId));
+    if (!dimensionsMatchFilters(dimensions, input.dimensionFilters)) continue;
+    const key = [
+      candidate.lock.id,
+      candidate.sourceType,
+      candidate.status,
+      candidate.matterId,
+    ].join(":");
+    const existing = aggregates.get(key);
+    if (existing) {
+      existing.safeIds.add(candidate.safeId);
+      if (Date.parse(candidate.occurredAt) < Date.parse(existing.occurredAt)) {
+        existing.occurredAt = candidate.occurredAt;
+      }
+      continue;
+    }
+    aggregates.set(key, { ...candidate, safeIds: new Set([candidate.safeId]) });
+  }
+
+  const rows = [...aggregates.values()]
+    .map((aggregate): StaffReportProjectionRow => {
+      const matter = matters.get(aggregate.matterId);
+      const dimensions = dimensionsForMatter(matter, profiles.get(aggregate.matterId));
+      const dimensionGrouping = dimensionGroup(groupingKey, dimensions);
+      const lockLabel = billingPeriodLockLabel(aggregate.lock);
+      const group =
+        dimensionGrouping ??
+        (groupingKey === "lock"
+          ? { key: aggregate.lock.id, label: lockLabel }
+          : groupingKey === "status"
+            ? {
+                key: aggregate.status,
+                label: billingPeriodLockImpactStatusLabel(aggregate.status),
+              }
+            : groupingKey === "matter"
+              ? {
+                  key: aggregate.matterId,
+                  label: matterLabel(matter, aggregate.matterId),
+                }
+              : {
+                  key: aggregate.sourceType,
+                  label: billingPeriodLockImpactSourceLabel(aggregate.sourceType),
+                });
+      const safeIds = [...aggregate.safeIds].sort((left, right) => left.localeCompare(right));
+      return {
+        id: `${aggregate.lock.id}:${aggregate.sourceType}:${aggregate.status}:${aggregate.matterId}`,
+        label: `${lockLabel} ${billingPeriodLockImpactSourceLabel(aggregate.sourceType)}`,
+        groupKey: group.key,
+        groupLabel: group.label,
+        status: aggregate.status,
+        tone: "neutral",
+        matterId: aggregate.matterId,
+        matterNumber: matter?.number,
+        occurredAt: aggregate.occurredAt,
+        metricCount: safeIds.length,
+        safeIds,
+        dimensions,
+        metadata: {
+          lockId: aggregate.lock.id,
+          lockPeriodStart: aggregate.lock.periodStart,
+          lockPeriodEnd: aggregate.lock.periodEnd,
+          sourceType: aggregate.sourceType,
+          status: aggregate.status,
+          matterId: aggregate.matterId,
+          matterNumber: matter?.number,
+          safeIdCount: safeIds.length,
+          firstSafeId: safeIds[0],
+          ...dimensionMetadata(dimensions),
+        },
+      };
+    })
+    .sort(sortRows);
+
+  const impactedLockIds = new Set(rows.map((row) => row.metadata.lockId).filter(Boolean));
+  const sourceCounts = rows.reduce(
+    (counts, row) => {
+      const sourceType = row.metadata.sourceType;
+      if (sourceType === "time_entry") counts.timeEntryImpactCount += row.metricCount ?? 0;
+      if (sourceType === "expense_entry") counts.expenseEntryImpactCount += row.metricCount ?? 0;
+      if (sourceType === "invoice") counts.invoiceImpactCount += row.metricCount ?? 0;
+      return counts;
+    },
+    {
+      timeEntryImpactCount: 0,
+      expenseEntryImpactCount: 0,
+      invoiceImpactCount: 0,
+    },
+  );
+
+  return projection({
+    definitionKey: "billing_period_lock_impact",
+    generatedAt,
+    groupingKey,
+    filters: {
+      asOf: generatedAt,
+      sourceTypes: "time_entry,expense_entry,invoice",
+      ...compactDimensionFilters(input.dimensionFilters),
+    },
+    dimensionFilters: compactDimensionFilters(input.dimensionFilters),
+    rows,
+    metrics: {
+      impactRowCount: rows.length,
+      impactedLockCount: impactedLockIds.size,
+      impactedMatterCount: new Set(rows.map((row) => row.matterId).filter(Boolean)).size,
+      totalSafeIdCount: rows.reduce((sum, row) => sum + (row.metricCount ?? 0), 0),
+      ...sourceCounts,
+    },
+  });
 }
 
 function buildInvoiceAgingProjection(
@@ -1442,6 +1774,15 @@ export function buildStaffReportProjection(
   }
   if (input.definitionKey === "aged_receivables") {
     return buildAgedReceivablesProjection(input, generatedAt, generatedAtMs, groupingKey);
+  }
+  if (input.definitionKey === "billing_period_lock_impact") {
+    const { definitionKey: _definitionKey, ...projectionInput } = input;
+    return buildBillingPeriodLockImpactProjection({
+      ...projectionInput,
+      definitionKey: "billing_period_lock_impact",
+      generatedAt,
+      groupingKey,
+    });
   }
   if (input.definitionKey === "reconciliation_freshness") {
     return buildReconciliationFreshnessProjection(input, generatedAt, generatedAtMs, groupingKey);

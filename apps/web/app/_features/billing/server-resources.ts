@@ -4,20 +4,52 @@ import {
   defaultBillingExpenseCategoriesForFirm,
 } from "@open-practice/domain";
 import { apiGetOptional } from "../../_shared/server-api";
-import type { MatterSummary, SessionResponse } from "../../types";
+import type { MatterSummary, SessionResponse, StaffReportProjection } from "../../types";
 import type { BillingDashboardResponse } from "./models";
 
 function canViewBilling(role: string): boolean {
   return ["owner_admin", "billing_bookkeeper", "auditor"].includes(role);
 }
 
+function emptyBillingPeriodLockImpact(generatedAt: string): StaffReportProjection {
+  return {
+    definitionKey: "billing_period_lock_impact",
+    generatedAt,
+    groupingKey: "lock",
+    filters: { asOf: generatedAt, sourceTypes: "time_entry,expense_entry,invoice" },
+    rowCount: 0,
+    dimensionFilters: {},
+    summary: {
+      totalRows: 0,
+      metrics: {
+        impactRowCount: 0,
+        impactedLockCount: 0,
+        impactedMatterCount: 0,
+        totalSafeIdCount: 0,
+        timeEntryImpactCount: 0,
+        expenseEntryImpactCount: 0,
+        invoiceImpactCount: 0,
+      },
+      groups: [],
+    },
+    rows: [],
+    projectionPolicy: {
+      customSql: false,
+      biEmbed: false,
+      rawBodiesStoredInJobMetadata: false,
+      scheduledEmailDelivery: false,
+    },
+  };
+}
+
 function buildBillingFallback(
   matters: MatterSummary[],
   session: SessionResponse,
 ): BillingDashboardResponse {
+  const generatedAt = "2026-06-17T00:00:00.000Z";
   const expenseCategories = defaultBillingExpenseCategoriesForFirm({
     firmId: session.user.firmId,
-    now: "2026-06-17T00:00:00.000Z",
+    now: generatedAt,
   });
   const expenseCategoryProfiles = expenseCategories.map(billingExpenseCategoryProfileFromRecord);
   const billingMatters = matters.map((matter) => {
@@ -125,6 +157,7 @@ function buildBillingFallback(
       refundChargebackReviewDecisionCount: 0,
     },
     periodLocks: [],
+    billingPeriodLockImpact: emptyBillingPeriodLockImpact(generatedAt),
     rateRules: [],
     timerDraftPolicy: billingTimerDraftPolicy,
     expenseCategories,
@@ -156,6 +189,7 @@ function emptyBillingAccessDeniedResponse(): BillingDashboardResponse {
       refundChargebackReviewDecisionCount: 0,
     },
     periodLocks: [],
+    billingPeriodLockImpact: emptyBillingPeriodLockImpact("2026-06-17T00:00:00.000Z"),
     rateRules: [],
     timerDraftPolicy: billingTimerDraftPolicy,
     expenseCategories: [],

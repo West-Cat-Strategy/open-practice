@@ -29,6 +29,7 @@ import type {
   PaymentImportRefundChargebackResolutionPacketPreview,
   PaymentImportReviewBoundary,
   PaymentPlanPlaceholder,
+  StaffReportProjection,
 } from "../../types";
 
 export type BillingEntryStatus = "draft" | "submitted" | "approved" | "billed" | "written_off";
@@ -285,6 +286,7 @@ export interface BillingDashboardResponse {
     refundChargebackReviewDecisionCount?: number;
   };
   periodLocks: BillingPeriodLockRecord[];
+  billingPeriodLockImpact: StaffReportProjection;
   rateRules: BillingRateRuleRecord[];
   timerDraftPolicy: BillingTimerDraftPolicy;
   expenseCategories: BillingExpenseCategoryRecord[];

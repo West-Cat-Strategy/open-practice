@@ -30,6 +30,15 @@ conflicts, self-approval denial, idempotency, no-overdraft and balance checks, a
 no provider settlement or trust-transfer semantic changes. Proof is recorded in
 [financial command fresh-auth proof](validation/OP_FINANCIAL_COMMAND_FRESH_AUTH_PROOF_2026-06-29.md).
 
+The 2026-06-29 `feat/billing-period-lock-impact-20260629` branch adds an additive, read-only
+billing period lock impact projection to existing staff Reports and Billing surfaces. It groups
+authorized visible-matter time entries, expense entries, and invoices by lock, status, matter, and
+source type, and exposes only counts, lock dates, matter numbers, source/status labels, and sorted
+safe IDs. The slice adds no unlock, override, bypass, mutation, lock-enforcement change, migration,
+provider, settlement, trust-posting, raw report-body storage, private text, memo, client
+identifier, or payment-detail behavior. Proof is recorded in
+[billing period lock impact projection proof](validation/OP_BILLING_PERIOD_LOCK_IMPACT_PROJECTION_PROOF_2026-06-29.md).
+
 The 2026-06-28 `feat/trust-controls-maker-checker-readiness-20260628` branch adds read-only
 Trust Controls maker-checker readiness indicators to the existing controls payload and dashboard.
 The indicators reuse ledger controls, reconciliation packet, posting-request, trust-transfer,

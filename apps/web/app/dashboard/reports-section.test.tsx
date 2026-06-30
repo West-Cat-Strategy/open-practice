@@ -275,6 +275,57 @@ const reportingWorkspace: StaffReportingWorkspaceResponse = {
         scheduledEmailDelivery: false,
       },
     },
+    {
+      definitionKey: "billing_period_lock_impact",
+      generatedAt,
+      groupingKey: "lock",
+      filters: { asOf: generatedAt, sourceTypes: "time_entry,expense_entry,invoice" },
+      dimensionFilters: {},
+      rowCount: 1,
+      summary: {
+        totalRows: 1,
+        metrics: { impactRowCount: 1, totalSafeIdCount: 2 },
+        groups: [],
+      },
+      rows: [
+        {
+          id: "lock-test:time_entry:approved:matter-001",
+          label: "2026-06-01 to 2026-06-30 Time entries",
+          groupKey: "lock-test",
+          groupLabel: "2026-06-01 to 2026-06-30",
+          status: "approved",
+          tone: "neutral",
+          matterId: "matter-001",
+          matterNumber: "2026-0001",
+          occurredAt: "2026-06-06T09:00:00.000Z",
+          metricCount: 2,
+          safeIds: ["time-safe-001", "time-safe-002"],
+          dimensions: {
+            jurisdiction: "BC",
+            practiceArea: "Residential tenancy",
+            clinicProgramId: "clinic-program-tenancy-stability",
+            restrictedFundReviewStatus: "not_reviewed",
+          },
+          metadata: {
+            lockId: "lock-test",
+            lockPeriodStart: "2026-06-01T00:00:00.000Z",
+            lockPeriodEnd: "2026-06-30T00:00:00.000Z",
+            sourceType: "time_entry",
+            status: "approved",
+            matterId: "matter-001",
+            matterNumber: "2026-0001",
+            safeIdCount: 2,
+            firstSafeId: "time-safe-001",
+          },
+        },
+      ],
+      projectionPolicy: {
+        customSql: false,
+        biEmbed: false,
+        rawBodiesStoredInJobMetadata: false,
+        scheduledEmailDelivery: false,
+      },
+    },
   ],
   history: [],
   scheduleReadinessSummary: {
@@ -357,6 +408,9 @@ describe("ReportsSection", () => {
     expect(html).toContain("invoice INV-AR-001");
     expect(html).toContain("61-90 days");
     expect(html).toContain("75 days past due");
+    expect(html).toContain("billing period lock impact");
+    expect(html).toContain("lock-test");
+    expect(html).toContain("safe IDs time-safe-001, time-safe-002");
     expect(html).toContain("Residential tenancy");
     expect(html).toContain("clinic-program-tenancy-stability");
     expect(html).toContain("not reviewed");
@@ -364,6 +418,9 @@ describe("ReportsSection", () => {
     expect(html).not.toContain("schedule export email");
     expect(html).not.toContain("payment processor setup");
     expect(html).not.toContain("post trust entry");
+    expect(html).not.toContain("unlock");
+    expect(html).not.toContain("override");
+    expect(html).not.toContain("bypass");
     expect(html).not.toContain("ada@example.test");
     expect(html).not.toContain("Initial tenancy dispute invoice");
     expect(html).not.toContain("Synthetic private productivity report body");
