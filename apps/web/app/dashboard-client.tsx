@@ -185,9 +185,12 @@ import type {
 import { emptyDocumentAssemblyWorkbench } from "./document-assembly-dashboard";
 import {
   buildContactDataQualityResolutionPayload,
+  buildContactDuplicateResolutionPayload,
   buildContactDossierConflictCheckPrefill,
+  contactDuplicateResolutionKey,
   contactDataQualitySignalKey,
   filterContactDossiers,
+  formatContactDuplicateResolutionDecision,
   formatContactDataQualityResolutionDecision,
   formatContactReviewSignalKind,
 } from "./contact-dossiers-dashboard";
@@ -359,6 +362,8 @@ import {
   canRecordContactDataQualityResolutions,
   type ContactDataQualityResolutionRecord,
   type ContactDataQualityResolutionsResponse,
+  type ContactDuplicateResolutionDecisionsResponse,
+  type ContactDuplicateResolutionRecord,
   type ContactDossiersResponse,
   type ContactHistoryExportRequest,
   type ContactHistoryExportRequestResponse,
@@ -1177,6 +1182,12 @@ export default function DashboardClient({
   const [contactDataQualityStatus, setContactDataQualityStatus] = useState(
     "No contact resolution recorded in this session.",
   );
+  const [contactDuplicateResolutionDecisions, setContactDuplicateResolutionDecisions] = useState<
+    ContactDuplicateResolutionRecord[]
+  >([]);
+  const [contactDuplicateResolutionStatus, setContactDuplicateResolutionStatus] = useState(
+    "No duplicate decisions loaded.",
+  );
   const [activeContactTimeline, setActiveContactTimeline] = useState<
     ContactTimelineResponse["timeline"]
   >([]);
@@ -1195,6 +1206,8 @@ export default function DashboardClient({
     "poll" | "download" | ""
   >("");
   const [recordingContactResolutionKey, setRecordingContactResolutionKey] = useState("");
+  const [recordingContactDuplicateResolutionKey, setRecordingContactDuplicateResolutionKey] =
+    useState("");
   const [conflictName, setConflictName] = useState("");
   const [conflictAliases, setConflictAliases] = useState("");
   const [conflictIdentifiers, setConflictIdentifiers] = useState("");
@@ -1557,6 +1570,47 @@ export default function DashboardClient({
         (resolution) => resolution.contactId === activeContactDossier.contact.id,
       )
     : [];
+  useEffect(() => {
+    if (!activeContactDossier) {
+      setContactDuplicateResolutionDecisions([]);
+      setContactDuplicateResolutionStatus("No duplicate decisions loaded.");
+      return;
+    }
+
+    let cancelled = false;
+    setContactDuplicateResolutionStatus("Loading duplicate decisions...");
+    void requestDashboardJson<ContactDuplicateResolutionDecisionsResponse>(
+      apiBaseUrl,
+      `/api/contacts/${encodeURIComponent(
+        activeContactDossier.contact.id,
+      )}/duplicate-resolution-decisions`,
+      { headers: devHeaders },
+    )
+      .then((payload) => {
+        if (cancelled) return;
+        setContactDuplicateResolutionDecisions(
+          payload.decisions.sort(
+            (left, right) => Date.parse(right.reviewedAt) - Date.parse(left.reviewedAt),
+          ),
+        );
+        setContactDuplicateResolutionStatus(
+          `${payload.decisions.length} duplicate decision${
+            payload.decisions.length === 1 ? "" : "s"
+          } loaded.`,
+        );
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setContactDuplicateResolutionDecisions([]);
+        setContactDuplicateResolutionStatus(
+          `Duplicate decisions unavailable: ${dashboardApiStatus(error)}`,
+        );
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeContactDossier, apiBaseUrl, devHeaders]);
   useEffect(() => {
     if (!activeContactDossier) {
       setActiveContactTimeline([]);
@@ -3848,6 +3902,52 @@ export default function DashboardClient({
       setContactDataQualityStatus(`Resolution failed: ${dashboardApiStatus(error)}`);
     } finally {
       setRecordingContactResolutionKey("");
+    }
+  }
+
+  async function recordContactDuplicateResolution(
+    signal: ContactDossiersResponse[number]["qualityReview"]["signals"][number],
+    decision: ContactDuplicateResolutionRecord["decision"],
+    reason: ContactDuplicateResolutionRecord["reason"],
+  ): Promise<void> {
+    if (!activeContactDossier) return;
+    const signalKey = contactDuplicateResolutionKey(activeContactDossier.contact.id, signal);
+    setRecordingContactDuplicateResolutionKey(signalKey);
+    setContactDuplicateResolutionStatus("Recording duplicate decision...");
+    try {
+      const payload = buildContactDuplicateResolutionPayload(
+        activeContactDossier,
+        signal,
+        decision,
+        reason,
+      );
+      const response = await requestDashboardJson<{ decision: ContactDuplicateResolutionRecord }>(
+        apiBaseUrl,
+        `/api/contacts/${encodeURIComponent(
+          activeContactDossier.contact.id,
+        )}/duplicate-resolution-decisions`,
+        {
+          method: "POST",
+          headers: devHeaders,
+          payload,
+        },
+      );
+      setContactDuplicateResolutionDecisions((current) =>
+        [response.decision, ...current.filter((item) => item.id !== response.decision.id)].sort(
+          (left, right) => Date.parse(right.reviewedAt) - Date.parse(left.reviewedAt),
+        ),
+      );
+      setContactDuplicateResolutionStatus(
+        `Recorded ${formatContactDuplicateResolutionDecision(
+          response.decision.decision,
+        )} for duplicate candidate.`,
+      );
+    } catch (error) {
+      setContactDuplicateResolutionStatus(
+        `Duplicate decision failed: ${dashboardApiStatus(error)}`,
+      );
+    } finally {
+      setRecordingContactDuplicateResolutionKey("");
     }
   }
 
@@ -6689,6 +6789,8 @@ export default function DashboardClient({
                   contactDossiers={contactDossierRecords}
                   contactDataQualityResolutions={activeContactDataQualityResolutions}
                   contactDataQualityStatus={contactDataQualityStatus}
+                  contactDuplicateResolutionDecisions={contactDuplicateResolutionDecisions}
+                  contactDuplicateResolutionStatus={contactDuplicateResolutionStatus}
                   contactReviewQueue={contactReviewQueue}
                   contactHistoryExportReason={contactHistoryExportReason}
                   contactHistoryExportRequest={
@@ -6730,11 +6832,13 @@ export default function DashboardClient({
                   onCreateMatterFromContact={(dossier) => void createMatterFromContact(dossier)}
                   onNewAppointmentForContact={prepareAppointmentForContact}
                   onRecordContactDataQualityResolution={recordContactDataQualityResolution}
+                  onRecordContactDuplicateResolution={recordContactDuplicateResolution}
                   onContactSearchChange={setContactSearch}
                   onPrepareConflictCheckFromContact={prepareConflictCheckFromContact}
                   onSelectContact={setActiveContactId}
                   onSelectMatter={selectMatter}
                   recordingContactResolutionKey={recordingContactResolutionKey}
+                  recordingContactDuplicateResolutionKey={recordingContactDuplicateResolutionKey}
                   exportingContactHistory={exportingContactHistory}
                   contactHistoryExportAction={contactHistoryExportAction}
                 />
@@ -7432,6 +7536,8 @@ export default function DashboardClient({
                   contactDossiers={contactDossierRecords}
                   contactDataQualityResolutions={activeContactDataQualityResolutions}
                   contactDataQualityStatus={contactDataQualityStatus}
+                  contactDuplicateResolutionDecisions={contactDuplicateResolutionDecisions}
+                  contactDuplicateResolutionStatus={contactDuplicateResolutionStatus}
                   contactReviewQueue={contactReviewQueue}
                   contactHistoryExportReason={contactHistoryExportReason}
                   contactHistoryExportRequest={
@@ -7473,11 +7579,13 @@ export default function DashboardClient({
                   onCreateMatterFromContact={(dossier) => void createMatterFromContact(dossier)}
                   onNewAppointmentForContact={prepareAppointmentForContact}
                   onRecordContactDataQualityResolution={recordContactDataQualityResolution}
+                  onRecordContactDuplicateResolution={recordContactDuplicateResolution}
                   onContactSearchChange={setContactSearch}
                   onPrepareConflictCheckFromContact={prepareConflictCheckFromContact}
                   onSelectContact={setActiveContactId}
                   onSelectMatter={selectMatter}
                   recordingContactResolutionKey={recordingContactResolutionKey}
+                  recordingContactDuplicateResolutionKey={recordingContactDuplicateResolutionKey}
                   exportingContactHistory={exportingContactHistory}
                   contactHistoryExportAction={contactHistoryExportAction}
                 />

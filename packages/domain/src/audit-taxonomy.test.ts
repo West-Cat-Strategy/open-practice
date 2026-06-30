@@ -167,6 +167,60 @@ describe("audit event taxonomy", () => {
     );
   });
 
+  it("classifies contact duplicate resolution metadata without raw duplicate evidence", () => {
+    const classification = classifyAuditEvent(
+      auditEvent({
+        action: "contact.duplicate_resolution_decision.recorded",
+        resourceType: "contact_duplicate_resolution_decision",
+        resourceId: "contact-duplicate-decision-001",
+        metadata: {
+          contactId: "contact-ada",
+          relatedContactId: "contact-river",
+          decision: "acknowledged_duplicate_candidate",
+          reason: "safe_identity_match",
+          idempotencyKeyPresent: true,
+          contactMerge: false,
+          contactFieldMutation: "none",
+          hiddenMatterDisclosure: false,
+          rawMatchedValueRetention: false,
+          privateReviewerNoteRetention: false,
+          conflictCheckMutation: "none",
+          portalPermissionWidening: false,
+          contactPermissionWidening: false,
+          matchedValue: "email:synthetic@example.test",
+          privateNote: "Synthetic private duplicate note",
+        },
+      }),
+    );
+
+    expect(classification).toMatchObject({
+      category: "contacts",
+      known: true,
+      matterScope: "optional_matter",
+      resourceTypeMatches: true,
+    });
+    expect(classification.metadataHints.resource).toEqual(
+      expect.arrayContaining([
+        "contactId",
+        "relatedContactId",
+        "decision",
+        "reason",
+        "idempotencyKeyPresent",
+        "contactMerge",
+        "contactFieldMutation",
+        "hiddenMatterDisclosure",
+        "rawMatchedValueRetention",
+        "privateReviewerNoteRetention",
+        "conflictCheckMutation",
+        "portalPermissionWidening",
+        "contactPermissionWidening",
+      ]),
+    );
+    expect(classification.metadataHints.resource).not.toEqual(
+      expect.arrayContaining(["matchedValue", "privateNote"]),
+    );
+  });
+
   it("classifies disposition schedule profile settings metadata as firm-scoped and bounded", () => {
     const classification = classifyAuditEvent(
       auditEvent({

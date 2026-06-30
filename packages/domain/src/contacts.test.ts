@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   buildContactDossiers,
+  defaultContactDuplicateResolutionBoundary,
   filterContactTimelineEntries,
   validateContactRecord,
   validateContactDataQualityResolutionRecord,
+  validateContactDuplicateResolutionRecord,
   validateContactRelationshipRecord,
 } from "./contacts.js";
 import {
@@ -722,6 +724,58 @@ describe("contact dossiers", () => {
         recordedAt: "not-a-date",
       }),
     ).toThrow("timestamp is invalid");
+  });
+
+  it("validates enum-only contact duplicate resolution records and fixed boundaries", () => {
+    const boundaries = defaultContactDuplicateResolutionBoundary();
+    const decision = {
+      id: "contact-duplicate-decision-001",
+      firmId: "firm-west-legal",
+      contactId: "contact-ada",
+      relatedContactId: "contact-river",
+      decision: "acknowledged_duplicate_candidate",
+      reason: "safe_identity_match",
+      idempotencyKey: "contact-ada:contact-river:acknowledged_duplicate_candidate",
+      decisionFingerprint: "fingerprint-contact-ada-contact-river",
+      boundaries,
+      reviewedByUserId: "user-licensee",
+      reviewedAt: "2026-06-30T12:00:00.000Z",
+      createdAt: "2026-06-30T12:00:00.000Z",
+    } as const;
+
+    expect(boundaries).toEqual({
+      contactMerge: false,
+      contactFieldMutation: "none",
+      hiddenMatterDisclosure: false,
+      rawMatchedValueRetention: false,
+      privateReviewerNoteRetention: false,
+      conflictCheckMutation: "none",
+      portalPermissionWidening: false,
+      contactPermissionWidening: false,
+    });
+    expect(() => validateContactDuplicateResolutionRecord(decision)).not.toThrow();
+    expect(() =>
+      validateContactDuplicateResolutionRecord({
+        ...decision,
+        id: "contact-duplicate-decision-reason-mismatch",
+        decision: "not_duplicate",
+        reason: "safe_identity_match",
+      }),
+    ).toThrow("reason is invalid for the decision");
+    expect(() =>
+      validateContactDuplicateResolutionRecord({
+        ...decision,
+        id: "contact-duplicate-decision-unsafe-boundary",
+        boundaries: { ...boundaries, contactMerge: true as false },
+      }),
+    ).toThrow("boundary posture is invalid");
+    expect(() =>
+      validateContactDuplicateResolutionRecord({
+        ...decision,
+        id: "contact-duplicate-decision-private-note-key",
+        idempotencyKey: "contact-ada/contact-river/private-note",
+      }),
+    ).toThrow("idempotency key is invalid");
   });
 
   it("validates contact relationship records", () => {

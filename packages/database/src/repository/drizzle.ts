@@ -100,10 +100,12 @@ import { runDrizzleConflictCheck } from "./conflict-checks/drizzle.js";
 import {
   createDrizzleContact,
   createDrizzleContactDataQualityResolution,
+  createDrizzleContactDuplicateResolutionDecision,
   createDrizzleContactRelationship,
   createDrizzleMatterContactAssociation,
   getDrizzleContact,
   listDrizzleContactDataQualityResolutions,
+  listDrizzleContactDuplicateResolutionDecisions,
   listDrizzleContactDossiersForUser,
   listDrizzleContactPortalGrantsForUser,
   listDrizzleContactsForUser,
@@ -784,6 +786,19 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     options: Parameters<OpenPracticeRepository["listContactDataQualityResolutions"]>[1] = {},
   ): ReturnType<OpenPracticeRepository["listContactDataQualityResolutions"]> {
     return listDrizzleContactDataQualityResolutions(this.db, firmId, options);
+  }
+
+  async createContactDuplicateResolutionDecision(
+    decision: Parameters<OpenPracticeRepository["createContactDuplicateResolutionDecision"]>[0],
+  ): ReturnType<OpenPracticeRepository["createContactDuplicateResolutionDecision"]> {
+    return createDrizzleContactDuplicateResolutionDecision(this.db, decision);
+  }
+
+  async listContactDuplicateResolutionDecisions(
+    firmId: string,
+    options: Parameters<OpenPracticeRepository["listContactDuplicateResolutionDecisions"]>[1] = {},
+  ): ReturnType<OpenPracticeRepository["listContactDuplicateResolutionDecisions"]> {
+    return listDrizzleContactDuplicateResolutionDecisions(this.db, firmId, options);
   }
 
   async getDocument(firmId: string, documentId: string): Promise<DocumentRecord | undefined> {

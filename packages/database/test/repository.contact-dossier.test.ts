@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { type User } from "@open-practice/domain";
+import {
+  defaultContactDuplicateResolutionBoundary,
+  type Contact,
+  type User,
+} from "@open-practice/domain";
 import { InMemoryOpenPracticeRepository } from "../src/repository/memory.js";
 
 describe("repository contact dossier quality review", () => {
@@ -64,6 +68,70 @@ describe("repository contact dossier quality review", () => {
         recordedAt: "2026-05-19T12:10:00.000Z",
       }),
     ).rejects.toThrow("Contact data-quality resolution decision is invalid");
+  });
+
+  it("records enum-only duplicate resolution decisions without mutating dossiers", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const visibleContacts = (repository as unknown as { contacts: Contact[] }).contacts;
+    const riverContact = visibleContacts.find((contact) => contact.id === "contact-river");
+    if (!riverContact) throw new Error("Expected sample contact-river fixture");
+    riverContact.identifiers = [{ type: "email", value: "ada@example.test" }];
+    const user: User = {
+      id: "user-licensee",
+      firmId: "firm-west-legal",
+      displayName: "Test Licensee",
+      email: "licensee@example.test",
+      role: "licensee",
+      assignedMatterIds: ["matter-001"],
+      mfaEnabled: true,
+    };
+    const beforeContact = await repository.getContact("firm-west-legal", "contact-ada");
+    const beforeDossiers = await repository.listContactDossiersForUser(user);
+    const boundaries = defaultContactDuplicateResolutionBoundary();
+
+    const created = await repository.createContactDuplicateResolutionDecision({
+      id: "contact-duplicate-decision-001",
+      firmId: "firm-west-legal",
+      contactId: "contact-ada",
+      relatedContactId: "contact-river",
+      decision: "acknowledged_duplicate_candidate",
+      reason: "safe_identity_match",
+      idempotencyKey: "contact-ada:contact-river:acknowledged",
+      decisionFingerprint: "fingerprint-acknowledged",
+      boundaries,
+      reviewedByUserId: "user-licensee",
+      reviewedAt: "2026-06-30T12:00:00.000Z",
+      createdAt: "2026-06-30T12:00:00.000Z",
+    });
+
+    await expect(
+      repository.listContactDuplicateResolutionDecisions("firm-west-legal", {
+        contactId: "contact-ada",
+      }),
+    ).resolves.toEqual([created]);
+    await expect(
+      repository.createContactDuplicateResolutionDecision({
+        ...created,
+        id: "contact-duplicate-decision-replay",
+        reviewedAt: "2026-06-30T12:05:00.000Z",
+        createdAt: "2026-06-30T12:05:00.000Z",
+      }),
+    ).resolves.toEqual(created);
+    await expect(
+      repository.createContactDuplicateResolutionDecision({
+        ...created,
+        id: "contact-duplicate-decision-conflict",
+        decision: "not_duplicate",
+        reason: "distinct_contact_verified",
+        decisionFingerprint: "fingerprint-not-duplicate",
+      }),
+    ).rejects.toThrow("Idempotency key was reused with a different payload");
+    await expect(repository.getContact("firm-west-legal", "contact-ada")).resolves.toEqual(
+      beforeContact,
+    );
+    await expect(repository.listContactDossiersForUser(user)).resolves.toEqual(beforeDossiers);
+    expect(JSON.stringify(created)).not.toContain("ada@example.test");
+    expect(JSON.stringify(created)).not.toContain("resolutionNote");
   });
 
   it("surfaces relationship graph summaries without leaking hidden contacts or related ids", async () => {

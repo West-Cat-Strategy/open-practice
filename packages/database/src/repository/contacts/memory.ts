@@ -4,12 +4,14 @@ import {
   summarizeContactDossierMatterRetentionHoldReview,
   validateContactRecord,
   validateContactDataQualityResolutionRecord,
+  validateContactDuplicateResolutionRecord,
   validateContactRelationshipRecord,
   type ActivityTimelineEntry,
   type CalendarSchedulingRequestRecord,
   type ConflictCheckRecord,
   type Contact,
   type ContactDataQualityResolutionRecord,
+  type ContactDuplicateResolutionRecord,
   type ContactDossier,
   type ContactRelationshipRecord,
   type IntakeVariableProposal,
@@ -21,13 +23,14 @@ import {
 } from "@open-practice/domain";
 import type {
   ContactDataQualityResolutionListOptions,
+  ContactDuplicateResolutionDecisionListOptions,
   ContactListOptions,
   ContactVisibilityPreloadContext,
   ContactRelationshipUpdateInput,
   ContactUpdateInput,
   MatterContactAssociationUpdateInput,
 } from "../contacts-contracts.js";
-import { clone } from "../contracts.js";
+import { IdempotencyKeyConflictError, clone } from "../contracts.js";
 import type { MatterSummary } from "../matter-workspace-contracts.js";
 
 export interface MemoryContactStore {
@@ -39,6 +42,7 @@ export interface MemoryContactStore {
   intakeVariableProposals: IntakeVariableProposal[];
   conflictChecks: ConflictCheckRecord[];
   contactDataQualityResolutions: ContactDataQualityResolutionRecord[];
+  contactDuplicateResolutionDecisions: ContactDuplicateResolutionRecord[];
 }
 
 export interface MemoryContactDependencies {
@@ -283,6 +287,11 @@ export async function listMemoryContactPortalGrantsForUser(
         );
   if (!dossier) return [];
   const visibleMatterIds = new Set(dossier.matters.map((matter) => matter.matterId));
+  const visibleDuplicateRelatedContactIds = new Set(
+    dossier.qualityReview.signals
+      .filter((signal) => signal.kind === "duplicate_candidate")
+      .flatMap((signal) => signal.relatedContactIds ?? []),
+  );
   return clone(
     (context.portalGrants ?? store.portalGrants)
       .filter(
@@ -311,6 +320,11 @@ export async function listMemoryContactTimelineForUser(
         );
   if (!dossier) return [];
   const visibleMatterIds = new Set(dossier.matters.map((matter) => matter.matterId));
+  const visibleDuplicateRelatedContactIds = new Set(
+    dossier.qualityReview.signals
+      .filter((signal) => signal.kind === "duplicate_candidate")
+      .flatMap((signal) => signal.relatedContactIds ?? []),
+  );
   const contact = store.contacts.find(
     (candidate) => candidate.firmId === user.firmId && candidate.id === contactId,
   );
@@ -412,6 +426,25 @@ export async function listMemoryContactTimelineForUser(
       },
     });
   }
+  for (const decision of store.contactDuplicateResolutionDecisions.filter(
+    (candidate) => candidate.firmId === user.firmId && candidate.contactId === contactId,
+  )) {
+    if (!visibleDuplicateRelatedContactIds.has(decision.relatedContactId)) continue;
+    entries.push({
+      id: `contact-duplicate-resolution:${decision.id}`,
+      firmId: decision.firmId,
+      occurredAt: decision.reviewedAt,
+      title: "Duplicate resolution decision",
+      kind: "audit",
+      actorId: decision.reviewedByUserId,
+      metadata: {
+        contactId,
+        relatedContactPresent: true,
+        decision: decision.decision,
+        reason: decision.reason,
+      },
+    });
+  }
   const visibleMatterIdList = [...visibleMatterIds].sort();
   const tasks =
     visibleMatterIdList.length > 0
@@ -486,5 +519,63 @@ export function listMemoryContactDataQualityResolutions(
           (!options.matterId || resolution.matterId === options.matterId),
       )
       .sort((left, right) => Date.parse(right.recordedAt) - Date.parse(left.recordedAt)),
+  );
+}
+
+function getContactPairOrThrow(
+  store: MemoryContactStore,
+  decision: ContactDuplicateResolutionRecord,
+): void {
+  const contact = store.contacts.find(
+    (candidate) => candidate.firmId === decision.firmId && candidate.id === decision.contactId,
+  );
+  if (!contact) throw new Error("Contact duplicate decision contact was not found");
+  const related = store.contacts.find(
+    (candidate) =>
+      candidate.firmId === decision.firmId && candidate.id === decision.relatedContactId,
+  );
+  if (!related) throw new Error("Contact duplicate decision related contact was not found");
+}
+
+export function createMemoryContactDuplicateResolutionDecision(
+  store: MemoryContactStore,
+  decision: ContactDuplicateResolutionRecord,
+): ContactDuplicateResolutionRecord {
+  getContactPairOrThrow(store, decision);
+  validateContactDuplicateResolutionRecord(decision);
+  const existing = store.contactDuplicateResolutionDecisions.find(
+    (candidate) =>
+      candidate.firmId === decision.firmId &&
+      candidate.contactId === decision.contactId &&
+      candidate.relatedContactId === decision.relatedContactId &&
+      candidate.idempotencyKey === decision.idempotencyKey,
+  );
+  if (existing) {
+    if (existing.decisionFingerprint !== decision.decisionFingerprint) {
+      throw new IdempotencyKeyConflictError();
+    }
+    return clone(existing);
+  }
+  store.contactDuplicateResolutionDecisions = [
+    ...store.contactDuplicateResolutionDecisions,
+    clone(decision),
+  ];
+  return clone(decision);
+}
+
+export function listMemoryContactDuplicateResolutionDecisions(
+  store: MemoryContactStore,
+  firmId: string,
+  options: ContactDuplicateResolutionDecisionListOptions = {},
+): ContactDuplicateResolutionRecord[] {
+  return clone(
+    store.contactDuplicateResolutionDecisions
+      .filter(
+        (decision) =>
+          decision.firmId === firmId &&
+          (!options.contactId || decision.contactId === options.contactId) &&
+          (!options.relatedContactId || decision.relatedContactId === options.relatedContactId),
+      )
+      .sort((left, right) => Date.parse(right.reviewedAt) - Date.parse(left.reviewedAt)),
   );
 }

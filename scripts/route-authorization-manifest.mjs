@@ -523,6 +523,22 @@ export const ROUTE_AUTHORIZATION_MANIFEST = [
     "contact",
     "update",
   ),
+  authRoute(
+    "registerContactRoutes",
+    "apps/api/src/routes/contacts.test.ts",
+    "GET",
+    "/api/contacts/:contactId/duplicate-resolution-decisions",
+    "contact",
+    "read",
+  ),
+  authRoute(
+    "registerContactRoutes",
+    "apps/api/src/routes/contacts.test.ts",
+    "POST",
+    "/api/contacts/:contactId/duplicate-resolution-decisions",
+    "contact",
+    "update",
+  ),
 
   authRoute(
     "registerConnectorRoutes",

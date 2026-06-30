@@ -1,6 +1,6 @@
 # Planning and Progress
 
-**Last Updated:** 2026-06-29
+**Last Updated:** 2026-06-30
 
 Use this file for live tracked work, immediate next moves, and the forward-looking development plan.
 Use `docs/planning.md` for the durable roadmap, `docs/improvement-opportunities.md` for candidate
@@ -10,7 +10,7 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 | Snapshot              | Value                                                                |
 | --------------------- | -------------------------------------------------------------------- |
-| Current focus         | 2026-06-29 active-lane mainline consolidation published and pruned.  |
+| Current focus         | Contact duplicate resolution decisions branch validation.            |
 | Next recommended pick | Pick the next small row from the candidate backlog.                  |
 | Ready rows            | 0                                                                    |
 | Candidate rows        | 0                                                                    |
@@ -21,6 +21,16 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 | Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`     |
 
 ## Current Handoff Notes
+
+The 2026-06-30 `feat/contact-duplicate-resolution-decisions-20260630` branch adds enum-only
+contact duplicate resolution decisions over already-visible dossier duplicate cues. The branch
+stores safe contact IDs, decision/reason enums, idempotency/reviewer metadata, timestamps, and fixed
+no-merge/no-contact-mutation/no-hidden-matter/no-raw-match/no-private-note/no-conflict-check-mutation/no-permission-widen
+boundaries only. New duplicate-candidate decisions use
+`/api/contacts/:contactId/duplicate-resolution-decisions`; the generic contact data-quality route
+continues to handle non-duplicate signals and rejects new duplicate-candidate writes. Proof is
+recorded in
+[contact duplicate resolution decisions proof](validation/OP_CONTACT_DUPLICATE_RESOLUTION_DECISIONS_PROOF_2026-06-30.md).
 
 The 2026-06-28 `feat/trust-controls-maker-checker-readiness-20260628` branch adds read-only
 Trust Controls maker-checker readiness indicators to the existing controls payload and dashboard.
