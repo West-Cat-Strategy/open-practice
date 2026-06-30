@@ -23,7 +23,9 @@ API contracts, database schema changes, auth changes, or release handoff.
 | Toolchain policy         | `pnpm toolchain:check`                             | Verifies local Node.js is at least 24 and the installed pnpm version matches `package.json` plus the Dockerfile build argument.                                                                                                                                                                                                                                                                                 |
 | Env surface policy       | `pnpm env:check`                                   | Compares runtime environment names against `.env.example` and self-host operator names against `docker/selfhost.example.env`, plus the repo-owned allowlists in `scripts/check-env-surface.mjs`.                                                                                                                                                                                                                |
 | Selective validation     | `pnpm verify:select -- --base <git-ref>`           | Prints recommended commands for changed files without running them.                                                                                                                                                                                                                                                                                                                                             |
+| Runner validation plan   | `pnpm verify:run -- --plan --files <paths...>`     | Prints the commands `verify:run` would execute from the same selector input without running commands or writing artifacts.                                                                                                                                                                                                                                                                                      |
 | Selected validation      | `pnpm verify:run -- --files <paths...>`            | Runs selector-chosen commands and writes ignored command logs under `.tmp/validation-runs/<timestamp>/`.                                                                                                                                                                                                                                                                                                        |
+| Selected dry run         | `pnpm verify:run -- --dry-run --files <paths...>`  | Skips command execution but still writes ignored skipped-command logs and metadata under `.tmp/validation-runs/<timestamp>/`.                                                                                                                                                                                                                                                                                   |
 | Final-path selection     | `pnpm verify:select -- --base-plus-dirty <ref>`    | Prints one deterministic command set for a branch diff plus staged, unstaged, and untracked files.                                                                                                                                                                                                                                                                                                              |
 | Dirty-tree selection     | `pnpm verify:select -- --dirty`                    | Prints recommended commands for staged, unstaged, and untracked working-tree files.                                                                                                                                                                                                                                                                                                                             |
 | Proof reconciliation     | `pnpm proof:reconcile -- --proof <path> ...`       | Checks proof-note final paths, selector output, selected commands, skipped-check reasons, and synthetic/privacy wording against a selector input mode.                                                                                                                                                                                                                                                          |
@@ -93,6 +95,21 @@ commands for those paths:
 ```bash
 pnpm verify:select -- --strict --files README.md
 ```
+
+Use `verify:run -- --plan` when you want the runner view of the same deterministic command set
+without any command execution or local evidence writes:
+
+```bash
+pnpm verify:run -- --plan --files apps/api/src/server.ts docs/testing/TESTING.md
+```
+
+`verify:select` is selector-only: it prints recommended commands and has no runner artifact
+options. `verify:run -- --plan` uses the runner CLI, prints the commands that normal `verify:run`
+would execute, and exits before command execution or `.tmp/validation-runs` creation. The
+`verify:run -- --dry-run` mode is different: it still writes `.tmp/validation-runs/<timestamp>/`
+metadata and skipped-command logs. Plain `verify:run` executes the selected commands and records
+their command logs and run metadata. Planner mode cannot be combined with `--dry-run` or
+`--artifact-root`.
 
 Selection rules:
 
