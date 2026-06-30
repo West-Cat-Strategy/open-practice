@@ -618,6 +618,14 @@ type DashboardCalendarScope = NonNullable<DashboardCalendarEvent["scope"]>;
 type DashboardTask = TaskDeadlineWorkbenchResponse["tasks"][number];
 type DashboardTaskListResponse = { tasks: TaskDeadlineWorkbenchResponse["tasks"] };
 type DashboardTaskStructureResponse = { structure: TaskStructuredDetailResponse };
+type CalendarAgingFollowUpTaskResponse = {
+  task: DashboardTask;
+  calendarAgingFollowUp: {
+    kind: "appointment_booking_request" | "calendar_scheduling_request";
+    id: string;
+    matterId: string;
+  };
+};
 type InboundMatterDraftResponse = {
   status: "drafted";
   message: {
@@ -5015,6 +5023,42 @@ export default function DashboardClient({
     }
   }
 
+  async function createCalendarAgingFollowUpTask(): Promise<void> {
+    if (!activeMatter) {
+      const message = "Choose a matter before creating a calendar follow-up task.";
+      setCalendarSchedulingReviewStatus(message);
+      setTaskActionStatus(message);
+      return;
+    }
+
+    setReviewingCalendarSchedulingRequestKey("calendar-aging-follow-up-task");
+    setCalendarSchedulingReviewStatus("Creating calendar aging follow-up task...");
+    setTaskActionStatus("Creating calendar aging follow-up task...");
+
+    try {
+      await requestDashboardJson<CalendarAgingFollowUpTaskResponse>(
+        apiBaseUrl,
+        "/api/tasks/calendar-aging-follow-up",
+        {
+          method: "POST",
+          headers: devHeaders,
+          payload: {
+            matterId: activeMatter.id,
+          },
+        },
+      );
+      await refreshTaskWorkspace();
+      setCalendarSchedulingReviewStatus("Calendar aging follow-up task created.");
+      setTaskActionStatus("Calendar aging follow-up task created.");
+    } catch (error) {
+      const message = `Calendar aging follow-up task failed: ${dashboardApiStatus(error)}`;
+      setCalendarSchedulingReviewStatus(message);
+      setTaskActionStatus(message);
+    } finally {
+      setReviewingCalendarSchedulingRequestKey("");
+    }
+  }
+
   async function createCalendarSchedulingRequest(
     payload: CalendarSchedulingRequestPayload,
     options: { busyKey: string; busyMessage: string; successMessage: string },
@@ -6824,6 +6868,7 @@ export default function DashboardClient({
                   onCreateCalendarCredential={() => void createCalendarCredential()}
                   onCreateCalendarEvent={() => void createCalendarEvent()}
                   onCreateCalendarGuestSession={(event) => void createCalendarGuestSession(event)}
+                  onCreateCalendarAgingFollowUpTask={() => void createCalendarAgingFollowUpTask()}
                   onCreateCalendarSchedulingRequestForReminder={(event, reminder) =>
                     createCalendarReminderSchedulingRequest(event, reminder)
                   }
@@ -7793,6 +7838,7 @@ export default function DashboardClient({
                   onCreateCalendarCredential={() => void createCalendarCredential()}
                   onCreateCalendarEvent={() => void createCalendarEvent()}
                   onCreateCalendarGuestSession={(event) => void createCalendarGuestSession(event)}
+                  onCreateCalendarAgingFollowUpTask={() => void createCalendarAgingFollowUpTask()}
                   onCreateCalendarSchedulingRequestForReminder={(event, reminder) =>
                     createCalendarReminderSchedulingRequest(event, reminder)
                   }

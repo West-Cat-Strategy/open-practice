@@ -170,6 +170,7 @@ function matterlessCalendarMarkup(
       onCreateCalendarCredential: noop,
       onCreateCalendarEvent: noop,
       onCreateCalendarGuestSession: noop,
+      onCreateCalendarAgingFollowUpTask: noop,
       onCreateCalendarSchedulingRequestForReminder: noop,
       onIssueCalendarGuestLink: noop,
       onOpenCalendarInvitationConfirmation: noop,
@@ -281,6 +282,7 @@ describe("CalendarSection", () => {
         onCreateCalendarCredential: noop,
         onCreateCalendarEvent: noop,
         onCreateCalendarGuestSession: noop,
+        onCreateCalendarAgingFollowUpTask: noop,
         onCreateCalendarSchedulingRequestForReminder: noop,
         onIssueCalendarGuestLink: noop,
         onOpenCalendarInvitationConfirmation: noop,
@@ -439,6 +441,7 @@ describe("CalendarSection", () => {
     expect(html).not.toContain("Acknowledge scheduling request aging review");
     expect(html).not.toContain("Mark scheduling request follow-up required");
     expect(html).not.toContain("Defer scheduling request aging review");
+    expect(html).not.toContain("Create follow-up task");
   });
 
   it("renders scheduling request aging cues without automatic finalization", () => {
@@ -491,6 +494,7 @@ describe("CalendarSection", () => {
     expect(html).toContain("Acknowledge");
     expect(html).toContain("Follow up");
     expect(html).toContain("Defer");
+    expect(html).toContain("Create follow-up task");
     expect(html).toContain("no public booking page or event creation runs");
   });
 

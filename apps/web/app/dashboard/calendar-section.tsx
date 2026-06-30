@@ -120,6 +120,7 @@ export interface CalendarSectionProps {
   onCreateCalendarCredential: () => void;
   onCreateCalendarEvent: () => void;
   onCreateCalendarGuestSession: (event: DashboardCalendarEvent) => void;
+  onCreateCalendarAgingFollowUpTask: () => void;
   onCreateCalendarSchedulingRequestForReminder: (
     event: DashboardCalendarEvent,
     reminder: CalendarEventReminder,
@@ -275,6 +276,7 @@ export function CalendarSection({
   onCreateCalendarCredential,
   onCreateCalendarEvent,
   onCreateCalendarGuestSession,
+  onCreateCalendarAgingFollowUpTask,
   onCreateCalendarSchedulingRequestForReminder,
   onIssueCalendarGuestLink,
   onOpenCalendarInvitationConfirmation,
@@ -427,6 +429,20 @@ export function CalendarSection({
         <h3>Scheduling requests</h3>
         <span>{activeCalendarSchedulingRequests.length} review records</span>
       </div>
+      {matterCalendarControlsEnabled ? (
+        <div className="calendar-meeting-link-form">
+          <button
+            aria-label="Create calendar aging follow-up task"
+            className="secondary-button compact-button row-button"
+            disabled={reviewingCalendarSchedulingRequestKey === "calendar-aging-follow-up-task"}
+            onClick={onCreateCalendarAgingFollowUpTask}
+            type="button"
+          >
+            <Plus size={15} />
+            Create follow-up task
+          </button>
+        </div>
+      ) : null}
       <div className="party-list">
         {sortCalendarSchedulingRequests(activeCalendarSchedulingRequests).map((request) => {
           const handoff = describeCalendarSchedulingRequestHandoff(request);
