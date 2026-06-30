@@ -144,6 +144,14 @@ describe("authorization fixture catalogue", () => {
       "deposit-match-review:assigned:create",
       "deposit-match-review:unassigned:create-denied",
       "deposit-match-review:portal-client:create-denied",
+      "refund-chargeback-review:firm-wide:list-all",
+      "refund-chargeback-review:assigned:list-visible",
+      "refund-chargeback-review:unassigned:list-hidden",
+      "refund-chargeback-review:portal-client:staff-list-denied",
+      "refund-chargeback-review:firm-wide:create",
+      "refund-chargeback-review:assigned:create",
+      "refund-chargeback-review:unassigned:create-denied",
+      "refund-chargeback-review:portal-client:create-denied",
       "portal-link:public-share:metadata-visible",
       "portal-link:expired-share:hidden",
       "portal-link:revoked-share:hidden",
@@ -307,7 +315,8 @@ describe("authorization fixture catalogue", () => {
     for (const item of authorizationFixtureCases.filter(
       (candidate) =>
         candidate.family === "payment_import_review" ||
-        candidate.family === "payment_import_deposit_match_review",
+        candidate.family === "payment_import_deposit_match_review" ||
+        candidate.family === "payment_import_refund_chargeback_review",
     )) {
       expect(
         canAccess({
