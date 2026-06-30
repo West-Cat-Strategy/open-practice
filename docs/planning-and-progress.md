@@ -1,6 +1,6 @@
 # Planning and Progress
 
-**Last Updated:** 2026-06-29
+**Last Updated:** 2026-06-30
 
 Use this file for live tracked work, immediate next moves, and the forward-looking development plan.
 Use `docs/planning.md` for the durable roadmap, `docs/improvement-opportunities.md` for candidate
@@ -10,7 +10,7 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 | Snapshot              | Value                                                                |
 | --------------------- | -------------------------------------------------------------------- |
-| Current focus         | 2026-06-29 active-lane mainline consolidation published and pruned.  |
+| Current focus         | 2026-06-30 refund/chargeback resolution packet preview implemented.  |
 | Next recommended pick | Pick the next small row from the candidate backlog.                  |
 | Ready rows            | 0                                                                    |
 | Candidate rows        | 0                                                                    |
@@ -125,6 +125,14 @@ category, enum decision/reason, idempotency posture, reviewer metadata, and expl
 flags only; it does not call providers, store refund/dispute artifacts or notes, mutate invoices,
 reverse ledgers, post trust entries, notify clients, or move funds. Proof is recorded in
 [refund/chargeback review decisions proof](validation/OP_REFUND_CHARGEBACK_REVIEW_DECISIONS_PROOF_2026-06-29.md).
+
+The 2026-06-30 `feat/refund-chargeback-resolution-packet-preview-20260630` follow-up adds a
+computed read-only resolution packet preview over those existing refund/chargeback enum decisions.
+It derives safe IDs, decision posture, enum reason categories, latest reviewer metadata, and fixed
+no-side-effect flags for record-local API reads and Billing dashboard rows. The preview stores no
+packet, artifact, note, notification, provider command, ledger reversal, invoice mutation, trust
+posting, or funds movement. Proof is recorded in
+[refund/chargeback resolution packet preview proof](validation/OP_REFUND_CHARGEBACK_RESOLUTION_PACKET_PREVIEW_PROOF_2026-06-30.md).
 
 The 2026-06-28 review-only calendar aging cue follow-up adds staff-only fresh/aging/stale metadata
 for open appointment booking tentative holds and open calendar scheduling requests. The cues are

@@ -3,14 +3,15 @@
 Date: 2026-06-17 PDT
 
 This packet defines the next safe boundary for future payment processor imports, deposit matching,
-refunds, and chargebacks. It began as docs-first policy groundwork and now has four narrow runtime
+refunds, and chargebacks. It began as docs-first policy groundwork and now has five narrow runtime
 slices: staff-only normalized payment import review records for processor evidence cues,
 staff-only deposit-match reviewer decisions over those normalized records, provider-neutral
-refund/chargeback review cues derived from existing payment import records, and staff-only
-refund/chargeback reviewer decisions over those cues. The packet still does not authorize live
-settlement, payment processor webhooks, provider payload persistence, invoice mutation, trust
-posting, bank-feed connections, worker replay, provider commands, refund or chargeback commands, or
-deposit matching automation.
+refund/chargeback review cues derived from existing payment import records, staff-only
+refund/chargeback reviewer decisions over those cues, and a computed read-only
+refund/chargeback resolution packet preview over existing enum decisions. The packet still does not
+authorize live settlement, payment processor webhooks, provider payload persistence, invoice
+mutation, trust posting, bank-feed connections, worker replay, provider commands, refund or
+chargeback commands, or deposit matching automation.
 
 ## Source Posture
 
@@ -43,6 +44,12 @@ The boundary builds from the shipped payment and funds proofs:
   reviewer timestamps/user IDs, and explicit no-side-effect flags without amounts, external payment
   IDs, raw payloads, refund artifacts, dispute packets, notes, invoice mutation, ledger reversal,
   trust posting, client notification, provider commands, or funds movement.
+- The 2026-06-30 refund/chargeback resolution packet preview computes a read-only packet from one
+  existing payment import review record and its existing enum decisions. It returns only safe IDs,
+  derived category/cue status, resolution posture, enum reason categories, latest reviewer metadata,
+  reviewer-evidence presence, and fixed no-side-effect flags. It stores no packet rows or artifacts,
+  emits no audit event, and performs no invoice, ledger, provider, notification, trust, or funds
+  side effect.
 
 ## First Runtime Slice
 
@@ -139,6 +146,27 @@ record derives a refund or chargeback cue:
   reconciliation mutation, ledger reversal, invoice mutation, trust posting, client notification,
   provider command, or funds movement.
 
+## Refund And Chargeback Resolution Packet Preview
+
+The 2026-06-30 preview slice lets authorized staff read a computed resolution packet preview for
+one existing refund or chargeback import record:
+
+- `GET /api/billing/payment-import-review-records/:recordId/refund-chargeback-resolution-packet-preview`
+  returns a read-only packet only when the source record derives an existing refund or chargeback
+  cue.
+- Authorization remains staff-only and matter-scoped through derived `expense_entry:read` access on
+  the source record's matter.
+- The packet is computed at read time from the payment import review record and existing
+  refund/chargeback enum decision records; no packet row, artifact, note, notification, provider
+  command, ledger reversal, invoice mutation, trust posting, or funds movement is created.
+- Response fields are limited to `reviewOnly: true`, safe source and candidate IDs, optional latest
+  review ID, `category`, `cueStatus`, `resolutionPosture`, enum reason categories, optional latest
+  reviewer metadata, reviewer-evidence presence, and fixed no-side-effect flags.
+- Billing dashboard rows may include the same preview and render compact posture, enum reason
+  categories, latest reviewer metadata, and the no-side-effect flags. The UI adds no form fields,
+  action buttons, upload controls, free-form notes, client notification controls, or provider
+  command controls.
+
 ## Safe Import Boundary
 
 Future processor imports may create reviewer-visible import evidence only when all of these limits
@@ -206,7 +234,9 @@ Refunds and chargebacks are exception review cues and staff decision records, no
 commands. The cue surface may show normalized status, amount, currency, timing, related import
 evidence, candidate invoice or payment references, cue counts, and safe cue metadata. The decision
 record may store only safe IDs, derived category, enum decision/reason, idempotency posture,
-reviewer metadata, and explicit no-side-effect flags. These surfaces must not:
+reviewer metadata, and explicit no-side-effect flags. The resolution packet preview may summarize
+those existing enum decisions into read-only posture and no-side-effect flags without storing a
+packet. These surfaces must not:
 
 - call provider refund or dispute APIs;
 - issue automatic invoice credits, write-offs, voids, reversals, or balance changes;

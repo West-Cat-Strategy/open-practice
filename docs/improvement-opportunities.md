@@ -438,6 +438,11 @@ surface.
     explicit no-side-effect flags; it does not store amounts, external payment IDs, notes, provider
     payloads, refund artifacts, dispute packets, invoice mutations, ledger reversals, client
     notifications, trust postings, provider commands, or funds movement.
+  - **Shipped refund/chargeback resolution packet preview:** The 2026-06-30 follow-up adds a
+    computed read-only packet preview over existing refund/chargeback enum decisions. It returns
+    safe IDs, decision posture, enum reason categories, latest reviewer metadata, and fixed
+    no-side-effect flags only; it stores no packet/artifact/note and adds no invoice, ledger,
+    provider, notification, trust, or funds side effect.
   - **Remaining boundary:** Deposit matching automation, refund and chargeback command workflows,
     settlement automation, provider webhook/replay behavior, provider commands, trust posting, and
     any funds movement remain separate future work after the cue and decision surfaces.

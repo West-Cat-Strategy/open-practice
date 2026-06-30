@@ -57,6 +57,15 @@ reason/category guardrails, safe audit metadata, Billing dashboard decision coun
 visibility, selector-driven validation, and preserved no provider calls, refund/dispute artifacts,
 invoice mutation, ledger reversal, client notification, trust posting, or funds movement.
 
+The 2026-06-30 refund/chargeback resolution packet preview proof is recorded in
+[OP_REFUND_CHARGEBACK_RESOLUTION_PACKET_PREVIEW_PROOF_2026-06-30.md](OP_REFUND_CHARGEBACK_RESOLUTION_PACKET_PREVIEW_PROOF_2026-06-30.md).
+It covers the computed read-only packet preview over existing payment import refund/chargeback enum
+decisions, including safe IDs, decision posture, enum reason categories, latest reviewer metadata,
+record-local API reads, Billing dashboard row rendering, route authorization manifest coverage,
+selector-driven validation, and preserved no writes, audit event, provider calls, refund/dispute
+artifacts, free-form notes, invoice mutation, ledger reversal, client notification, trust posting,
+or funds movement.
+
 The 2026-06-29 inbound communications aggregation efficiency closeout proof is recorded in
 [OP_INBOUND_COMMUNICATIONS_AGGREGATION_EFFICIENCY_PROOF_2026-06-29.md](OP_INBOUND_COMMUNICATIONS_AGGREGATION_EFFICIENCY_PROOF_2026-06-29.md).
 It covers the clean sibling-worktree verification that current `main` already batches inbound

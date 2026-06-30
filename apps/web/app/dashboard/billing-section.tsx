@@ -6,6 +6,8 @@ import {
   describePaymentImportReconciliationReadiness,
   describePaymentImportReview,
   describePaymentSettlementReview,
+  describeRefundChargebackResolutionPacketNoSideEffects,
+  describeRefundChargebackResolutionPacketPreview,
   type PaymentImportReviewSummary,
   type PaymentSettlementReviewSummary,
 } from "../billing-dashboard";
@@ -871,6 +873,12 @@ export function BillingSection({
                   {record.latestRefundChargebackReview.reason.replaceAll("_", " ")} · No funds
                   movement
                 </small>
+              ) : null}
+              {describeRefundChargebackResolutionPacketPreview(record) ? (
+                <small>{describeRefundChargebackResolutionPacketPreview(record)}</small>
+              ) : null}
+              {describeRefundChargebackResolutionPacketNoSideEffects(record) ? (
+                <small>{describeRefundChargebackResolutionPacketNoSideEffects(record)}</small>
               ) : null}
             </span>
             <em>{cents(record.amountCents)}</em>

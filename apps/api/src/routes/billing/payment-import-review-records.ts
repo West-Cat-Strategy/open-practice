@@ -12,6 +12,7 @@ import {
   paymentImportRefundChargebackReviewDecisions,
   paymentImportRefundChargebackReviewCue,
   paymentImportRefundChargebackReviewReasons,
+  paymentImportRefundChargebackResolutionPacketPreview,
   type ManualPaymentRecord,
   type PaymentImportDepositMatchReviewRecord,
   type PaymentImportRefundChargebackReviewRecord,
@@ -376,6 +377,49 @@ export function registerBillingPaymentImportReviewRoutes(
         reviewOnly: true,
         reviews: await repository.listPaymentImportRefundChargebackReviews(request.auth.firmId, {
           paymentImportReviewRecordId: record.id,
+        }),
+      };
+    },
+  );
+
+  server.get(
+    "/api/billing/payment-import-review-records/:recordId/refund-chargeback-resolution-packet-preview",
+    async (request) => {
+      const params = parseRequestPart(
+        paymentImportReviewRecordParamsSchema,
+        request.params,
+        "params",
+      );
+      const staffAccess = requireStaffAccess(request.auth);
+      if (!staffAccess.ok) throw staffAccess.error;
+
+      const record = await repository.getPaymentImportReviewRecord(
+        request.auth.firmId,
+        params.recordId,
+      );
+      if (!record) {
+        throw new ApiHttpError(
+          404,
+          "PAYMENT_IMPORT_REVIEW_RECORD_NOT_FOUND",
+          "Payment import review record was not found",
+        );
+      }
+      assertMatterAccess(request.auth, {
+        resource: "expense_entry",
+        action: "read",
+        matterId: record.matterId,
+      });
+      assertRefundChargebackReviewRecord(record);
+      const reviews = await repository.listPaymentImportRefundChargebackReviews(
+        request.auth.firmId,
+        {
+          paymentImportReviewRecordId: record.id,
+        },
+      );
+      return {
+        packetPreview: paymentImportRefundChargebackResolutionPacketPreview({
+          importRecord: record,
+          reviews,
         }),
       };
     },

@@ -241,6 +241,49 @@ export interface PaymentImportRefundChargebackReviewBoundary {
   chargebackHandling: "review_decision_only";
 }
 
+export type PaymentImportRefundChargebackResolutionPosture =
+  | "awaiting_decision"
+  | "confirmed_exception"
+  | "rejected_exception"
+  | "needs_more_evidence";
+
+export interface PaymentImportRefundChargebackResolutionPacketNoSideEffectFlags {
+  rawProviderPayloadRetained: false;
+  invoiceBalanceMutation: "none";
+  ledgerReversal: "none";
+  providerCommand: "none";
+  refundArtifactStorage: false;
+  disputeArtifactStorage: false;
+  freeFormNotes: false;
+  clientNotification: "none";
+  trustPosting: "none";
+  fundsMovement: "none";
+}
+
+export interface PaymentImportRefundChargebackResolutionPacketReviewerMetadata {
+  decision: PaymentImportRefundChargebackReviewDecision;
+  reason: PaymentImportRefundChargebackReviewReason;
+  reviewedByUserId: string;
+  reviewedAt: string;
+  reviewerEvidencePresent: true;
+}
+
+export interface PaymentImportRefundChargebackResolutionPacketPreview {
+  reviewOnly: true;
+  paymentImportReviewRecordId: string;
+  matterId: string;
+  candidateInvoiceId?: string;
+  candidateHostedPaymentRequestId?: string;
+  candidateManualPaymentId?: string;
+  latestReviewId?: string;
+  category: PaymentImportRefundChargebackReviewCategory;
+  cueStatus: PaymentImportRefundChargebackReviewCue["status"];
+  resolutionPosture: PaymentImportRefundChargebackResolutionPosture;
+  reasonCategories: PaymentImportRefundChargebackReviewReason[];
+  latestReviewerMetadata?: PaymentImportRefundChargebackResolutionPacketReviewerMetadata;
+  noSideEffectFlags: PaymentImportRefundChargebackResolutionPacketNoSideEffectFlags;
+}
+
 export const paymentImportDepositMatchReviewDecisions = [
   "candidate_supported",
   "candidate_rejected",
@@ -1083,6 +1126,71 @@ export function paymentImportRefundChargebackReviewDecisionMatchesCue(
     (input.category === "refund" && input.reason === "refund_observed") ||
     (input.category === "chargeback" && input.reason === "chargeback_observed")
   );
+}
+
+export function paymentImportRefundChargebackResolutionPacketPreview(input: {
+  importRecord: PaymentImportReviewRecord;
+  reviews: PaymentImportRefundChargebackReviewRecord[];
+}): PaymentImportRefundChargebackResolutionPacketPreview | undefined {
+  const cue = paymentImportRefundChargebackReviewCue(input.importRecord);
+  if (!cue) return undefined;
+  const reviews = input.reviews
+    .filter(
+      (review) =>
+        review.paymentImportReviewRecordId === input.importRecord.id &&
+        review.category === cue.category,
+    )
+    .sort((left, right) => Date.parse(right.reviewedAt) - Date.parse(left.reviewedAt));
+  const latestReview = reviews[0];
+  const resolutionPosture: PaymentImportRefundChargebackResolutionPosture = latestReview
+    ? latestReview.decision === "exception_confirmed"
+      ? "confirmed_exception"
+      : latestReview.decision === "exception_rejected"
+        ? "rejected_exception"
+        : "needs_more_evidence"
+    : "awaiting_decision";
+  return {
+    reviewOnly: true,
+    paymentImportReviewRecordId: input.importRecord.id,
+    matterId: input.importRecord.matterId,
+    ...(input.importRecord.candidateInvoiceId
+      ? { candidateInvoiceId: input.importRecord.candidateInvoiceId }
+      : {}),
+    ...(input.importRecord.candidateHostedPaymentRequestId
+      ? { candidateHostedPaymentRequestId: input.importRecord.candidateHostedPaymentRequestId }
+      : {}),
+    ...(input.importRecord.candidateManualPaymentId
+      ? { candidateManualPaymentId: input.importRecord.candidateManualPaymentId }
+      : {}),
+    ...(latestReview ? { latestReviewId: latestReview.id } : {}),
+    category: cue.category,
+    cueStatus: cue.status,
+    resolutionPosture,
+    reasonCategories: Array.from(new Set(reviews.map((review) => review.reason))),
+    ...(latestReview
+      ? {
+          latestReviewerMetadata: {
+            decision: latestReview.decision,
+            reason: latestReview.reason,
+            reviewedByUserId: latestReview.reviewedByUserId,
+            reviewedAt: latestReview.reviewedAt,
+            reviewerEvidencePresent: latestReview.reviewerEvidencePresent,
+          },
+        }
+      : {}),
+    noSideEffectFlags: {
+      rawProviderPayloadRetained: false,
+      invoiceBalanceMutation: "none",
+      ledgerReversal: "none",
+      providerCommand: "none",
+      refundArtifactStorage: false,
+      disputeArtifactStorage: false,
+      freeFormNotes: false,
+      clientNotification: "none",
+      trustPosting: "none",
+      fundsMovement: "none",
+    },
+  };
 }
 
 export function hostedPaymentRequestPath(requestId: string): string {
