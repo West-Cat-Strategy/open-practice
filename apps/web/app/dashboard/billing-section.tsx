@@ -90,9 +90,14 @@ interface BillingSectionProps {
   expenseCategoryReimbursableAllowed: boolean;
   expenseCategoryReviewCue: string;
   expenseCategoryStatus: string;
+  depositMatchManualReconciliationStatus: string;
   manualPaymentReconciliationStatus: string;
   minutes: (value: number) => string;
+  onReconcileDepositMatchManualPayment: (
+    record: BillingPaymentImportReviewSummary,
+  ) => Promise<void>;
   onReconcileManualPayment: (payment: BillingPaymentSummary) => Promise<void>;
+  reconcilingDepositMatchRecordId?: string;
   reconcilingManualPaymentId?: string;
   setDraftInvoiceDueAt: (value: string) => void;
   setDraftInvoiceTaxName: (value: string) => void;
@@ -175,9 +180,12 @@ export function BillingSection({
   expenseCategoryReimbursableAllowed,
   expenseCategoryReviewCue,
   expenseCategoryStatus,
+  depositMatchManualReconciliationStatus,
   manualPaymentReconciliationStatus,
   minutes,
+  onReconcileDepositMatchManualPayment,
   onReconcileManualPayment,
+  reconcilingDepositMatchRecordId = "",
   reconcilingManualPaymentId = "",
   setDraftInvoiceDueAt,
   setDraftInvoiceTaxName,
@@ -937,6 +945,21 @@ export function BillingSection({
               ) : null}
             </span>
             <em>{cents(record.amountCents)}</em>
+            {record.reconciliationReadiness?.eligible ? (
+              <span className="row-actions">
+                <button
+                  className="secondary-button compact-button row-button"
+                  disabled={Boolean(reconcilingDepositMatchRecordId)}
+                  onClick={() => void onReconcileDepositMatchManualPayment(record)}
+                  type="button"
+                >
+                  <CheckCircle2 size={14} aria-hidden="true" />
+                  {reconcilingDepositMatchRecordId === record.id
+                    ? "Reconciling deposit"
+                    : "Reconcile deposit"}
+                </button>
+              </span>
+            ) : null}
           </div>
         ))}
         {activePaymentImportReviewRecords.length === 0 ? (
@@ -945,6 +968,9 @@ export function BillingSection({
           </p>
         ) : null}
       </div>
+      <p aria-atomic="true" aria-live="polite" className="inline-empty" role="status">
+        {depositMatchManualReconciliationStatus}
+      </p>
 
       <div className="section-title">
         <h3>Settlement webhook review</h3>

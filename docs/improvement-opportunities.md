@@ -445,9 +445,10 @@ surface.
     when the linked pending manual payment still matches amount, CAD currency posture, matter scope,
     invoice candidate, and invoice balance readiness. It delegates allocation and invoice
     paid/balance mutation to the existing manual-payment reconcile path and stores only safe derived
-    evidence IDs and enum posture. It adds no UI button, provider call, bank-feed automation,
-    independent invoice mutation, client notification, broad auto-matching, trust transfer, or trust
-    posting.
+    evidence IDs and enum posture. The 2026-07-01 dashboard affordance adds one staff Billing row
+    action for currently eligible readiness rows and posts an empty JSON body to that same route. It
+    adds no provider call, bank-feed automation, independent invoice mutation, client notification,
+    broad auto-matching, trust transfer, or trust posting.
   - **Shipped refund/chargeback cue surface:** The 2026-06-28 follow-up adds provider-neutral
     reviewer cue counts and row metadata for existing payment import records with
     `eventStatus=refund_observed` or `eventStatus=chargeback_observed`. The surface is metadata

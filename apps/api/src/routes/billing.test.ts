@@ -4308,14 +4308,14 @@ describe("billing routes", () => {
     const reconciled = await server.inject({
       method: "POST",
       url: "/api/billing/payment-import-review-records/payment-import-reconcile-supported/reconcile-manual-payment",
-      payload: { reconciledAt: "2026-06-30T12:10:00.000Z" },
+      payload: {},
     });
     expect(reconciled.statusCode).toBe(200);
     expect(reconciled.json()).toMatchObject({
       payment: {
         id: "manual-payment-reconcile-supported",
         status: "received",
-        reconciledAt: "2026-06-30T12:10:00.000Z",
+        reconciledAt: expect.any(String),
         reconciledByUserId: "user-admin",
         reconciliationEvidence: {
           source: "payment_import_deposit_match_review",

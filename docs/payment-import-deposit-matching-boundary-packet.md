@@ -42,9 +42,10 @@ The boundary builds from the shipped payment and funds proofs:
   CAD currency, matter scope, pending-status, duplicate/conflict, and invoice-balance readiness. It
   delegates the effective allocation and invoice paid/balance update to the existing
   manual-payment reconciliation path and stores only safe derived evidence IDs and enum posture.
-  It does not call providers, clear deposits automatically, run broad matching, connect bank feeds,
-  notify clients, mutate invoices outside that existing reviewed reconciliation semantic, or post
-  trust entries.
+  The 2026-07-01 Billing dashboard affordance exposes that command only for rows whose current
+  readiness remains eligible and submits an empty JSON body to the existing route. It does not call
+  providers, clear deposits automatically, run broad matching, connect bank feeds, notify clients,
+  mutate invoices outside that existing reviewed reconciliation semantic, or post trust entries.
 - The 2026-06-28 refund/chargeback cue surface derives provider-neutral reviewer cues from existing
   payment import review records with `eventFamily="payment"` and `eventStatus="refund_observed"`
   or `eventStatus="chargeback_observed"`. It adds dashboard counts, optional row cue metadata, and
@@ -118,12 +119,13 @@ OP-T162 implements the second runtime slice under this packet:
   and does not invoke `POST /api/payments/:paymentId/reconcile`, allocate funds, clear deposits,
   mutate invoices, or post trust entries.
 - The 2026-06-30 reconcile-command follow-up adds
-  `POST /api/billing/payment-import-review-records/:recordId/reconcile-manual-payment` as an
-  API-only staff command. Its strict body accepts only optional `reconciledAt`; it consumes the
+  `POST /api/billing/payment-import-review-records/:recordId/reconcile-manual-payment` as a staff
+  command. Its strict body accepts only optional `reconciledAt`; it consumes the
   latest supported decision as safe reconciliation evidence and calls the existing
-  `reconcilePayment` repository path only when the same readiness checks still pass. It adds no UI
-  button, table, migration, idempotency table, provider call, bank-feed automation, trust posting,
-  client notification, or independent invoice mutation.
+  `reconcilePayment` repository path only when the same readiness checks still pass. The 2026-07-01
+  dashboard follow-up adds one staff Billing row action for currently eligible readiness rows and
+  posts `{}` to that existing route. It adds no table, migration, idempotency table, provider call,
+  bank-feed automation, trust posting, client notification, or independent invoice mutation.
 
 ## Refund And Chargeback Cue Surface
 
@@ -310,7 +312,8 @@ Invoice balances can change only through explicit Open Practice workflows with r
 - The deposit-match manual-payment reconcile command may use an existing supported decision as safe
   reviewer evidence for that same manual-payment workflow. It must recheck current eligibility at
   command time and may mutate invoice paid/balance status only through the existing
-  manual-payment allocation path.
+  manual-payment allocation path. The Billing dashboard action is only an affordance for that same
+  command and sends no timestamp, notes, provider fields, or free-form evidence.
 - Hosted payment requests, processor imports, settlement-event review, deposit-match proposals,
   refunds, and chargeback cues must not independently mutate `paidCents`, `balanceDueCents`, invoice
   lifecycle status, source-entry billing state, or trust-transfer state.

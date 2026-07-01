@@ -778,9 +778,13 @@ describe("BillingSection", () => {
         expenseCategoryReimbursableAllowed: true,
         expenseCategoryReviewCue: "",
         expenseCategoryStatus: "No expense category change recorded.",
+        depositMatchManualReconciliationStatus:
+          "No deposit-match manual payment reconciled in this session.",
         manualPaymentReconciliationStatus: "No manual payment reconciled.",
         minutes: formatMinutes,
+        onReconcileDepositMatchManualPayment: async () => {},
         onReconcileManualPayment: async () => {},
+        reconcilingDepositMatchRecordId: "",
         reconcilingManualPaymentId: "",
         setDraftInvoiceDueAt: () => {},
         setDraftInvoiceTaxName: () => {},
@@ -844,6 +848,8 @@ describe("BillingSection", () => {
     expect(html).toContain("No settlement command");
     expect(html).toContain("Ready for manual reconcile review");
     expect(html).toContain("Read-only cue");
+    expect(html.match(/Reconcile deposit/g)?.length ?? 0).toBe(1);
+    expect(html).toContain("No deposit-match manual payment reconciled in this session.");
     expect(html).toContain("Readiness details:");
     expect(html).toContain("Latest decision supports candidate satisfied");
     expect(html).toContain("Invoice balance covers payment satisfied");

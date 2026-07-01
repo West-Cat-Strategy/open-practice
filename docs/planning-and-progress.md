@@ -215,8 +215,10 @@ The 2026-06-30 deposit-match manual-payment reconcile command adds one staff-onl
 consumes the latest existing supported deposit-match decision only after current manual-payment,
 invoice, amount, CAD currency posture, matter scope, pending-status, duplicate/conflict, and
 invoice-balance readiness still pass. It delegates allocation and invoice paid/balance mutation to
-the existing manual-payment reconciliation path and preserves no provider calls, live settlement,
-bank-feed automation, broad auto-matching, client notifications, trust transfers, or trust posting.
+the existing manual-payment reconciliation path. The 2026-07-01 Billing dashboard follow-up adds
+one staff-only row action for currently eligible readiness rows and posts an empty JSON body to that
+same route while preserving no provider calls, live settlement, bank-feed automation, broad
+auto-matching, client notifications, trust transfers, or trust posting.
 Proof is recorded in
 [deposit-match manual-payment reconcile command proof](validation/OP_DEPOSIT_MATCH_MANUAL_PAYMENT_RECONCILE_COMMAND_PROOF_2026-06-30.md).
 
@@ -987,7 +989,8 @@ notifications, trust transfers, or trust posting. Proof is recorded in
 
 The 2026-06-30 deposit-match manual-payment reconcile command consumes that existing supported
 decision as derived reviewer evidence for the existing manual-payment reconcile path only when
-current eligibility still passes. The strict API-only command adds no migration, UI button,
+current eligibility still passes. The 2026-07-01 dashboard affordance exposes one staff action for
+eligible readiness rows and submits `{}` to the existing strict route while adding no migration,
 provider call, live settlement, bank-feed automation, broad matching, client notification, trust
 transfer, or trust posting. Proof is recorded in
 [deposit-match manual-payment reconcile command proof](validation/OP_DEPOSIT_MATCH_MANUAL_PAYMENT_RECONCILE_COMMAND_PROOF_2026-06-30.md).

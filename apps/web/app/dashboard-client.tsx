@@ -378,6 +378,7 @@ import {
 } from "./_features/contacts/models";
 import type {
   BillingDashboardResponse,
+  BillingPaymentImportReviewSummary,
   BillingPaymentSummary,
   JurisdictionalTrustReportResponse,
   TrustControlsDashboardResponse,
@@ -1311,6 +1312,9 @@ export default function DashboardClient({
     "No manual payment reconciled in this session.",
   );
   const [reconcilingManualPaymentId, setReconcilingManualPaymentId] = useState("");
+  const [depositMatchManualReconciliationStatus, setDepositMatchManualReconciliationStatus] =
+    useState("No deposit-match manual payment reconciled in this session.");
+  const [reconcilingDepositMatchRecordId, setReconcilingDepositMatchRecordId] = useState("");
   const [draftsByMatterId, setDraftsByMatterId] = useState(drafting.draftsByMatterId);
   const [creatingTemplateId, setCreatingTemplateId] = useState("");
   const [draftStatus, setDraftStatus] = useState("No draft created in this session.");
@@ -3585,6 +3589,48 @@ export default function DashboardClient({
       );
     } finally {
       setReconcilingManualPaymentId("");
+    }
+  }
+
+  async function reconcileDepositMatchManualPayment(
+    record: BillingPaymentImportReviewSummary,
+  ): Promise<void> {
+    if (!record.reconciliationReadiness?.eligible) {
+      setDepositMatchManualReconciliationStatus(
+        "Deposit match is not ready for manual payment reconciliation.",
+      );
+      return;
+    }
+
+    setReconcilingDepositMatchRecordId(record.id);
+    setDepositMatchManualReconciliationStatus("Reconciling deposit match...");
+    try {
+      await requestDashboardJson(
+        apiBaseUrl,
+        `/api/billing/payment-import-review-records/${encodeURIComponent(
+          record.id,
+        )}/reconcile-manual-payment`,
+        {
+          method: "POST",
+          headers: devHeaders,
+          payload: {},
+        },
+      );
+      const refreshed = await requestDashboardJson<BillingDashboardResponse>(
+        apiBaseUrl,
+        "/api/billing/dashboard",
+        { headers: devHeaders },
+      );
+      setBillingDashboard(refreshed);
+      setDepositMatchManualReconciliationStatus(
+        "Deposit match reconciled through the manual payment path; dashboard refreshed.",
+      );
+    } catch (error) {
+      setDepositMatchManualReconciliationStatus(
+        `Deposit-match reconciliation failed: ${dashboardApiStatus(error)}`,
+      );
+    } finally {
+      setReconcilingDepositMatchRecordId("");
     }
   }
 
@@ -7845,9 +7891,12 @@ export default function DashboardClient({
                     expenseCategoryReimbursableAllowed={expenseCategoryReimbursableAllowed}
                     expenseCategoryReviewCue={expenseCategoryReviewCue}
                     expenseCategoryStatus={expenseCategoryStatus}
+                    depositMatchManualReconciliationStatus={depositMatchManualReconciliationStatus}
                     manualPaymentReconciliationStatus={manualPaymentReconciliationStatus}
                     minutes={minutes}
+                    onReconcileDepositMatchManualPayment={reconcileDepositMatchManualPayment}
                     onReconcileManualPayment={reconcileManualPayment}
+                    reconcilingDepositMatchRecordId={reconcilingDepositMatchRecordId}
                     reconcilingManualPaymentId={reconcilingManualPaymentId}
                     setDraftInvoiceDueAt={setDraftInvoiceDueAt}
                     setDraftInvoiceTaxName={setDraftInvoiceTaxName}

@@ -61,10 +61,11 @@ The 2026-06-30 deposit-match manual-payment reconcile command proof is recorded 
 [OP_DEPOSIT_MATCH_MANUAL_PAYMENT_RECONCILE_COMMAND_PROOF_2026-06-30.md](OP_DEPOSIT_MATCH_MANUAL_PAYMENT_RECONCILE_COMMAND_PROOF_2026-06-30.md).
 It covers the staff-only API command that consumes the latest existing supported deposit-match
 decision only after rechecking current pending manual-payment, amount/CAD currency posture, matter
-scope, invoice, duplicate/conflict, and balance readiness. The command delegates allocation and
-invoice paid/balance mutation to the existing manual-payment reconciliation path while preserving
-no provider calls, live settlement, bank-feed automation, broad auto-matching, client notification,
-trust transfer, trust posting, new migration, or dashboard action.
+scope, invoice, duplicate/conflict, and balance readiness. The 2026-07-01 Billing dashboard
+follow-up adds one staff-only eligible-row action that submits `{}` to the existing route. The
+command delegates allocation and invoice paid/balance mutation to the existing manual-payment
+reconciliation path while preserving no provider calls, live settlement, bank-feed automation,
+broad auto-matching, client notification, trust transfer, trust posting, or new migration.
 
 The 2026-06-29 billing period lock impact projection proof is recorded in
 [OP_BILLING_PERIOD_LOCK_IMPACT_PROJECTION_PROOF_2026-06-29.md](OP_BILLING_PERIOD_LOCK_IMPACT_PROJECTION_PROOF_2026-06-29.md).
