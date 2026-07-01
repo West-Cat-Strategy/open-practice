@@ -35,6 +35,13 @@ report export, audit export, billing export, and jurisdictional trust export aut
 including staff/auditor/bookkeeper/client-external list visibility and command-denial checks, while
 preserving existing roles, policies, OpenFGA runtime absence, route behavior, and portal exposure.
 
+The 2026-07-01 reports authorization explain-plan fixture proof is recorded in
+[OP_REPORTS_AUTHORIZATION_EXPLAIN_PLAN_FIXTURE_PROOF_2026-07-01.md](OP_REPORTS_AUTHORIZATION_EXPLAIN_PLAN_FIXTURE_PROOF_2026-07-01.md).
+It covers descriptive fixture coverage for `GET /api/reports/workspace`, including auditor and
+billing-bookkeeper list-visible cases plus assigned-staff and `client_external` denied cases, while
+preserving existing RBAC, matter scope, route behavior, response shape, export creation, provider
+posture, persistence, migrations, and portal exposure.
+
 The 2026-06-29 financial command fresh-auth proof is recorded in
 [OP_FINANCIAL_COMMAND_FRESH_AUTH_PROOF_2026-06-29.md](OP_FINANCIAL_COMMAND_FRESH_AUTH_PROOF_2026-06-29.md).
 It covers reusing the existing fresh-session step-up guard for manual payment reconciliation,

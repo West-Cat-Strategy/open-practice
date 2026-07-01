@@ -1154,6 +1154,12 @@ mutate time or expense records, change billing period lock enforcement, add unlo
 commands, post trust ledger entries, process settlement events, or certify accounting/compliance
 conclusions.
 
+The reports authorization explain-plan fixture matrix is descriptive test coverage for
+`GET /api/reports/workspace` only. It records the current auditor/bookkeeper list-visible and
+assigned-staff/client-external denied posture with safe response keys and generic denial codes; it
+does not introduce an authorization runtime, route contract, RBAC change, matter-scope change, or
+provider behavior.
+
 Billing work treats time and expense capture as pre-invoice operational records. The billing status
 is `draft`, `submitted`, `approved`, `billed`, or `written_off`. Draft entries can be edited,
 submitted entries can be approved, approved entries can be invoiced, and billed or written-off

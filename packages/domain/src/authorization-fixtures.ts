@@ -52,6 +52,31 @@ export interface AuthorizationFixtureCase {
   rationale: string;
 }
 
+export type AuthorizationExplainPlanSurface = "reports_workspace";
+
+export type AuthorizationExplainPlanFixtureStep =
+  | "rbac_report_read"
+  | "firm_reporting_gate"
+  | "workspace_list_visibility";
+
+export interface AuthorizationExplainPlanFixtureCase {
+  id: string;
+  surface: AuthorizationExplainPlanSurface;
+  resource: ResourceKind;
+  action: Action;
+  relation: AuthorizationFixtureRelation;
+  expectedDecision: AuthorizationFixtureDecision;
+  listVisible: boolean;
+  subjectId: string;
+  matterId?: string;
+  contactId?: string;
+  expectedStatusCode: number;
+  deniedCode?: string;
+  safeEvidenceKeys: string[];
+  steps: AuthorizationExplainPlanFixtureStep[];
+  rationale: string;
+}
+
 export const authorizationRelationVocabulary: Record<AuthorizationFixtureRelation, string> = {
   firm_wide_reviewer:
     "Owner administrators and auditors can review firm-wide records without matter assignment.",
@@ -78,6 +103,73 @@ export const authorizationRelationVocabulary: Record<AuthorizationFixtureRelatio
   unverified_public_share_token_holder:
     "Email-verified share links deny public reads until verification completes.",
 };
+
+export const authorizationExplainPlanFixtureCases: AuthorizationExplainPlanFixtureCase[] = [
+  {
+    id: "reports-workspace:auditor:list-visible",
+    surface: "reports_workspace",
+    resource: "report",
+    action: "read",
+    relation: "auditor_reviewer",
+    expectedDecision: "allow",
+    listVisible: true,
+    subjectId: "user-report-workspace-auditor",
+    expectedStatusCode: 200,
+    safeEvidenceKeys: ["definitions", "exportProfiles", "reports", "history", "workspacePolicy"],
+    steps: ["rbac_report_read", "firm_reporting_gate", "workspace_list_visibility"],
+    rationale:
+      "Auditors can list the staff Reports workspace through existing report read RBAC and firm reporting gates.",
+  },
+  {
+    id: "reports-workspace:bookkeeper:list-visible",
+    surface: "reports_workspace",
+    resource: "report",
+    action: "read",
+    relation: "billing_bookkeeper",
+    expectedDecision: "allow",
+    listVisible: true,
+    subjectId: "user-report-workspace-bookkeeper",
+    expectedStatusCode: 200,
+    safeEvidenceKeys: ["definitions", "exportProfiles", "reports", "history", "workspacePolicy"],
+    steps: ["rbac_report_read", "firm_reporting_gate", "workspace_list_visibility"],
+    rationale:
+      "Billing bookkeepers can list the staff Reports workspace without receiving mutation or provider authority.",
+  },
+  {
+    id: "reports-workspace:assigned:list-denied",
+    surface: "reports_workspace",
+    resource: "report",
+    action: "read",
+    relation: "assigned_matter_staff",
+    expectedDecision: "deny",
+    listVisible: false,
+    subjectId: "user-licensee",
+    matterId: "matter-001",
+    expectedStatusCode: 403,
+    deniedCode: "REPORT_ACCESS_REQUIRED",
+    safeEvidenceKeys: ["code", "message"],
+    steps: ["rbac_report_read"],
+    rationale:
+      "Matter assignment alone does not grant the firm-wide staff Reports workspace list surface.",
+  },
+  {
+    id: "reports-workspace:portal-client:list-denied",
+    surface: "reports_workspace",
+    resource: "report",
+    action: "read",
+    relation: "external_portal_contact",
+    expectedDecision: "deny",
+    listVisible: false,
+    subjectId: "user-report-workspace-client-external",
+    matterId: "matter-001",
+    contactId: "contact-ada",
+    expectedStatusCode: 403,
+    deniedCode: "REPORT_ACCESS_REQUIRED",
+    safeEvidenceKeys: ["code", "message"],
+    steps: ["rbac_report_read"],
+    rationale: "Client-external portal users cannot list staff Reports workspace metadata.",
+  },
+];
 
 export const authorizationFixtureCases: AuthorizationFixtureCase[] = [
   {

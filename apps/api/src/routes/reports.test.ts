@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { InMemoryOpenPracticeRepository } from "@open-practice/database";
-import { authorizationFixtureCases } from "@open-practice/domain/authorization-fixtures";
+import {
+  authorizationExplainPlanFixtureCases,
+  authorizationFixtureCases,
+} from "@open-practice/domain/authorization-fixtures";
 import { createApiServer } from "../server.js";
 
 const servers: Array<{ close: () => Promise<void> }> = [];
@@ -50,6 +53,15 @@ function authorizationFixtureCase(id: string) {
   const match = authorizationFixtureCases.find((candidate) => candidate.id === id);
   if (!match) throw new Error(`Missing authorization fixture case ${id}`);
   return match;
+}
+
+function assertNoPrivateReportDetails(value: unknown): void {
+  const serialized = JSON.stringify(value);
+  expect(serialized).not.toContain("ada@example.test");
+  expect(serialized).not.toContain("Synthetic private productivity");
+  expect(serialized).not.toContain("Reviewed tenancy branch materials");
+  expect(serialized).not.toContain("Tribunal evidence package");
+  expect(serialized).not.toContain("Initial tenancy dispute invoice");
 }
 
 async function createAuthorizationFixtureUser(input: {
@@ -731,6 +743,78 @@ describe("staff reporting routes", () => {
     await expect(
       repository.listJobLifecycleRecords("firm-west-legal", { queueName: "reports" }),
     ).resolves.toHaveLength(2);
+  });
+
+  it("matches report workspace authorization explain-plan fixtures", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const queuedReports: QueuedReportJob[] = [];
+    await createAuthorizationFixtureUser({
+      repository,
+      id: "user-report-workspace-auditor",
+      role: "auditor",
+    });
+    await createAuthorizationFixtureUser({
+      repository,
+      id: "user-report-workspace-bookkeeper",
+      role: "billing_bookkeeper",
+    });
+    await createAuthorizationFixtureUser({
+      repository,
+      id: "user-report-workspace-client-external",
+      role: "client_external",
+      assignedMatterIds: ["matter-001"],
+    });
+    const fixtures = authorizationExplainPlanFixtureCases.filter(
+      (item) => item.surface === "reports_workspace",
+    );
+    expect(fixtures.map((item) => item.id)).toEqual([
+      "reports-workspace:auditor:list-visible",
+      "reports-workspace:bookkeeper:list-visible",
+      "reports-workspace:assigned:list-denied",
+      "reports-workspace:portal-client:list-denied",
+    ]);
+    const server = testServer({ repository, reportJobQueue: fakeReportQueue(queuedReports) });
+    const jobsBefore = await repository.listJobLifecycleRecords("firm-west-legal", {
+      queueName: "reports",
+    });
+    const auditBefore = await auditEvents(repository);
+
+    for (const fixture of fixtures) {
+      const response = await server.inject({
+        method: "GET",
+        url: "/api/reports/workspace",
+        headers: authHeaders(fixture.subjectId),
+      });
+      expect(response.statusCode).toBe(fixture.expectedStatusCode);
+      const payload = response.json();
+      for (const key of fixture.safeEvidenceKeys) {
+        expect(payload).toHaveProperty(key);
+      }
+
+      if (fixture.listVisible) {
+        expect(payload).toMatchObject({
+          exportJobPosture: expect.objectContaining({ boundedMetadataOnly: true }),
+          workspacePolicy: {
+            customSql: false,
+            biEmbeds: false,
+            scheduledEmailDelivery: false,
+            rawReportBodiesInJobMetadata: false,
+          },
+        });
+      } else {
+        expect(payload).toMatchObject({
+          code: fixture.deniedCode,
+          message: "Report access required",
+        });
+      }
+      assertNoPrivateReportDetails(payload);
+    }
+
+    expect(queuedReports).toHaveLength(0);
+    await expect(
+      repository.listJobLifecycleRecords("firm-west-legal", { queueName: "reports" }),
+    ).resolves.toHaveLength(jobsBefore.length);
+    await expect(auditEvents(repository)).resolves.toHaveLength(auditBefore.length);
   });
 
   it("matches staff report export authorization fixtures", async () => {

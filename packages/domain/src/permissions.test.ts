@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { DocumentRecord, PortalGrant, User } from "./models.js";
 import type { JobLifecycleRecord } from "./operations.js";
 import {
+  authorizationExplainPlanFixtureCases,
   authorizationFixtureCases,
   authorizationRelationVocabulary,
 } from "./authorization-fixtures.js";
@@ -52,7 +53,7 @@ function sampleUser(id: string): User {
   return match;
 }
 
-function fixtureSubject(item: ReturnType<typeof fixtureCase>): User {
+function fixtureSubject(item: { subjectId: string; relation?: string; matterId?: string }): User {
   if (item.subjectId === "client-ada") {
     return {
       id: "client-ada",
@@ -224,6 +225,31 @@ describe("authorization fixture catalogue", () => {
       "portal-link:revoked-share:hidden",
       "portal-link:email-unverified:denied",
     ]);
+  });
+
+  it("catalogues report workspace explain-plan fixtures without changing RBAC", () => {
+    expect(authorizationExplainPlanFixtureCases.map((candidate) => candidate.id)).toEqual([
+      "reports-workspace:auditor:list-visible",
+      "reports-workspace:bookkeeper:list-visible",
+      "reports-workspace:assigned:list-denied",
+      "reports-workspace:portal-client:list-denied",
+    ]);
+
+    for (const item of authorizationExplainPlanFixtureCases) {
+      expect(item.surface).toBe("reports_workspace");
+      expect(item.safeEvidenceKeys).not.toContain("rawReportBody");
+      expect(item.safeEvidenceKeys).not.toContain("clientEmail");
+      expect(
+        canAccess({
+          user: fixtureSubject(item),
+          firmId: sampleFirm.id,
+          resource: item.resource,
+          action: item.action,
+          matterId: item.matterId,
+          contactId: item.contactId,
+        }),
+      ).toBe(item.expectedDecision === "allow");
+    }
   });
 
   it("keeps contact list fixture route decisions aligned with current RBAC", () => {
