@@ -5,6 +5,10 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import {
+  DOCKER_DAEMON_BLOCKER_CODE,
+  runDockerDaemonPreflight,
+} from "./docker-storage-preflight.mjs";
 import { commandAvailable, toolingTimestamp, writeJsonReport } from "./optional-tooling.mjs";
 import { runDockerResidualWatch } from "./watch-docker-residuals.mjs";
 
@@ -224,6 +228,23 @@ function runImageScan({ artifactDir, cwd, image, spawn }) {
   };
 }
 
+function daemonBlockerFromError(error) {
+  const result = error?.result;
+  if (result?.code !== DOCKER_DAEMON_BLOCKER_CODE) return null;
+  return {
+    id: "docker-daemon-preflight",
+    kind: result.kind,
+    code: result.code,
+    reason: result.reason,
+    status: result.docker?.status ?? 1,
+    signal: result.docker?.signal ?? null,
+    error: result.docker?.error ?? null,
+    detail: result.message ?? (error instanceof Error ? error.message : String(error)),
+    stderrPreview: result.docker?.stderrPreview ?? "",
+    stdoutPreview: result.docker?.stdoutPreview ?? "",
+  };
+}
+
 export function scanDockerImages({
   artifactRoot = DEFAULT_ARTIFACT_ROOT,
   cwd = process.cwd(),
@@ -246,6 +267,26 @@ export function scanDockerImages({
       command: "trivy",
       availability,
       images,
+    };
+    writeJsonReport(path.join(artifactDir, "docker-scan.json"), report);
+    return report;
+  }
+
+  try {
+    runDockerDaemonPreflight({ cwd, spawn, phase: "docker:scan" });
+  } catch (error) {
+    const daemonBlocker = daemonBlockerFromError(error);
+    if (!daemonBlocker) throw error;
+    const report = {
+      generatedAt: now.toISOString(),
+      artifactDir,
+      scope: "local_docker_image_vulnerability_scan",
+      status: "blocked",
+      command: "trivy",
+      availability,
+      targetImages: images,
+      images: [],
+      blockers: [daemonBlocker],
     };
     writeJsonReport(path.join(artifactDir, "docker-scan.json"), report);
     return report;
@@ -283,7 +324,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   try {
     const result = scanDockerImages();
     console.log(`Docker image scan ${result.status}: ${result.artifactDir}`);
-    process.exitCode = result.status === "failed" ? 1 : 0;
+    process.exitCode = result.status === "passed" || result.status === "skipped" ? 0 : 1;
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
     process.exit(1);

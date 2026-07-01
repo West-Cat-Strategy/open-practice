@@ -2,10 +2,13 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
+  DOCKER_DAEMON_BLOCKER_CODE,
+  DOCKER_DAEMON_BLOCKER_KIND,
   KIB_PER_GIB,
   parseDfPk,
   parseDockerSystemDf,
   parseMinimumFreeKib,
+  runDockerDaemonPreflight,
   runDockerStoragePreflight,
   selectProbeImageRefs,
 } from "./docker-storage-preflight.mjs";
@@ -85,6 +88,91 @@ describe("docker storage preflight contract", () => {
         { repository: "redis", tag: "8-alpine", id: "redis", size: "50MB" },
       ]),
       ["open-practice-minio:local", "node:26", "redis:8-alpine", "custom/tooling:latest"],
+    );
+  });
+
+  it("passes the Docker daemon preflight when Docker is reachable", () => {
+    const spawn = fakeSpawn((_command, args) => {
+      const key = args.join(" ");
+      if (key === "info") return { status: 0, stdout: "Server OK\n", stderr: "" };
+      throw new Error(`unexpected docker args: ${key}`);
+    });
+
+    const result = runDockerDaemonPreflight({
+      spawn,
+      phase: "test daemon pass",
+    });
+
+    assert.equal(result.status, "passed");
+    assert.equal(result.reason, null);
+    assert.equal(spawn.calls.length, 1);
+    assert.deepEqual(spawn.calls[0], ["docker", ["info"]]);
+  });
+
+  it("reports a stable local-environment blocker when the Docker daemon is unreachable", () => {
+    const spawn = fakeSpawn((_command, args) => {
+      const key = args.join(" ");
+      if (key === "info") {
+        return {
+          status: 1,
+          stdout: "",
+          stderr:
+            "Cannot connect to the Docker daemon at unix:///Users/bryan/.docker/run/docker.sock.",
+        };
+      }
+      throw new Error(`unexpected docker args: ${key}`);
+    });
+
+    assert.throws(
+      () =>
+        runDockerDaemonPreflight({
+          spawn,
+          phase: "test daemon blocked",
+        }),
+      (error) => {
+        assert.equal(error.name, "DockerStoragePreflightError");
+        assert.equal(error.result.status, "blocked");
+        assert.equal(error.result.code, DOCKER_DAEMON_BLOCKER_CODE);
+        assert.equal(error.result.kind, DOCKER_DAEMON_BLOCKER_KIND);
+        assert.equal(error.result.reason, "docker_unreachable");
+        assert.match(error.message, /Start Docker Desktop or set DOCKER_HOST/);
+        assert.match(error.message, /Cannot connect to the Docker daemon/);
+        return true;
+      },
+    );
+  });
+
+  it("keeps soft storage preflight hard-blocked when the Docker daemon is unreachable", () => {
+    const spawn = fakeSpawn((_command, args) => {
+      const key = args.join(" ");
+      if (key === "info") {
+        return {
+          status: 1,
+          stdout: "",
+          stderr: "Cannot connect to the Docker daemon.",
+        };
+      }
+      throw new Error(`unexpected docker args: ${key}`);
+    });
+
+    assert.throws(
+      () =>
+        runDockerStoragePreflight({
+          spawn,
+          env: {},
+          phase: "test soft daemon blocked",
+          soft: true,
+          log: () => {},
+          warn: () => {},
+        }),
+      (error) => {
+        assert.equal(error.result.status, "blocked");
+        assert.equal(error.result.code, DOCKER_DAEMON_BLOCKER_CODE);
+        assert.equal(error.result.kind, DOCKER_DAEMON_BLOCKER_KIND);
+        assert.equal(error.result.reason, "docker_unreachable");
+        assert.deepEqual(spawn.calls, [["docker", ["info"]]]);
+        return true;
+      },
     );
   });
 

@@ -5,6 +5,8 @@ import { pathToFileURL } from "node:url";
 
 export const DEFAULT_MIN_FREE_GIB = 8;
 export const KIB_PER_GIB = 1024 * 1024;
+export const DOCKER_DAEMON_BLOCKER_CODE = "docker_daemon_unavailable";
+export const DOCKER_DAEMON_BLOCKER_KIND = "local-environment";
 
 const COMMON_LOCAL_IMAGE_REPOSITORIES = new Set([
   "postgres",
@@ -153,11 +155,14 @@ function makeResult(overrides) {
     phase: overrides.phase,
     soft: overrides.soft,
     status: overrides.status,
+    code: overrides.code ?? null,
+    kind: overrides.kind ?? null,
     minimumFreeKib: overrides.minimumFreeKib,
     systemDf: overrides.systemDf ?? [],
     probeImage: overrides.probeImage ?? null,
     df: overrides.df ?? null,
     attempts: overrides.attempts ?? [],
+    docker: overrides.docker ?? null,
     reason: overrides.reason ?? null,
     message: overrides.message ?? null,
   };
@@ -172,12 +177,15 @@ export function summarizeDockerStoragePreflight(result) {
     phase: result.phase,
     status: result.status,
     soft: result.soft,
+    code: result.code ?? null,
+    kind: result.kind ?? null,
     minimumFreeKib: result.minimumFreeKib,
     minimumFree: formatKib(result.minimumFreeKib),
     availableKib: result.df?.availableKib ?? null,
     available: result.df ? formatKib(result.df.availableKib) : null,
     probeImage: result.probeImage,
     reason: result.reason,
+    docker: result.docker,
     systemDf: result.systemDf,
     attempts: result.attempts.map((attempt) => ({
       image: attempt.image,
@@ -185,6 +193,64 @@ export function summarizeDockerStoragePreflight(result) {
       stderrPreview: attempt.stderrPreview,
     })),
   };
+}
+
+function dockerDaemonMessage(phase, diagnostic) {
+  return [
+    `Docker daemon preflight failed during ${phase}: Docker daemon is not reachable.`,
+    "Start Docker Desktop or set DOCKER_HOST to a reachable Docker daemon, then rerun the Docker validation command.",
+    diagnostic,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+export function runDockerDaemonPreflight({
+  cwd = process.cwd(),
+  env = process.env,
+  spawn = spawnSync,
+  phase = "docker daemon preflight",
+} = {}) {
+  const info = runDocker(["info"], { cwd, env, spawn });
+  if (info.status !== 0) {
+    const diagnostic = preview(info.stderr || info.stdout || info.error);
+    const result = makeResult({
+      phase,
+      soft: false,
+      status: "blocked",
+      code: DOCKER_DAEMON_BLOCKER_CODE,
+      kind: DOCKER_DAEMON_BLOCKER_KIND,
+      minimumFreeKib: null,
+      reason: "docker_unreachable",
+      docker: {
+        command: "docker",
+        args: ["info"],
+        status: info.status,
+        signal: info.signal,
+        error: info.error,
+        stderrPreview: preview(info.stderr),
+        stdoutPreview: preview(info.stdout),
+      },
+    });
+    throw preflightFailure(dockerDaemonMessage(phase, diagnostic), result);
+  }
+
+  return makeResult({
+    phase,
+    soft: false,
+    status: "passed",
+    minimumFreeKib: null,
+    reason: null,
+    docker: {
+      command: "docker",
+      args: ["info"],
+      status: info.status,
+      signal: info.signal,
+      error: info.error,
+      stderrPreview: preview(info.stderr),
+      stdoutPreview: preview(info.stdout),
+    },
+  });
 }
 
 export function runDockerStoragePreflight({
@@ -198,26 +264,7 @@ export function runDockerStoragePreflight({
 } = {}) {
   const minimumFreeKib = parseMinimumFreeKib(env);
   const dockerOptions = { cwd, env, spawn };
-
-  const info = runDocker(["info"], dockerOptions);
-  if (info.status !== 0) {
-    const result = makeResult({
-      phase,
-      soft,
-      status: "failed",
-      minimumFreeKib,
-      reason: "docker_unreachable",
-    });
-    throw preflightFailure(
-      [
-        `Docker storage preflight failed during ${phase}: Docker daemon is not reachable.`,
-        preview(info.stderr || info.stdout || info.error),
-      ]
-        .filter(Boolean)
-        .join("\n"),
-      result,
-    );
-  }
+  runDockerDaemonPreflight({ cwd, env, spawn, phase });
 
   const systemDfResult = runDocker(["system", "df", "--format", "{{json .}}"], dockerOptions);
   const systemDf = systemDfResult.status === 0 ? parseDockerSystemDf(systemDfResult.stdout) : [];

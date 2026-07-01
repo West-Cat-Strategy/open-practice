@@ -5,6 +5,11 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import {
+  DOCKER_DAEMON_BLOCKER_CODE,
+  runDockerDaemonPreflight,
+} from "./docker-storage-preflight.mjs";
+
 const DEFAULT_ARTIFACT_ROOT = path.join(
   "/tmp",
   "codex-security-scans",
@@ -820,16 +825,38 @@ function writeReadme(metadata) {
   if (metadata.blockers.length > 0) {
     lines.push("## Blockers", "");
     for (const blocker of metadata.blockers) {
-      lines.push(`- ${blocker.id}: status ${blocker.status}; see commands/${blocker.stderrPath}`);
+      const detail = blocker.stderrPath
+        ? `see commands/${blocker.stderrPath}`
+        : (blocker.detail ?? blocker.message ?? blocker.reason ?? blocker.code ?? "see metadata");
+      const label = blocker.code ?? `status ${blocker.status}`;
+      lines.push(`- ${blocker.id}: ${label}; ${detail}`);
     }
     lines.push("");
   }
 
-  lines.push(
-    "See `docker-residual-watch.json` and `commands/*.log` for local command evidence.",
-    "",
-  );
+  const evidenceLine =
+    metadata.commands.length > 0
+      ? "See `docker-residual-watch.json` and `commands/*.log` for local command evidence."
+      : "See `docker-residual-watch.json` for local blocker evidence.";
+  lines.push(evidenceLine, "");
   writeFileSync(path.join(metadata.artifactDir, "README.md"), lines.join("\n"));
+}
+
+function daemonBlockerFromError(error) {
+  const result = error?.result;
+  if (result?.code !== DOCKER_DAEMON_BLOCKER_CODE) return null;
+  return {
+    id: "docker-daemon-preflight",
+    kind: result.kind,
+    code: result.code,
+    reason: result.reason,
+    status: result.docker?.status ?? 1,
+    signal: result.docker?.signal ?? null,
+    error: result.docker?.error ?? null,
+    detail: result.message ?? (error instanceof Error ? error.message : String(error)),
+    stderrPreview: result.docker?.stderrPreview ?? "",
+    stdoutPreview: result.docker?.stdoutPreview ?? "",
+  };
 }
 
 export function runDockerResidualWatch({
@@ -851,6 +878,51 @@ export function runDockerResidualWatch({
     cwd,
     composeText: composeTexts["docker-compose.yml"],
   });
+
+  try {
+    runDockerDaemonPreflight({ cwd, spawn, phase: "docker:residual-watch" });
+  } catch (error) {
+    const daemonBlocker = daemonBlockerFromError(error);
+    if (!daemonBlocker) throw error;
+    const metadata = {
+      generatedAt: now.toISOString(),
+      artifactDir,
+      status: "blocked",
+      exitCode: 1,
+      git: gitMetadata(cwd, spawn),
+      posture,
+      minioHardening: {
+        ...minioHardening,
+        sourceChecked: false,
+        sourceCurrent: false,
+        currentVersion: posture.minio?.version ?? null,
+        latestVersion: null,
+        sourceOnly: false,
+        currentSourceManifestIds: [],
+        sameContractCandidateIds: [],
+        scoutCriticalHigh: {
+          quickview: null,
+          critical: null,
+          high: null,
+        },
+        acceptsBundledMinioResiduals: false,
+      },
+      acceptedResiduals: [],
+      readinessBlockers: [],
+      candidates: [],
+      blockers: [daemonBlocker],
+      scout: {},
+      commands: [],
+    };
+
+    writeFileSync(
+      path.join(artifactDir, "docker-residual-watch.json"),
+      `${JSON.stringify(metadata, null, 2)}\n`,
+    );
+    writeReadme(metadata);
+    return metadata;
+  }
+
   const commandSpecs = dockerResidualCommands(posture);
   const commandResults = commandSpecs.map((commandSpec) =>
     runCommand(commandSpec, { cwd, outputDir: commandsDir, spawn }),

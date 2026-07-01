@@ -545,6 +545,76 @@ describe("watch-docker-residuals contract", () => {
     );
   });
 
+  it("writes a blocked artifact and skips Docker commands when the daemon is unavailable", () => {
+    const cwd = mkdtempSync(path.join(tmpdir(), "open-practice-docker-watch-blocked-repo-"));
+    const artifactRoot = mkdtempSync(
+      path.join(tmpdir(), "open-practice-docker-watch-blocked-artifacts-"),
+    );
+    writeMinimalRepo(cwd);
+    const calls = [];
+    const spawn = (command, args) => {
+      calls.push([command, args]);
+      if (command === "docker" && args[0] === "info") {
+        return {
+          status: 1,
+          signal: null,
+          stdout: "",
+          stderr: "Cannot connect to the Docker daemon.",
+        };
+      }
+      if (command === "git") {
+        if (args[0] === "rev-parse") return { status: 0, stdout: "abc123\n", stderr: "" };
+        if (args[0] === "branch") return { status: 0, stdout: "codex/docker-watch\n", stderr: "" };
+        if (args[0] === "status") return { status: 0, stdout: "", stderr: "" };
+      }
+      throw new Error(`unexpected command: ${command} ${args.join(" ")}`);
+    };
+
+    const metadata = runDockerResidualWatch({
+      cwd,
+      artifactRoot,
+      now: new Date("2026-07-01T12:34:56.000Z"),
+      spawn,
+    });
+
+    assert.equal(metadata.status, "blocked");
+    assert.equal(metadata.exitCode, 1);
+    assert.deepEqual(metadata.commands, []);
+    assert.equal(metadata.blockers.length, 1);
+    assert.deepEqual(
+      {
+        id: metadata.blockers[0].id,
+        kind: metadata.blockers[0].kind,
+        code: metadata.blockers[0].code,
+        reason: metadata.blockers[0].reason,
+      },
+      {
+        id: "docker-daemon-preflight",
+        kind: "local-environment",
+        code: "docker_daemon_unavailable",
+        reason: "docker_unreachable",
+      },
+    );
+    assert.deepEqual(
+      calls.filter(([command]) => command === "docker"),
+      [["docker", ["info"]]],
+    );
+
+    const written = JSON.parse(
+      readFileSync(path.join(metadata.artifactDir, "docker-residual-watch.json"), "utf8"),
+    );
+    assert.equal(written.status, "blocked");
+    assert.deepEqual(written.commands, []);
+    assert.match(
+      readFileSync(path.join(metadata.artifactDir, "README.md"), "utf8"),
+      /docker_daemon_unavailable/,
+    );
+    assert.match(
+      readFileSync(path.join(metadata.artifactDir, "README.md"), "utf8"),
+      /local blocker evidence/,
+    );
+  });
+
   it("writes a passed local artifact with command logs", () => {
     const cwd = mkdtempSync(path.join(tmpdir(), "open-practice-docker-watch-repo-"));
     const artifactRoot = mkdtempSync(path.join(tmpdir(), "open-practice-docker-watch-artifacts-"));

@@ -165,8 +165,9 @@ pnpm docker:residual-watch
 ```
 
 The helper reads `docker-compose.yml`, `docker-compose.selfhost.yml`, and the wrapped service
-Dockerfiles, builds the wrapped Postgres, MinIO, and Mailpit images before Docker Scout checks, and
-writes ignored local evidence under
+Dockerfiles, checks Docker daemon reachability before Docker Scout/build commands, builds the
+wrapped Postgres, MinIO, and Mailpit images before Docker Scout checks, and writes ignored local
+evidence under
 `/tmp/codex-security-scans/open-practice/docker-residual-watch/<timestamp>/`. It reruns the current
 Docker Scout quickview, critical/high CVE, and recommendation checks against local wrapped-service
 image references, probes same-product registry manifests, checks upstream MinIO/Mailpit source tags,
@@ -177,14 +178,17 @@ local and self-host MinIO Compose services, the current source tag, source-only 
 no same-contract candidate, and completed Docker/Scout/source probes. Exit `2` means a newer
 upstream tag, registry manifest, Scout recommendation, or unaccepted readiness blocker needs
 another hardening review, and exit `1` records Docker, Scout, registry, source, or network blockers
-in the artifact. The artifact includes `minioHardening`, `acceptedResiduals`, and
-`readinessBlockers`; do not treat accepted residuals as removed findings. Keep any future image
-pin, base, source-tag, provenance, license, or Docker E2E change in its own follow-up proof.
-
+in the artifact. When Docker is unavailable, the artifact records blocker code
+`docker_daemon_unavailable`, reason `docker_unreachable`, kind `local-environment`, and no command
+logs because no Docker scan lane was attempted. The artifact includes `minioHardening`,
+`acceptedResiduals`, and `readinessBlockers`; do not treat accepted residuals as removed findings.
+Keep any future image pin, base, source-tag, provenance, license, or Docker E2E change in its own
+follow-up proof.
 When `pnpm docker:scan` is run with Trivy installed, a bundled-MinIO-only Critical/High scan result
 may be accepted only when the wrapper reruns residual-watch and records the same eligible
-`minioHardening` plus `acceptedResiduals` proof. Non-MinIO Trivy failures and unproved MinIO scan
-failures remain failed scan artifacts.
+`minioHardening` plus `acceptedResiduals` proof. If Trivy is installed but Docker is unreachable,
+the wrapper writes a blocked local-environment artifact before image scans. Non-MinIO Trivy failures
+and unproved MinIO scan failures remain failed scan artifacts.
 
 Use the app-image smoke after Dockerfile, Compose command, bind, capability, or runtime dependency
 changes:

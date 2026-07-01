@@ -122,6 +122,9 @@ describe("Docker image scanner wrapper", () => {
       if (args[0] === "--version") {
         return { status: 0, signal: null, stdout: "Version: 0.68.1\n", stderr: "" };
       }
+      if (command === "docker" && args[0] === "info") {
+        return { status: 0, signal: null, stdout: "Server OK\n", stderr: "" };
+      }
       const outputPath = args[args.indexOf("--output") + 1];
       writeFileSync(
         outputPath,
@@ -171,6 +174,9 @@ describe("Docker image scanner wrapper", () => {
       if (args[0] === "--version") {
         return { status: 0, signal: null, stdout: "Version: 0.68.1\n", stderr: "" };
       }
+      if (command === "docker" && args[0] === "info") {
+        return { status: 0, signal: null, stdout: "Server OK\n", stderr: "" };
+      }
       const outputPath = args[args.indexOf("--output") + 1];
       writeFileSync(
         outputPath,
@@ -197,6 +203,62 @@ describe("Docker image scanner wrapper", () => {
 
     assert.equal(report.status, "failed");
     assert.deepEqual(report.acceptedResiduals, []);
+  });
+
+  it("blocks deterministically when Trivy is available but Docker is unreachable", () => {
+    const cwd = mkdtempSync(path.join(tmpdir(), "open-practice-docker-scan-blocked-"));
+    const calls = [];
+    const spawn = (command, args) => {
+      calls.push({ command, args });
+      if (command === "trivy" && args[0] === "--version") {
+        return { status: 0, signal: null, stdout: "Version: 0.68.1\n", stderr: "" };
+      }
+      if (command === "docker" && args[0] === "info") {
+        return {
+          status: 1,
+          signal: null,
+          stdout: "",
+          stderr: "Cannot connect to the Docker daemon.",
+        };
+      }
+      throw new Error(`unexpected command: ${command} ${args.join(" ")}`);
+    };
+
+    const report = scanDockerImages({
+      cwd,
+      images: ["open-practice-dev-api"],
+      now: new Date("2026-07-01T12:34:56Z"),
+      spawn,
+    });
+
+    assert.equal(report.status, "blocked");
+    assert.deepEqual(report.images, []);
+    assert.deepEqual(report.targetImages, ["open-practice-dev-api"]);
+    assert.deepEqual(
+      {
+        id: report.blockers[0].id,
+        kind: report.blockers[0].kind,
+        code: report.blockers[0].code,
+        reason: report.blockers[0].reason,
+      },
+      {
+        id: "docker-daemon-preflight",
+        kind: "local-environment",
+        code: "docker_daemon_unavailable",
+        reason: "docker_unreachable",
+      },
+    );
+    assert.deepEqual(
+      calls.map((call) => [call.command, call.args]),
+      [
+        ["trivy", ["--version"]],
+        ["docker", ["info"]],
+      ],
+    );
+    assert.equal(
+      JSON.parse(readFileSync(path.join(report.artifactDir, "docker-scan.json"), "utf8")).status,
+      "blocked",
+    );
   });
 
   it("preserves the skipped report when Trivy is unavailable", () => {

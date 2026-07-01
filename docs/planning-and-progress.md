@@ -22,6 +22,13 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 ## Current Handoff Notes
 
+The 2026-07-01 `chore/docker-daemon-preflight-blocker-20260701` branch adds a local-only Docker
+daemon preflight to the Docker residual-watch, app-smoke, and image-scan paths so daemon outages are
+reported as deterministic `docker_daemon_unavailable` local-environment blockers before longer
+Docker validation lanes start. The branch preserves Compose contracts, image pins, ports,
+credentials, runtime APIs, schemas, dependencies, and application behavior. Proof is recorded in
+[Docker daemon preflight blocker proof](validation/OP_DOCKER_DAEMON_PREFLIGHT_PROOF_2026-07-01.md).
+
 The 2026-06-30 `integrate/open-practice-all-worktrees-20260630` branch commits and integrates the
 selected dirty sibling worktree lanes, including the `0078` contact duplicate resolution migration,
 `0079` email-template reviewed outbound preview migration, and `0080` refund/chargeback resolution
