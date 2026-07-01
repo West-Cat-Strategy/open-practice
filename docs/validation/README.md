@@ -20,11 +20,13 @@ skipped-check context. The live workboard remains
 
 The 2026-06-30 all-worktree mainline closeout proof is recorded in
 [OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-30.md](OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-30.md).
-It covers the local integration branch, deterministic `0078`/`0079` migration reconciliation,
-selector output, failed full validation gate, focused validation fixes, current security-review
-artifact, unchanged stash count, remote `origin/main` parity, and the stopped-before-push state
-because required validation still fails on unrelated central OSS reference-lock drift and the local
-Docker residual-watch readiness candidate.
+It covers the local integration branch, deterministic `0078`/`0079`/`0080` migration reconciliation,
+the exact 145-path final path set, selector output, Docker Desktop restoration, Docker residual
+watch/app-smoke/scan repair, focused lint cleanups found by `ci:local`, final security review, final
+selected validation artifact `.tmp/validation-runs/2026-07-01T01-52-26Z`, unchanged 70-stash
+posture, 26 preserved worktrees, and remote `origin/main` parity at
+`17fa4098ae73b84ae77ff66c56f848be24342d38`. Merge, push, and safe metadata prune are intentionally
+still pending until the proof/index/workboard update is reconciled and committed.
 
 The 2026-06-29 financial authorization fixture catalogue proof is recorded in
 [OP_FINANCIAL_AUTHORIZATION_FIXTURE_CATALOGUE_PROOF_2026-06-29.md](OP_FINANCIAL_AUTHORIZATION_FIXTURE_CATALOGUE_PROOF_2026-06-29.md).
@@ -139,6 +141,14 @@ record-local API reads, Billing dashboard row rendering, route authorization man
 selector-driven validation, and preserved no writes, audit event, provider calls, refund/dispute
 artifacts, free-form notes, invoice mutation, ledger reversal, client notification, trust posting,
 or funds movement.
+
+The 2026-06-30 refund/chargeback resolution records proof is recorded in
+[OP_REFUND_CHARGEBACK_RESOLUTION_RECORDS_PROOF_2026-06-30.md](OP_REFUND_CHARGEBACK_RESOLUTION_RECORDS_PROOF_2026-06-30.md).
+It covers the staff-only enum resolution records over already-decided refund/chargeback resolution
+packet previews, including safe IDs, derived category, resolution posture, enum reason categories,
+latest review/reviewer metadata, idempotency posture, Billing dashboard row rendering,
+selector-driven validation, and preserved no provider commands, invoice mutation, ledger reversal,
+trust posting, refund/dispute artifacts, free-form notes, client notification, or funds movement.
 
 The 2026-06-29 inbound communications aggregation efficiency closeout proof is recorded in
 [OP_INBOUND_COMMUNICATIONS_AGGREGATION_EFFICIENCY_PROOF_2026-06-29.md](OP_INBOUND_COMMUNICATIONS_AGGREGATION_EFFICIENCY_PROOF_2026-06-29.md).

@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   buildContactDossiers,
+  buildContactHistoryExportPreview,
   defaultContactDuplicateResolutionBoundary,
+  defaultContactHistoryExportPreviewBoundary,
   filterContactTimelineEntries,
   validateContactRecord,
   validateContactDataQualityResolutionRecord,
@@ -18,6 +20,76 @@ import {
 import type { ActivityTimelineEntry } from "./models.js";
 
 describe("contact dossiers", () => {
+  it("builds matter-scoped contact-history export previews with fixed no-storage boundaries", () => {
+    const preview = buildContactHistoryExportPreview({
+      contactId: "contact-ada",
+      matterId: "matter-001",
+      generatedAt: "2026-06-30T12:00:00.000Z",
+      generatedByUserId: "user-owner_admin",
+      reviewReason: "Synthetic matter-scoped staff review.",
+      relationshipIds: ["relationship-001"],
+      portalGrantIds: ["portal-grant-001"],
+      conflictHistoryIds: ["conflict-history-001"],
+      dataQualityResolutionIds: ["resolution-001"],
+      timelineEntryIds: ["timeline-001"],
+      counts: {
+        generatedCategoryCount: 11,
+        matterAssociationCount: 1,
+        conflictCueCount: 1,
+        documentHoldCueCount: 1,
+        retentionHoldCueCount: 1,
+      },
+    });
+
+    expect(preview).toEqual({
+      purpose: "staff_review",
+      contactId: "contact-ada",
+      matterId: "matter-001",
+      matterScoped: true,
+      generatedAt: "2026-06-30T12:00:00.000Z",
+      generatedByUserId: "user-owner_admin",
+      reviewReasonPresent: true,
+      retentionPosture: "matter_scoped_preview_no_retained_export_body",
+      legalHoldPosture: "respects_existing_matter_visibility_no_hold_override",
+      privacyPosture: "redacted_authorized_projection_only",
+      redactedAuthorizedProjection: true,
+      categoryPresence: {
+        identityPosture: true,
+        namePosture: true,
+        contactMethodPosture: true,
+        relationshipPosture: true,
+        matterPartyPosture: true,
+        portalAccessPosture: true,
+        conflictReviewPosture: true,
+        dataQualityAndDuplicateReviewPosture: true,
+        documentHoldReviewPosture: true,
+        retentionHoldReviewPosture: true,
+        timelineCues: true,
+      },
+      counts: {
+        generatedCategoryCount: 11,
+        timelineEntryCount: 1,
+        matterAssociationCount: 1,
+        relationshipCount: 1,
+        portalGrantCount: 1,
+        conflictSummaryCount: 2,
+        documentHoldCueCount: 1,
+        retentionHoldCueCount: 1,
+        dataQualityResolutionCount: 1,
+      },
+      safeIds: {
+        contactId: "contact-ada",
+        matterId: "matter-001",
+        relationshipIds: ["relationship-001"],
+        portalGrantIds: ["portal-grant-001"],
+        conflictHistoryIds: ["conflict-history-001"],
+        dataQualityResolutionIds: ["resolution-001"],
+        timelineEntryIds: ["timeline-001"],
+      },
+      boundary: defaultContactHistoryExportPreviewBoundary(),
+    });
+  });
+
   it("filters contact timeline entries by safe CRM activity and cue type", () => {
     const entries: ActivityTimelineEntry[] = [
       {

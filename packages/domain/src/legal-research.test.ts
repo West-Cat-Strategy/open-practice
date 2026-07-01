@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   assertLegalResearchArtifactKind,
+  assertLegalResearchCitationPacketDecision,
   assertLegalResearchProviderJobRequestType,
+  buildLegalResearchCitationPacketDecisionMetadata,
   buildLegalResearchCitationPacketReadiness,
   buildDocumentConversionSemanticReviewCheckpointMetadata,
   buildLegalResearchProviderJobMetadata,
@@ -9,6 +11,7 @@ import {
   buildLegalResearchWorkspace,
   legalResearchProviderJobName,
   legalResearchArtifactKinds,
+  latestLegalResearchCitationPacketDecision,
   reviewLegalResearchArtifactRecord,
   serializeLegalResearchProviderJob,
   summarizeLegalResearchArtifacts,
@@ -315,6 +318,95 @@ describe("legal research artifacts", () => {
       blockedReasons: [],
       readyForReviewArtifactIds: ["research-artifact-001"],
     });
+  });
+
+  it("projects citation packet decisions from metadata-only reviewed checkpoints", () => {
+    const readiness = buildLegalResearchCitationPacketReadiness([baseArtifact]);
+    const metadata = buildLegalResearchCitationPacketDecisionMetadata({
+      matterId: "matter-001",
+      decision: "ready_for_staff_review",
+      decidedByUserId: "user-admin",
+      decidedAt: "2026-06-30T17:00:00.000Z",
+      sourceReferenceCount: readiness.sourceReferenceCount,
+      sourceReferenceCountsByType: readiness.sourceReferenceCountsByType,
+      readyForReviewArtifactCount: readiness.readyForReviewArtifactCount,
+      readyForReviewArtifactIds: readiness.readyForReviewArtifactIds,
+      openCheckpointCount: readiness.openCheckpointCount,
+      openCheckpointArtifactIds: readiness.openCheckpointArtifactIds,
+      contextLinkCount: readiness.contextLinkCount,
+      contextLinkCountsByType: readiness.contextLinkCountsByType,
+    });
+    const checkpoint: LegalResearchArtifactRecord = {
+      ...baseArtifact,
+      id: "research-citation-packet-decision-001",
+      kind: "review_checkpoint",
+      status: "reviewed",
+      title: "Citation packet readiness decision",
+      note: undefined,
+      sourceReferences: [],
+      contextLinks: [],
+      checkpoint: { checkpointType: "source_review", assignedUserId: "user-admin" },
+      reviewDecision: "reviewed",
+      reviewedByUserId: "user-admin",
+      reviewedAt: "2026-06-30T17:00:00.000Z",
+      updatedAt: "2026-06-30T17:00:00.000Z",
+      metadata,
+    };
+
+    expect(() => assertLegalResearchCitationPacketDecision("ready_for_staff_review")).not.toThrow();
+    expect(() => assertLegalResearchCitationPacketDecision("verified_by_provider")).toThrow(
+      "Unsupported legal research citation packet decision",
+    );
+    expect(() => validateLegalResearchArtifactRecord(checkpoint)).not.toThrow();
+    expect(() =>
+      validateLegalResearchArtifactRecord({
+        ...checkpoint,
+        id: "research-citation-packet-decision-invalid",
+        metadata: {
+          ...metadata,
+          prompt: "Synthetic prompt must not be stored",
+          sourceText: "Synthetic source text must not be stored",
+          providerEvidence: "Synthetic provider evidence must not be stored",
+        },
+      }),
+    ).toThrow("Legal research citation packet decision metadata is invalid");
+    expect(latestLegalResearchCitationPacketDecision([baseArtifact, checkpoint])).toMatchObject({
+      artifactId: "research-citation-packet-decision-001",
+      decision: "ready_for_staff_review",
+      decidedByUserId: "user-admin",
+      decidedAt: "2026-06-30T17:00:00.000Z",
+      sourceReferenceCount: 1,
+      readyForReviewArtifactCount: 1,
+      openCheckpointCount: 0,
+      metadataOnly: true,
+      providerExecuted: false,
+      sourceTextStored: false,
+      promptStored: false,
+      providerEvidenceStored: false,
+      citationVerificationClaimed: false,
+      legalAdviceGenerated: false,
+      downstreamMutation: false,
+      reviewOnly: true,
+    });
+
+    const updatedReadiness = buildLegalResearchCitationPacketReadiness([baseArtifact, checkpoint]);
+    expect(updatedReadiness.latestDecision).toMatchObject({
+      decision: "ready_for_staff_review",
+      metadataOnly: true,
+      citationVerificationClaimed: false,
+      legalAdviceGenerated: false,
+      downstreamMutation: false,
+    });
+    expect(JSON.stringify(updatedReadiness)).not.toContain(baseArtifact.note);
+    expect(JSON.stringify(updatedReadiness)).not.toContain("Residential Tenancy Act review label");
+    expect(JSON.stringify(updatedReadiness)).not.toContain("Staff-entered citation label");
+    expect(JSON.stringify(updatedReadiness)).not.toContain("Synthetic prompt must not be stored");
+    expect(JSON.stringify(updatedReadiness)).not.toContain(
+      "Synthetic source text must not be stored",
+    );
+    expect(JSON.stringify(updatedReadiness)).not.toContain(
+      "Synthetic provider evidence must not be stored",
+    );
   });
 
   it("summarizes the reserved provider job boundary with citation review controls", () => {

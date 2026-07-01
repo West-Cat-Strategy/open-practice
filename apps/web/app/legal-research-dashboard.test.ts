@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildLegalResearchCitationPacketDecisionPath,
   buildLegalResearchProviderJobPath,
   buildLegalResearchReviewPath,
   buildLegalResearchWorkspacePath,
@@ -21,6 +22,9 @@ describe("legal research dashboard helpers", () => {
       "/api/legal-research/artifacts/artifact%20001/review",
     );
     expect(buildLegalResearchProviderJobPath()).toBe("/api/legal-research/provider-jobs");
+    expect(buildLegalResearchCitationPacketDecisionPath()).toBe(
+      "/api/legal-research/citation-packet-decisions",
+    );
     expect(workspace.provider).toMatchObject({
       status: "disabled",
       reason: "not_configured",
@@ -118,6 +122,90 @@ describe("legal research dashboard helpers", () => {
     });
     expect(canReviewLegalResearch("firm_member")).toBe(true);
     expect(canReviewLegalResearch("auditor")).toBe(false);
+  });
+
+  it("summarizes latest citation packet decisions without private metadata", () => {
+    const workspace = emptyLegalResearchWorkspace("matter-001", "available");
+    const sourceArtifact = {
+      id: "legal-research-source-note-001",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      kind: "cited_source_note" as const,
+      status: "ready_for_review" as const,
+      title: "Source note",
+      note: "Synthetic source note must not appear.",
+      sourceReferences: [{ sourceType: "statute" as const, label: "Synthetic source label" }],
+      contextLinks: [{ resourceType: "matter" as const, resourceId: "matter-001" }],
+      createdByUserId: "user-admin",
+      createdAt: "2026-06-30T16:00:00.000Z",
+      updatedAt: "2026-06-30T16:00:00.000Z",
+      reviewOnly: true as const,
+      metadata: {},
+    };
+    const decisionArtifact = {
+      id: "legal-research-citation-packet-decision-001",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      kind: "review_checkpoint" as const,
+      status: "reviewed" as const,
+      title: "Citation packet readiness decision",
+      sourceReferences: [],
+      contextLinks: [],
+      checkpoint: { checkpointType: "source_review" as const, assignedUserId: "user-admin" },
+      reviewDecision: "reviewed" as const,
+      reviewedByUserId: "user-admin",
+      reviewedAt: "2026-06-30T17:00:00.000Z",
+      createdByUserId: "user-admin",
+      createdAt: "2026-06-30T17:00:00.000Z",
+      updatedAt: "2026-06-30T17:00:00.000Z",
+      reviewOnly: true as const,
+      metadata: {
+        source: "legal_research_citation_packet_decision",
+        decision: "needs_source_review",
+        decidedByUserId: "user-admin",
+        decidedAt: "2026-06-30T17:00:00.000Z",
+        sourceReferenceCount: 1,
+        readyForReviewArtifactCount: 1,
+        openCheckpointCount: 0,
+        contextLinkCount: 1,
+        prompt: "Synthetic prompt must not appear.",
+        sourceText: "Synthetic source text must not appear.",
+        providerEvidence: "Synthetic provider evidence must not appear.",
+      },
+    };
+
+    const updated = replaceLegalResearchArtifact(
+      { ...workspace, artifacts: [sourceArtifact, decisionArtifact] },
+      decisionArtifact,
+    );
+
+    expect(updated.citationPacketReadiness.latestDecision).toMatchObject({
+      artifactId: "legal-research-citation-packet-decision-001",
+      decision: "needs_source_review",
+      decidedByUserId: "user-admin",
+      decidedAt: "2026-06-30T17:00:00.000Z",
+      sourceReferenceCount: 1,
+      readyForReviewArtifactCount: 1,
+      openCheckpointCount: 0,
+      metadataOnly: true,
+      providerEvidenceStored: false,
+      citationVerificationClaimed: false,
+      legalAdviceGenerated: false,
+      downstreamMutation: false,
+    });
+    expect(JSON.stringify(updated.citationPacketReadiness)).not.toContain(
+      "Synthetic source note must not appear.",
+    );
+    expect(JSON.stringify(updated.citationPacketReadiness)).not.toContain("Synthetic source label");
+    expect(JSON.stringify(updated.citationPacketReadiness)).not.toContain(
+      "Synthetic prompt must not appear.",
+    );
+    expect(JSON.stringify(updated.citationPacketReadiness)).not.toContain(
+      "Synthetic source text must not appear.",
+    );
+    expect(JSON.stringify(updated.citationPacketReadiness)).not.toContain(
+      "Synthetic provider evidence must not appear.",
+    );
   });
 
   it("describes terminal document-analysis decisions without artifact bodies", () => {

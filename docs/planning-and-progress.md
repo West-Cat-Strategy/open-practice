@@ -1,6 +1,6 @@
 # Planning and Progress
 
-**Last Updated:** 2026-06-30
+**Last Updated:** 2026-07-01
 
 Use this file for live tracked work, immediate next moves, and the forward-looking development plan.
 Use `docs/planning.md` for the durable roadmap, `docs/improvement-opportunities.md` for candidate
@@ -8,26 +8,29 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 ## At a Glance
 
-| Snapshot              | Value                                                                |
-| --------------------- | -------------------------------------------------------------------- |
-| Current focus         | 2026-06-30 all-worktree mainline integration blocked before push.    |
-| Next recommended pick | Pick the next small row from the candidate backlog.                  |
-| Ready rows            | 0                                                                    |
-| Candidate rows        | 0                                                                    |
-| In progress rows      | 0                                                                    |
-| Review rows           | 1                                                                    |
-| Blocked rows          | 0                                                                    |
-| Archive               | Historical snapshots and proof live in [Archive](archive/README.md). |
-| Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`     |
+| Snapshot              | Value                                                                 |
+| --------------------- | --------------------------------------------------------------------- |
+| Current focus         | 2026-06-30 all-worktree mainline integration validated before push.   |
+| Next recommended pick | Reconcile proof, commit, then publish/prune only if remote is stable. |
+| Ready rows            | 0                                                                     |
+| Candidate rows        | 0                                                                     |
+| In progress rows      | 0                                                                     |
+| Review rows           | 1                                                                     |
+| Blocked rows          | 0                                                                     |
+| Archive               | Historical snapshots and proof live in [Archive](archive/README.md).  |
+| Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`      |
 
 ## Current Handoff Notes
 
 The 2026-06-30 `integrate/open-practice-all-worktrees-20260630` branch commits and integrates the
-selected dirty sibling worktree lanes, including the `0078` contact duplicate resolution migration
-and `0079` email-template reviewed outbound preview migration. Final publication is blocked before
-push because required validation stops on unrelated central OSS reference-lock drift and the local
-Docker residual-watch readiness candidate. No merge to `main`, push, prune, branch deletion, or
-stash rewrite was performed. Evidence is recorded in
+selected dirty sibling worktree lanes, including the `0078` contact duplicate resolution migration,
+`0079` email-template reviewed outbound preview migration, and `0080` refund/chargeback resolution
+records migration. The 2026-07-01 repair pass restored Docker Desktop validation, repaired only the
+documented Prettier drift plus focused validation blockers surfaced by `ci:local` and `docker:scan`,
+and produced final selected validation artifact `.tmp/validation-runs/2026-07-01T01-52-26Z` with 39
+commands passed and no skipped checks. Proof/index/workboard reconciliation must pass before any
+merge to `main`, push, safe metadata prune, branch deletion, or stash rewrite. Evidence is recorded
+in
 [2026-06-30 all-worktree mainline proof](validation/OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-30.md).
 
 The 2026-06-29 `feat/financial-command-fresh-auth-20260629` branch reuses the
@@ -155,6 +158,20 @@ storage, routes, migrations, providers, worker execution, citation verification,
 document/task/draft/message/calendar mutation. Proof is recorded in
 [legal research citation packet readiness proof](validation/OP_LEGAL_RESEARCH_CITATION_PACKET_READINESS_PROOF_2026-06-29.md).
 
+The 2026-06-30 legal-research citation-packet decision follow-up adds the smallest durable
+staff-only enum layer over `citationPacketReadiness`: `ready_for_staff_review` or
+`needs_source_review` can be recorded only when source references exist, at least one artifact is
+ready for review, and no checkpoints are open. The command stores a terminal metadata-only reviewed
+`review_checkpoint` legal-research artifact through existing storage and returns an updated Research
+workspace with the latest decision cue. The metadata remains limited to safe IDs, counts, statuses,
+timestamps, reviewer ID, and fixed no-provider/no-source-text/no-prompt/no-provider-evidence/
+no-verification/no-advice/no-downstream-mutation flags. It preserves no provider execution, source
+text/prompt/provider evidence storage, citation verification, legal advice, schema/migration,
+provider-job, worker, document, task, draft, message, or calendar mutation. Validation used
+`pnpm verify:select -- --files <actual final paths>`, `pnpm --filter @open-practice/domain test`,
+`pnpm --filter @open-practice/api exec vitest run src/routes/legal-research.test.ts`, and
+`pnpm --filter @open-practice/web test`.
+
 The 2026-06-27 `feat/deposit-match-review-command-boundary-20260627` branch implements OP-T162 as
 the next safe payment import/deposit matching runtime slice after OP-T160. It adds staff-only,
 provider-neutral, append-only deposit-match reviewer decisions over normalized payment import
@@ -199,6 +216,14 @@ no-side-effect flags for record-local API reads and Billing dashboard rows. The 
 packet, artifact, note, notification, provider command, ledger reversal, invoice mutation, trust
 posting, or funds movement. Proof is recorded in
 [refund/chargeback resolution packet preview proof](validation/OP_REFUND_CHARGEBACK_RESOLUTION_PACKET_PREVIEW_PROOF_2026-06-30.md).
+
+The 2026-06-30 refund/chargeback resolution-record follow-up adds a staff-only enum snapshot over
+already-decided packet previews. It stores only safe source/candidate IDs, derived category,
+resolution posture, enum reason categories, latest review/reviewer metadata, recording metadata,
+idempotency posture, and fixed no-side-effect flags while rejecting `awaiting_decision` previews.
+It adds no provider commands, refund/dispute artifacts, free-form notes, invoice mutation, ledger
+reversal, client notification, trust posting, or funds movement. Proof is recorded in
+[refund/chargeback resolution records proof](validation/OP_REFUND_CHARGEBACK_RESOLUTION_RECORDS_PROOF_2026-06-30.md).
 
 The 2026-06-28 review-only calendar aging cue follow-up adds staff-only fresh/aging/stale metadata
 for open appointment booking tentative holds and open calendar scheduling requests. The cues are
@@ -849,26 +874,17 @@ response shape, and preserves the no-CRM-sync/no-automatic-task-creation/no-raw-
 boundary. Proof is recorded in
 [Full CRM contacts proof](validation/OP_FULL_CRM_CONTACTS_PROOF_2026-06-15.md).
 
-The 2026-06-16 queued CRM contact-history export link follow-up adds authenticated
-`POST /api/contacts/:contactId/history-export-requests`, poll, and short-lived download routes on
-the existing reports queue for the same `staff_review` purpose and `contact:export` permission. It
-stores only bounded request/link metadata in job lifecycle records, regenerates the export JSON on
-authenticated download from current requester visibility, and keeps review reasons, raw contact
-history, export bodies, storage keys, provider payloads, private notes, raw matched values, and task
-text out of queue/audit metadata. It does not add a schema, migration, provider, object-storage
-artifact, retained export body, retention deadline, deletion automation, legal-hold override, broad
-CRM permission, or compliance claim. Proof is recorded in
-[queued contact-history export links proof](validation/OP_CONTACT_HISTORY_EXPORT_QUEUE_LINKS_PROOF_2026-06-16.md).
-
-The 2026-06-16 single-contact CRM contact-history export runtime keeps the synchronous
-`POST /api/contacts/:contactId/history-export` path available for authenticated staff/admin users
-with the existing `contact:export` permission. It returns a transient `staff_review` JSON export for
-one visible contact from the existing authorized dossier/detail/timeline projections, requires a
-short review reason, records only posture/count audit metadata, and supports a browser-side JSON
-download. The synchronous route itself does not add a schema, migration, worker, provider, queue,
-object-storage artifact, retained export body, retention deadline, deletion workflow, legal-hold
-override, or compliance claim. Proof is recorded in
-[CRM contact-history export runtime proof](validation/OP_CONTACT_HISTORY_EXPORT_RUNTIME_PROOF_2026-06-16.md).
+The current CRM contact-history export runtime keeps `POST /api/contacts/:contactId/history-export`
+available for authenticated staff/admin users with the existing `contact:export` permission, but
+the route is now a matter-scoped `staff_review` preview. It requires `matterId` and a short review
+reason, derives counts/category presence/safe IDs from existing authorized and redacted contact
+projections, records bounded posture/count audit metadata, and returns no export body. It does not
+add a schema, migration, worker, provider, queue, object-storage artifact, retained export body,
+download link, retention deadline, deletion workflow, legal-hold override, hidden matter
+disclosure, raw private notes, task text, storage keys, broad CRM permission, or compliance claim.
+Historical superseded proof is recorded in
+[queued contact-history export links proof](validation/OP_CONTACT_HISTORY_EXPORT_QUEUE_LINKS_PROOF_2026-06-16.md)
+and [CRM contact-history export runtime proof](validation/OP_CONTACT_HISTORY_EXPORT_RUNTIME_PROOF_2026-06-16.md).
 
 The 2026-06-16 inbound email matter draft branch adds a staff-confirmed, review-only matter-draft
 workflow for unscoped inbound email. Owner/admin users with existing unscoped inbound-email update

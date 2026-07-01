@@ -88,6 +88,7 @@ import {
   type MatterParty,
   type PaymentAllocationRecord,
   type PaymentImportDepositMatchReviewRecord,
+  type PaymentImportRefundChargebackResolutionRecord,
   type PaymentImportRefundChargebackReviewRecord,
   type PaymentImportReviewRecord,
   type PortalGrant,
@@ -328,9 +329,11 @@ import {
 import {
   createMemoryPaymentImportReviewRecord,
   createMemoryPaymentImportDepositMatchReview,
+  createMemoryPaymentImportRefundChargebackResolutionRecord,
   createMemoryPaymentImportRefundChargebackReview,
   getMemoryPaymentImportReviewRecord,
   listMemoryPaymentImportDepositMatchReviews,
+  listMemoryPaymentImportRefundChargebackResolutionRecords,
   listMemoryPaymentImportRefundChargebackReviews,
   listMemoryPaymentImportReviewRecords,
   type MemoryPaymentImportReviewRecordStore,
@@ -744,6 +747,8 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private paymentImportReviewRecords: PaymentImportReviewRecord[];
   private paymentImportDepositMatchReviews: PaymentImportDepositMatchReviewRecord[] = [];
   private paymentImportRefundChargebackReviews: PaymentImportRefundChargebackReviewRecord[] = [];
+  private paymentImportRefundChargebackResolutionRecords: PaymentImportRefundChargebackResolutionRecord[] =
+    [];
   private trustTransferRequests: TrustTransferRequestRecord[];
   private ledgerAccounts: LedgerAccount[];
   private ledgerApprovals: LedgerTransactionApprovalRecord[] = [];
@@ -1118,6 +1123,14 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
       },
       set paymentImportRefundChargebackReviews(value: PaymentImportRefundChargebackReviewRecord[]) {
         repository.paymentImportRefundChargebackReviews = value;
+      },
+      get paymentImportRefundChargebackResolutionRecords() {
+        return repository.paymentImportRefundChargebackResolutionRecords;
+      },
+      set paymentImportRefundChargebackResolutionRecords(
+        value: PaymentImportRefundChargebackResolutionRecord[],
+      ) {
+        repository.paymentImportRefundChargebackResolutionRecords = value;
       },
     };
   }
@@ -3595,6 +3608,34 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   ): ReturnType<OpenPracticeRepository["listPaymentImportRefundChargebackReviews"]> {
     return Promise.resolve(
       listMemoryPaymentImportRefundChargebackReviews(
+        this.paymentImportReviewRecordStore,
+        firmId,
+        options,
+      ),
+    );
+  }
+
+  async createPaymentImportRefundChargebackResolutionRecord(
+    record: Parameters<
+      OpenPracticeRepository["createPaymentImportRefundChargebackResolutionRecord"]
+    >[0],
+  ): ReturnType<OpenPracticeRepository["createPaymentImportRefundChargebackResolutionRecord"]> {
+    return Promise.resolve(
+      createMemoryPaymentImportRefundChargebackResolutionRecord(
+        this.paymentImportReviewRecordStore,
+        record,
+      ),
+    );
+  }
+
+  async listPaymentImportRefundChargebackResolutionRecords(
+    firmId: string,
+    options: Parameters<
+      OpenPracticeRepository["listPaymentImportRefundChargebackResolutionRecords"]
+    >[1] = {},
+  ): ReturnType<OpenPracticeRepository["listPaymentImportRefundChargebackResolutionRecords"]> {
+    return Promise.resolve(
+      listMemoryPaymentImportRefundChargebackResolutionRecords(
         this.paymentImportReviewRecordStore,
         firmId,
         options,

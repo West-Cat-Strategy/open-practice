@@ -85,6 +85,31 @@ describe("EmailTemplateDraftsPanel", () => {
             reviewStatus: "reviewed_preview",
             warnings: [],
             delivery: { persisted: true, queued: false },
+            outboxDraftReview: {
+              status: "draft_review",
+              mode: "outbox_draft_review",
+              reviewedOutboundPreviewId: "reviewed-preview-001",
+              templateDraftId: "template-draft-001",
+              publishedVersionId: "published-version-002",
+              publishedVersion: 2,
+              matterId: "matter-001",
+              contactId: "contact-ada",
+              contactMethodId: "contact-method-ada-email",
+              recipientCount: 1,
+              warningCount: 0,
+              createdByUserId: "user-admin",
+              createdAt: "2026-06-16T10:09:00.000Z",
+              delivery: {
+                persisted: true,
+                queued: false,
+                emailOutboxRecordCreated: false,
+                jobQueued: false,
+                providerDeliverySideEffect: false,
+                campaignAutomation: false,
+                bulkSend: false,
+                subscriptionManagement: false,
+              },
+            },
             createdAt: "2026-06-16T10:09:00.000Z",
           },
         ],
@@ -181,8 +206,11 @@ describe("EmailTemplateDraftsPanel", () => {
     expect(html).toContain("Create reviewed preview");
     expect(html).toContain("Reviewed synthetic subject");
     expect(html).toContain("matter.update · published v2 · 1 recipient");
+    expect(html).toContain("draft review");
+    expect(html).toContain("not queued");
     expect(html).toContain("reviewed");
     expect(html).not.toContain("Confirm and send");
+    expect(html).not.toContain("Create outbox");
     expect(html).not.toContain("campaign");
     expect(html).not.toContain("Bulk send");
     expect(html).not.toContain("Provider delivery");

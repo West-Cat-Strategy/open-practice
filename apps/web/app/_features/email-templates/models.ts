@@ -89,6 +89,31 @@ export interface EmailTemplateReviewedOutboundPreviewItem {
     persisted: true;
     queued: false;
   };
+  outboxDraftReview?: {
+    status: "draft_review";
+    mode: "outbox_draft_review";
+    reviewedOutboundPreviewId: string;
+    templateDraftId: string;
+    publishedVersionId: string;
+    publishedVersion: number;
+    matterId: string;
+    contactId: string;
+    contactMethodId: string;
+    recipientCount: number;
+    warningCount: number;
+    createdByUserId: string;
+    createdAt: string;
+    delivery: {
+      persisted: true;
+      queued: false;
+      emailOutboxRecordCreated: false;
+      jobQueued: false;
+      providerDeliverySideEffect: false;
+      campaignAutomation: false;
+      bulkSend: false;
+      subscriptionManagement: false;
+    };
+  };
   createdAt: string;
 }
 

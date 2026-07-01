@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  calendarSchedulingAgingReviewBusyAction,
+  calendarSchedulingAgingReviewBusyKey,
+  compactCalendarSchedulingAgingReviewActionReason,
   compactDocumentRetentionHoldReviewActionReason,
   compactLegalResearchArtifactReviewActionReason,
   compactMatterLifecycleReviewActionReason,
   compactTrustPostingRequestReviewActionReason,
+  describeCalendarSchedulingAgingReviewAction,
   describeDocumentRetentionHoldReviewAction,
   describeLegalResearchArtifactReviewAction,
   describeMatterLifecycleReviewAction,
@@ -73,6 +77,85 @@ describe("operational action states", () => {
       disabledReason: "permission_required",
       tone: "risk",
     });
+  });
+
+  it("describes calendar scheduling aging review action metadata without request data", () => {
+    const busyKey = calendarSchedulingAgingReviewBusyKey(
+      "follow_up_required",
+      "schedule_request_synthetic",
+    );
+
+    expect(busyKey).toBe("schedule_request_synthetic:aging:follow_up_required");
+    expect(calendarSchedulingAgingReviewBusyAction(busyKey, "schedule_request_synthetic")).toBe(
+      "follow_up_required",
+    );
+    expect(
+      calendarSchedulingAgingReviewBusyAction(
+        "schedule_request_synthetic:aging:archived",
+        "schedule_request_synthetic",
+      ),
+    ).toBe("other");
+    expect(
+      calendarSchedulingAgingReviewBusyAction("", "schedule_request_synthetic"),
+    ).toBeUndefined();
+
+    expect(
+      describeCalendarSchedulingAgingReviewAction({
+        action: "acknowledged",
+      }),
+    ).toEqual({
+      actionKey: "calendar_scheduling_aging_review.acknowledge",
+      available: true,
+      availability: "available",
+      label: "Acknowledge",
+      ariaLabel: "Acknowledge scheduling request aging review",
+      tone: "ready",
+    });
+
+    expect(
+      describeCalendarSchedulingAgingReviewAction({
+        action: "follow_up_required",
+        busyAction: "follow_up_required",
+      }),
+    ).toMatchObject({
+      actionKey: "calendar_scheduling_aging_review.follow_up_required",
+      available: false,
+      availability: "disabled",
+      label: "Follow up",
+      ariaLabel: "Mark scheduling request follow-up required",
+      disabledReason: "follow_up_required_in_progress",
+    });
+
+    expect(
+      describeCalendarSchedulingAgingReviewAction({
+        action: "defer_review",
+        busyAction: "follow_up_required",
+      }),
+    ).toMatchObject({
+      actionKey: "calendar_scheduling_aging_review.defer",
+      available: false,
+      availability: "disabled",
+      label: "Defer",
+      ariaLabel: "Defer scheduling request aging review",
+      disabledReason: "aging_review_action_in_progress",
+    });
+
+    expect(compactCalendarSchedulingAgingReviewActionReason("follow_up_required_in_progress")).toBe(
+      "follow-up review in progress",
+    );
+    expect(
+      compactCalendarSchedulingAgingReviewActionReason("aging_review_action_in_progress"),
+    ).toBe("aging review action in progress");
+
+    const serialized = JSON.stringify(
+      describeCalendarSchedulingAgingReviewAction({
+        action: "follow_up_required",
+        busyAction: "follow_up_required",
+      }),
+    );
+    expect(serialized).not.toContain("schedule_request_synthetic");
+    expect(serialized).not.toContain("Synthetic video check-in");
+    expect(serialized).not.toContain("Synthetic scheduling note");
   });
 
   it("describes lifecycle review action labels and disabled states without matter data", () => {

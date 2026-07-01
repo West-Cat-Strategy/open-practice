@@ -2,10 +2,13 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import {
   buildLegalResearchArtifactAuditMetadata,
+  buildLegalResearchCitationPacketDecisionMetadata,
+  buildLegalResearchCitationPacketReadiness,
   buildLegalResearchProviderJobMetadata,
   buildLegalResearchWorkspace,
   legalResearchArtifactKinds,
   legalResearchArtifactStatuses,
+  legalResearchCitationPacketDecisions,
   legalResearchProviderJobName,
   legalResearchProviderJobRequestTypes,
   legalResearchSourceTypes,
@@ -13,6 +16,8 @@ import {
   serializeLegalResearchProviderJob,
   type JobLifecycleRecord,
   type LegalResearchArtifactRecord,
+  type LegalResearchCitationPacketDecision,
+  type LegalResearchCitationPacketReadiness,
   type LegalResearchProviderJobRecord,
 } from "@open-practice/domain";
 import { requireAccess } from "../http/auth-guards.js";
@@ -120,6 +125,13 @@ const reviewBodySchema = z.object({
   decision: z.enum(["reviewed", "rejected"]),
 });
 
+const citationPacketDecisionBodySchema = z
+  .object({
+    matterId: z.string().trim().min(1),
+    decision: z.enum(legalResearchCitationPacketDecisions),
+  })
+  .strict();
+
 const providerJobBodySchema = z
   .object({
     matterId: z.string().trim().min(1),
@@ -144,6 +156,10 @@ function assertLegalResearchAccess(input: {
     matterId: input.matterId,
   });
   if (!access.ok) throw access.error;
+}
+
+function legalResearchConflict(message: string): Error {
+  return Object.assign(new Error(message), { statusCode: 409 });
 }
 
 function makeArtifact(input: {
@@ -171,6 +187,73 @@ function makeArtifact(input: {
     reviewOnly: true,
     metadata: input.body.metadata,
   };
+}
+
+function makeCitationPacketDecisionArtifact(input: {
+  firmId: string;
+  matterId: string;
+  decision: LegalResearchCitationPacketDecision;
+  readiness: LegalResearchCitationPacketReadiness;
+  userId: string;
+  now: string;
+}): LegalResearchArtifactRecord {
+  return {
+    id: `legal-research-${crypto.randomUUID()}`,
+    firmId: input.firmId,
+    matterId: input.matterId,
+    kind: "review_checkpoint",
+    status: "reviewed",
+    title: "Citation packet readiness decision",
+    sourceReferences: [],
+    contextLinks: [],
+    checkpoint: {
+      checkpointType: "source_review",
+      assignedUserId: input.userId,
+    },
+    reviewDecision: "reviewed",
+    reviewedByUserId: input.userId,
+    reviewedAt: input.now,
+    createdByUserId: input.userId,
+    createdAt: input.now,
+    updatedAt: input.now,
+    reviewOnly: true,
+    metadata: buildLegalResearchCitationPacketDecisionMetadata({
+      matterId: input.matterId,
+      decision: input.decision,
+      decidedByUserId: input.userId,
+      decidedAt: input.now,
+      sourceReferenceCount: input.readiness.sourceReferenceCount,
+      sourceReferenceCountsByType: input.readiness.sourceReferenceCountsByType,
+      readyForReviewArtifactCount: input.readiness.readyForReviewArtifactCount,
+      readyForReviewArtifactIds: input.readiness.readyForReviewArtifactIds,
+      openCheckpointCount: input.readiness.openCheckpointCount,
+      openCheckpointArtifactIds: input.readiness.openCheckpointArtifactIds,
+      contextLinkCount: input.readiness.contextLinkCount,
+      contextLinkCountsByType: input.readiness.contextLinkCountsByType,
+    }),
+  };
+}
+
+function isMatchingCitationPacketDecision(input: {
+  artifact: LegalResearchArtifactRecord;
+  decision: LegalResearchCitationPacketDecision;
+  readiness: LegalResearchCitationPacketReadiness;
+}): boolean {
+  const metadata = input.artifact.metadata;
+  return (
+    input.artifact.kind === "review_checkpoint" &&
+    input.artifact.status === "reviewed" &&
+    metadata.source === "legal_research_citation_packet_decision" &&
+    metadata.decision === input.decision &&
+    metadata.sourceReferenceCount === input.readiness.sourceReferenceCount &&
+    metadata.readyForReviewArtifactCount === input.readiness.readyForReviewArtifactCount &&
+    metadata.openCheckpointCount === input.readiness.openCheckpointCount &&
+    metadata.contextLinkCount === input.readiness.contextLinkCount &&
+    JSON.stringify(metadata.readyForReviewArtifactIds ?? []) ===
+      JSON.stringify(input.readiness.readyForReviewArtifactIds) &&
+    JSON.stringify(metadata.openCheckpointArtifactIds ?? []) ===
+      JSON.stringify(input.readiness.openCheckpointArtifactIds)
+  );
 }
 
 function isLegalResearchProviderJob(
@@ -368,6 +451,84 @@ export function registerLegalResearchRoutes(
       status: "available" as const,
       ...buildLegalResearchWorkspace({ matterId: query.matterId, artifacts, providerJobs }),
     };
+  });
+
+  server.post("/api/legal-research/citation-packet-decisions", async (request, reply) => {
+    const body = parseRequestPart(citationPacketDecisionBodySchema, request.body, "body");
+    assertLegalResearchAccess({
+      auth: request.auth,
+      action: "approve",
+      matterId: body.matterId,
+    });
+    const [artifacts, providerJobs] = await Promise.all([
+      repository.listLegalResearchArtifacts(request.auth.firmId, { matterId: body.matterId }),
+      listMatterProviderJobs({
+        repository,
+        firmId: request.auth.firmId,
+        matterId: body.matterId,
+      }),
+    ]);
+    const readiness = buildLegalResearchCitationPacketReadiness(artifacts);
+    if (!readiness.staffReviewReady) {
+      throw legalResearchConflict("Legal research citation packet is not ready for a decision");
+    }
+
+    const existing = artifacts.find((artifact) =>
+      isMatchingCitationPacketDecision({ artifact, decision: body.decision, readiness }),
+    );
+    const now = new Date().toISOString();
+    const checkpoint =
+      existing ??
+      (await repository.createLegalResearchArtifact(
+        makeCitationPacketDecisionArtifact({
+          firmId: request.auth.firmId,
+          matterId: body.matterId,
+          decision: body.decision,
+          readiness,
+          userId: request.auth.user.id,
+          now,
+        }),
+      ));
+
+    if (!existing) {
+      await appendRouteAuditEvent(repository, request.auth, {
+        action: "legal_research.citation_packet_decision.recorded",
+        resourceType: "legal_research",
+        resourceId: checkpoint.id,
+        occurredAt: now,
+        metadata: {
+          ...buildLegalResearchArtifactAuditMetadata(checkpoint),
+          citationPacketDecision: body.decision,
+          sourceReferenceCount: readiness.sourceReferenceCount,
+          readyForReviewArtifactCount: readiness.readyForReviewArtifactCount,
+          openCheckpointCount: readiness.openCheckpointCount,
+          contextLinkCount: readiness.contextLinkCount,
+          metadataOnly: true,
+          providerExecuted: false,
+          sourceTextStored: false,
+          promptStored: false,
+          providerEvidenceStored: false,
+          citationVerificationClaimed: false,
+          legalAdviceGenerated: false,
+          downstreamMutation: false,
+        },
+      });
+    }
+
+    const updatedArtifacts = existing ? artifacts : [checkpoint, ...artifacts];
+    return reply.code(existing ? 200 : 201).send({
+      status: existing ? ("existing" as const) : ("created" as const),
+      decision: body.decision,
+      checkpoint,
+      workspace: {
+        status: "available" as const,
+        ...buildLegalResearchWorkspace({
+          matterId: body.matterId,
+          artifacts: updatedArtifacts,
+          providerJobs,
+        }),
+      },
+    });
   });
 
   server.post("/api/legal-research/provider-jobs", async (request, reply) => {

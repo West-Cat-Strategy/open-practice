@@ -2,8 +2,8 @@
 
 FROM golang:1.26.4-alpine3.23@sha256:f23e8b227fb4493eabe03bede4d5a32d04092da71962f1fb79b5f7d1e6c2a17f AS builder
 
-ARG MAILPIT_VERSION=v1.30.2
-ARG MAILPIT_SHA256=239f044997dcb6ec27ed1b85b5ca3bba9d5996d66dad67014c3f4aa75549269b
+ARG MAILPIT_VERSION=v1.30.3
+ARG MAILPIT_SHA256=1e6a94e92b5e6ebbdaed7ec2dd280b7d200185697d723044c5a9fc239fcdb6d8
 
 WORKDIR /src
 
@@ -26,6 +26,8 @@ LABEL org.opencontainers.image.title="Mailpit" \
   org.opencontainers.image.source="https://github.com/axllent/mailpit" \
   org.opencontainers.image.url="https://mailpit.axllent.org" \
   org.opencontainers.image.documentation="https://mailpit.axllent.org/docs/" \
+  org.opencontainers.image.version="v1.30.3" \
+  org.opencontainers.image.revision="8b4afc808a3a6451a6ff7031f935c63a6d197d20" \
   org.opencontainers.image.licenses="MIT"
 
 COPY --from=builder /mailpit /mailpit

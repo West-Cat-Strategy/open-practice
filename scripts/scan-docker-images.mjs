@@ -15,8 +15,15 @@ export const DEFAULT_IMAGES = [
   "open-practice-dev-worker",
   "open-practice-postgres:18-alpine-su-exec",
   "open-practice-minio:RELEASE.2025-10-15T17-29-55Z-go1.26.4",
-  "open-practice-mailpit:v1.30.2-go1.26.4",
+  "open-practice-mailpit:v1.30.3-go1.26.4",
 ];
+const DEFAULT_APP_IMAGE_ROLES = new Map([
+  ["open-practice-dev-api", "api"],
+  ["open-practice-dev-web", "web"],
+  ["open-practice-dev-worker", "worker"],
+]);
+const APP_SMOKE_IMAGE_PATTERN =
+  /^open-practice-app-smoke-(?<project>.+)-(?<role>api|web|worker):latest$/;
 export const MISSING_TRIVY_MESSAGE =
   "trivy is not installed locally; install it to run the optional local image scan after docker:app-smoke.";
 
@@ -62,6 +69,74 @@ function trivyCriticalHighCounts(artifactDir, scan) {
 
 function isMinioScan(scan) {
   return scan.image.startsWith("open-practice-minio:");
+}
+
+function imageWithImplicitLatestTag(image) {
+  const finalSegment = image.split("/").at(-1) ?? image;
+  return finalSegment.includes(":") ? image : `${image}:latest`;
+}
+
+function isDefaultImageSet(images) {
+  return (
+    images.length === DEFAULT_IMAGES.length &&
+    images.every((image, index) => image === DEFAULT_IMAGES[index])
+  );
+}
+
+function listLocalDockerImages({ cwd, spawn }) {
+  const result = spawn("docker", ["image", "ls", "--format", "{{.Repository}}:{{.Tag}}"], {
+    cwd,
+    encoding: "utf8",
+    maxBuffer: 4 * 1024 * 1024,
+  });
+  if (result.status !== 0) return [];
+
+  return (result.stdout ?? "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !line.includes("<none>"));
+}
+
+function newestCompleteAppSmokeImageSet(localImages) {
+  const smokeProjects = new Map();
+  for (const [index, image] of localImages.entries()) {
+    const match = APP_SMOKE_IMAGE_PATTERN.exec(image);
+    if (!match?.groups) continue;
+
+    const project = match.groups.project;
+    const projectImages = smokeProjects.get(project) ?? {
+      firstIndex: index,
+      roles: new Map(),
+    };
+    projectImages.firstIndex = Math.min(projectImages.firstIndex, index);
+    projectImages.roles.set(match.groups.role, image);
+    smokeProjects.set(project, projectImages);
+  }
+
+  return [...smokeProjects.values()]
+    .filter(({ roles }) => roles.has("api") && roles.has("web") && roles.has("worker"))
+    .sort((left, right) => left.firstIndex - right.firstIndex)[0];
+}
+
+function resolveDockerScanImages({ cwd, images, spawn }) {
+  if (!isDefaultImageSet(images)) return images;
+
+  const localImages = listLocalDockerImages({ cwd, spawn });
+  if (localImages.length === 0) return images;
+
+  const localImageSet = new Set(localImages);
+  const smokeImageSet = newestCompleteAppSmokeImageSet(localImages);
+  return images.map((image) => {
+    if (
+      !DEFAULT_APP_IMAGE_ROLES.has(image) ||
+      localImageSet.has(image) ||
+      localImageSet.has(imageWithImplicitLatestTag(image))
+    ) {
+      return image;
+    }
+
+    return smokeImageSet?.roles.get(DEFAULT_APP_IMAGE_ROLES.get(image)) ?? image;
+  });
 }
 
 function acceptsBundledMinioScanResiduals(residualWatch) {
@@ -176,7 +251,8 @@ export function scanDockerImages({
     return report;
   }
 
-  const scans = images.map((image) => runImageScan({ artifactDir, cwd, image, spawn }));
+  const resolvedImages = resolveDockerScanImages({ cwd, images, spawn });
+  const scans = resolvedImages.map((image) => runImageScan({ artifactDir, cwd, image, spawn }));
   const failedScans = scans.filter((scan) => scan.status !== 0);
   const scanResiduals = assessAcceptedScanResiduals({
     artifactDir,

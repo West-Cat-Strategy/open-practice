@@ -16,6 +16,7 @@ import type {
   HostedPaymentRequestRecord,
   ManualPaymentStatus,
   PaymentImportDepositMatchReviewRecord,
+  PaymentImportRefundChargebackResolutionRecord,
   PaymentImportRefundChargebackReviewRecord,
   PaymentImportReviewRecord,
   Province,
@@ -609,6 +610,95 @@ export const paymentImportRefundChargebackReviews = pgTable(
     ),
     idempotencyKeyFormat: check(
       "payment_import_rc_reviews_idempotency_key_format",
+      sql`${table.idempotencyKey} ~ '^[A-Za-z0-9_.:-]+$'`,
+    ),
+  }),
+);
+
+export const paymentImportRefundChargebackResolutionRecords = pgTable(
+  "payment_import_refund_chargeback_resolution_records",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    matterId: text("matter_id")
+      .notNull()
+      .references(() => matters.id),
+    paymentImportReviewRecordId: text("payment_import_review_record_id")
+      .notNull()
+      .references(() => paymentImportReviewRecords.id),
+    candidateInvoiceId: text("candidate_invoice_id").references(() => invoices.id),
+    candidateHostedPaymentRequestId: text("candidate_hosted_payment_request_id").references(
+      () => hostedPaymentRequests.id,
+    ),
+    candidateManualPaymentId: text("candidate_manual_payment_id").references(
+      () => manualPayments.id,
+    ),
+    latestReviewId: text("latest_review_id")
+      .notNull()
+      .references(() => paymentImportRefundChargebackReviews.id),
+    category: text("category")
+      .$type<PaymentImportRefundChargebackResolutionRecord["category"]>()
+      .notNull(),
+    resolutionPosture: text("resolution_posture")
+      .$type<PaymentImportRefundChargebackResolutionRecord["resolutionPosture"]>()
+      .notNull(),
+    reasonCategories: jsonb("reason_categories")
+      .$type<PaymentImportRefundChargebackResolutionRecord["reasonCategories"]>()
+      .notNull()
+      .default([]),
+    latestReviewerMetadata: jsonb("latest_reviewer_metadata")
+      .$type<PaymentImportRefundChargebackResolutionRecord["latestReviewerMetadata"]>()
+      .notNull(),
+    noSideEffectFlags: jsonb("no_side_effect_flags")
+      .$type<PaymentImportRefundChargebackResolutionRecord["noSideEffectFlags"]>()
+      .notNull()
+      .default({
+        rawProviderPayloadRetained: false,
+        invoiceBalanceMutation: "none",
+        ledgerReversal: "none",
+        providerCommand: "none",
+        refundArtifactStorage: false,
+        disputeArtifactStorage: false,
+        freeFormNotes: false,
+        clientNotification: "none",
+        trustPosting: "none",
+        fundsMovement: "none",
+      }),
+    idempotencyKey: text("idempotency_key").notNull(),
+    resolutionFingerprint: text("resolution_fingerprint").notNull(),
+    recordedByUserId: text("recorded_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    firmMatterRecorded: index("payment_import_rc_res_firm_matter_recorded_idx").on(
+      table.firmId,
+      table.matterId,
+      table.recordedAt,
+    ),
+    firmImportRecord: index("payment_import_rc_res_firm_import_record_idx").on(
+      table.firmId,
+      table.paymentImportReviewRecordId,
+    ),
+    firmResolutionIdempotency: uniqueIndex("payment_import_rc_res_firm_record_idempotency_idx").on(
+      table.firmId,
+      table.paymentImportReviewRecordId,
+      table.idempotencyKey,
+    ),
+    categoryValue: check(
+      "payment_import_rc_res_category_value",
+      sql`${table.category} in ('refund', 'chargeback')`,
+    ),
+    resolutionPostureValue: check(
+      "payment_import_rc_res_resolution_posture_value",
+      sql`${table.resolutionPosture} in ('confirmed_exception', 'rejected_exception', 'needs_more_evidence')`,
+    ),
+    idempotencyKeyFormat: check(
+      "payment_import_rc_res_idempotency_key_format",
       sql`${table.idempotencyKey} ~ '^[A-Za-z0-9_.:-]+$'`,
     ),
   }),

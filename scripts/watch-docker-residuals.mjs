@@ -14,6 +14,8 @@ const DEFAULT_ARTIFACT_ROOT = path.join(
 
 const SERVICE_ORDER = ["postgres", "minio", "mailpit"];
 const MINIO_HARDENED_SERVICES = ["minio", "minio-bucket-init"];
+const DEFAULT_COMMAND_TIMEOUT_MS = 120_000;
+const WRAPPED_SERVICE_IMAGE_BUILD_TIMEOUT_MS = 1_200_000;
 const DOCUMENTED_MINIO_LATEST_DIGEST =
   "sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e";
 
@@ -68,7 +70,17 @@ const SERVICE_DEFINITIONS = {
     archiveProbe: {
       id: "minio-source-repository-metadata",
       command: "curl",
-      args: ["-fsSL", "https://api.github.com/repos/minio/minio"],
+      args: [
+        "-fsSL",
+        "--retry",
+        "3",
+        "--retry-all-errors",
+        "--retry-delay",
+        "1",
+        "-H",
+        "User-Agent: open-practice-local-validation",
+        "https://api.github.com/repos/minio/minio",
+      ],
       kind: "github-repository",
       repository: "minio/minio",
     },
@@ -288,6 +300,10 @@ function command(id, commandName, args, options = {}) {
   return { id, command: commandName, args, required: true, ...options };
 }
 
+function scoutImageTarget(image) {
+  return image.startsWith("local://") ? image : `local://${image}`;
+}
+
 export function dockerResidualCommands(posture) {
   const commands = [
     command("docker-version", "docker", [
@@ -297,27 +313,32 @@ export function dockerResidualCommands(posture) {
     ]),
     command("docker-scout-version", "docker", ["scout", "version"]),
     command("compose-images", "docker", ["compose", "config", "--images"]),
+    command(
+      "wrapped-service-images-build",
+      "docker",
+      ["compose", "build", "postgres", "minio", "mailpit"],
+      {
+        timeoutMs: WRAPPED_SERVICE_IMAGE_BUILD_TIMEOUT_MS,
+      },
+    ),
   ];
 
   for (const serviceName of SERVICE_ORDER) {
     const servicePosture = posture[serviceName];
+    const scoutTarget = scoutImageTarget(servicePosture.composeImage);
     commands.push(
-      command(`${serviceName}-scout-quickview`, "docker", [
-        "scout",
-        "quickview",
-        servicePosture.composeImage,
-      ]),
+      command(`${serviceName}-scout-quickview`, "docker", ["scout", "quickview", scoutTarget]),
       command(`${serviceName}-scout-critical-high-cves`, "docker", [
         "scout",
         "cves",
         "--only-severity",
         "critical,high",
-        servicePosture.composeImage,
+        scoutTarget,
       ]),
       command(`${serviceName}-scout-recommendations`, "docker", [
         "scout",
         "recommendations",
-        servicePosture.composeImage,
+        scoutTarget,
       ]),
     );
 
@@ -360,7 +381,7 @@ function runCommand(commandSpec, { cwd, outputDir, spawn = spawnSync }) {
     cwd,
     encoding: "utf8",
     maxBuffer: 128 * 1024 * 1024,
-    timeout: 120_000,
+    timeout: commandSpec.timeoutMs ?? DEFAULT_COMMAND_TIMEOUT_MS,
   });
   const finishedAt = new Date().toISOString();
   const stdout = result.stdout ?? "";
@@ -376,6 +397,7 @@ function runCommand(commandSpec, { cwd, outputDir, spawn = spawnSync }) {
     status: result.status ?? 1,
     signal: result.signal ?? null,
     error: result.error instanceof Error ? result.error.message : null,
+    timeoutMs: commandSpec.timeoutMs ?? DEFAULT_COMMAND_TIMEOUT_MS,
     stdout,
     stderr,
     stdoutPath: `${commandSpec.id}.stdout.log`,

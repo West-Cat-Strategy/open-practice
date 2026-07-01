@@ -10,7 +10,6 @@ import { registerContactRoutes } from "./contacts.js";
 import type { ApiJobQueue } from "./types.js";
 
 const servers: FastifyInstance[] = [];
-type QueuedReportJob = { name: string; data: unknown; jobId?: string };
 
 function user(
   role: ProfessionalRole,
@@ -50,15 +49,6 @@ function testServer(
   });
   servers.push(server);
   return server;
-}
-
-function fakeReportQueue(jobs: QueuedReportJob[] = []): ApiJobQueue {
-  return {
-    async add(name, data, options) {
-      jobs.push({ name, data, jobId: options?.jobId });
-      return { id: options?.jobId ?? name };
-    },
-  };
 }
 
 function contactAuthorizationFixtureCase(id: string) {
@@ -710,73 +700,61 @@ describe("contact routes", () => {
       url: `/api/contacts/${contactId}/history-export`,
       payload: {
         purpose: "staff_review",
+        matterId: "matter-001",
         reviewReason: "Synthetic staff review reason for contact history export.",
       },
     });
     expect(exportResponse.statusCode).toBe(200);
     expect(exportResponse.json()).toMatchObject({
-      exportRequest: {
+      preview: {
         contactId,
+        matterId: "matter-001",
+        matterScoped: true,
         purpose: "staff_review",
         generatedByUserId: "user-owner_admin",
-        storedBody: false,
-        retentionPosture: "transient_regenerated_no_retained_export_body",
+        retentionPosture: "matter_scoped_preview_no_retained_export_body",
         legalHoldPosture: "respects_existing_matter_visibility_no_hold_override",
         privacyPosture: "redacted_authorized_projection_only",
-      },
-      export: {
-        policyBoundary: {
-          rawPrivateContactHistory: false,
-          retainedExportArtifact: false,
-          deletionAutomation: false,
-          retentionDeadline: false,
-          jurisdictionCertifiedRecordsClaim: false,
+        counts: {
+          generatedCategoryCount: 11,
+          timelineEntryCount: 6,
+          matterAssociationCount: 1,
+          relationshipCount: 1,
+          portalGrantCount: 1,
+          conflictSummaryCount: 0,
+          documentHoldCueCount: 1,
+          retentionHoldCueCount: 1,
+          dataQualityResolutionCount: 0,
         },
-        categories: {
-          identityPosture: expect.objectContaining({ contactId, kind: "organization" }),
-          contactMethodPosture: expect.objectContaining({
-            identifierTypes: ["business_number", "registry_id"],
-            identifierCount: 2,
-          }),
-          matterPartyPosture: [expect.objectContaining({ matterId: "matter-001" })],
-          portalAccessPosture: expect.objectContaining({
-            grants: [expect.objectContaining({ status: "suspended", accountBound: false })],
-          }),
-          documentHoldReviewPosture: [
-            expect.objectContaining({
-              matterId: "matter-001",
-              documentLegalHoldCount: 1,
-              documentReviewCount: 0,
-            }),
-          ],
-          retentionHoldReviewPosture: {
-            summary: { retentionHoldCueCount: 1 },
-            signals: [
-              expect.objectContaining({
-                kind: "retention_hold_review",
-                matterId: "matter-001",
-                retentionHoldReview: expect.objectContaining({
-                  cueReasons: expect.arrayContaining([
-                    "matter_party_posture",
-                    "document_legal_hold",
-                  ]),
-                }),
-              }),
-            ],
-          },
-          timelineCues: expect.arrayContaining([
-            expect.objectContaining({
-              title: "Task deadline cue",
-              metadata: expect.objectContaining({
-                cueType: "open_task",
-                reviewBoundary: expect.objectContaining({ queueDelivery: false }),
-              }),
-            }),
-          ]),
+        safeIds: {
+          contactId,
+          matterId: "matter-001",
+          relationshipIds: [expect.any(String)],
+          portalGrantIds: [expect.any(String)],
+          timelineEntryIds: expect.arrayContaining([expect.stringContaining("task-cue:")]),
+        },
+        boundary: {
+          storedBody: false,
+          retainedExportArtifact: false,
+          objectStorageArtifact: false,
+          provider: false,
+          broadQueue: false,
+          deletionWorkflow: false,
+          retentionDeadline: false,
+          legalHoldOverride: false,
+          hiddenMatterDisclosure: false,
+          rawPrivateNotes: false,
+          taskText: false,
+          storageKeys: false,
+          complianceClaim: false,
         },
       },
     });
     const serializedExport = JSON.stringify(exportResponse.json());
+    expect(serializedExport).not.toContain('"export"');
+    expect(serializedExport).not.toContain("download");
+    expect(serializedExport).not.toContain("jobId");
+    expect(serializedExport).not.toContain("queued");
     expect(serializedExport).not.toContain("experts@example.test");
     expect(serializedExport).not.toContain("10 Synthetic Plaza");
     expect(serializedExport).not.toContain("BN-EXPERT-1");
@@ -793,6 +771,16 @@ describe("contact routes", () => {
     expect(serializedExport).not.toContain("Review filing deadline schedule");
     expect(serializedExport).not.toContain("sourceLabel");
 
+    const missingMatterExport = await server.inject({
+      method: "POST",
+      url: `/api/contacts/${contactId}/history-export`,
+      payload: {
+        purpose: "staff_review",
+        reviewReason: "Synthetic staff review reason without matter scope.",
+      },
+    });
+    expect(missingMatterExport.statusCode).toBe(400);
+
     const deniedExport = await testServer({
       repository,
       user: user("firm_member", ["matter-001"]),
@@ -801,6 +789,7 @@ describe("contact routes", () => {
       url: `/api/contacts/${contactId}/history-export`,
       payload: {
         purpose: "staff_review",
+        matterId: "matter-001",
         reviewReason: "Synthetic staff review reason for denied export.",
       },
     });
@@ -854,19 +843,41 @@ describe("contact routes", () => {
       resourceId: contactId,
       metadata: {
         contactId,
+        matterId: "matter-001",
+        matterScoped: true,
         purpose: "staff_review",
         reviewReasonPresent: true,
         generatedCategoryCount: 11,
+        timelineEntryCount: 6,
         matterAssociationCount: 1,
+        relationshipCount: 1,
         portalGrantCount: 1,
+        conflictSummaryCount: 0,
         documentHoldCueCount: 1,
         retentionHoldCueCount: 1,
-        retentionPosture: "transient_regenerated_no_retained_export_body",
+        dataQualityResolutionCount: 0,
+        retentionPosture: "matter_scoped_preview_no_retained_export_body",
         legalHoldPosture: "respects_existing_matter_visibility_no_hold_override",
         privacyPosture: "redacted_authorized_projection_only",
+        storedBody: false,
+        retainedExportArtifact: false,
+        objectStorageArtifact: false,
+        provider: false,
+        broadQueue: false,
+        deletionWorkflow: false,
+        retentionDeadline: false,
+        legalHoldOverride: false,
+        hiddenMatterDisclosure: false,
+        rawPrivateNotes: false,
+        taskText: false,
+        storageKeys: false,
+        complianceClaim: false,
       },
     });
     const serializedAudit = JSON.stringify(exportAudit);
+    expect(serializedAudit).not.toContain("download");
+    expect(serializedAudit).not.toContain("jobId");
+    expect(serializedAudit).not.toContain("queued");
     expect(serializedAudit).not.toContain("Synthetic Expert Services");
     expect(serializedAudit).not.toContain("experts@example.test");
     expect(serializedAudit).not.toContain("10 Synthetic Plaza");
@@ -911,6 +922,7 @@ describe("contact routes", () => {
       url: "/api/contacts/contact-ada/history-export",
       payload: {
         purpose: "staff_review",
+        matterId: "matter-001",
         reviewReason: "Synthetic staff review reason for contact preload export.",
       },
     });
@@ -918,12 +930,11 @@ describe("contact routes", () => {
     expect(dossierReads).toBe(1);
   });
 
-  it("queues contact-history export requests and regenerates completed downloads", async () => {
+  it("does not register queued contact-history export request or download routes", async () => {
     const repository = new InMemoryOpenPracticeRepository();
-    const jobs: QueuedReportJob[] = [];
-    const server = testServer({ repository, reportJobQueue: fakeReportQueue(jobs) });
+    const server = testServer({ repository });
 
-    const queued = await server.inject({
+    const queuedRequest = await server.inject({
       method: "POST",
       url: "/api/contacts/contact-river/history-export-requests",
       payload: {
@@ -932,144 +943,21 @@ describe("contact routes", () => {
         reviewReason: "Synthetic staff review reason for queued contact export.",
       },
     });
-
-    expect(queued.statusCode).toBe(202);
-    expect(queued.json()).toMatchObject({
-      exportRequest: {
-        contactId: "contact-river",
-        matterId: "matter-001",
-        matterScoped: true,
-        purpose: "staff_review",
-        status: "queued",
-        reviewReasonPresent: true,
-        retainedExportArtifact: false,
-        deletionAutomation: false,
-        retentionDeadline: false,
-        legalHoldOverride: false,
-        redactedAuthorizedProjection: true,
-        retentionPosture: "queued_regenerated_download_no_retained_export_body",
-        legalHoldPosture: "respects_existing_matter_visibility_no_hold_override",
-        privacyPosture: "redacted_authorized_projection_only",
-      },
-    });
-    expect(queued.json().exportRequest.downloadExpiresAt).toEqual(expect.any(String));
-    expect(queued.json().exportRequest.downloadUrl).toContain(
-      "/api/contacts/contact-river/history-export-requests/",
-    );
-    expect(jobs).toEqual([
-      expect.objectContaining({
-        name: "contact_history_export",
-        jobId: queued.json().exportRequest.jobId,
-      }),
-    ]);
-    expect(JSON.stringify(jobs[0])).not.toContain("Synthetic staff review reason");
-
-    const notReady = await server.inject({
+    const poll = await server.inject({
       method: "GET",
-      url: queued.json().exportRequest.downloadUrl,
+      url: "/api/contacts/contact-river/history-export-requests/job-contact-history-export",
     });
-    expect(notReady.statusCode).toBe(409);
-
-    const [job] = await repository.listJobLifecycleRecords("firm-west-legal", {
-      queueName: "reports",
-    });
-    expect(JSON.stringify(job.metadata)).not.toContain("Synthetic staff review reason");
-    expect(JSON.stringify(job.metadata)).not.toContain("Synthetic private");
-    await repository.updateJobLifecycleRecord("firm-west-legal", job.id, {
-      status: "completed",
-      finishedAt: "2026-06-16T12:05:00.000Z",
-      metadata: {
-        ...job.metadata,
-        generatedCategoryCount: 11,
-        timelineEntryCount: 1,
-        matterAssociationCount: 1,
-        portalGrantCount: 0,
-        conflictSummaryCount: 0,
-        documentHoldCueCount: 1,
-        retentionHoldCueCount: 1,
-      },
-    });
-
-    const status = await server.inject({
-      method: "GET",
-      url: queued.json().exportRequest.pollUrl,
-    });
-    expect(status.statusCode).toBe(200);
-    expect(status.json()).toMatchObject({
-      exportRequest: {
-        contactId: "contact-river",
-        matterId: "matter-001",
-        status: "completed",
-        generatedCategoryCount: 11,
-        documentHoldCueCount: 1,
-        retentionHoldCueCount: 1,
-      },
-    });
-
-    const wrongContactPath = await server.inject({
-      method: "GET",
-      url: `/api/contacts/contact-ada/history-export-requests/${job.id}`,
-    });
-    expect(wrongContactPath.statusCode).toBe(404);
-
     const download = await server.inject({
       method: "GET",
-      url: queued.json().exportRequest.downloadUrl,
+      url: "/api/contacts/contact-river/history-export-requests/job-contact-history-export/download",
     });
-    expect(download.statusCode).toBe(200);
-    expect(download.json()).toMatchObject({
-      exportRequest: {
-        contactId: "contact-river",
-        matterId: "matter-001",
-        jobId: job.id,
-        status: "completed",
-        storedBody: false,
-        retainedExportArtifact: false,
-        retentionDeadline: false,
-        legalHoldOverride: false,
-      },
-      export: {
-        policyBoundary: {
-          rawPrivateContactHistory: false,
-          retainedExportArtifact: false,
-          deletionAutomation: false,
-          retentionDeadline: false,
-          jurisdictionCertifiedRecordsClaim: false,
-        },
-        categories: {
-          documentHoldReviewPosture: [
-            expect.objectContaining({
-              matterId: "matter-001",
-              documentLegalHoldCount: 1,
-            }),
-          ],
-          retentionHoldReviewPosture: {
-            summary: { retentionHoldCueCount: 1 },
-          },
-          timelineCues: expect.arrayContaining([
-            expect.objectContaining({ matterId: "matter-001" }),
-          ]),
-        },
-      },
-    });
-    expect(
-      download
-        .json<{ export: { categories: { timelineCues: Array<{ matterId?: string }> } } }>()
-        .export.categories.timelineCues.every((entry) => entry.matterId === "matter-001"),
-    ).toBe(true);
-    expect(JSON.stringify(download.json())).not.toContain("Synthetic staff review reason");
-    expect(JSON.stringify(download.json())).not.toContain("Synthetic private");
 
-    const audit = await repository.listAuditEvents("firm-west-legal");
-    expect(audit.events.map((event) => event.action)).toEqual(
-      expect.arrayContaining([
-        "contact_history_export.requested",
-        "contact_history_export.downloaded",
-      ]),
-    );
-    const serializedAudit = JSON.stringify(audit.events);
-    expect(serializedAudit).not.toContain("Synthetic staff review reason");
-    expect(serializedAudit).not.toContain("Synthetic private");
+    expect(queuedRequest.statusCode).toBe(404);
+    expect(poll.statusCode).toBe(404);
+    expect(download.statusCode).toBe(404);
+    expect(
+      await repository.listJobLifecycleRecords("firm-west-legal", { queueName: "reports" }),
+    ).toEqual([]);
   });
 
   it("scopes contact-history exports to the requested visible linked matter", async () => {
@@ -1088,53 +976,46 @@ describe("contact routes", () => {
 
     expect(scoped.statusCode).toBe(200);
     const payload = scoped.json<{
-      exportRequest: { matterId?: string };
-      export: {
-        categories: {
-          relationshipPosture: unknown[];
-          matterPartyPosture: Array<{ matterId: string }>;
-          portalAccessPosture: { grants: Array<{ matterId: string }> };
-          conflictReviewPosture: {
-            cues: Array<{ matterId?: string }>;
-            history: Array<{ visibleMatchedMatterIds: string[] }>;
-          };
-          documentHoldReviewPosture: Array<{ matterId: string; documentLegalHoldCount: number }>;
-          retentionHoldReviewPosture: { summary: { retentionHoldCueCount: number } };
-          timelineCues: Array<{ matterId?: string }>;
+      preview: {
+        matterId: string;
+        matterScoped: true;
+        counts: {
+          matterAssociationCount: number;
+          portalGrantCount: number;
+          documentHoldCueCount: number;
+          retentionHoldCueCount: number;
+          timelineEntryCount: number;
+        };
+        safeIds: {
+          matterId: string;
+          contactId: string;
+          timelineEntryIds: string[];
+        };
+        boundary: {
+          storedBody: false;
+          broadQueue: false;
+          hiddenMatterDisclosure: false;
         };
       };
     }>();
-    expect(payload.exportRequest.matterId).toBe("matter-001");
-    expect(payload.export.categories.relationshipPosture).toEqual([
-      expect.objectContaining({ visibleMatterIds: ["matter-001"] }),
-    ]);
-    expect(payload.export.categories.matterPartyPosture).toEqual([
-      expect.objectContaining({ matterId: "matter-001" }),
-    ]);
-    expect(
-      payload.export.categories.portalAccessPosture.grants.every(
-        (grant) => grant.matterId === "matter-001",
-      ),
-    ).toBe(true);
-    expect(
-      payload.export.categories.conflictReviewPosture.cues.every(
-        (cue) => cue.matterId === "matter-001",
-      ),
-    ).toBe(true);
-    expect(
-      payload.export.categories.conflictReviewPosture.history.every((entry) =>
-        entry.visibleMatchedMatterIds.every((matterId) => matterId === "matter-001"),
-      ),
-    ).toBe(true);
-    expect(payload.export.categories.documentHoldReviewPosture).toEqual([
-      expect.objectContaining({ matterId: "matter-001", documentLegalHoldCount: 1 }),
-    ]);
-    expect(payload.export.categories.retentionHoldReviewPosture.summary).toEqual({
-      retentionHoldCueCount: 1,
+    expect(payload.preview.matterId).toBe("matter-001");
+    expect(payload.preview.matterScoped).toBe(true);
+    expect(payload.preview.counts.matterAssociationCount).toBe(1);
+    expect(payload.preview.counts.portalGrantCount).toBe(1);
+    expect(payload.preview.counts.documentHoldCueCount).toBe(1);
+    expect(payload.preview.counts.retentionHoldCueCount).toBe(1);
+    expect(payload.preview.counts.timelineEntryCount).toBeGreaterThanOrEqual(1);
+    expect(payload.preview.safeIds).toMatchObject({
+      contactId: "contact-ada",
+      matterId: "matter-001",
     });
-    expect(
-      payload.export.categories.timelineCues.every((entry) => entry.matterId === "matter-001"),
-    ).toBe(true);
+    expect(payload.preview.boundary).toEqual(
+      expect.objectContaining({
+        storedBody: false,
+        broadQueue: false,
+        hiddenMatterDisclosure: false,
+      }),
+    );
     expect(JSON.stringify(payload)).not.toContain("North Star");
     expect(JSON.stringify(payload)).not.toContain("BC tenancy retainer and review plan.pdf");
 
@@ -1148,63 +1029,6 @@ describe("contact routes", () => {
       },
     });
     expect(unlinked.statusCode).toBe(403);
-  });
-
-  it("completes inline contact-history export requests and rejects expired links or denied roles", async () => {
-    const repository = new InMemoryOpenPracticeRepository();
-    const server = testServer({ repository });
-
-    const inline = await server.inject({
-      method: "POST",
-      url: "/api/contacts/contact-river/history-export-requests",
-      payload: {
-        purpose: "staff_review",
-        reviewReason: "Synthetic staff review reason for inline contact export.",
-      },
-    });
-    expect(inline.statusCode).toBe(202);
-    expect(inline.json()).toMatchObject({
-      exportRequest: {
-        contactId: "contact-river",
-        status: "completed",
-        retainedExportArtifact: false,
-        legalHoldOverride: false,
-      },
-    });
-
-    const download = await server.inject({
-      method: "GET",
-      url: inline.json().exportRequest.downloadUrl,
-    });
-    expect(download.statusCode).toBe(200);
-
-    const [job] = await repository.listJobLifecycleRecords("firm-west-legal", {
-      queueName: "reports",
-    });
-    await repository.updateJobLifecycleRecord("firm-west-legal", job.id, {
-      metadata: {
-        ...job.metadata,
-        downloadExpiresAt: "2000-01-01T00:00:00.000Z",
-      },
-    });
-    const expired = await server.inject({
-      method: "GET",
-      url: inline.json().exportRequest.downloadUrl,
-    });
-    expect(expired.statusCode).toBe(410);
-
-    const denied = await testServer({
-      repository,
-      user: user("firm_member", ["matter-001"]),
-    }).inject({
-      method: "POST",
-      url: "/api/contacts/contact-river/history-export-requests",
-      payload: {
-        purpose: "staff_review",
-        reviewReason: "Synthetic staff review reason for denied queued contact export.",
-      },
-    });
-    expect(denied.statusCode).toBe(403);
   });
 
   it("returns an audit-safe contact review queue without widening matter visibility", async () => {

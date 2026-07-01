@@ -72,6 +72,7 @@ import {
   notificationPreferences,
   paymentAllocations,
   paymentImportDepositMatchReviews,
+  paymentImportRefundChargebackResolutionRecords,
   paymentImportRefundChargebackReviews,
   paymentImportReviewRecords,
   portalGrants,
@@ -204,6 +205,48 @@ describe("database schema hardening", () => {
         "contact_duplicate_resolution_decisions_decision_value",
         "contact_duplicate_resolution_decisions_reason_value",
         "contact_duplicate_resolution_decisions_idempotency_key_format",
+      ]),
+    );
+  });
+
+  it("persists safe refund and chargeback resolution records", () => {
+    const config = getTableConfig(paymentImportRefundChargebackResolutionRecords);
+    const columns = config.columns.map((column) => column.name);
+
+    expect(columns).toEqual(
+      expect.arrayContaining([
+        "id",
+        "firm_id",
+        "matter_id",
+        "payment_import_review_record_id",
+        "candidate_invoice_id",
+        "candidate_hosted_payment_request_id",
+        "candidate_manual_payment_id",
+        "latest_review_id",
+        "category",
+        "resolution_posture",
+        "reason_categories",
+        "latest_reviewer_metadata",
+        "no_side_effect_flags",
+        "idempotency_key",
+        "resolution_fingerprint",
+        "recorded_by_user_id",
+        "recorded_at",
+        "created_at",
+      ]),
+    );
+    expect(config.indexes.map((index) => index.config.name)).toEqual(
+      expect.arrayContaining([
+        "payment_import_rc_res_firm_matter_recorded_idx",
+        "payment_import_rc_res_firm_import_record_idx",
+        "payment_import_rc_res_firm_record_idempotency_idx",
+      ]),
+    );
+    expect(config.checks.map((check) => check.name)).toEqual(
+      expect.arrayContaining([
+        "payment_import_rc_res_category_value",
+        "payment_import_rc_res_resolution_posture_value",
+        "payment_import_rc_res_idempotency_key_format",
       ]),
     );
   });

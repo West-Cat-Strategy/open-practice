@@ -238,7 +238,6 @@ const safeJobMetadataKeys = new Set([
   "confidence",
   "conflictSummaryCount",
   "contextLinkCount",
-  "contactExportStatus",
   "contactId",
   "downstreamMutation",
   "documentId",

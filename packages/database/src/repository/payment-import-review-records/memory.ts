@@ -1,11 +1,13 @@
 import type {
   PaymentImportDepositMatchReviewRecord,
+  PaymentImportRefundChargebackResolutionRecord,
   PaymentImportRefundChargebackReviewRecord,
   PaymentImportReviewRecord,
 } from "@open-practice/domain";
 import { IdempotencyKeyConflictError, clone } from "../contracts.js";
 import type {
   PaymentImportDepositMatchReviewListOptions,
+  PaymentImportRefundChargebackResolutionRecordListOptions,
   PaymentImportRefundChargebackReviewListOptions,
   PaymentImportReviewRecordListOptions,
 } from "../payment-import-review-records-contracts.js";
@@ -14,6 +16,7 @@ export interface MemoryPaymentImportReviewRecordStore {
   paymentImportReviewRecords: PaymentImportReviewRecord[];
   paymentImportDepositMatchReviews: PaymentImportDepositMatchReviewRecord[];
   paymentImportRefundChargebackReviews: PaymentImportRefundChargebackReviewRecord[];
+  paymentImportRefundChargebackResolutionRecords: PaymentImportRefundChargebackResolutionRecord[];
 }
 
 function matchesOptions(
@@ -55,6 +58,19 @@ function matchesRefundChargebackReviewOptions(
       record.paymentImportReviewRecordId === options.paymentImportReviewRecordId) &&
     (!options.category || record.category === options.category) &&
     (!options.decision || record.decision === options.decision)
+  );
+}
+
+function matchesRefundChargebackResolutionRecordOptions(
+  record: PaymentImportRefundChargebackResolutionRecord,
+  options: PaymentImportRefundChargebackResolutionRecordListOptions,
+): boolean {
+  return (
+    (!options.matterId || record.matterId === options.matterId) &&
+    (!options.paymentImportReviewRecordId ||
+      record.paymentImportReviewRecordId === options.paymentImportReviewRecordId) &&
+    (!options.category || record.category === options.category) &&
+    (!options.resolutionPosture || record.resolutionPosture === options.resolutionPosture)
   );
 }
 
@@ -174,5 +190,44 @@ export function listMemoryPaymentImportRefundChargebackReviews(
           record.firmId === firmId && matchesRefundChargebackReviewOptions(record, options),
       )
       .sort((left, right) => Date.parse(right.reviewedAt) - Date.parse(left.reviewedAt)),
+  );
+}
+
+export function createMemoryPaymentImportRefundChargebackResolutionRecord(
+  store: MemoryPaymentImportReviewRecordStore,
+  record: PaymentImportRefundChargebackResolutionRecord,
+): PaymentImportRefundChargebackResolutionRecord {
+  const existing = store.paymentImportRefundChargebackResolutionRecords.find(
+    (candidate) =>
+      candidate.firmId === record.firmId &&
+      candidate.paymentImportReviewRecordId === record.paymentImportReviewRecordId &&
+      candidate.idempotencyKey === record.idempotencyKey,
+  );
+  if (existing) {
+    if (existing.resolutionFingerprint !== record.resolutionFingerprint) {
+      throw new IdempotencyKeyConflictError();
+    }
+    return clone(existing);
+  }
+  store.paymentImportRefundChargebackResolutionRecords = [
+    ...store.paymentImportRefundChargebackResolutionRecords,
+    clone(record),
+  ];
+  return clone(record);
+}
+
+export function listMemoryPaymentImportRefundChargebackResolutionRecords(
+  store: MemoryPaymentImportReviewRecordStore,
+  firmId: string,
+  options: PaymentImportRefundChargebackResolutionRecordListOptions = {},
+): PaymentImportRefundChargebackResolutionRecord[] {
+  return clone(
+    store.paymentImportRefundChargebackResolutionRecords
+      .filter(
+        (record) =>
+          record.firmId === firmId &&
+          matchesRefundChargebackResolutionRecordOptions(record, options),
+      )
+      .sort((left, right) => Date.parse(right.recordedAt) - Date.parse(left.recordedAt)),
   );
 }

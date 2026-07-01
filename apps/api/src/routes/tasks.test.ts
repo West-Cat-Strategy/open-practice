@@ -4,6 +4,7 @@ import {
   InMemoryOpenPracticeRepository,
   type OpenPracticeRepository,
 } from "@open-practice/database";
+import { authorizationFixtureCases } from "@open-practice/domain/authorization-fixtures";
 import type {
   AppointmentBookingProfileRecord,
   AppointmentBookingRequestRecord,
@@ -16,6 +17,12 @@ import { registerTaskRoutes } from "./tasks.js";
 
 const servers: FastifyInstance[] = [];
 const fixedNow = new Date("2026-05-02T16:00:00.000Z");
+
+function authorizationFixtureCase(id: string) {
+  const match = authorizationFixtureCases.find((candidate) => candidate.id === id);
+  if (!match) throw new Error(`Missing authorization fixture case ${id}`);
+  return match;
+}
 
 function user(
   role: ProfessionalRole,
@@ -600,6 +607,82 @@ describe("task routes", () => {
     });
 
     expect(response.statusCode).toBe(403);
+  });
+
+  it("matches calendar aging follow-up task authorization fixtures", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const fixtureIds = authorizationFixtureCases
+      .filter((item) => item.family === "calendar_aging_follow_up_task")
+      .map((item) => item.id);
+    expect(fixtureIds).toEqual([
+      "calendar-aging-follow-up-task:assigned:create",
+      "calendar-aging-follow-up-task:unassigned:create-denied",
+      "calendar-aging-follow-up-task:portal-client:create-denied",
+    ]);
+    const assignedCase = authorizationFixtureCase("calendar-aging-follow-up-task:assigned:create");
+    const unassignedCase = authorizationFixtureCase(
+      "calendar-aging-follow-up-task:unassigned:create-denied",
+    );
+    const portalCase = authorizationFixtureCase(
+      "calendar-aging-follow-up-task:portal-client:create-denied",
+    );
+    await seedCalendarSchedulingAgingDecision(repository, {
+      id: assignedCase.resourceId!,
+      matterId: assignedCase.matterId,
+      decidedAt: "2026-06-04T16:00:00.000Z",
+    });
+
+    const assignedServer = testServer({
+      repository,
+      user: user("licensee", [assignedCase.matterId!]),
+    });
+    const created = await assignedServer.inject({
+      method: "POST",
+      url: "/api/tasks/calendar-aging-follow-up",
+      payload: { matterId: assignedCase.matterId },
+    });
+    expect(created.statusCode).toBe(201);
+    expect(created.json()).toMatchObject({
+      task: {
+        matterId: assignedCase.matterId,
+        sourceType: "calendar_scheduling",
+        sourceId: assignedCase.resourceId,
+      },
+    });
+    expect(assignedCase.expectedDecision).toBe("allow");
+    expect(assignedCase.listVisible).toBe(true);
+
+    const listed = await assignedServer.inject({
+      method: "GET",
+      url: `/api/tasks?matterId=${assignedCase.matterId}`,
+    });
+    expect(listed.statusCode).toBe(200);
+    const taskIds = listed.json<{ tasks: Array<{ id: string }> }>().tasks.map((task) => task.id);
+    expect(taskIds).toContain(created.json<{ task: { id: string } }>().task.id);
+
+    const unassigned = await testServer({
+      repository,
+      user: user("licensee", ["matter-001"]),
+    }).inject({
+      method: "POST",
+      url: "/api/tasks/calendar-aging-follow-up",
+      payload: { matterId: unassignedCase.matterId },
+    });
+    expect(unassigned.statusCode).toBe(403);
+    expect(unassignedCase.expectedDecision).toBe("deny");
+    expect(unassignedCase.listVisible).toBe(false);
+
+    const portal = await testServer({
+      repository,
+      user: user("client_external", [portalCase.matterId!]),
+    }).inject({
+      method: "POST",
+      url: "/api/tasks/calendar-aging-follow-up",
+      payload: { matterId: portalCase.matterId },
+    });
+    expect(portal.statusCode).toBe(403);
+    expect(portalCase.expectedDecision).toBe("deny");
+    expect(portalCase.listVisible).toBe(false);
   });
 
   it("skips existing source tasks and returns a conflict when no eligible source remains", async () => {

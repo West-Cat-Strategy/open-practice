@@ -2,6 +2,7 @@ import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
 import { InMemoryOpenPracticeRepository } from "@open-practice/database";
 import type { AuditEvent, NewAuditEvent, ProfessionalRole, User } from "@open-practice/domain";
+import { authorizationFixtureCases } from "@open-practice/domain/authorization-fixtures";
 import { registerLegalResearchRoutes } from "./legal-research.js";
 
 const servers: FastifyInstance[] = [];
@@ -14,6 +15,12 @@ class AuditRecordingRepository extends InMemoryOpenPracticeRepository {
     this.events.push(appended);
     return appended;
   }
+}
+
+function authorizationFixtureCase(id: string) {
+  const match = authorizationFixtureCases.find((candidate) => candidate.id === id);
+  if (!match) throw new Error(`Missing authorization fixture case ${id}`);
+  return match;
 }
 
 function user(role: ProfessionalRole, assignedMatterIds: string[] = ["matter-001"]): User {
@@ -202,6 +209,193 @@ describe("legal research routes", () => {
     });
     expect(JSON.stringify(event?.metadata)).not.toContain("Synthetic research note body");
     expect(JSON.stringify(event?.metadata)).not.toContain("Private source label");
+  });
+
+  it("records and replays metadata-only citation packet decisions when readiness allows it", async () => {
+    const { server, repository } = testServer(user("licensee", ["matter-001"]));
+    const tasksBefore = await repository.listTaskDeadlines("firm-west-legal", {
+      matterId: "matter-001",
+      includeCompleted: true,
+    });
+    const providerJobsBefore = await repository.listJobLifecycleRecords("firm-west-legal", {
+      queueName: "ai_triage",
+    });
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/legal-research/citation-packet-decisions",
+      payload: {
+        matterId: "matter-001",
+        decision: "ready_for_staff_review",
+        prompt: "Synthetic prompt must be rejected",
+      },
+    });
+    expect(response.statusCode).toBe(400);
+
+    const createdResponse = await server.inject({
+      method: "POST",
+      url: "/api/legal-research/citation-packet-decisions",
+      payload: {
+        matterId: "matter-001",
+        decision: "ready_for_staff_review",
+      },
+    });
+
+    expect(createdResponse.statusCode).toBe(201);
+    const created = createdResponse.json<{
+      checkpoint: { id: string };
+      workspace: { citationPacketReadiness: Record<string, unknown> };
+    }>();
+    expect(createdResponse.json()).toMatchObject({
+      status: "created",
+      decision: "ready_for_staff_review",
+      checkpoint: {
+        kind: "review_checkpoint",
+        status: "reviewed",
+        reviewDecision: "reviewed",
+        sourceReferences: [],
+        contextLinks: [],
+        checkpoint: {
+          checkpointType: "source_review",
+          assignedUserId: "user-licensee",
+        },
+        metadata: {
+          source: "legal_research_citation_packet_decision",
+          matterId: "matter-001",
+          decision: "ready_for_staff_review",
+          decidedByUserId: "user-licensee",
+          sourceReferenceCount: 1,
+          readyForReviewArtifactCount: 1,
+          readyForReviewArtifactIds: ["legal-research-source-note-001"],
+          openCheckpointCount: 0,
+          openCheckpointArtifactIds: [],
+          contextLinkCount: 4,
+          metadataOnly: true,
+          providerExecuted: false,
+          sourceTextStored: false,
+          promptStored: false,
+          providerEvidenceStored: false,
+          citationVerificationClaimed: false,
+          legalAdviceGenerated: false,
+          downstreamMutation: false,
+          reviewOnly: true,
+        },
+      },
+      workspace: {
+        status: "available",
+        citationPacketReadiness: {
+          staffReviewReady: true,
+          latestDecision: {
+            artifactId: created.checkpoint.id,
+            decision: "ready_for_staff_review",
+            decidedByUserId: "user-licensee",
+            sourceReferenceCount: 1,
+            readyForReviewArtifactCount: 1,
+            openCheckpointCount: 0,
+            metadataOnly: true,
+            providerExecuted: false,
+            sourceTextStored: false,
+            promptStored: false,
+            providerEvidenceStored: false,
+            citationVerificationClaimed: false,
+            legalAdviceGenerated: false,
+            downstreamMutation: false,
+            reviewOnly: true,
+          },
+        },
+      },
+    });
+    expect(JSON.stringify(createdResponse.json())).not.toContain("Synthetic prompt");
+    expect(JSON.stringify(created.checkpoint)).not.toContain("Residential tenancy statute");
+    expect(JSON.stringify(created.checkpoint)).not.toContain("Staff-entered citation label");
+    expect(JSON.stringify(created.workspace.citationPacketReadiness)).not.toContain(
+      "Residential tenancy statute",
+    );
+    expect(JSON.stringify(created.workspace.citationPacketReadiness)).not.toContain(
+      "Staff-entered citation label",
+    );
+
+    const replayResponse = await server.inject({
+      method: "POST",
+      url: "/api/legal-research/citation-packet-decisions",
+      payload: {
+        matterId: "matter-001",
+        decision: "ready_for_staff_review",
+      },
+    });
+    expect(replayResponse.statusCode).toBe(200);
+    expect(replayResponse.json()).toMatchObject({
+      status: "existing",
+      checkpoint: { id: created.checkpoint.id },
+      workspace: {
+        citationPacketReadiness: {
+          latestDecision: {
+            artifactId: created.checkpoint.id,
+            decision: "ready_for_staff_review",
+          },
+        },
+      },
+    });
+
+    const tasksAfter = await repository.listTaskDeadlines("firm-west-legal", {
+      matterId: "matter-001",
+      includeCompleted: true,
+    });
+    const providerJobsAfter = await repository.listJobLifecycleRecords("firm-west-legal", {
+      queueName: "ai_triage",
+    });
+    expect(tasksAfter).toHaveLength(tasksBefore.length);
+    expect(providerJobsAfter).toHaveLength(providerJobsBefore.length);
+    expect(await repository.listLegalResearchArtifacts("firm-west-legal", {})).toHaveLength(4);
+
+    const event = repository.events.find(
+      (candidate) => candidate.action === "legal_research.citation_packet_decision.recorded",
+    );
+    expect(event).toMatchObject({
+      resourceType: "legal_research",
+      resourceId: created.checkpoint.id,
+      metadata: expect.objectContaining({
+        artifactKind: "review_checkpoint",
+        citationPacketDecision: "ready_for_staff_review",
+        sourceReferenceCount: 1,
+        readyForReviewArtifactCount: 1,
+        openCheckpointCount: 0,
+        metadataOnly: true,
+        providerExecuted: false,
+        sourceTextStored: false,
+        promptStored: false,
+        providerEvidenceStored: false,
+        citationVerificationClaimed: false,
+        legalAdviceGenerated: false,
+        downstreamMutation: false,
+        reviewOnly: true,
+      }),
+    });
+    expect(JSON.stringify(event?.metadata)).not.toContain("Residential tenancy statute");
+    expect(JSON.stringify(event?.metadata)).not.toContain("Staff-entered citation label");
+    expect(JSON.stringify(event?.metadata)).not.toContain("Synthetic prompt");
+    expect(
+      repository.events.filter(
+        (candidate) => candidate.action === "legal_research.citation_packet_decision.recorded",
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("rejects citation packet decisions until source references and checkpoints allow review", async () => {
+    const { server } = testServer(user("owner_admin", ["matter-001"]));
+    const blockedByOpenCheckpoint = await server.inject({
+      method: "POST",
+      url: "/api/legal-research/citation-packet-decisions",
+      payload: {
+        matterId: "matter-002",
+        decision: "needs_source_review",
+      },
+    });
+
+    expect(blockedByOpenCheckpoint.statusCode).toBe(409);
+    expect(blockedByOpenCheckpoint.json()).toMatchObject({
+      message: "Legal research citation packet is not ready for a decision",
+    });
   });
 
   it("records a reserved provider job boundary without prompts, source text, or provider evidence", async () => {
@@ -399,6 +593,17 @@ describe("legal research routes", () => {
       url: "/api/legal-research/workspace?matterId=matter-001",
     });
     expect(crossMatter.statusCode).toBe(403);
+    const crossMatterDecision = await testServer(user("firm_member", ["matter-002"])).server.inject(
+      {
+        method: "POST",
+        url: "/api/legal-research/citation-packet-decisions",
+        payload: {
+          matterId: "matter-001",
+          decision: "ready_for_staff_review",
+        },
+      },
+    );
+    expect(crossMatterDecision.statusCode).toBe(403);
 
     const auditor = testServer(user("auditor", []));
     const readOnly = await auditor.server.inject({
@@ -410,13 +615,104 @@ describe("legal research routes", () => {
       url: "/api/legal-research/artifacts/legal-research-source-note-001/review",
       payload: { decision: "reviewed" },
     });
+    const citationPacketDecision = await auditor.server.inject({
+      method: "POST",
+      url: "/api/legal-research/citation-packet-decisions",
+      payload: {
+        matterId: "matter-001",
+        decision: "ready_for_staff_review",
+      },
+    });
     expect(readOnly.statusCode).toBe(200);
     expect(mutation.statusCode).toBe(403);
+    expect(citationPacketDecision.statusCode).toBe(403);
 
     const billing = await testServer(user("billing_bookkeeper", [])).server.inject({
       method: "GET",
       url: "/api/legal-research/workspace?matterId=matter-001",
     });
     expect(billing.statusCode).toBe(403);
+  });
+
+  it("matches citation packet readiness authorization fixtures", async () => {
+    const fixtureIds = authorizationFixtureCases
+      .filter((item) => item.family === "legal_research_citation_packet")
+      .map((item) => item.id);
+    expect(fixtureIds).toEqual([
+      "legal-research-citation-packet:assigned:list-visible",
+      "legal-research-citation-packet:auditor:list-visible",
+      "legal-research-citation-packet:unassigned:list-hidden",
+      "legal-research-citation-packet:bookkeeper:list-denied",
+      "legal-research-citation-packet:portal-client:list-denied",
+    ]);
+    const assignedCase = authorizationFixtureCase(
+      "legal-research-citation-packet:assigned:list-visible",
+    );
+    const auditorCase = authorizationFixtureCase(
+      "legal-research-citation-packet:auditor:list-visible",
+    );
+    const unassignedCase = authorizationFixtureCase(
+      "legal-research-citation-packet:unassigned:list-hidden",
+    );
+    const bookkeeperCase = authorizationFixtureCase(
+      "legal-research-citation-packet:bookkeeper:list-denied",
+    );
+    const portalCase = authorizationFixtureCase(
+      "legal-research-citation-packet:portal-client:list-denied",
+    );
+
+    const assigned = await testServer(user("licensee", [assignedCase.matterId!])).server.inject({
+      method: "GET",
+      url: `/api/legal-research/workspace?matterId=${assignedCase.matterId}`,
+    });
+    expect(assigned.statusCode).toBe(200);
+    expect(assigned.json()).toMatchObject({
+      citationPacketReadiness: expect.objectContaining({
+        readyForReviewArtifactIds: expect.arrayContaining([assignedCase.resourceId]),
+        reviewOnly: true,
+        providerExecuted: false,
+        sourceTextStored: false,
+        promptStored: false,
+        providerEvidenceStored: false,
+        downstreamMutation: false,
+      }),
+    });
+    expect(assignedCase.expectedDecision).toBe("allow");
+    expect(assignedCase.listVisible).toBe(true);
+
+    const auditor = await testServer(user("auditor", [])).server.inject({
+      method: "GET",
+      url: `/api/legal-research/workspace?matterId=${auditorCase.matterId}`,
+    });
+    expect(auditor.statusCode).toBe(200);
+    expect(auditor.json().citationPacketReadiness.readyForReviewArtifactIds).toContain(
+      auditorCase.resourceId,
+    );
+    expect(auditorCase.expectedDecision).toBe("allow");
+    expect(auditorCase.listVisible).toBe(true);
+
+    const unassigned = await testServer(user("firm_member", ["matter-001"])).server.inject({
+      method: "GET",
+      url: `/api/legal-research/workspace?matterId=${unassignedCase.matterId}`,
+    });
+    expect(unassigned.statusCode).toBe(403);
+    expect(unassignedCase.expectedDecision).toBe("deny");
+    expect(unassignedCase.listVisible).toBe(false);
+
+    const bookkeeper = await testServer(user("billing_bookkeeper", [])).server.inject({
+      method: "GET",
+      url: `/api/legal-research/workspace?matterId=${bookkeeperCase.matterId}`,
+    });
+    expect(bookkeeper.statusCode).toBe(403);
+    expect(bookkeeperCase.expectedDecision).toBe("deny");
+    expect(bookkeeperCase.listVisible).toBe(false);
+
+    const portal = await testServer(user("client_external", [portalCase.matterId!])).server.inject({
+      method: "GET",
+      url: `/api/legal-research/workspace?matterId=${portalCase.matterId}`,
+    });
+    expect(portal.statusCode).toBe(403);
+    expect(portalCase.expectedDecision).toBe("deny");
+    expect(portalCase.listVisible).toBe(false);
   });
 });

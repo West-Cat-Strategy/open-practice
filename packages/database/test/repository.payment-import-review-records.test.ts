@@ -2,17 +2,21 @@ import { describe, expect, it } from "vitest";
 import {
   defaultPaymentImportDepositMatchReviewBoundary,
   defaultPaymentImportRefundChargebackReviewBoundary,
+  defaultPaymentImportRefundChargebackResolutionRecordNoSideEffectFlags,
   defaultPaymentImportReviewBoundary,
   type PaymentImportDepositMatchReviewRecord,
+  type PaymentImportRefundChargebackResolutionRecord,
   type PaymentImportRefundChargebackReviewRecord,
   type PaymentImportReviewRecord,
 } from "@open-practice/domain";
 import {
   createDrizzlePaymentImportDepositMatchReview,
+  createDrizzlePaymentImportRefundChargebackResolutionRecord,
   createDrizzlePaymentImportRefundChargebackReview,
   createDrizzlePaymentImportReviewRecord,
   getDrizzlePaymentImportReviewRecord,
   listDrizzlePaymentImportDepositMatchReviews,
+  listDrizzlePaymentImportRefundChargebackResolutionRecords,
   listDrizzlePaymentImportRefundChargebackReviews,
   listDrizzlePaymentImportReviewRecords,
 } from "../src/repository/payment-import-review-records/drizzle.js";
@@ -169,6 +173,63 @@ function rowFromRefundChargebackReview(record: PaymentImportRefundChargebackRevi
   } satisfies typeof schema.paymentImportRefundChargebackReviews.$inferSelect;
 }
 
+function refundChargebackResolutionRecord(
+  overrides: Partial<PaymentImportRefundChargebackResolutionRecord> = {},
+): PaymentImportRefundChargebackResolutionRecord {
+  return {
+    id: "refund-chargeback-resolution-record-test",
+    firmId: "firm-west-legal",
+    matterId: "matter-001",
+    paymentImportReviewRecordId: "payment-import-review-test",
+    candidateInvoiceId: "invoice-001",
+    candidateHostedPaymentRequestId: "payment-request-001",
+    candidateManualPaymentId: "payment-001",
+    latestReviewId: "refund-chargeback-review-test",
+    category: "refund",
+    resolutionPosture: "confirmed_exception",
+    reasonCategories: ["refund_observed"],
+    latestReviewerMetadata: {
+      decision: "exception_confirmed",
+      reason: "refund_observed",
+      reviewedByUserId: "user-licensee",
+      reviewedAt: "2026-06-29T16:10:00.000Z",
+      reviewerEvidencePresent: true,
+    },
+    noSideEffectFlags: defaultPaymentImportRefundChargebackResolutionRecordNoSideEffectFlags(),
+    idempotencyKey: "synthetic-refund-chargeback-resolution-key",
+    resolutionFingerprint: "synthetic-refund-chargeback-resolution-fingerprint",
+    recordedByUserId: "user-licensee",
+    recordedAt: "2026-06-30T16:10:00.000Z",
+    createdAt: "2026-06-30T16:10:00.000Z",
+    ...overrides,
+  };
+}
+
+function rowFromRefundChargebackResolutionRecord(
+  record: PaymentImportRefundChargebackResolutionRecord,
+) {
+  return {
+    id: record.id,
+    firmId: record.firmId,
+    matterId: record.matterId,
+    paymentImportReviewRecordId: record.paymentImportReviewRecordId,
+    candidateInvoiceId: record.candidateInvoiceId ?? null,
+    candidateHostedPaymentRequestId: record.candidateHostedPaymentRequestId ?? null,
+    candidateManualPaymentId: record.candidateManualPaymentId ?? null,
+    latestReviewId: record.latestReviewId,
+    category: record.category,
+    resolutionPosture: record.resolutionPosture,
+    reasonCategories: record.reasonCategories,
+    latestReviewerMetadata: record.latestReviewerMetadata,
+    noSideEffectFlags: record.noSideEffectFlags,
+    idempotencyKey: record.idempotencyKey,
+    resolutionFingerprint: record.resolutionFingerprint,
+    recordedByUserId: record.recordedByUserId,
+    recordedAt: new Date(record.recordedAt),
+    createdAt: new Date(record.createdAt),
+  } satisfies typeof schema.paymentImportRefundChargebackResolutionRecords.$inferSelect;
+}
+
 function drizzleRowsDb(rows: Array<typeof schema.paymentImportReviewRecords.$inferSelect>) {
   const db = {
     select: () => ({
@@ -238,6 +299,34 @@ function drizzleRefundChargebackRowsDb(
 
 function drizzleExistingRefundChargebackDb(
   row: typeof schema.paymentImportRefundChargebackReviews.$inferSelect,
+) {
+  const db = {
+    select: () => ({
+      from: () => ({
+        where: async () => [row],
+      }),
+    }),
+  } as unknown as OpenPracticeDatabase;
+  return db;
+}
+
+function drizzleRefundChargebackResolutionRowsDb(
+  rows: Array<typeof schema.paymentImportRefundChargebackResolutionRecords.$inferSelect>,
+) {
+  const db = {
+    select: () => ({
+      from: () => ({
+        where: () => ({
+          orderBy: async () => rows,
+        }),
+      }),
+    }),
+  } as unknown as OpenPracticeDatabase;
+  return db;
+}
+
+function drizzleExistingRefundChargebackResolutionDb(
+  row: typeof schema.paymentImportRefundChargebackResolutionRecords.$inferSelect,
 ) {
   const db = {
     select: () => ({
@@ -384,6 +473,50 @@ describe("payment import review record repositories", () => {
     });
   });
 
+  it("stores append-only memory refund and chargeback resolution records without mutating invoices", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const record = paymentImportReviewRecord({
+      eventStatus: "refund_observed",
+    });
+    const review = refundChargebackReviewRecord();
+    const resolution = refundChargebackResolutionRecord();
+    const invoiceBefore = await repository.getInvoice("firm-west-legal", "invoice-001");
+
+    await repository.createPaymentImportReviewRecord(record);
+    await repository.createPaymentImportRefundChargebackReview(review);
+    await expect(
+      repository.createPaymentImportRefundChargebackResolutionRecord(resolution),
+    ).resolves.toEqual(resolution);
+    await expect(
+      repository.createPaymentImportRefundChargebackResolutionRecord({
+        ...resolution,
+        id: "refund-chargeback-resolution-record-retry",
+      }),
+    ).resolves.toEqual(resolution);
+    await expect(
+      repository.createPaymentImportRefundChargebackResolutionRecord({
+        ...resolution,
+        resolutionFingerprint: "changed-refund-chargeback-resolution-fingerprint",
+      }),
+    ).rejects.toBeInstanceOf(IdempotencyKeyConflictError);
+    await expect(
+      repository.listPaymentImportRefundChargebackResolutionRecords("firm-west-legal", {
+        paymentImportReviewRecordId: record.id,
+      }),
+    ).resolves.toEqual([resolution]);
+    await expect(
+      repository.listPaymentImportRefundChargebackResolutionRecords("firm-west-legal", {
+        category: "refund",
+        resolutionPosture: "confirmed_exception",
+      }),
+    ).resolves.toEqual([resolution]);
+    await expect(repository.getInvoice("firm-west-legal", "invoice-001")).resolves.toMatchObject({
+      paidCents: invoiceBefore?.paidCents,
+      balanceDueCents: invoiceBefore?.balanceDueCents,
+      status: invoiceBefore?.status,
+    });
+  });
+
   it("reuses identical Drizzle rows and rejects conflicting evidence before insert", async () => {
     const record = paymentImportReviewRecord();
     const db = drizzleExistingDb(rowFromRecord(record));
@@ -424,6 +557,23 @@ describe("payment import review record repositories", () => {
       createDrizzlePaymentImportRefundChargebackReview(db, {
         ...review,
         decisionFingerprint: "changed-refund-chargeback-fingerprint",
+      }),
+    ).rejects.toBeInstanceOf(IdempotencyKeyConflictError);
+  });
+
+  it("reuses identical Drizzle refund and chargeback resolution records and rejects changed replay", async () => {
+    const resolution = refundChargebackResolutionRecord();
+    const db = drizzleExistingRefundChargebackResolutionDb(
+      rowFromRefundChargebackResolutionRecord(resolution),
+    );
+
+    await expect(
+      createDrizzlePaymentImportRefundChargebackResolutionRecord(db, resolution),
+    ).resolves.toEqual(resolution);
+    await expect(
+      createDrizzlePaymentImportRefundChargebackResolutionRecord(db, {
+        ...resolution,
+        resolutionFingerprint: "changed-refund-chargeback-resolution-fingerprint",
       }),
     ).rejects.toBeInstanceOf(IdempotencyKeyConflictError);
   });
@@ -516,5 +666,51 @@ describe("payment import review record repositories", () => {
         decision: "exception_confirmed",
       }),
     ).resolves.toEqual([confirmedReview]);
+  });
+
+  it("lists Drizzle refund and chargeback resolution rows through normalized repository options", async () => {
+    const confirmedResolution = refundChargebackResolutionRecord({
+      id: "refund-chargeback-resolution-record-later",
+      recordedAt: "2026-06-30T16:15:00.000Z",
+    });
+    const needsEvidenceResolution = refundChargebackResolutionRecord({
+      id: "refund-chargeback-resolution-record-earlier",
+      category: "chargeback",
+      resolutionPosture: "needs_more_evidence",
+      reasonCategories: ["status_unclear"],
+      latestReviewerMetadata: {
+        decision: "needs_more_evidence",
+        reason: "status_unclear",
+        reviewedByUserId: "user-licensee",
+        reviewedAt: "2026-06-29T16:05:00.000Z",
+        reviewerEvidencePresent: true,
+      },
+      idempotencyKey: "synthetic-chargeback-resolution-key",
+      resolutionFingerprint: "synthetic-chargeback-resolution-fingerprint",
+      recordedAt: "2026-06-30T16:05:00.000Z",
+    });
+    const resolutions = [confirmedResolution, needsEvidenceResolution];
+    const db = drizzleRefundChargebackResolutionRowsDb(
+      resolutions.map(rowFromRefundChargebackResolutionRecord),
+    );
+
+    await expect(
+      listDrizzlePaymentImportRefundChargebackResolutionRecords(db, "firm-west-legal", {
+        paymentImportReviewRecordId: "payment-import-review-test",
+      }),
+    ).resolves.toEqual(resolutions);
+    const confirmedOnlyDb = drizzleRefundChargebackResolutionRowsDb([
+      rowFromRefundChargebackResolutionRecord(confirmedResolution),
+    ]);
+    await expect(
+      listDrizzlePaymentImportRefundChargebackResolutionRecords(
+        confirmedOnlyDb,
+        "firm-west-legal",
+        {
+          category: "refund",
+          resolutionPosture: "confirmed_exception",
+        },
+      ),
+    ).resolves.toEqual([confirmedResolution]);
   });
 });

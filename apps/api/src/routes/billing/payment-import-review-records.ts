@@ -14,8 +14,10 @@ import {
   paymentImportRefundChargebackReviewCue,
   paymentImportRefundChargebackReviewReasons,
   paymentImportRefundChargebackResolutionPacketPreview,
+  paymentImportRefundChargebackResolutionRecordFromPreview,
   type ManualPaymentRecord,
   type PaymentImportDepositMatchReviewRecord,
+  type PaymentImportRefundChargebackResolutionRecord,
   type PaymentImportRefundChargebackReviewRecord,
   type PaymentImportReviewRecord,
 } from "@open-practice/domain";
@@ -108,6 +110,13 @@ const refundChargebackReviewBodySchema = z
     id: z.string().min(1).optional(),
     decision: z.enum(paymentImportRefundChargebackReviewDecisions),
     reason: z.enum(paymentImportRefundChargebackReviewReasons),
+    idempotencyKey: safeExternalIdSchema,
+  })
+  .strict();
+
+const refundChargebackResolutionRecordBodySchema = z
+  .object({
+    id: z.string().min(1).optional(),
     idempotencyKey: safeExternalIdSchema,
   })
   .strict();
@@ -249,6 +258,28 @@ function assertRefundChargebackReviewRecord(
     );
   }
   return cue;
+}
+
+async function buildRefundChargebackResolutionPacketPreview(input: {
+  repository: ApiRouteDependencies["repository"];
+  firmId: string;
+  record: PaymentImportReviewRecord;
+}): Promise<NonNullable<ReturnType<typeof paymentImportRefundChargebackResolutionPacketPreview>>> {
+  const reviews = await input.repository.listPaymentImportRefundChargebackReviews(input.firmId, {
+    paymentImportReviewRecordId: input.record.id,
+  });
+  const packetPreview = paymentImportRefundChargebackResolutionPacketPreview({
+    importRecord: input.record,
+    reviews,
+  });
+  if (!packetPreview) {
+    throw new ApiHttpError(
+      409,
+      "PAYMENT_IMPORT_REFUND_CHARGEBACK_REVIEW_UNSUPPORTED",
+      "Refund and chargeback reviews require normalized refund or chargeback payment evidence",
+    );
+  }
+  return packetPreview;
 }
 
 function assertCandidateSupportedAllowed(input: {
@@ -435,17 +466,52 @@ export function registerBillingPaymentImportReviewRoutes(
         matterId: record.matterId,
       });
       assertRefundChargebackReviewRecord(record);
-      const reviews = await repository.listPaymentImportRefundChargebackReviews(
-        request.auth.firmId,
-        {
-          paymentImportReviewRecordId: record.id,
-        },
-      );
       return {
-        packetPreview: paymentImportRefundChargebackResolutionPacketPreview({
-          importRecord: record,
-          reviews,
+        packetPreview: await buildRefundChargebackResolutionPacketPreview({
+          repository,
+          firmId: request.auth.firmId,
+          record,
         }),
+      };
+    },
+  );
+
+  server.get(
+    "/api/billing/payment-import-review-records/:recordId/refund-chargeback-resolution-records",
+    async (request) => {
+      const params = parseRequestPart(
+        paymentImportReviewRecordParamsSchema,
+        request.params,
+        "params",
+      );
+      const staffAccess = requireStaffAccess(request.auth);
+      if (!staffAccess.ok) throw staffAccess.error;
+
+      const record = await repository.getPaymentImportReviewRecord(
+        request.auth.firmId,
+        params.recordId,
+      );
+      if (!record) {
+        throw new ApiHttpError(
+          404,
+          "PAYMENT_IMPORT_REVIEW_RECORD_NOT_FOUND",
+          "Payment import review record was not found",
+        );
+      }
+      assertMatterAccess(request.auth, {
+        resource: "expense_entry",
+        action: "read",
+        matterId: record.matterId,
+      });
+      assertRefundChargebackReviewRecord(record);
+      return {
+        reviewOnly: true,
+        resolutionRecords: await repository.listPaymentImportRefundChargebackResolutionRecords(
+          request.auth.firmId,
+          {
+            paymentImportReviewRecordId: record.id,
+          },
+        ),
       };
     },
   );
@@ -929,6 +995,121 @@ export function registerBillingPaymentImportReviewRoutes(
         }),
       });
       return { review: created };
+    },
+  );
+
+  server.post(
+    "/api/billing/payment-import-review-records/:recordId/refund-chargeback-resolution-records",
+    async (request) => {
+      const params = parseRequestPart(
+        paymentImportReviewRecordParamsSchema,
+        request.params,
+        "params",
+      );
+      const body = parseRequestPart(
+        refundChargebackResolutionRecordBodySchema,
+        request.body,
+        "body",
+      );
+      const staffAccess = requireStaffAccess(request.auth);
+      if (!staffAccess.ok) throw staffAccess.error;
+
+      const importRecord = await repository.getPaymentImportReviewRecord(
+        request.auth.firmId,
+        params.recordId,
+      );
+      if (!importRecord) {
+        throw new ApiHttpError(
+          404,
+          "PAYMENT_IMPORT_REVIEW_RECORD_NOT_FOUND",
+          "Payment import review record was not found",
+        );
+      }
+      assertMatterAccess(request.auth, {
+        resource: "expense_entry",
+        action: "create",
+        matterId: importRecord.matterId,
+      });
+      assertRefundChargebackReviewRecord(importRecord);
+
+      const packetPreview = await buildRefundChargebackResolutionPacketPreview({
+        repository,
+        firmId: request.auth.firmId,
+        record: importRecord,
+      });
+      if (packetPreview.resolutionPosture === "awaiting_decision") {
+        throw new ApiHttpError(
+          409,
+          "PAYMENT_IMPORT_REFUND_CHARGEBACK_RESOLUTION_REVIEW_REQUIRED",
+          "Refund and chargeback resolution records require an existing enum review decision",
+        );
+      }
+
+      const now = new Date().toISOString();
+      const noSideEffectFlags = packetPreview.noSideEffectFlags;
+      const resolutionFingerprint = buildIdempotencyFingerprint({
+        paymentImportReviewRecordId: importRecord.id,
+        latestReviewId: packetPreview.latestReviewId,
+        category: packetPreview.category,
+        resolutionPosture: packetPreview.resolutionPosture,
+        reasonCategories: packetPreview.reasonCategories,
+        latestReviewerMetadata: packetPreview.latestReviewerMetadata,
+        noSideEffectFlags,
+      });
+      const resolutionRecord = paymentImportRefundChargebackResolutionRecordFromPreview({
+        id: body.id ?? crypto.randomUUID(),
+        firmId: request.auth.firmId,
+        idempotencyKey: body.idempotencyKey,
+        resolutionFingerprint,
+        recordedByUserId: request.auth.user.id,
+        recordedAt: now,
+        packetPreview,
+      });
+      if (!resolutionRecord) {
+        throw new ApiHttpError(
+          409,
+          "PAYMENT_IMPORT_REFUND_CHARGEBACK_RESOLUTION_REVIEW_REQUIRED",
+          "Refund and chargeback resolution records require an existing enum review decision",
+        );
+      }
+
+      let created: PaymentImportRefundChargebackResolutionRecord;
+      try {
+        created =
+          await repository.createPaymentImportRefundChargebackResolutionRecord(resolutionRecord);
+      } catch (error) {
+        rethrowIdempotencyConflict(error);
+      }
+
+      await appendRouteAuditEvent(repository, request.auth, {
+        action: "payment_import_refund_chargeback_resolution.recorded",
+        resourceType: "payment_import_refund_chargeback_resolution",
+        resourceId: created.id,
+        metadata: compactMetadata({
+          matterId: created.matterId,
+          paymentImportRefundChargebackResolutionRecordId: created.id,
+          paymentImportReviewRecordId: created.paymentImportReviewRecordId,
+          latestReviewId: created.latestReviewId,
+          category: created.category,
+          resolutionPosture: created.resolutionPosture,
+          reasonCategories: created.reasonCategories,
+          latestReviewDecision: created.latestReviewerMetadata.decision,
+          latestReviewReason: created.latestReviewerMetadata.reason,
+          reviewerEvidencePresent: created.latestReviewerMetadata.reviewerEvidencePresent,
+          idempotencyKeyPresent: Boolean(created.idempotencyKey),
+          rawProviderPayloadRetained: created.noSideEffectFlags.rawProviderPayloadRetained,
+          invoiceBalanceMutation: created.noSideEffectFlags.invoiceBalanceMutation,
+          ledgerReversal: created.noSideEffectFlags.ledgerReversal,
+          providerCommand: created.noSideEffectFlags.providerCommand,
+          refundArtifactStorage: created.noSideEffectFlags.refundArtifactStorage,
+          disputeArtifactStorage: created.noSideEffectFlags.disputeArtifactStorage,
+          freeFormNotes: created.noSideEffectFlags.freeFormNotes,
+          clientNotification: created.noSideEffectFlags.clientNotification,
+          trustPosting: created.noSideEffectFlags.trustPosting,
+          fundsMovement: created.noSideEffectFlags.fundsMovement,
+        }),
+      });
+      return { resolutionRecord: created };
     },
   );
 }

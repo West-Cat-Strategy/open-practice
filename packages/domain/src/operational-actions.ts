@@ -1,8 +1,11 @@
 import type { LedgerPostingRequestStatus } from "./ledger.js";
 import type { LegalResearchArtifactStatus, LegalResearchReviewDecision } from "./legal-research.js";
+import type { ReviewAgingDecision } from "./review-aging.js";
 
 export type OperationalActionAvailability = "available" | "disabled";
 export type OperationalActionTone = "neutral" | "ready" | "risk";
+export type CalendarSchedulingAgingReviewAction = ReviewAgingDecision;
+export type CalendarSchedulingAgingReviewBusyAction = CalendarSchedulingAgingReviewAction | "other";
 export type DocumentRetentionHoldReviewAction = "record_review";
 export type DocumentRetentionHoldReviewBusyAction = DocumentRetentionHoldReviewAction | "other";
 export type LegalResearchArtifactReviewAction = LegalResearchReviewDecision;
@@ -15,6 +18,7 @@ export type MatterLifecycleReviewAction = "record_review";
 export interface OperationalActionDisabledCondition {
   reason: string;
   label?: string;
+  ariaLabel?: string;
   tone?: OperationalActionTone;
 }
 
@@ -23,6 +27,7 @@ export interface OperationalActionState {
   available: boolean;
   availability: OperationalActionAvailability;
   label: string;
+  ariaLabel?: string;
   disabledReason?: string;
   tone: OperationalActionTone;
 }
@@ -30,7 +35,9 @@ export interface OperationalActionState {
 export interface OperationalActionStateInput {
   actionKey: string;
   label: string;
+  ariaLabel?: string;
   availableLabel?: string;
+  availableAriaLabel?: string;
   availableTone?: OperationalActionTone;
   defaultDisabledTone?: OperationalActionTone;
   disabledWhen?: Array<OperationalActionDisabledCondition | false | null | undefined>;
@@ -54,23 +61,113 @@ export function describeOperationalActionState(
 ): OperationalActionState {
   const disabledCondition = input.disabledWhen?.find(isDisabledCondition);
   if (disabledCondition) {
+    const ariaLabel = disabledCondition.ariaLabel ?? input.ariaLabel;
     return {
       actionKey: input.actionKey,
       available: false,
       availability: "disabled",
       label: disabledCondition.label ?? input.label,
+      ...(ariaLabel ? { ariaLabel } : {}),
       disabledReason: disabledCondition.reason,
       tone: disabledCondition.tone ?? input.defaultDisabledTone ?? "neutral",
     };
   }
 
+  const ariaLabel = input.availableAriaLabel ?? input.ariaLabel;
   return {
     actionKey: input.actionKey,
     available: true,
     availability: "available",
     label: input.availableLabel ?? input.label,
+    ...(ariaLabel ? { ariaLabel } : {}),
     tone: input.availableTone ?? "ready",
   };
+}
+
+const calendarSchedulingAgingReviewActions = [
+  "acknowledged",
+  "follow_up_required",
+  "defer_review",
+] as const satisfies readonly CalendarSchedulingAgingReviewAction[];
+
+const calendarSchedulingAgingReviewActionDescriptors: Record<
+  CalendarSchedulingAgingReviewAction,
+  {
+    actionKey: string;
+    label: string;
+    ariaLabel: string;
+    availableTone: OperationalActionTone;
+  }
+> = {
+  acknowledged: {
+    actionKey: "calendar_scheduling_aging_review.acknowledge",
+    label: "Acknowledge",
+    ariaLabel: "Acknowledge scheduling request aging review",
+    availableTone: "ready",
+  },
+  follow_up_required: {
+    actionKey: "calendar_scheduling_aging_review.follow_up_required",
+    label: "Follow up",
+    ariaLabel: "Mark scheduling request follow-up required",
+    availableTone: "ready",
+  },
+  defer_review: {
+    actionKey: "calendar_scheduling_aging_review.defer",
+    label: "Defer",
+    ariaLabel: "Defer scheduling request aging review",
+    availableTone: "neutral",
+  },
+};
+
+export function calendarSchedulingAgingReviewBusyKey(
+  action: CalendarSchedulingAgingReviewAction,
+  schedulingRequestId: string,
+): string {
+  return `${schedulingRequestId}:aging:${action}`;
+}
+
+export function calendarSchedulingAgingReviewBusyAction(
+  busyKey: string,
+  schedulingRequestId: string,
+): CalendarSchedulingAgingReviewBusyAction | undefined {
+  if (!busyKey) return undefined;
+  for (const action of calendarSchedulingAgingReviewActions) {
+    if (busyKey === calendarSchedulingAgingReviewBusyKey(action, schedulingRequestId)) {
+      return action;
+    }
+  }
+  return busyKey.startsWith(`${schedulingRequestId}:aging:`) ? "other" : undefined;
+}
+
+export function compactCalendarSchedulingAgingReviewActionReason(value?: string): string {
+  if (!value) return "available";
+  const labels: Record<string, string> = {
+    acknowledged_in_progress: "acknowledgement in progress",
+    follow_up_required_in_progress: "follow-up review in progress",
+    defer_review_in_progress: "deferral in progress",
+    aging_review_action_in_progress: "aging review action in progress",
+  };
+  return labels[value] ?? value.replaceAll("_", " ");
+}
+
+export function describeCalendarSchedulingAgingReviewAction(input: {
+  action: CalendarSchedulingAgingReviewAction;
+  busyAction?: CalendarSchedulingAgingReviewBusyAction;
+}): OperationalActionState {
+  const descriptor = calendarSchedulingAgingReviewActionDescriptors[input.action];
+  const sameActionBusy = input.busyAction === input.action;
+  const anyActionBusy = input.busyAction !== undefined;
+
+  return describeOperationalActionState({
+    actionKey: descriptor.actionKey,
+    label: descriptor.label,
+    ariaLabel: descriptor.ariaLabel,
+    availableTone: descriptor.availableTone,
+    disabledWhen: [
+      sameActionBusy && disabledOperationalAction(`${input.action}_in_progress`),
+      anyActionBusy && disabledOperationalAction("aging_review_action_in_progress"),
+    ],
+  });
 }
 
 const matterLifecycleReviewActionDescriptors: Record<

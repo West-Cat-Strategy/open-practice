@@ -3,17 +3,18 @@
 Date: 2026-06-17 PDT
 
 This packet defines the next safe boundary for future payment processor imports, deposit matching,
-refunds, and chargebacks. It began as docs-first policy groundwork and now has six narrow runtime
+refunds, and chargebacks. It began as docs-first policy groundwork and now has seven narrow runtime
 slices: staff-only normalized payment import review records for processor evidence cues,
 staff-only deposit-match reviewer decisions over those normalized records, a narrow manual-payment
 reconcile command that consumes an existing supported deposit-match decision through the existing
 manual-payment reconciliation semantics, provider-neutral refund/chargeback review cues derived
 from existing payment import records, staff-only refund/chargeback reviewer decisions over those
 cues, and a computed read-only refund/chargeback resolution packet preview over existing enum
-decisions. The packet still does not authorize live settlement, payment processor webhooks,
-provider payload persistence, invoice mutation outside the existing manual-payment reconciliation
-path, trust posting, bank-feed connections, worker replay, provider commands, refund or chargeback
-commands, or deposit matching automation.
+decisions, and a staff-only enum resolution record that snapshots an already-decided preview. The
+packet still does not authorize live settlement, payment processor webhooks, provider payload
+persistence, invoice mutation outside the existing manual-payment reconciliation path, trust
+posting, bank-feed connections, worker replay, provider commands, refund or chargeback commands, or
+deposit matching automation.
 
 ## Source Posture
 
@@ -60,6 +61,12 @@ The boundary builds from the shipped payment and funds proofs:
   reviewer-evidence presence, and fixed no-side-effect flags. It stores no packet rows or artifacts,
   emits no audit event, and performs no invoice, ledger, provider, notification, trust, or funds
   side effect.
+- The 2026-06-30 refund/chargeback resolution record follow-up snapshots an existing decided
+  preview as staff-only enum evidence. It stores safe source/candidate IDs, derived category,
+  resolution posture, enum reason categories, latest review/reviewer metadata, reviewer recording
+  metadata, idempotency posture, and fixed no-side-effect flags. It rejects `awaiting_decision`
+  previews and stores no provider command, invoice mutation, ledger reversal, trust posting,
+  client notification, refund/dispute artifact, free-form note, or funds movement.
 
 ## First Runtime Slice
 
@@ -184,6 +191,28 @@ one existing refund or chargeback import record:
   action buttons, upload controls, free-form notes, client notification controls, or provider
   command controls.
 
+## Refund And Chargeback Resolution Records
+
+The 2026-06-30 resolution-record slice lets authorized staff snapshot an existing decided preview
+as safe enum evidence:
+
+- `GET /api/billing/payment-import-review-records/:recordId/refund-chargeback-resolution-records`
+  and `POST /api/billing/payment-import-review-records/:recordId/refund-chargeback-resolution-records`
+  list and record staff-only resolution records for one authorized refund or chargeback import
+  record.
+- Authorization remains staff-only and matter-scoped through derived `expense_entry` access on the
+  source record's matter. Reads require `read`; writes require `create`.
+- Stored fields are limited to firm/matter/source IDs, optional safe candidate IDs, latest review
+  ID, derived category, resolution posture copied from the preview, enum reason categories, latest
+  reviewer metadata, recorded-by metadata, idempotency key/fingerprint, and fixed no-side-effect
+  flags.
+- `awaiting_decision` previews cannot be recorded. Idempotency is keyed by `(firm, payment import
+review record, idempotency key)`: identical replays return the existing record, while changed
+  replay posture conflicts.
+- Billing dashboard rows may show latest resolution record posture and no-side-effect flags. The UI
+  adds no refund/dispute/provider/client-notification control, upload, artifact retention, or
+  free-form note field.
+
 ## Safe Import Boundary
 
 Future processor imports may create reviewer-visible import evidence only when all of these limits
@@ -253,7 +282,8 @@ evidence, candidate invoice or payment references, cue counts, and safe cue meta
 record may store only safe IDs, derived category, enum decision/reason, idempotency posture,
 reviewer metadata, and explicit no-side-effect flags. The resolution packet preview may summarize
 those existing enum decisions into read-only posture and no-side-effect flags without storing a
-packet. These surfaces must not:
+packet. The resolution record may snapshot only an already-decided preview as safe enum evidence.
+These surfaces must not:
 
 - call provider refund or dispute APIs;
 - issue automatic invoice credits, write-offs, voids, reversals, or balance changes;

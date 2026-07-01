@@ -13,6 +13,7 @@ import type {
   PortalGrant,
 } from "@open-practice/domain";
 import {
+  buildContactHistoryExportPreview,
   contactDataQualityResolutionDecisions,
   contactDuplicateResolutionDecisions,
   contactDuplicateResolutionReasons,
@@ -25,7 +26,6 @@ import {
   contactTimelineActivityFilters,
   defaultContactDuplicateResolutionBoundary,
   filterContactTimelineEntries,
-  type JobLifecycleRecord,
 } from "@open-practice/domain";
 import { requireAccess } from "../http/auth-guards.js";
 import { ApiHttpError } from "../http/response.js";
@@ -33,17 +33,6 @@ import { parseRequestPart } from "../http/validation.js";
 import { appendRouteAuditEvent } from "./audit-events.js";
 import { buildIdempotencyFingerprint, rethrowIdempotencyConflict } from "./idempotency.js";
 import type { ApiJobQueue } from "./types.js";
-
-const CONTACT_HISTORY_EXPORT_DOWNLOAD_TTL_MS = 24 * 60 * 60 * 1000;
-const CONTACT_HISTORY_EXPORT_JOB_NAME = "contact_history_export";
-const CONTACT_HISTORY_EXPORT_RESOURCE_TYPE = "contact_history_export";
-const CONTACT_HISTORY_EXPORT_REPORT_TYPE = "contact_history_export";
-const CONTACT_HISTORY_EXPORT_REPORT_SCOPE = "contact";
-const CONTACT_HISTORY_EXPORT_RETENTION_POSTURE =
-  "queued_regenerated_download_no_retained_export_body";
-const CONTACT_HISTORY_EXPORT_LEGAL_HOLD_POSTURE =
-  "respects_existing_matter_visibility_no_hold_override";
-const CONTACT_HISTORY_EXPORT_PRIVACY_POSTURE = "redacted_authorized_projection_only";
 
 const contactDataQualityResolutionsQuerySchema = z.object({
   contactId: z.string().min(1).optional(),
@@ -249,22 +238,9 @@ const contactHistoryExportBodySchema = z
   .object({
     purpose: z.literal("staff_review"),
     reviewReason: z.string().trim().min(8).max(240),
-    matterId: z.string().trim().min(1).optional(),
+    matterId: z.string().trim().min(1),
   })
   .strict();
-
-const contactHistoryExportRequestBodySchema = z
-  .object({
-    purpose: z.literal("staff_review"),
-    reviewReason: z.string().trim().min(8).max(240),
-    matterId: z.string().trim().min(1).optional(),
-    idempotencyKey: z.string().trim().min(1).max(160).optional(),
-  })
-  .strict();
-
-const contactHistoryExportRequestParamsSchema = contactParamsSchema.extend({
-  exportJobId: z.string().min(1),
-});
 
 const createContactBodySchema = z.object({
   kind: contactKindSchema,
@@ -490,72 +466,6 @@ type ContactTimelineEntry = Awaited<
 >[number];
 type SerializedContactDetail = ReturnType<typeof serializeContactDetail>;
 
-function compactMetadata(metadata: Record<string, unknown>): Record<string, unknown> {
-  return Object.fromEntries(Object.entries(metadata).filter(([, value]) => value !== undefined));
-}
-
-function metadataString(metadata: Record<string, unknown>, key: string): string | undefined {
-  const value = metadata[key];
-  return typeof value === "string" && value.trim() ? value : undefined;
-}
-
-function metadataNumber(metadata: Record<string, unknown>, key: string): number | undefined {
-  const value = metadata[key];
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
-}
-
-function metadataBoolean(metadata: Record<string, unknown>, key: string): boolean | undefined {
-  const value = metadata[key];
-  return typeof value === "boolean" ? value : undefined;
-}
-
-function contactMethodPosture(method: ContactMethod) {
-  return {
-    id: method.id,
-    type: method.type,
-    label: method.label,
-    preferred: Boolean(method.preferred),
-    doNotContact: Boolean(method.doNotContact),
-    verificationStatus: method.verificationStatus ?? "unverified",
-    conflictCheckIncluded: method.conflictCheckIncluded ?? true,
-    valueRedacted: Boolean(method.value),
-    addressRedacted: Boolean(method.address),
-    notesRedacted: Boolean(method.notes),
-  };
-}
-
-function contactTimelineExportEntry(entry: ContactTimelineEntry) {
-  const metadata = entry.metadata;
-  return {
-    id: entry.id,
-    matterId: entry.matterId,
-    occurredAt: entry.occurredAt,
-    title:
-      entry.kind === "task"
-        ? entry.title === "Follow-up review cue"
-          ? "Follow-up review cue"
-          : "Task deadline cue"
-        : entry.title,
-    kind: entry.kind,
-    actorId: entry.actorId,
-    metadata:
-      entry.kind === "task"
-        ? {
-            cueType: typeof metadata.cueType === "string" ? metadata.cueType : undefined,
-            contactId: typeof metadata.contactId === "string" ? metadata.contactId : undefined,
-            matterId: typeof metadata.matterId === "string" ? metadata.matterId : undefined,
-            dueAt: typeof metadata.dueAt === "string" ? metadata.dueAt : undefined,
-            bucket: typeof metadata.bucket === "string" ? metadata.bucket : undefined,
-            status: typeof metadata.status === "string" ? metadata.status : undefined,
-            priority: typeof metadata.priority === "string" ? metadata.priority : undefined,
-            assignmentScope:
-              typeof metadata.assignmentScope === "string" ? metadata.assignmentScope : undefined,
-            reviewBoundary: metadata.reviewBoundary,
-          }
-        : metadata,
-  };
-}
-
 function scopedPortalPermissions(
   grants: SerializedContactDetail["portal"]["grants"],
 ): SerializedContactDetail["portal"]["permissionLabels"] {
@@ -564,9 +474,8 @@ function scopedPortalPermissions(
 
 function scopeContactDetailToMatter(
   detail: SerializedContactDetail,
-  matterId?: string,
+  matterId: string,
 ): SerializedContactDetail {
-  if (!matterId) return detail;
   const grants = detail.portal.grants.filter((grant) => grant.matterId === matterId);
   return {
     ...detail,
@@ -614,166 +523,18 @@ function scopeContactDetailToMatter(
 
 function scopeTimelineToMatter(
   timeline: ContactTimelineEntry[],
-  matterId?: string,
+  matterId: string,
 ): ContactTimelineEntry[] {
-  return matterId ? timeline.filter((entry) => entry.matterId === matterId) : timeline;
+  return timeline.filter((entry) => entry.matterId === matterId);
 }
 
-function documentHoldReviewPosture(detail: SerializedContactDetail) {
-  return detail.matters.map((matter) => ({
-    matterId: matter.matterId,
-    matterStatus: matter.matterStatus,
-    documentLegalHoldCount: matter.retentionHoldReview.documentLegalHoldCount,
-    documentReviewCount: matter.retentionHoldReview.documentReviewCount,
-  }));
-}
-
-function retentionHoldReviewPosture(detail: SerializedContactDetail) {
-  const signals = detail.qualityReview.signals.filter(
-    (signal) => signal.kind === "retention_hold_review",
-  );
-  return {
-    summary: { retentionHoldCueCount: signals.length },
-    signals,
-  };
-}
-
-function buildContactHistoryExport(input: {
-  detail: SerializedContactDetail;
-  generatedAt: string;
-  generatedByUserId: string;
-  matterId?: string;
-  purpose: "staff_review";
-  resolutions: ContactDataQualityResolutionRecord[];
-  reviewReason: string;
-  timeline: ContactTimelineEntry[];
-}) {
-  const { contact } = input.detail;
-  const categories = {
-    identityPosture: {
-      contactId: contact.id,
-      kind: contact.kind,
-      status: contact.status,
-      displayName: contact.displayName,
-      roleCategories: contact.roleCategories,
-      riskFlags: contact.riskFlags,
-      conflictSensitive: contact.conflictSensitive,
-      adverse: contact.adverse,
-      confidentialityMarker: contact.confidentialityMarker,
-      doNotContact: contact.doNotContact,
-    },
-    namePosture: {
-      canonicalName: contact.canonicalName,
-      givenName: contact.givenName,
-      middleName: contact.middleName,
-      familyName: contact.familyName,
-      title: contact.title,
-      pronouns: contact.pronouns,
-      organizationLegalName: contact.organizationLegalName,
-      organizationOperatingName: contact.organizationOperatingName,
-      organizationRegisteredName: contact.organizationRegisteredName,
-      organizationType: contact.organizationType,
-      aliasCount: contact.aliases.length,
-      aliases: contact.aliases,
-      formerNameCount: contact.formerNames.length,
-      formerNames: contact.formerNames,
-    },
-    contactMethodPosture: {
-      identifierTypes: Array.from(
-        new Set(contact.identifiers.map((identifier) => identifier.type)),
-      ),
-      identifierCount: contact.identifiers.length,
-      methods: contact.contactMethods.map(contactMethodPosture),
-      preferredContactMethodId: contact.preferredContactMethodId,
-      preferredLanguage: contact.preferredLanguage,
-      timezone: contact.timezone,
-      communicationNotesPresent: Boolean(contact.communicationNotes?.trim()),
-      accessibilityNotesPresent: Boolean(contact.accessibilityNotes?.trim()),
-    },
-    relationshipPosture: input.detail.relationships,
-    matterPartyPosture: input.detail.matters,
-    portalAccessPosture: {
-      activeGrantCount: input.detail.portal.activeGrantCount,
-      permissionLabels: input.detail.portal.permissionLabels,
-      grants: input.detail.portal.grants.map((grant) => ({
-        id: grant.id,
-        matterId: grant.matterId,
-        contactId: grant.contactId,
-        accountBound: Boolean(grant.accountUserId),
-        grantedByUserId: grant.grantedByUserId,
-        status: grant.status,
-        permissions: grant.permissions,
-        expiresAt: grant.expiresAt,
-        revokedAt: grant.revokedAt,
-        suspendedAt: grant.suspendedAt,
-        invitedAt: grant.invitedAt,
-        activatedAt: grant.activatedAt,
-        createdAt: grant.createdAt,
-        updatedAt: grant.updatedAt,
-      })),
-    },
-    conflictReviewPosture: {
-      cues: input.detail.conflictCues,
-      history: input.detail.conflictHistory,
-    },
-    dataQualityAndDuplicateReviewPosture: {
-      summary: input.detail.qualityReview.summary,
-      signals: input.detail.qualityReview.signals,
-      resolutions: input.resolutions.map((resolution) => ({
-        id: resolution.id,
-        contactId: resolution.contactId,
-        signalKind: resolution.signalKind,
-        decision: resolution.decision,
-        matterId: resolution.matterId,
-        relatedContactPresent: Boolean(resolution.relatedContactId),
-        sourceRecordPresent: Boolean(resolution.sourceRecordId),
-        resolutionNotePresent: Boolean(resolution.resolutionNote.trim()),
-        recordedByUserId: resolution.recordedByUserId,
-        recordedAt: resolution.recordedAt,
-      })),
-    },
-    documentHoldReviewPosture: documentHoldReviewPosture(input.detail),
-    retentionHoldReviewPosture: retentionHoldReviewPosture(input.detail),
-    timelineCues: input.timeline.map(contactTimelineExportEntry),
-  };
-  return {
-    exportRequest: {
-      purpose: input.purpose,
-      contactId: contact.id,
-      matterId: input.matterId,
-      generatedAt: input.generatedAt,
-      generatedByUserId: input.generatedByUserId,
-      reviewReasonPresent: Boolean(input.reviewReason.trim()),
-      retentionPosture: "transient_regenerated_no_retained_export_body",
-      legalHoldPosture: "respects_existing_matter_visibility_no_hold_override",
-      privacyPosture: "redacted_authorized_projection_only",
-      storedBody: false,
-    },
-    export: {
-      generatedAt: input.generatedAt,
-      generatedByUserId: input.generatedByUserId,
-      purpose: input.purpose,
-      matterId: input.matterId,
-      policyBoundary: {
-        rawPrivateContactHistory: false,
-        exportBodyStoredInAuditMetadata: false,
-        retainedExportArtifact: false,
-        deletionAutomation: false,
-        retentionDeadline: false,
-        jurisdictionCertifiedRecordsClaim: false,
-      },
-      categories,
-    },
-  };
-}
-
-async function loadContactHistoryExport(input: {
+async function loadContactHistoryExportPreview(input: {
   repository: OpenPracticeRepository;
   firmId: string;
   user: Parameters<OpenPracticeRepository["listContactDossiersForUser"]>[0];
   contactId: string;
   generatedAt: string;
-  matterId?: string;
+  matterId: string;
   purpose: "staff_review";
   reviewReason: string;
 }) {
@@ -804,185 +565,31 @@ async function loadContactHistoryExport(input: {
   const scopedTimeline = scopeTimelineToMatter(timeline, input.matterId);
   const visibleResolutions = filterVisibleResolutions(resolutions, dossiers).filter(
     (resolution) =>
-      resolution.contactId === input.contactId &&
-      (!input.matterId || resolution.matterId === input.matterId),
+      resolution.contactId === input.contactId && resolution.matterId === input.matterId,
   );
-  const payload = buildContactHistoryExport({
-    detail,
-    generatedAt: input.generatedAt,
-    generatedByUserId: input.user.id,
-    matterId: input.matterId,
-    purpose: input.purpose,
-    resolutions: visibleResolutions,
-    reviewReason: input.reviewReason,
-    timeline: scopedTimeline,
-  });
-  return { detail, payload, timeline: scopedTimeline };
-}
-
-function contactHistoryExportCounts(input: {
-  detail: SerializedContactDetail;
-  payload: ReturnType<typeof buildContactHistoryExport>;
-  timeline: ContactTimelineEntry[];
-}) {
-  return {
-    generatedCategoryCount: Object.keys(input.payload.export.categories).length,
-    timelineEntryCount: input.timeline.length,
-    matterAssociationCount: input.detail.matters.length,
-    portalGrantCount: input.detail.portal.grants.length,
-    conflictSummaryCount: input.detail.conflictHistory.length + input.detail.conflictCues.length,
-    documentHoldCueCount: input.detail.matters.reduce(
-      (total, matter) => total + matter.retentionHoldReview.documentLegalHoldCount,
-      0,
-    ),
-    retentionHoldCueCount: input.detail.qualityReview.summary.retentionHoldCueCount,
-  };
-}
-
-function contactHistoryExportJobId(): string {
-  return `contact-history-export-${randomUUID()}`;
-}
-
-function contactHistoryDownloadExpiresAt(now: Date): string {
-  return new Date(now.getTime() + CONTACT_HISTORY_EXPORT_DOWNLOAD_TTL_MS).toISOString();
-}
-
-function contactHistoryExportMetadata(input: {
-  contactId: string;
-  counts: ReturnType<typeof contactHistoryExportCounts>;
-  downloadExpiresAt: string;
-  enqueueStatus: "queued_for_local_report_worker" | "completed_inline";
-  idempotencyKeyPresent: boolean;
-  matterId?: string;
-  purpose: "staff_review";
-  requestedByUserId: string;
-  reviewReasonPresent: boolean;
-}) {
-  return compactMetadata({
-    reportType: CONTACT_HISTORY_EXPORT_REPORT_TYPE,
-    reportScope: CONTACT_HISTORY_EXPORT_REPORT_SCOPE,
+  const preview = buildContactHistoryExportPreview({
     contactId: input.contactId,
     matterId: input.matterId,
-    matterScoped: Boolean(input.matterId),
-    purpose: input.purpose,
-    requestedByUserId: input.requestedByUserId,
-    reviewReasonPresent: input.reviewReasonPresent,
-    downloadExpiresAt: input.downloadExpiresAt,
-    generatedCategoryCount: input.counts.generatedCategoryCount,
-    timelineEntryCount: input.counts.timelineEntryCount,
-    matterAssociationCount: input.counts.matterAssociationCount,
-    portalGrantCount: input.counts.portalGrantCount,
-    conflictSummaryCount: input.counts.conflictSummaryCount,
-    documentHoldCueCount: input.counts.documentHoldCueCount,
-    retentionHoldCueCount: input.counts.retentionHoldCueCount,
-    retentionPosture: CONTACT_HISTORY_EXPORT_RETENTION_POSTURE,
-    legalHoldPosture: CONTACT_HISTORY_EXPORT_LEGAL_HOLD_POSTURE,
-    privacyPosture: CONTACT_HISTORY_EXPORT_PRIVACY_POSTURE,
-    storedBody: false,
-    retainedExportArtifact: false,
-    deletionAutomation: false,
-    retentionDeadline: false,
-    legalHoldOverride: false,
-    redactedAuthorizedProjection: true,
-    exportBodyStoredInJobMetadata: false,
-    enqueueStatus: input.enqueueStatus,
-    idempotencyKeyPresent: input.idempotencyKeyPresent,
+    generatedAt: input.generatedAt,
+    generatedByUserId: input.user.id,
+    reviewReason: input.reviewReason,
+    relationshipIds: detail.relationships.map((relationship) => relationship.id),
+    portalGrantIds: detail.portal.grants.map((grant) => grant.id),
+    conflictHistoryIds: detail.conflictHistory.map((entry) => entry.id),
+    dataQualityResolutionIds: visibleResolutions.map((resolution) => resolution.id),
+    timelineEntryIds: scopedTimeline.map((entry) => entry.id),
+    counts: {
+      generatedCategoryCount: 11,
+      matterAssociationCount: detail.matters.length,
+      conflictCueCount: detail.conflictCues.length,
+      documentHoldCueCount: detail.matters.reduce(
+        (total, matter) => total + matter.retentionHoldReview.documentLegalHoldCount,
+        0,
+      ),
+      retentionHoldCueCount: detail.qualityReview.summary.retentionHoldCueCount,
+    },
   });
-}
-
-function contactHistoryExportContactId(job: JobLifecycleRecord): string | undefined {
-  return metadataString(job.metadata, "contactId");
-}
-
-function contactHistoryExportMatterId(job: JobLifecycleRecord): string | undefined {
-  return metadataString(job.metadata, "matterId");
-}
-
-function serializeContactHistoryExportRequest(job: JobLifecycleRecord, contactId: string) {
-  const metadata = job.metadata;
-  const matterId = metadataString(metadata, "matterId");
-  return {
-    id: job.id,
-    jobId: job.id,
-    contactId,
-    matterId,
-    matterScoped: Boolean(matterId),
-    purpose: "staff_review" as const,
-    status: job.status,
-    queuedAt: job.queuedAt,
-    startedAt: job.startedAt,
-    finishedAt: job.finishedAt,
-    failedAt: job.failedAt,
-    pollUrl: `/api/contacts/${encodeURIComponent(contactId)}/history-export-requests/${encodeURIComponent(
-      job.id,
-    )}`,
-    downloadUrl: `/api/contacts/${encodeURIComponent(
-      contactId,
-    )}/history-export-requests/${encodeURIComponent(job.id)}/download`,
-    downloadExpiresAt: metadataString(metadata, "downloadExpiresAt"),
-    reviewReasonPresent: metadataBoolean(metadata, "reviewReasonPresent") ?? false,
-    generatedCategoryCount: metadataNumber(metadata, "generatedCategoryCount"),
-    timelineEntryCount: metadataNumber(metadata, "timelineEntryCount"),
-    matterAssociationCount: metadataNumber(metadata, "matterAssociationCount"),
-    portalGrantCount: metadataNumber(metadata, "portalGrantCount"),
-    conflictSummaryCount: metadataNumber(metadata, "conflictSummaryCount"),
-    documentHoldCueCount: metadataNumber(metadata, "documentHoldCueCount"),
-    retentionHoldCueCount: metadataNumber(metadata, "retentionHoldCueCount"),
-    retentionPosture:
-      metadataString(metadata, "retentionPosture") ?? CONTACT_HISTORY_EXPORT_RETENTION_POSTURE,
-    legalHoldPosture:
-      metadataString(metadata, "legalHoldPosture") ?? CONTACT_HISTORY_EXPORT_LEGAL_HOLD_POSTURE,
-    privacyPosture:
-      metadataString(metadata, "privacyPosture") ?? CONTACT_HISTORY_EXPORT_PRIVACY_POSTURE,
-    storedBody: metadataBoolean(metadata, "storedBody") ?? false,
-    retainedExportArtifact: metadataBoolean(metadata, "retainedExportArtifact") ?? false,
-    deletionAutomation: metadataBoolean(metadata, "deletionAutomation") ?? false,
-    retentionDeadline: metadataBoolean(metadata, "retentionDeadline") ?? false,
-    legalHoldOverride: metadataBoolean(metadata, "legalHoldOverride") ?? false,
-    redactedAuthorizedProjection: metadataBoolean(metadata, "redactedAuthorizedProjection") ?? true,
-  };
-}
-
-async function findContactHistoryExportJob(input: {
-  repository: OpenPracticeRepository;
-  firmId: string;
-  contactId: string;
-  exportJobId: string;
-}) {
-  return (
-    await input.repository.listJobLifecycleRecords(input.firmId, { queueName: "reports" })
-  ).find(
-    (job) =>
-      job.id === input.exportJobId &&
-      job.jobName === CONTACT_HISTORY_EXPORT_JOB_NAME &&
-      job.targetResourceType === CONTACT_HISTORY_EXPORT_RESOURCE_TYPE &&
-      contactHistoryExportContactId(job) === input.contactId,
-  );
-}
-
-function assertContactHistoryDownloadReady(job: JobLifecycleRecord, now: string): void {
-  if (job.status === "failed" || job.status === "dead_letter" || job.status === "skipped") {
-    throw new ApiHttpError(
-      409,
-      "CONTACT_HISTORY_EXPORT_FAILED",
-      "Contact-history export did not complete",
-    );
-  }
-  if (job.status !== "completed") {
-    throw new ApiHttpError(
-      409,
-      "CONTACT_HISTORY_EXPORT_NOT_READY",
-      "Contact-history export is not ready yet",
-    );
-  }
-  const downloadExpiresAt = metadataString(job.metadata, "downloadExpiresAt");
-  if (!downloadExpiresAt || Date.parse(downloadExpiresAt) <= Date.parse(now)) {
-    throw new ApiHttpError(
-      410,
-      "CONTACT_HISTORY_EXPORT_EXPIRED",
-      "Contact-history export download link has expired",
-    );
-  }
+  return { preview };
 }
 
 function visibleMatterIds(dossiers: ContactDossier[]): Set<string> {
@@ -1479,7 +1086,7 @@ export function registerContactRoutes(
     const params = parseRequestPart(contactParamsSchema, request.params, "params");
     const body = parseRequestPart(contactHistoryExportBodySchema, request.body, "body");
     const generatedAt = new Date().toISOString();
-    const { detail, payload, timeline } = await loadContactHistoryExport({
+    const { preview } = await loadContactHistoryExportPreview({
       repository: options.repository,
       firmId: request.auth.firmId,
       user: request.auth.user,
@@ -1489,7 +1096,6 @@ export function registerContactRoutes(
       purpose: body.purpose,
       reviewReason: body.reviewReason,
     });
-    const counts = contactHistoryExportCounts({ detail, payload, timeline });
     await appendRouteAuditEvent(options.repository, request.auth, {
       action: "contact_history_export.requested",
       resourceType: "contact_history_export",
@@ -1497,267 +1103,38 @@ export function registerContactRoutes(
       metadata: {
         contactId: params.contactId,
         matterId: body.matterId,
-        matterScoped: Boolean(body.matterId),
+        matterScoped: true,
         purpose: body.purpose,
         reviewReasonPresent: Boolean(body.reviewReason.trim()),
-        generatedCategoryCount: counts.generatedCategoryCount,
-        timelineEntryCount: counts.timelineEntryCount,
-        matterAssociationCount: counts.matterAssociationCount,
-        portalGrantCount: counts.portalGrantCount,
-        conflictSummaryCount: counts.conflictSummaryCount,
-        documentHoldCueCount: counts.documentHoldCueCount,
-        retentionHoldCueCount: counts.retentionHoldCueCount,
-        retentionPosture: payload.exportRequest.retentionPosture,
-        legalHoldPosture: payload.exportRequest.legalHoldPosture,
-        privacyPosture: payload.exportRequest.privacyPosture,
+        generatedCategoryCount: preview.counts.generatedCategoryCount,
+        timelineEntryCount: preview.counts.timelineEntryCount,
+        matterAssociationCount: preview.counts.matterAssociationCount,
+        relationshipCount: preview.counts.relationshipCount,
+        portalGrantCount: preview.counts.portalGrantCount,
+        conflictSummaryCount: preview.counts.conflictSummaryCount,
+        documentHoldCueCount: preview.counts.documentHoldCueCount,
+        retentionHoldCueCount: preview.counts.retentionHoldCueCount,
+        dataQualityResolutionCount: preview.counts.dataQualityResolutionCount,
+        retentionPosture: preview.retentionPosture,
+        legalHoldPosture: preview.legalHoldPosture,
+        privacyPosture: preview.privacyPosture,
+        storedBody: preview.boundary.storedBody,
+        retainedExportArtifact: preview.boundary.retainedExportArtifact,
+        objectStorageArtifact: preview.boundary.objectStorageArtifact,
+        provider: preview.boundary.provider,
+        broadQueue: preview.boundary.broadQueue,
+        deletionWorkflow: preview.boundary.deletionWorkflow,
+        retentionDeadline: preview.boundary.retentionDeadline,
+        legalHoldOverride: preview.boundary.legalHoldOverride,
+        hiddenMatterDisclosure: preview.boundary.hiddenMatterDisclosure,
+        rawPrivateNotes: preview.boundary.rawPrivateNotes,
+        taskText: preview.boundary.taskText,
+        storageKeys: preview.boundary.storageKeys,
+        complianceClaim: preview.boundary.complianceClaim,
       },
     });
-    return payload;
+    return { preview };
   });
-
-  server.post("/api/contacts/:contactId/history-export-requests", async (request, reply) => {
-    const access = requireAccess(request.auth, { resource: "contact", action: "export" });
-    if (!access.ok) throw access.error;
-    const params = parseRequestPart(contactParamsSchema, request.params, "params");
-    const body = parseRequestPart(contactHistoryExportRequestBodySchema, request.body, "body");
-    const nowDate = new Date();
-    const now = nowDate.toISOString();
-    const downloadExpiresAt = contactHistoryDownloadExpiresAt(nowDate);
-    const { detail, payload, timeline } = await loadContactHistoryExport({
-      repository: options.repository,
-      firmId: request.auth.firmId,
-      user: request.auth.user,
-      contactId: params.contactId,
-      generatedAt: now,
-      matterId: body.matterId,
-      purpose: body.purpose,
-      reviewReason: body.reviewReason,
-    });
-    const jobId = contactHistoryExportJobId();
-    const queueConfigured = Boolean(options.reportJobQueue);
-    const idempotencyKey =
-      body.idempotencyKey ??
-      `${CONTACT_HISTORY_EXPORT_JOB_NAME}:${request.auth.user.id}:${params.contactId}:${
-        body.matterId ?? "all-visible"
-      }:${body.purpose}:${now.slice(0, 10)}`;
-    const metadata = contactHistoryExportMetadata({
-      contactId: params.contactId,
-      counts: contactHistoryExportCounts({ detail, payload, timeline }),
-      downloadExpiresAt,
-      enqueueStatus: queueConfigured ? "queued_for_local_report_worker" : "completed_inline",
-      idempotencyKeyPresent: Boolean(body.idempotencyKey),
-      matterId: body.matterId,
-      purpose: body.purpose,
-      requestedByUserId: request.auth.user.id,
-      reviewReasonPresent: Boolean(body.reviewReason.trim()),
-    });
-
-    let job: JobLifecycleRecord;
-    try {
-      job = await options.repository.createJobLifecycleRecord({
-        id: jobId,
-        firmId: request.auth.firmId,
-        queueName: "reports",
-        jobName: CONTACT_HISTORY_EXPORT_JOB_NAME,
-        bullJobId: queueConfigured ? jobId : undefined,
-        idempotencyKey,
-        status: queueConfigured ? "queued" : "completed",
-        targetResourceType: CONTACT_HISTORY_EXPORT_RESOURCE_TYPE,
-        targetResourceId: jobId,
-        attemptsMade: 0,
-        maxAttempts: queueConfigured ? 2 : 1,
-        queuedAt: now,
-        finishedAt: queueConfigured ? undefined : now,
-        metadata,
-      });
-    } catch (error) {
-      rethrowIdempotencyConflict(error);
-    }
-    const created = job.id === jobId;
-
-    if (options.reportJobQueue && created) {
-      try {
-        await options.reportJobQueue.add(
-          CONTACT_HISTORY_EXPORT_JOB_NAME,
-          {
-            firmId: request.auth.firmId,
-            resourceType: CONTACT_HISTORY_EXPORT_RESOURCE_TYPE,
-            resourceId: job.id,
-            metadata: compactMetadata({
-              reportType: CONTACT_HISTORY_EXPORT_REPORT_TYPE,
-              reportScope: CONTACT_HISTORY_EXPORT_REPORT_SCOPE,
-              contactId: params.contactId,
-              matterId: body.matterId,
-              matterScoped: Boolean(body.matterId),
-              purpose: body.purpose,
-              requestedByUserId: request.auth.user.id,
-              reviewReasonPresent: Boolean(body.reviewReason.trim()),
-              downloadExpiresAt,
-              retentionPosture: CONTACT_HISTORY_EXPORT_RETENTION_POSTURE,
-              legalHoldPosture: CONTACT_HISTORY_EXPORT_LEGAL_HOLD_POSTURE,
-              privacyPosture: CONTACT_HISTORY_EXPORT_PRIVACY_POSTURE,
-              storedBody: false,
-              retainedExportArtifact: false,
-              deletionAutomation: false,
-              retentionDeadline: false,
-              legalHoldOverride: false,
-              redactedAuthorizedProjection: true,
-              exportBodyStoredInJobMetadata: false,
-            }),
-          },
-          { jobId: job.id },
-        );
-      } catch (error) {
-        await options.repository.updateJobLifecycleRecord(request.auth.firmId, job.id, {
-          status: "failed",
-          failedAt: new Date().toISOString(),
-          errorMessage: error instanceof Error ? error.message : String(error),
-        });
-        throw error;
-      }
-    }
-
-    if (created) {
-      await appendRouteAuditEvent(options.repository, request.auth, {
-        action: "contact_history_export.requested",
-        resourceType: "contact_history_export",
-        resourceId: params.contactId,
-        metadata: compactMetadata({
-          contactId: params.contactId,
-          matterId: body.matterId,
-          matterScoped: Boolean(body.matterId),
-          jobId: job.id,
-          purpose: body.purpose,
-          reviewReasonPresent: Boolean(body.reviewReason.trim()),
-          generatedCategoryCount: metadataNumber(metadata, "generatedCategoryCount"),
-          timelineEntryCount: metadataNumber(metadata, "timelineEntryCount"),
-          matterAssociationCount: metadataNumber(metadata, "matterAssociationCount"),
-          portalGrantCount: metadataNumber(metadata, "portalGrantCount"),
-          conflictSummaryCount: metadataNumber(metadata, "conflictSummaryCount"),
-          documentHoldCueCount: metadataNumber(metadata, "documentHoldCueCount"),
-          retentionHoldCueCount: metadataNumber(metadata, "retentionHoldCueCount"),
-          downloadExpiresAt,
-          enqueueStatus: queueConfigured ? "queued_for_local_report_worker" : "completed_inline",
-          idempotencyKeyPresent: Boolean(body.idempotencyKey),
-          retentionPosture: CONTACT_HISTORY_EXPORT_RETENTION_POSTURE,
-          legalHoldPosture: CONTACT_HISTORY_EXPORT_LEGAL_HOLD_POSTURE,
-          privacyPosture: CONTACT_HISTORY_EXPORT_PRIVACY_POSTURE,
-          storedBody: false,
-          retainedExportArtifact: false,
-          deletionAutomation: false,
-          retentionDeadline: false,
-          legalHoldOverride: false,
-        }),
-      });
-    }
-
-    reply.status(202);
-    return {
-      exportRequest: serializeContactHistoryExportRequest(job, params.contactId),
-    };
-  });
-
-  server.get("/api/contacts/:contactId/history-export-requests/:exportJobId", async (request) => {
-    const access = requireAccess(request.auth, { resource: "contact", action: "export" });
-    if (!access.ok) throw access.error;
-    const params = parseRequestPart(
-      contactHistoryExportRequestParamsSchema,
-      request.params,
-      "params",
-    );
-    const dossiers = await options.repository.listContactDossiersForUser(request.auth.user);
-    const job = await findContactHistoryExportJob({
-      repository: options.repository,
-      firmId: request.auth.firmId,
-      contactId: params.contactId,
-      exportJobId: params.exportJobId,
-    });
-    if (!job) {
-      throw new ApiHttpError(
-        404,
-        "CONTACT_HISTORY_EXPORT_NOT_FOUND",
-        "Contact-history export request was not found",
-      );
-    }
-    assertContactHistoryExportScope(dossiers, {
-      contactId: params.contactId,
-      matterId: contactHistoryExportMatterId(job),
-    });
-    return {
-      exportRequest: serializeContactHistoryExportRequest(job, params.contactId),
-    };
-  });
-
-  server.get(
-    "/api/contacts/:contactId/history-export-requests/:exportJobId/download",
-    async (request) => {
-      const access = requireAccess(request.auth, { resource: "contact", action: "export" });
-      if (!access.ok) throw access.error;
-      const params = parseRequestPart(
-        contactHistoryExportRequestParamsSchema,
-        request.params,
-        "params",
-      );
-      const job = await findContactHistoryExportJob({
-        repository: options.repository,
-        firmId: request.auth.firmId,
-        contactId: params.contactId,
-        exportJobId: params.exportJobId,
-      });
-      if (!job) {
-        throw new ApiHttpError(
-          404,
-          "CONTACT_HISTORY_EXPORT_NOT_FOUND",
-          "Contact-history export request was not found",
-        );
-      }
-      const now = new Date().toISOString();
-      assertContactHistoryDownloadReady(job, now);
-      const matterId = contactHistoryExportMatterId(job);
-      const { payload } = await loadContactHistoryExport({
-        repository: options.repository,
-        firmId: request.auth.firmId,
-        user: request.auth.user,
-        contactId: params.contactId,
-        generatedAt: now,
-        matterId,
-        purpose: "staff_review",
-        reviewReason: "Queued staff review reason present",
-      });
-      const exportRequest = serializeContactHistoryExportRequest(job, params.contactId);
-      await appendRouteAuditEvent(options.repository, request.auth, {
-        action: "contact_history_export.downloaded",
-        resourceType: "contact_history_export",
-        resourceId: params.contactId,
-        metadata: compactMetadata({
-          contactId: params.contactId,
-          matterId,
-          matterScoped: Boolean(matterId),
-          jobId: job.id,
-          purpose: "staff_review",
-          downloadExpiresAt: exportRequest.downloadExpiresAt,
-          retentionPosture: exportRequest.retentionPosture,
-          legalHoldPosture: exportRequest.legalHoldPosture,
-          privacyPosture: exportRequest.privacyPosture,
-          storedBody: false,
-          retainedExportArtifact: false,
-          deletionAutomation: false,
-          retentionDeadline: false,
-          legalHoldOverride: false,
-        }),
-      });
-      return {
-        exportRequest: {
-          ...payload.exportRequest,
-          ...exportRequest,
-          generatedAt: payload.exportRequest.generatedAt,
-          generatedByUserId: payload.exportRequest.generatedByUserId,
-          storedBody: false,
-        },
-        export: payload.export,
-      };
-    },
-  );
 
   server.patch("/api/contacts/:contactId", async (request) => {
     const access = requireAccess(request.auth, { resource: "contact", action: "update" });

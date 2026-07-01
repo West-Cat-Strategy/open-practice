@@ -455,6 +455,14 @@ export function EmailTemplateDraftsPanel({
                 {preview.recipientSummary.recipientCount} recipient ·{" "}
                 {compactDate(preview.createdAt)}
               </small>
+              {preview.outboxDraftReview ? (
+                <small>
+                  {preview.outboxDraftReview.status === "draft_review"
+                    ? "draft review"
+                    : preview.outboxDraftReview.status}{" "}
+                  · {preview.outboxDraftReview.delivery.queued ? "queued" : "not queued"}
+                </small>
+              ) : null}
               {preview.warnings.length > 0 ? <small>{preview.warnings.join(", ")}</small> : null}
             </span>
             <em>{preview.reviewStatus === "reviewed_preview" ? "reviewed" : "preview"}</em>

@@ -4,7 +4,6 @@ import {
   ClipboardCheck,
   Download,
   Plus,
-  RefreshCcw,
   Search,
   UserPlus,
 } from "lucide-react";
@@ -31,7 +30,6 @@ import type {
   ContactDuplicateResolutionRecord,
   ContactDossier,
   ContactDossiersResponse,
-  ContactHistoryExportRequest,
   ContactTimelineActivityFilter,
   ContactTimelineResponse,
   ContactReviewQueueResponse,
@@ -96,8 +94,8 @@ export function ContactsSection({
   contactDuplicateResolutionDecisions,
   contactDuplicateResolutionStatus,
   contactDossiers,
+  contactHistoryExportMatterId,
   contactHistoryExportReason,
-  contactHistoryExportRequest,
   contactHistoryExportStatus,
   contactHistoryExportSummary,
   contactTimeline,
@@ -115,8 +113,6 @@ export function ContactsSection({
   onContactCreatePhoneChange,
   onContactCreateRoleCategoryChange = () => undefined,
   onContactHistoryExportReasonChange,
-  onDownloadContactHistoryExport,
-  onPollContactHistoryExport,
   onContactTimelineActivityFilterChange,
   onExportContactHistory,
   onCreateContact,
@@ -131,7 +127,6 @@ export function ContactsSection({
   recordingContactResolutionKey,
   recordingContactDuplicateResolutionKey,
   exportingContactHistory,
-  contactHistoryExportAction = "",
 }: {
   activeContactDossier?: ContactDossier;
   canRecordContactDataQualityResolution: boolean;
@@ -151,8 +146,8 @@ export function ContactsSection({
   contactDuplicateResolutionDecisions: ContactDuplicateResolutionRecord[];
   contactDuplicateResolutionStatus: string;
   contactDossiers: ContactDossiersResponse;
+  contactHistoryExportMatterId?: string;
   contactHistoryExportReason: string;
-  contactHistoryExportRequest?: ContactHistoryExportRequest | null;
   contactHistoryExportStatus: string;
   contactHistoryExportSummary: string;
   contactTimeline: ContactTimelineResponse["timeline"];
@@ -170,8 +165,6 @@ export function ContactsSection({
   onContactCreatePhoneChange: (value: string) => void;
   onContactCreateRoleCategoryChange?: (value: string) => void;
   onContactHistoryExportReasonChange: (value: string) => void;
-  onPollContactHistoryExport: () => void;
-  onDownloadContactHistoryExport: () => void;
   onContactTimelineActivityFilterChange: (value: ContactTimelineActivityFilter) => void;
   onExportContactHistory: () => void;
   onCreateContact: () => void;
@@ -193,7 +186,6 @@ export function ContactsSection({
   recordingContactResolutionKey: string;
   recordingContactDuplicateResolutionKey: string;
   exportingContactHistory: boolean;
-  contactHistoryExportAction?: "poll" | "download" | "";
 }) {
   const timelineEntries = contactTimeline.slice(0, 6);
   const matterNumberById = new Map(
@@ -206,6 +198,7 @@ export function ContactsSection({
     contactDuplicateResolutionStatus !== contactDataQualityStatus
       ? `${contactDataQualityStatus} / ${contactDuplicateResolutionStatus}`
       : contactDataQualityStatus;
+  const canPreviewContactHistory = canExportContactHistory && Boolean(contactHistoryExportMatterId);
 
   return (
     <>
@@ -1023,40 +1016,15 @@ export function ContactsSection({
                     <button
                       className="secondary-button"
                       disabled={
-                        exportingContactHistory || contactHistoryExportReason.trim().length < 8
+                        !canPreviewContactHistory ||
+                        exportingContactHistory ||
+                        contactHistoryExportReason.trim().length < 8
                       }
                       onClick={onExportContactHistory}
                       type="button"
                     >
                       <Download size={16} aria-hidden="true" />
-                      Queue export
-                    </button>
-                    <button
-                      className="secondary-button"
-                      disabled={
-                        !contactHistoryExportRequest ||
-                        exportingContactHistory ||
-                        contactHistoryExportAction === "poll"
-                      }
-                      onClick={onPollContactHistoryExport}
-                      type="button"
-                    >
-                      <RefreshCcw size={16} aria-hidden="true" />
-                      {contactHistoryExportAction === "poll" ? "Refreshing" : "Refresh"}
-                    </button>
-                    <button
-                      className="secondary-button"
-                      disabled={
-                        !contactHistoryExportRequest ||
-                        contactHistoryExportRequest.status !== "completed" ||
-                        exportingContactHistory ||
-                        contactHistoryExportAction === "download"
-                      }
-                      onClick={onDownloadContactHistoryExport}
-                      type="button"
-                    >
-                      <Download size={16} aria-hidden="true" />
-                      {contactHistoryExportAction === "download" ? "Preparing" : "Download"}
+                      {exportingContactHistory ? "Previewing" : "Preview export"}
                     </button>
                   </div>
                   {contactHistoryExportSummary ? (

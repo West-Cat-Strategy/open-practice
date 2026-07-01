@@ -177,10 +177,12 @@ import {
 } from "./hosted-payment-requests/drizzle.js";
 import {
   createDrizzlePaymentImportDepositMatchReview,
+  createDrizzlePaymentImportRefundChargebackResolutionRecord,
   createDrizzlePaymentImportRefundChargebackReview,
   createDrizzlePaymentImportReviewRecord,
   getDrizzlePaymentImportReviewRecord,
   listDrizzlePaymentImportDepositMatchReviews,
+  listDrizzlePaymentImportRefundChargebackResolutionRecords,
   listDrizzlePaymentImportRefundChargebackReviews,
   listDrizzlePaymentImportReviewRecords,
 } from "./payment-import-review-records/drizzle.js";
@@ -2489,6 +2491,23 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     options: Parameters<OpenPracticeRepository["listPaymentImportRefundChargebackReviews"]>[1] = {},
   ): ReturnType<OpenPracticeRepository["listPaymentImportRefundChargebackReviews"]> {
     return listDrizzlePaymentImportRefundChargebackReviews(this.db, firmId, options);
+  }
+
+  async createPaymentImportRefundChargebackResolutionRecord(
+    record: Parameters<
+      OpenPracticeRepository["createPaymentImportRefundChargebackResolutionRecord"]
+    >[0],
+  ): ReturnType<OpenPracticeRepository["createPaymentImportRefundChargebackResolutionRecord"]> {
+    return createDrizzlePaymentImportRefundChargebackResolutionRecord(this.db, record);
+  }
+
+  async listPaymentImportRefundChargebackResolutionRecords(
+    firmId: string,
+    options: Parameters<
+      OpenPracticeRepository["listPaymentImportRefundChargebackResolutionRecords"]
+    >[1] = {},
+  ): ReturnType<OpenPracticeRepository["listPaymentImportRefundChargebackResolutionRecords"]> {
+    return listDrizzlePaymentImportRefundChargebackResolutionRecords(this.db, firmId, options);
   }
 
   async createTrustTransferRequest(

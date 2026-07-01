@@ -211,6 +211,43 @@ export function describeRefundChargebackResolutionPacketNoSideEffects(
     .join(" · ");
 }
 
+export function describeRefundChargebackResolutionRecord(
+  record: BillingPaymentImportReviewSummary,
+): string | undefined {
+  const resolutionRecord = record.latestRefundChargebackResolutionRecord;
+  if (!resolutionRecord) return undefined;
+  const reasonLabel =
+    resolutionRecord.reasonCategories.length > 0
+      ? resolutionRecord.reasonCategories.map((reason) => reason.replaceAll("_", " ")).join(" · ")
+      : "no enum reason recorded";
+  return `Latest resolution record: ${resolutionRecord.category} · ${resolutionRecord.resolutionPosture.replaceAll(
+    "_",
+    " ",
+  )} · ${reasonLabel} · recorded by ${resolutionRecord.recordedByUserId} at ${
+    resolutionRecord.recordedAt
+  }`;
+}
+
+export function describeRefundChargebackResolutionRecordNoSideEffects(
+  record: BillingPaymentImportReviewSummary,
+): string | undefined {
+  const flags = record.latestRefundChargebackResolutionRecord?.noSideEffectFlags;
+  if (!flags) return undefined;
+  return [
+    flags.invoiceBalanceMutation === "none" ? "No invoice mutation" : undefined,
+    flags.ledgerReversal === "none" ? "No ledger reversal" : undefined,
+    flags.providerCommand === "none" ? "No provider command" : undefined,
+    !flags.refundArtifactStorage ? "No refund artifact storage" : undefined,
+    !flags.disputeArtifactStorage ? "No dispute artifact storage" : undefined,
+    !flags.freeFormNotes ? "No free-form notes" : undefined,
+    flags.clientNotification === "none" ? "No client notification" : undefined,
+    flags.trustPosting === "none" ? "No trust posting" : undefined,
+    flags.fundsMovement === "none" ? "No funds movement" : undefined,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
 const depositMatchReadinessReasonLabels: Record<
   NonNullable<BillingPaymentImportReviewSummary["reconciliationReadiness"]>["reason"],
   string

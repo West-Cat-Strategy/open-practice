@@ -65,6 +65,57 @@ describe("Docker image scanner wrapper", () => {
     );
   });
 
+  it("uses the latest complete app-smoke image set when default dev image tags are absent", () => {
+    const cwd = mkdtempSync(path.join(tmpdir(), "open-practice-docker-scan-smoke-"));
+    const calls = [];
+    const spawn = (command, args) => {
+      calls.push({ command, args });
+      if (command === "trivy" && args[0] === "--version") {
+        return { status: 0, signal: null, stdout: "Version: 0.68.1\n", stderr: "" };
+      }
+      if (command === "docker") {
+        return {
+          status: 0,
+          signal: null,
+          stdout: [
+            "open-practice-app-smoke-222-web:latest",
+            "open-practice-app-smoke-222-api:latest",
+            "open-practice-app-smoke-222-worker:latest",
+            "open-practice-app-smoke-111-api:latest",
+            "open-practice-app-smoke-111-web:latest",
+            "open-practice-postgres:18-alpine-su-exec",
+            "open-practice-minio:RELEASE.2025-10-15T17-29-55Z-go1.26.4",
+            "open-practice-mailpit:v1.30.3-go1.26.4",
+          ].join("\n"),
+          stderr: "",
+        };
+      }
+      return { status: 0, signal: null, stdout: "", stderr: "" };
+    };
+
+    const report = scanDockerImages({
+      artifactRoot: ".tmp/docker/trivy",
+      cwd,
+      now: new Date("2026-06-23T12:34:56Z"),
+      spawn,
+    });
+
+    assert.equal(report.status, "passed");
+    assert.deepEqual(
+      calls
+        .filter((call) => call.command === "trivy" && call.args[0] === "image")
+        .map((call) => call.args.at(-1)),
+      [
+        "open-practice-app-smoke-222-api:latest",
+        "open-practice-app-smoke-222-web:latest",
+        "open-practice-app-smoke-222-worker:latest",
+        "open-practice-postgres:18-alpine-su-exec",
+        "open-practice-minio:RELEASE.2025-10-15T17-29-55Z-go1.26.4",
+        "open-practice-mailpit:v1.30.3-go1.26.4",
+      ],
+    );
+  });
+
   it("accepts MinIO-only Trivy findings when residual-watch proves bundled MinIO eligibility", () => {
     const cwd = mkdtempSync(path.join(tmpdir(), "open-practice-docker-scan-minio-"));
     const spawn = (command, args) => {

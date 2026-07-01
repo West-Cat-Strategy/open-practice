@@ -296,6 +296,168 @@ export interface ContactDuplicateResolutionRecord {
   createdAt: string;
 }
 
+export interface ContactHistoryExportPreviewBoundary {
+  storedBody: false;
+  retainedExportArtifact: false;
+  objectStorageArtifact: false;
+  provider: false;
+  broadQueue: false;
+  deletionWorkflow: false;
+  retentionDeadline: false;
+  legalHoldOverride: false;
+  hiddenMatterDisclosure: false;
+  rawPrivateNotes: false;
+  taskText: false;
+  storageKeys: false;
+  complianceClaim: false;
+}
+
+export interface ContactHistoryExportPreviewCounts {
+  generatedCategoryCount: number;
+  timelineEntryCount: number;
+  matterAssociationCount: number;
+  relationshipCount: number;
+  portalGrantCount: number;
+  conflictSummaryCount: number;
+  documentHoldCueCount: number;
+  retentionHoldCueCount: number;
+  dataQualityResolutionCount: number;
+}
+
+export interface ContactHistoryExportPreview {
+  purpose: "staff_review";
+  contactId: string;
+  matterId: string;
+  matterScoped: true;
+  generatedAt: string;
+  generatedByUserId: string;
+  reviewReasonPresent: boolean;
+  retentionPosture: "matter_scoped_preview_no_retained_export_body";
+  legalHoldPosture: "respects_existing_matter_visibility_no_hold_override";
+  privacyPosture: "redacted_authorized_projection_only";
+  redactedAuthorizedProjection: true;
+  categoryPresence: {
+    identityPosture: boolean;
+    namePosture: boolean;
+    contactMethodPosture: boolean;
+    relationshipPosture: boolean;
+    matterPartyPosture: boolean;
+    portalAccessPosture: boolean;
+    conflictReviewPosture: boolean;
+    dataQualityAndDuplicateReviewPosture: boolean;
+    documentHoldReviewPosture: boolean;
+    retentionHoldReviewPosture: boolean;
+    timelineCues: boolean;
+  };
+  counts: ContactHistoryExportPreviewCounts;
+  safeIds: {
+    contactId: string;
+    matterId: string;
+    relationshipIds: string[];
+    portalGrantIds: string[];
+    conflictHistoryIds: string[];
+    dataQualityResolutionIds: string[];
+    timelineEntryIds: string[];
+  };
+  boundary: ContactHistoryExportPreviewBoundary;
+}
+
+export function defaultContactHistoryExportPreviewBoundary(): ContactHistoryExportPreviewBoundary {
+  return {
+    storedBody: false,
+    retainedExportArtifact: false,
+    objectStorageArtifact: false,
+    provider: false,
+    broadQueue: false,
+    deletionWorkflow: false,
+    retentionDeadline: false,
+    legalHoldOverride: false,
+    hiddenMatterDisclosure: false,
+    rawPrivateNotes: false,
+    taskText: false,
+    storageKeys: false,
+    complianceClaim: false,
+  };
+}
+
+export function buildContactHistoryExportPreview(input: {
+  contactId: string;
+  matterId: string;
+  generatedAt: string;
+  generatedByUserId: string;
+  reviewReason: string;
+  relationshipIds?: string[];
+  portalGrantIds?: string[];
+  conflictHistoryIds?: string[];
+  dataQualityResolutionIds?: string[];
+  timelineEntryIds?: string[];
+  counts: Omit<
+    ContactHistoryExportPreviewCounts,
+    | "relationshipCount"
+    | "portalGrantCount"
+    | "conflictSummaryCount"
+    | "dataQualityResolutionCount"
+    | "timelineEntryCount"
+  > & {
+    conflictCueCount?: number;
+  };
+}): ContactHistoryExportPreview {
+  const relationshipIds = [...(input.relationshipIds ?? [])];
+  const portalGrantIds = [...(input.portalGrantIds ?? [])];
+  const conflictHistoryIds = [...(input.conflictHistoryIds ?? [])];
+  const dataQualityResolutionIds = [...(input.dataQualityResolutionIds ?? [])];
+  const timelineEntryIds = [...(input.timelineEntryIds ?? [])];
+  const conflictSummaryCount = conflictHistoryIds.length + (input.counts.conflictCueCount ?? 0);
+
+  return {
+    purpose: "staff_review",
+    contactId: input.contactId,
+    matterId: input.matterId,
+    matterScoped: true,
+    generatedAt: input.generatedAt,
+    generatedByUserId: input.generatedByUserId,
+    reviewReasonPresent: Boolean(input.reviewReason.trim()),
+    retentionPosture: "matter_scoped_preview_no_retained_export_body",
+    legalHoldPosture: "respects_existing_matter_visibility_no_hold_override",
+    privacyPosture: "redacted_authorized_projection_only",
+    redactedAuthorizedProjection: true,
+    categoryPresence: {
+      identityPosture: true,
+      namePosture: true,
+      contactMethodPosture: true,
+      relationshipPosture: relationshipIds.length > 0,
+      matterPartyPosture: input.counts.matterAssociationCount > 0,
+      portalAccessPosture: portalGrantIds.length > 0,
+      conflictReviewPosture: conflictSummaryCount > 0,
+      dataQualityAndDuplicateReviewPosture: dataQualityResolutionIds.length > 0,
+      documentHoldReviewPosture: input.counts.documentHoldCueCount > 0,
+      retentionHoldReviewPosture: input.counts.retentionHoldCueCount > 0,
+      timelineCues: timelineEntryIds.length > 0,
+    },
+    counts: {
+      generatedCategoryCount: input.counts.generatedCategoryCount,
+      timelineEntryCount: timelineEntryIds.length,
+      matterAssociationCount: input.counts.matterAssociationCount,
+      relationshipCount: relationshipIds.length,
+      portalGrantCount: portalGrantIds.length,
+      conflictSummaryCount,
+      documentHoldCueCount: input.counts.documentHoldCueCount,
+      retentionHoldCueCount: input.counts.retentionHoldCueCount,
+      dataQualityResolutionCount: dataQualityResolutionIds.length,
+    },
+    safeIds: {
+      contactId: input.contactId,
+      matterId: input.matterId,
+      relationshipIds,
+      portalGrantIds,
+      conflictHistoryIds,
+      dataQualityResolutionIds,
+      timelineEntryIds,
+    },
+    boundary: defaultContactHistoryExportPreviewBoundary(),
+  };
+}
+
 export const contactTimelineActivityFilters = [
   "all",
   "crm_activity",

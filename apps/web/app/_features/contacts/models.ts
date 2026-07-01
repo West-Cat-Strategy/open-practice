@@ -79,73 +79,56 @@ export interface ContactTimelineResponse {
   timeline: ActivityTimelineEntry[];
 }
 
-export interface ContactHistoryExportRequest {
-  id: string;
-  jobId: string;
+export interface ContactHistoryExportPreview {
   contactId: string;
+  matterId: string;
+  matterScoped: true;
   purpose: "staff_review";
-  status: "queued" | "active" | "completed" | "failed" | "dead_letter" | "skipped";
-  queuedAt: string;
-  startedAt?: string;
-  finishedAt?: string;
-  failedAt?: string;
-  pollUrl: string;
-  downloadUrl: string;
-  downloadExpiresAt?: string;
+  generatedAt: string;
+  generatedByUserId: string;
   reviewReasonPresent: boolean;
-  generatedCategoryCount?: number;
-  timelineEntryCount?: number;
-  matterAssociationCount?: number;
-  portalGrantCount?: number;
-  conflictSummaryCount?: number;
-  documentHoldCueCount?: number;
-  retentionHoldCueCount?: number;
-  matterId?: string;
-  matterScoped?: boolean;
   retentionPosture: string;
   legalHoldPosture: string;
   privacyPosture: string;
-  storedBody: false;
-  retainedExportArtifact: false;
-  deletionAutomation: false;
-  retentionDeadline: false;
-  legalHoldOverride: false;
   redactedAuthorizedProjection: true;
-}
-
-export interface ContactHistoryExportRequestResponse {
-  exportRequest: ContactHistoryExportRequest;
+  categoryPresence: Record<string, boolean>;
+  counts: {
+    generatedCategoryCount: number;
+    timelineEntryCount: number;
+    matterAssociationCount: number;
+    relationshipCount: number;
+    portalGrantCount: number;
+    conflictSummaryCount: number;
+    documentHoldCueCount: number;
+    retentionHoldCueCount: number;
+    dataQualityResolutionCount: number;
+  };
+  safeIds: {
+    contactId: string;
+    matterId: string;
+    relationshipIds: string[];
+    portalGrantIds: string[];
+    conflictHistoryIds: string[];
+    dataQualityResolutionIds: string[];
+    timelineEntryIds: string[];
+  };
+  boundary: {
+    storedBody: false;
+    retainedExportArtifact: false;
+    objectStorageArtifact: false;
+    provider: false;
+    broadQueue: false;
+    deletionWorkflow: false;
+    retentionDeadline: false;
+    legalHoldOverride: false;
+    hiddenMatterDisclosure: false;
+    rawPrivateNotes: false;
+    taskText: false;
+    storageKeys: false;
+    complianceClaim: false;
+  };
 }
 
 export interface ContactHistoryExportResponse {
-  exportRequest: {
-    purpose: "staff_review";
-    contactId: string;
-    generatedAt: string;
-    generatedByUserId: string;
-    reviewReasonPresent: boolean;
-    retentionPosture: string;
-    legalHoldPosture: string;
-    privacyPosture: string;
-    storedBody: false;
-  } & Partial<ContactHistoryExportRequest>;
-  export: {
-    generatedAt: string;
-    generatedByUserId: string;
-    purpose: "staff_review";
-    policyBoundary: Record<string, boolean>;
-    categories: {
-      identityPosture: Record<string, unknown>;
-      namePosture: Record<string, unknown>;
-      contactMethodPosture: Record<string, unknown>;
-      relationshipPosture: unknown[];
-      matterPartyPosture: unknown[];
-      portalAccessPosture: { grants?: unknown[]; [key: string]: unknown };
-      conflictReviewPosture: Record<string, unknown>;
-      dataQualityAndDuplicateReviewPosture: Record<string, unknown>;
-      documentHoldReviewPosture: unknown[];
-      retentionHoldReviewPosture: Record<string, unknown>;
-      timelineCues: unknown[];
-    };
-  };
+  preview: ContactHistoryExportPreview;
 }

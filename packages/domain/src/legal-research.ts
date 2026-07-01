@@ -22,6 +22,14 @@ export type LegalResearchArtifactStatus = (typeof legalResearchArtifactStatuses)
 export const legalResearchReviewDecisions = ["reviewed", "rejected"] as const;
 export type LegalResearchReviewDecision = (typeof legalResearchReviewDecisions)[number];
 
+export const legalResearchCitationPacketDecisions = [
+  "ready_for_staff_review",
+  "needs_source_review",
+] as const;
+
+export type LegalResearchCitationPacketDecision =
+  (typeof legalResearchCitationPacketDecisions)[number];
+
 export const legalResearchProviderJobName = "legal_research_provider_review" as const;
 
 export const legalResearchProviderJobRequestTypes = ["citation_review"] as const;
@@ -188,6 +196,26 @@ export type LegalResearchCitationPacketReadinessBlockedReason =
   | "no_ready_for_review_artifacts"
   | "open_checkpoints";
 
+export interface LegalResearchCitationPacketDecisionCue {
+  artifactId: string;
+  decision: LegalResearchCitationPacketDecision;
+  decidedByUserId: string;
+  decidedAt: string;
+  sourceReferenceCount: number;
+  readyForReviewArtifactCount: number;
+  openCheckpointCount: number;
+  contextLinkCount: number;
+  metadataOnly: true;
+  providerExecuted: false;
+  sourceTextStored: false;
+  promptStored: false;
+  providerEvidenceStored: false;
+  citationVerificationClaimed: false;
+  legalAdviceGenerated: false;
+  downstreamMutation: false;
+  reviewOnly: true;
+}
+
 export interface LegalResearchCitationPacketReadiness {
   sourceReferenceCount: number;
   sourceReferenceCountsByType: Record<LegalResearchSourceType, number>;
@@ -199,6 +227,7 @@ export interface LegalResearchCitationPacketReadiness {
   contextLinkCountsByType: Record<LegalResearchContextResourceType, number>;
   staffReviewReady: boolean;
   blockedReasons: LegalResearchCitationPacketReadinessBlockedReason[];
+  latestDecision?: LegalResearchCitationPacketDecisionCue;
   reservedProviderJobPosture: "reserved_no_provider_execution";
   providerExecuted: false;
   authorityScraped: false;
@@ -251,12 +280,14 @@ export interface DocumentConversionSemanticReviewCheckpointMetadataInput {
 const artifactKindSet = new Set<string>(legalResearchArtifactKinds);
 const artifactStatusSet = new Set<string>(legalResearchArtifactStatuses);
 const reviewDecisionSet = new Set<string>(legalResearchReviewDecisions);
+const citationPacketDecisionSet = new Set<string>(legalResearchCitationPacketDecisions);
 const sourceTypeSet = new Set<string>(legalResearchSourceTypes);
 const providerJobRequestTypeSet = new Set<string>(legalResearchProviderJobRequestTypes);
 const maxNoteLength = 4000;
 const legalResearchContextResourceTypes = [
   "matter",
   "document",
+  "legal_research_artifact",
   "draft",
   "contact",
   "task",
@@ -271,6 +302,20 @@ function compactRecord(metadata: Record<string, unknown>): Record<string, unknow
 function safeNonNegativeInteger(value: number | undefined): number | undefined {
   if (typeof value !== "number") return undefined;
   return Number.isInteger(value) && value >= 0 ? value : undefined;
+}
+
+function hasForbiddenCitationPacketDecisionMetadata(metadata: Record<string, unknown>): boolean {
+  return [
+    "sourceText",
+    "rawSourceText",
+    "prompt",
+    "prompts",
+    "providerEvidence",
+    "providerPayload",
+    "providerPayloads",
+    "citationVerificationEvidence",
+    "legalAdvice",
+  ].some((key) => Object.prototype.hasOwnProperty.call(metadata, key));
 }
 
 export function assertLegalResearchArtifactKind(
@@ -297,6 +342,14 @@ export function assertLegalResearchProviderJobRequestType(
   }
 }
 
+export function assertLegalResearchCitationPacketDecision(
+  value: string,
+): asserts value is LegalResearchCitationPacketDecision {
+  if (!citationPacketDecisionSet.has(value)) {
+    throw new Error(`Unsupported legal research citation packet decision: ${value}`);
+  }
+}
+
 export function reviewLegalResearchArtifactRecord(input: {
   record: LegalResearchArtifactRecord;
   decision: LegalResearchReviewDecision;
@@ -315,6 +368,101 @@ export function reviewLegalResearchArtifactRecord(input: {
     reviewedAt: input.reviewedAt,
     updatedAt: input.reviewedAt,
   };
+}
+
+export function buildLegalResearchCitationPacketDecisionMetadata(input: {
+  matterId: string;
+  decision: LegalResearchCitationPacketDecision;
+  decidedByUserId: string;
+  decidedAt: string;
+  sourceReferenceCount: number;
+  sourceReferenceCountsByType: Record<LegalResearchSourceType, number>;
+  readyForReviewArtifactCount: number;
+  readyForReviewArtifactIds: string[];
+  openCheckpointCount: number;
+  openCheckpointArtifactIds: string[];
+  contextLinkCount: number;
+  contextLinkCountsByType: Record<LegalResearchContextResourceType, number>;
+}): Record<string, unknown> {
+  return {
+    source: "legal_research_citation_packet_decision",
+    matterId: input.matterId,
+    decision: input.decision,
+    decidedByUserId: input.decidedByUserId,
+    decidedAt: input.decidedAt,
+    sourceReferenceCount: input.sourceReferenceCount,
+    sourceReferenceCountsByType: input.sourceReferenceCountsByType,
+    readyForReviewArtifactCount: input.readyForReviewArtifactCount,
+    readyForReviewArtifactIds: input.readyForReviewArtifactIds,
+    openCheckpointCount: input.openCheckpointCount,
+    openCheckpointArtifactIds: input.openCheckpointArtifactIds,
+    contextLinkCount: input.contextLinkCount,
+    contextLinkCountsByType: input.contextLinkCountsByType,
+    staffReviewRequired: true,
+    metadataOnly: true,
+    providerExecuted: false,
+    authorityScraped: false,
+    sourceTextStored: false,
+    promptStored: false,
+    providerEvidenceStored: false,
+    citationVerificationClaimed: false,
+    legalAdviceGenerated: false,
+    downstreamMutation: false,
+    reviewOnly: true,
+  };
+}
+
+function legalResearchCitationPacketDecisionCueFromArtifact(
+  record: LegalResearchArtifactRecord,
+): LegalResearchCitationPacketDecisionCue | undefined {
+  if (record.kind !== "review_checkpoint" || record.status !== "reviewed") return undefined;
+  const metadata = record.metadata;
+  if (metadata.source !== "legal_research_citation_packet_decision") return undefined;
+  if (typeof metadata.decision !== "string" || !citationPacketDecisionSet.has(metadata.decision)) {
+    return undefined;
+  }
+  if (typeof metadata.decidedByUserId !== "string" || !metadata.decidedByUserId.trim()) {
+    return undefined;
+  }
+  if (typeof metadata.decidedAt !== "string" || Number.isNaN(Date.parse(metadata.decidedAt))) {
+    return undefined;
+  }
+
+  const decision = metadata.decision as LegalResearchCitationPacketDecision;
+
+  return {
+    artifactId: record.id,
+    decision,
+    decidedByUserId: metadata.decidedByUserId,
+    decidedAt: metadata.decidedAt,
+    sourceReferenceCount:
+      typeof metadata.sourceReferenceCount === "number" ? metadata.sourceReferenceCount : 0,
+    readyForReviewArtifactCount:
+      typeof metadata.readyForReviewArtifactCount === "number"
+        ? metadata.readyForReviewArtifactCount
+        : 0,
+    openCheckpointCount:
+      typeof metadata.openCheckpointCount === "number" ? metadata.openCheckpointCount : 0,
+    contextLinkCount: typeof metadata.contextLinkCount === "number" ? metadata.contextLinkCount : 0,
+    metadataOnly: true,
+    providerExecuted: false,
+    sourceTextStored: false,
+    promptStored: false,
+    providerEvidenceStored: false,
+    citationVerificationClaimed: false,
+    legalAdviceGenerated: false,
+    downstreamMutation: false,
+    reviewOnly: true,
+  };
+}
+
+export function latestLegalResearchCitationPacketDecision(
+  records: LegalResearchArtifactRecord[],
+): LegalResearchCitationPacketDecisionCue | undefined {
+  return records
+    .map(legalResearchCitationPacketDecisionCueFromArtifact)
+    .filter((cue): cue is LegalResearchCitationPacketDecisionCue => Boolean(cue))
+    .sort((a, b) => Date.parse(b.decidedAt) - Date.parse(a.decidedAt))[0];
 }
 
 export function validateLegalResearchArtifactRecord(record: LegalResearchArtifactRecord): void {
@@ -361,6 +509,14 @@ export function validateLegalResearchArtifactRecord(record: LegalResearchArtifac
     }
   } else if (record.reviewDecision || record.reviewedByUserId || record.reviewedAt) {
     throw new Error("Unreviewed legal research artifacts cannot include review metadata");
+  }
+  if (record.metadata.source === "legal_research_citation_packet_decision") {
+    if (
+      hasForbiddenCitationPacketDecisionMetadata(record.metadata) ||
+      !legalResearchCitationPacketDecisionCueFromArtifact(record)
+    ) {
+      throw new Error("Legal research citation packet decision metadata is invalid");
+    }
   }
   if (Number.isNaN(Date.parse(record.createdAt)) || Number.isNaN(Date.parse(record.updatedAt))) {
     throw new Error("Legal research artifact timestamps must be ISO-compatible");
@@ -583,6 +739,7 @@ export function buildLegalResearchCitationPacketReadiness(
   if (sourceReferenceCount === 0) blockedReasons.push("no_source_references");
   if (readyForReviewArtifactCount === 0) blockedReasons.push("no_ready_for_review_artifacts");
   if (openCheckpointCount > 0) blockedReasons.push("open_checkpoints");
+  const latestDecision = latestLegalResearchCitationPacketDecision(records);
 
   return {
     sourceReferenceCount,
@@ -595,6 +752,7 @@ export function buildLegalResearchCitationPacketReadiness(
     contextLinkCountsByType,
     staffReviewReady: blockedReasons.length === 0,
     blockedReasons,
+    ...(latestDecision ? { latestDecision } : {}),
     reservedProviderJobPosture: "reserved_no_provider_execution",
     providerExecuted: false,
     authorityScraped: false,

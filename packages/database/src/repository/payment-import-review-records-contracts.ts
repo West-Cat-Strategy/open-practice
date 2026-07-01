@@ -1,5 +1,6 @@
 import type {
   PaymentImportDepositMatchReviewRecord,
+  PaymentImportRefundChargebackResolutionRecord,
   PaymentImportRefundChargebackReviewRecord,
   PaymentImportReviewRecord,
 } from "@open-practice/domain";
@@ -24,6 +25,13 @@ export interface PaymentImportRefundChargebackReviewListOptions {
   paymentImportReviewRecordId?: string;
   category?: PaymentImportRefundChargebackReviewRecord["category"];
   decision?: PaymentImportRefundChargebackReviewRecord["decision"];
+}
+
+export interface PaymentImportRefundChargebackResolutionRecordListOptions {
+  matterId?: string;
+  paymentImportReviewRecordId?: string;
+  category?: PaymentImportRefundChargebackResolutionRecord["category"];
+  resolutionPosture?: PaymentImportRefundChargebackResolutionRecord["resolutionPosture"];
 }
 
 export interface PaymentImportReviewRecordRepository {
@@ -52,4 +60,11 @@ export interface PaymentImportReviewRecordRepository {
     firmId: string,
     options?: PaymentImportRefundChargebackReviewListOptions,
   ): Promise<PaymentImportRefundChargebackReviewRecord[]>;
+  createPaymentImportRefundChargebackResolutionRecord(
+    record: PaymentImportRefundChargebackResolutionRecord,
+  ): Promise<PaymentImportRefundChargebackResolutionRecord>;
+  listPaymentImportRefundChargebackResolutionRecords(
+    firmId: string,
+    options?: PaymentImportRefundChargebackResolutionRecordListOptions,
+  ): Promise<PaymentImportRefundChargebackResolutionRecord[]>;
 }

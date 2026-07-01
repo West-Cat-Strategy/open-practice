@@ -1,5 +1,6 @@
 import type {
   LegalResearchArtifactRecord,
+  LegalResearchCitationPacketDecisionCue,
   LegalResearchContextResourceType,
   LegalResearchSourceType,
   User,
@@ -22,6 +23,10 @@ export function buildLegalResearchProviderJobPath(): string {
   return "/api/legal-research/provider-jobs";
 }
 
+export function buildLegalResearchCitationPacketDecisionPath(): string {
+  return "/api/legal-research/citation-packet-decisions";
+}
+
 const legalResearchSourceTypes = [
   "case_law",
   "statute",
@@ -35,6 +40,7 @@ const legalResearchSourceTypes = [
 const legalResearchContextResourceTypes = [
   "matter",
   "document",
+  "legal_research_artifact",
   "draft",
   "contact",
   "task",
@@ -220,7 +226,59 @@ function summarizeLegalResearchCitationPacketReadiness(
   }
   if (readiness.openCheckpointCount > 0) readiness.blockedReasons.push("open_checkpoints");
   readiness.staffReviewReady = readiness.blockedReasons.length === 0;
+  const latestDecision = latestLegalResearchCitationPacketDecision(artifacts);
+  if (latestDecision) readiness.latestDecision = latestDecision;
   return readiness;
+}
+
+function latestLegalResearchCitationPacketDecision(
+  artifacts: LegalResearchArtifactRecord[],
+): LegalResearchCitationPacketDecisionCue | undefined {
+  return artifacts
+    .filter(
+      (artifact) =>
+        artifact.kind === "review_checkpoint" &&
+        artifact.status === "reviewed" &&
+        artifact.metadata.source === "legal_research_citation_packet_decision" &&
+        (artifact.metadata.decision === "ready_for_staff_review" ||
+          artifact.metadata.decision === "needs_source_review") &&
+        typeof artifact.metadata.decidedByUserId === "string" &&
+        typeof artifact.metadata.decidedAt === "string",
+    )
+    .map(
+      (artifact): LegalResearchCitationPacketDecisionCue => ({
+        artifactId: artifact.id,
+        decision: artifact.metadata.decision as LegalResearchCitationPacketDecisionCue["decision"],
+        decidedByUserId: String(artifact.metadata.decidedByUserId),
+        decidedAt: String(artifact.metadata.decidedAt),
+        sourceReferenceCount:
+          typeof artifact.metadata.sourceReferenceCount === "number"
+            ? artifact.metadata.sourceReferenceCount
+            : 0,
+        readyForReviewArtifactCount:
+          typeof artifact.metadata.readyForReviewArtifactCount === "number"
+            ? artifact.metadata.readyForReviewArtifactCount
+            : 0,
+        openCheckpointCount:
+          typeof artifact.metadata.openCheckpointCount === "number"
+            ? artifact.metadata.openCheckpointCount
+            : 0,
+        contextLinkCount:
+          typeof artifact.metadata.contextLinkCount === "number"
+            ? artifact.metadata.contextLinkCount
+            : 0,
+        metadataOnly: true,
+        providerExecuted: false,
+        sourceTextStored: false,
+        promptStored: false,
+        providerEvidenceStored: false,
+        citationVerificationClaimed: false,
+        legalAdviceGenerated: false,
+        downstreamMutation: false,
+        reviewOnly: true,
+      }),
+    )
+    .sort((a, b) => Date.parse(b.decidedAt) - Date.parse(a.decidedAt))[0];
 }
 
 export function summarizeLegalResearchWorkspaceStatus(

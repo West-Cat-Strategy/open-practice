@@ -30,6 +30,7 @@ import type {
   DraftExportFormat,
   EmbeddedIntakeTemplateDefinitionV2,
   LegalResearchArtifactRecord,
+  LegalResearchCitationPacketDecision,
   StaffReportDefinitionKey,
   StaffReportExportProfileId,
   StaffReportGroupingKey,
@@ -253,6 +254,7 @@ import {
   replaceAiOperationalProposal,
 } from "./ai-operational-proposals-dashboard";
 import {
+  buildLegalResearchCitationPacketDecisionPath,
   buildLegalResearchReviewPath,
   buildLegalResearchWorkspacePath,
   canReviewLegalResearch,
@@ -369,8 +371,6 @@ import {
   type ContactDuplicateResolutionDecisionsResponse,
   type ContactDuplicateResolutionRecord,
   type ContactDossiersResponse,
-  type ContactHistoryExportRequest,
-  type ContactHistoryExportRequestResponse,
   type ContactHistoryExportResponse,
   type ContactTimelineActivityFilter,
   type ContactTimelineResponse,
@@ -1225,11 +1225,6 @@ export default function DashboardClient({
   );
   const [contactHistoryExportSummary, setContactHistoryExportSummary] = useState("");
   const [exportingContactHistory, setExportingContactHistory] = useState(false);
-  const [contactHistoryExportRequest, setContactHistoryExportRequest] =
-    useState<ContactHistoryExportRequest | null>(null);
-  const [contactHistoryExportAction, setContactHistoryExportAction] = useState<
-    "poll" | "download" | ""
-  >("");
   const [recordingContactResolutionKey, setRecordingContactResolutionKey] = useState("");
   const [recordingContactDuplicateResolutionKey, setRecordingContactDuplicateResolutionKey] =
     useState("");
@@ -1355,6 +1350,8 @@ export default function DashboardClient({
     legalResearch.workbenchesByMatterId,
   );
   const [legalResearchReviewBusyId, setLegalResearchReviewBusyId] = useState("");
+  const [legalResearchCitationPacketDecisionBusyId, setLegalResearchCitationPacketDecisionBusyId] =
+    useState("");
   const [legalResearchStatus, setLegalResearchStatus] = useState(
     "Research workspace artifacts loaded.",
   );
@@ -1679,6 +1676,11 @@ export default function DashboardClient({
   );
   const canExportSelectedContactHistory = canExportContactHistory(capabilities.sections);
   const activeMatter = matters.find((matter) => matter.id === activeMatterId) ?? matters[0];
+  const contactHistoryExportMatterId =
+    activeMatter &&
+    activeContactDossier?.matters.some((matter) => matter.matterId === activeMatter.id)
+      ? activeMatter.id
+      : "";
   const activeSignatures = signatures.filter(
     (signature) => signature.matterId === activeMatter?.id,
   );
@@ -3656,22 +3658,6 @@ export default function DashboardClient({
     }
   }
 
-  function downloadContactHistoryExport(payload: ContactHistoryExportResponse): void {
-    if (typeof document === "undefined" || typeof URL === "undefined") return;
-    const encodedContactId = payload.exportRequest.contactId.replace(/[^a-z0-9_-]+/gi, "-");
-    const blob = new Blob([JSON.stringify(payload, null, 2)], {
-      type: "application/json",
-    });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `contact-history-${encodedContactId}.json`;
-    document.body.append(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
-  }
-
   function downloadReportExport(payload: StaffReportExportDownloadResponse): void {
     if (typeof document === "undefined" || typeof URL === "undefined") return;
     const encodedDefinitionKey = payload.export.report.definitionKey.replace(/[^a-z0-9_-]+/gi, "-");
@@ -3696,134 +3682,43 @@ export default function DashboardClient({
 
   async function exportContactHistory(): Promise<void> {
     const reason = contactHistoryExportReason.trim();
-    if (!activeContactDossier || !canExportSelectedContactHistory || reason.length < 8) return;
+    if (
+      !activeContactDossier ||
+      !canExportSelectedContactHistory ||
+      !contactHistoryExportMatterId ||
+      reason.length < 8
+    ) {
+      return;
+    }
     setExportingContactHistory(true);
-    setContactHistoryExportStatus("Queuing contact-history export...");
+    setContactHistoryExportStatus("Preparing contact-history preview...");
     setContactHistoryExportSummary("");
     try {
-      const requestPayload = await requestDashboardJson<ContactHistoryExportRequestResponse>(
+      const payload = await requestDashboardJson<ContactHistoryExportResponse>(
         apiBaseUrl,
-        `/api/contacts/${encodeURIComponent(
-          activeContactDossier.contact.id,
-        )}/history-export-requests`,
+        `/api/contacts/${encodeURIComponent(activeContactDossier.contact.id)}/history-export`,
         {
           method: "POST",
           headers: devHeaders,
-          payload: { purpose: "staff_review", reviewReason: reason },
+          payload: {
+            purpose: "staff_review",
+            matterId: contactHistoryExportMatterId,
+            reviewReason: reason,
+          },
         },
       );
-      const request = requestPayload.exportRequest;
-      setContactHistoryExportRequest(request);
-      setActiveContactId(request.contactId);
-      if (request.status !== "completed") {
-        setContactHistoryExportStatus(
-          `Export request ${request.status}; download link expires ${compactDate(
-            request.downloadExpiresAt,
-          )}.`,
-        );
-        setContactHistoryExportSummary(
-          "Queued request stores status, counts, and posture metadata only. No server-side export body is stored.",
-        );
-        return;
-      }
-
-      const payload = await requestDashboardJson<ContactHistoryExportResponse>(
-        apiBaseUrl,
-        request.downloadUrl,
-        { headers: devHeaders },
-      );
-      downloadContactHistoryExport(payload);
-      const categoryCount = Object.keys(payload.export.categories).length;
-      const timelineCount = payload.export.categories.timelineCues.length;
-      const matterCount = payload.export.categories.matterPartyPosture.length;
-      const portalGrantCount = payload.export.categories.portalAccessPosture.grants?.length ?? 0;
-      setContactHistoryExportStatus(
-        `Export request completed; JSON download prepared from regenerated data.`,
-      );
+      const { preview } = payload;
+      setActiveContactId(preview.contactId);
+      const counts = preview.counts;
+      setContactHistoryExportStatus(`Preview generated ${compactDate(preview.generatedAt)}.`);
       setContactHistoryExportSummary(
-        `${categoryCount} categories, ${timelineCount} timeline cues, ${matterCount} matter links, ${portalGrantCount} portal grants. Download link expires ${compactDate(
-          payload.exportRequest.downloadExpiresAt ?? request.downloadExpiresAt,
-        )}; no server-side export body stored.`,
+        `${counts.generatedCategoryCount} categories, ${counts.timelineEntryCount} timeline cues, ${counts.matterAssociationCount} matter links, ${counts.portalGrantCount} portal grants. Matter-scoped preview only; no export body, job, download link, or server-side artifact stored.`,
       );
     } catch (error) {
       setContactHistoryExportStatus(`Contact-history export failed: ${dashboardApiStatus(error)}`);
       setContactHistoryExportSummary("");
     } finally {
       setExportingContactHistory(false);
-    }
-  }
-
-  async function pollContactHistoryExport(): Promise<ContactHistoryExportRequest | undefined> {
-    const requestToPoll =
-      contactHistoryExportRequest?.contactId === activeContactDossier?.contact.id
-        ? contactHistoryExportRequest
-        : undefined;
-    if (!requestToPoll) return undefined;
-    setContactHistoryExportAction("poll");
-    setContactHistoryExportStatus("Refreshing contact-history export request...");
-    try {
-      const payload = await requestDashboardJson<ContactHistoryExportRequestResponse>(
-        apiBaseUrl,
-        requestToPoll.pollUrl,
-        { headers: devHeaders },
-      );
-      const request = payload.exportRequest;
-      setContactHistoryExportRequest(request);
-      setContactHistoryExportStatus(
-        `Export request ${request.status}; download link expires ${compactDate(
-          request.downloadExpiresAt,
-        )}.`,
-      );
-      setContactHistoryExportSummary(
-        request.status === "completed"
-          ? "Export is ready; download regenerates the authorized projection without storing a server-side body."
-          : "Queued request stores status, counts, and posture metadata only. No server-side export body is stored.",
-      );
-      return request;
-    } catch (error) {
-      setContactHistoryExportStatus(`Contact-history refresh failed: ${dashboardApiStatus(error)}`);
-      return undefined;
-    } finally {
-      setContactHistoryExportAction("");
-    }
-  }
-
-  async function downloadLatestContactHistoryExport(): Promise<void> {
-    const request =
-      contactHistoryExportRequest?.contactId === activeContactDossier?.contact.id
-        ? contactHistoryExportRequest
-        : undefined;
-    if (!request || request.status !== "completed") return;
-    setContactHistoryExportAction("download");
-    setContactHistoryExportStatus("Preparing contact-history export download...");
-    try {
-      const payload = await requestDashboardJson<ContactHistoryExportResponse>(
-        apiBaseUrl,
-        request.downloadUrl,
-        { headers: devHeaders },
-      );
-      setContactHistoryExportRequest({
-        ...request,
-        ...payload.exportRequest,
-        status: "completed",
-      });
-      downloadContactHistoryExport(payload);
-      const categoryCount = Object.keys(payload.export.categories).length;
-      const timelineCount = payload.export.categories.timelineCues.length;
-      const matterCount = payload.export.categories.matterPartyPosture.length;
-      const portalGrantCount = payload.export.categories.portalAccessPosture.grants?.length ?? 0;
-      setContactHistoryExportStatus("Export request completed; JSON download prepared.");
-      setContactHistoryExportSummary(
-        `${categoryCount} categories, ${timelineCount} timeline cues, ${matterCount} matter links, ${portalGrantCount} portal grants. Download link expires ${compactDate(
-          payload.exportRequest.downloadExpiresAt ?? request.downloadExpiresAt,
-        )}; no server-side export body stored.`,
-      );
-    } catch (error) {
-      setContactHistoryExportStatus(
-        `Contact-history download failed: ${dashboardApiStatus(error)}`,
-      );
-    } finally {
-      setContactHistoryExportAction("");
     }
   }
 
@@ -4395,6 +4290,49 @@ export default function DashboardClient({
       setLegalResearchStatus(`Research review failed: ${dashboardApiStatus(error)}`);
     } finally {
       setLegalResearchReviewBusyId("");
+    }
+  }
+
+  async function recordLegalResearchCitationPacketDecision(
+    matterId: string,
+    decision: LegalResearchCitationPacketDecision,
+  ): Promise<void> {
+    setLegalResearchCitationPacketDecisionBusyId(`${matterId}:citation-packet:${decision}`);
+    setLegalResearchStatus(`Recording ${compactStatus(decision)} citation packet decision...`);
+    try {
+      const response = await fetch(
+        `${apiBaseUrl}${buildLegalResearchCitationPacketDecisionPath()}`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: {
+            ...devHeaders,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ matterId, decision }),
+        },
+      );
+
+      if (!response.ok) {
+        setLegalResearchStatus(`Citation packet decision failed: ${response.status}`);
+        return;
+      }
+      const payload = (await response.json()) as {
+        status: "created" | "existing";
+        decision: LegalResearchCitationPacketDecision;
+        workspace: LegalResearchWorkspaceResponse;
+      };
+      setLegalResearchByMatterId((current) => ({
+        ...current,
+        [payload.workspace.matterId]: payload.workspace,
+      }));
+      setLegalResearchStatus(
+        `Citation packet decision ${compactStatus(payload.status)}; no provider, verification, advice, or downstream mutation.`,
+      );
+    } catch (error) {
+      setLegalResearchStatus(`Citation packet decision failed: ${dashboardApiStatus(error)}`);
+    } finally {
+      setLegalResearchCitationPacketDecisionBusyId("");
     }
   }
 
@@ -6989,24 +6927,10 @@ export default function DashboardClient({
                   contactDuplicateResolutionDecisions={contactDuplicateResolutionDecisions}
                   contactDuplicateResolutionStatus={contactDuplicateResolutionStatus}
                   contactReviewQueue={contactReviewQueue}
+                  contactHistoryExportMatterId={contactHistoryExportMatterId}
                   contactHistoryExportReason={contactHistoryExportReason}
-                  contactHistoryExportRequest={
-                    contactHistoryExportRequest?.contactId === activeContactDossier?.contact.id
-                      ? contactHistoryExportRequest
-                      : null
-                  }
-                  contactHistoryExportStatus={
-                    contactHistoryExportRequest &&
-                    contactHistoryExportRequest.contactId !== activeContactDossier?.contact.id
-                      ? "No contact-history export requested for this contact in this session."
-                      : contactHistoryExportStatus
-                  }
-                  contactHistoryExportSummary={
-                    contactHistoryExportRequest &&
-                    contactHistoryExportRequest.contactId !== activeContactDossier?.contact.id
-                      ? ""
-                      : contactHistoryExportSummary
-                  }
+                  contactHistoryExportStatus={contactHistoryExportStatus}
+                  contactHistoryExportSummary={contactHistoryExportSummary}
                   contactTimeline={activeContactTimeline}
                   contactTimelineActivityFilter={contactTimelineActivityFilter}
                   contactTimelineStatus={contactTimelineStatus}
@@ -7021,8 +6945,6 @@ export default function DashboardClient({
                   onContactCreatePhoneChange={setContactCreatePhone}
                   onContactCreateRoleCategoryChange={setContactCreateRoleCategory}
                   onContactHistoryExportReasonChange={setContactHistoryExportReason}
-                  onPollContactHistoryExport={() => void pollContactHistoryExport()}
-                  onDownloadContactHistoryExport={() => void downloadLatestContactHistoryExport()}
                   onContactTimelineActivityFilterChange={setContactTimelineActivityFilter}
                   onExportContactHistory={() => void exportContactHistory()}
                   onCreateContact={() => void createContact()}
@@ -7037,7 +6959,6 @@ export default function DashboardClient({
                   recordingContactResolutionKey={recordingContactResolutionKey}
                   recordingContactDuplicateResolutionKey={recordingContactDuplicateResolutionKey}
                   exportingContactHistory={exportingContactHistory}
-                  contactHistoryExportAction={contactHistoryExportAction}
                 />
               </article>
             ) : null}
@@ -7761,24 +7682,10 @@ export default function DashboardClient({
                   contactDuplicateResolutionDecisions={contactDuplicateResolutionDecisions}
                   contactDuplicateResolutionStatus={contactDuplicateResolutionStatus}
                   contactReviewQueue={contactReviewQueue}
+                  contactHistoryExportMatterId={contactHistoryExportMatterId}
                   contactHistoryExportReason={contactHistoryExportReason}
-                  contactHistoryExportRequest={
-                    contactHistoryExportRequest?.contactId === activeContactDossier?.contact.id
-                      ? contactHistoryExportRequest
-                      : null
-                  }
-                  contactHistoryExportStatus={
-                    contactHistoryExportRequest &&
-                    contactHistoryExportRequest.contactId !== activeContactDossier?.contact.id
-                      ? "No contact-history export requested for this contact in this session."
-                      : contactHistoryExportStatus
-                  }
-                  contactHistoryExportSummary={
-                    contactHistoryExportRequest &&
-                    contactHistoryExportRequest.contactId !== activeContactDossier?.contact.id
-                      ? ""
-                      : contactHistoryExportSummary
-                  }
+                  contactHistoryExportStatus={contactHistoryExportStatus}
+                  contactHistoryExportSummary={contactHistoryExportSummary}
                   contactTimeline={activeContactTimeline}
                   contactTimelineActivityFilter={contactTimelineActivityFilter}
                   contactTimelineStatus={contactTimelineStatus}
@@ -7793,8 +7700,6 @@ export default function DashboardClient({
                   onContactCreatePhoneChange={setContactCreatePhone}
                   onContactCreateRoleCategoryChange={setContactCreateRoleCategory}
                   onContactHistoryExportReasonChange={setContactHistoryExportReason}
-                  onPollContactHistoryExport={() => void pollContactHistoryExport()}
-                  onDownloadContactHistoryExport={() => void downloadLatestContactHistoryExport()}
                   onContactTimelineActivityFilterChange={setContactTimelineActivityFilter}
                   onExportContactHistory={() => void exportContactHistory()}
                   onCreateContact={() => void createContact()}
@@ -7809,7 +7714,6 @@ export default function DashboardClient({
                   recordingContactResolutionKey={recordingContactResolutionKey}
                   recordingContactDuplicateResolutionKey={recordingContactDuplicateResolutionKey}
                   exportingContactHistory={exportingContactHistory}
-                  contactHistoryExportAction={contactHistoryExportAction}
                 />
               ) : null}
 
@@ -7982,6 +7886,10 @@ export default function DashboardClient({
                 <ResearchSection
                   canReview={canReviewLegalResearchArtifacts}
                   compactDate={compactDate}
+                  citationPacketDecisionBusyId={legalResearchCitationPacketDecisionBusyId}
+                  onRecordCitationPacketDecision={(matterId, decision) =>
+                    void recordLegalResearchCitationPacketDecision(matterId, decision)
+                  }
                   onReviewArtifact={(artifact, decision) =>
                     void reviewLegalResearchArtifact(artifact, decision)
                   }

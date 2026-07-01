@@ -494,6 +494,9 @@ describe("CalendarSection", () => {
     expect(html).toContain("Acknowledge");
     expect(html).toContain("Follow up");
     expect(html).toContain("Defer");
+    expect(html).toContain('aria-label="Acknowledge scheduling request aging review"');
+    expect(html).toContain('aria-label="Mark scheduling request follow-up required"');
+    expect(html).toContain('aria-label="Defer scheduling request aging review"');
     expect(html).toContain("Create follow-up task");
     expect(html).toContain("no public booking page or event creation runs");
   });

@@ -247,6 +247,11 @@ export type PaymentImportRefundChargebackResolutionPosture =
   | "rejected_exception"
   | "needs_more_evidence";
 
+export type PaymentImportRefundChargebackResolutionRecordPosture = Exclude<
+  PaymentImportRefundChargebackResolutionPosture,
+  "awaiting_decision"
+>;
+
 export interface PaymentImportRefundChargebackResolutionPacketNoSideEffectFlags {
   rawProviderPayloadRetained: false;
   invoiceBalanceMutation: "none";
@@ -283,6 +288,9 @@ export interface PaymentImportRefundChargebackResolutionPacketPreview {
   latestReviewerMetadata?: PaymentImportRefundChargebackResolutionPacketReviewerMetadata;
   noSideEffectFlags: PaymentImportRefundChargebackResolutionPacketNoSideEffectFlags;
 }
+
+export type PaymentImportRefundChargebackResolutionRecordNoSideEffectFlags =
+  PaymentImportRefundChargebackResolutionPacketNoSideEffectFlags;
 
 export const paymentImportDepositMatchReviewDecisions = [
   "candidate_supported",
@@ -676,6 +684,27 @@ export interface PaymentImportRefundChargebackReviewRecord {
   createdAt: string;
 }
 
+export interface PaymentImportRefundChargebackResolutionRecord {
+  id: string;
+  firmId: string;
+  matterId: string;
+  paymentImportReviewRecordId: string;
+  candidateInvoiceId?: string;
+  candidateHostedPaymentRequestId?: string;
+  candidateManualPaymentId?: string;
+  latestReviewId: string;
+  category: PaymentImportRefundChargebackReviewCategory;
+  resolutionPosture: PaymentImportRefundChargebackResolutionRecordPosture;
+  reasonCategories: PaymentImportRefundChargebackReviewReason[];
+  latestReviewerMetadata: PaymentImportRefundChargebackResolutionPacketReviewerMetadata;
+  noSideEffectFlags: PaymentImportRefundChargebackResolutionRecordNoSideEffectFlags;
+  idempotencyKey: string;
+  resolutionFingerprint: string;
+  recordedByUserId: string;
+  recordedAt: string;
+  createdAt: string;
+}
+
 export interface TrustTransferRequestRecord {
   id: string;
   firmId: string;
@@ -877,6 +906,21 @@ export function defaultPaymentImportRefundChargebackReviewBoundary(): PaymentImp
     fundsMovement: "none",
     refundHandling: "review_decision_only",
     chargebackHandling: "review_decision_only",
+  };
+}
+
+export function defaultPaymentImportRefundChargebackResolutionRecordNoSideEffectFlags(): PaymentImportRefundChargebackResolutionRecordNoSideEffectFlags {
+  return {
+    rawProviderPayloadRetained: false,
+    invoiceBalanceMutation: "none",
+    ledgerReversal: "none",
+    providerCommand: "none",
+    refundArtifactStorage: false,
+    disputeArtifactStorage: false,
+    freeFormNotes: false,
+    clientNotification: "none",
+    trustPosting: "none",
+    fundsMovement: "none",
   };
 }
 
@@ -1190,6 +1234,46 @@ export function paymentImportRefundChargebackResolutionPacketPreview(input: {
       trustPosting: "none",
       fundsMovement: "none",
     },
+  };
+}
+
+export function paymentImportRefundChargebackResolutionRecordFromPreview(input: {
+  id: string;
+  firmId: string;
+  idempotencyKey: string;
+  resolutionFingerprint: string;
+  recordedByUserId: string;
+  recordedAt: string;
+  packetPreview: PaymentImportRefundChargebackResolutionPacketPreview;
+}): PaymentImportRefundChargebackResolutionRecord | undefined {
+  const { packetPreview } = input;
+  if (packetPreview.resolutionPosture === "awaiting_decision") return undefined;
+  if (!packetPreview.latestReviewId || !packetPreview.latestReviewerMetadata) return undefined;
+  return {
+    id: input.id,
+    firmId: input.firmId,
+    matterId: packetPreview.matterId,
+    paymentImportReviewRecordId: packetPreview.paymentImportReviewRecordId,
+    ...(packetPreview.candidateInvoiceId
+      ? { candidateInvoiceId: packetPreview.candidateInvoiceId }
+      : {}),
+    ...(packetPreview.candidateHostedPaymentRequestId
+      ? { candidateHostedPaymentRequestId: packetPreview.candidateHostedPaymentRequestId }
+      : {}),
+    ...(packetPreview.candidateManualPaymentId
+      ? { candidateManualPaymentId: packetPreview.candidateManualPaymentId }
+      : {}),
+    latestReviewId: packetPreview.latestReviewId,
+    category: packetPreview.category,
+    resolutionPosture: packetPreview.resolutionPosture,
+    reasonCategories: packetPreview.reasonCategories,
+    latestReviewerMetadata: packetPreview.latestReviewerMetadata,
+    noSideEffectFlags: defaultPaymentImportRefundChargebackResolutionRecordNoSideEffectFlags(),
+    idempotencyKey: input.idempotencyKey,
+    resolutionFingerprint: input.resolutionFingerprint,
+    recordedByUserId: input.recordedByUserId,
+    recordedAt: input.recordedAt,
+    createdAt: input.recordedAt,
   };
 }
 

@@ -187,6 +187,7 @@ describe("ResearchSection", () => {
       createElement(ResearchSection, {
         canReview: true,
         compactDate: (value?: string) => value ?? "none",
+        onRecordCitationPacketDecision: () => {},
         onReviewArtifact: () => {},
         reviewStatus: "Research workspace artifacts loaded.",
         workspace,
@@ -196,6 +197,7 @@ describe("ResearchSection", () => {
       createElement(ResearchSection, {
         canReview: false,
         compactDate: (value?: string) => value ?? "none",
+        onRecordCitationPacketDecision: () => {},
         onReviewArtifact: () => {},
         reviewStatus: "Research workspace artifacts loaded.",
         workspace,
@@ -214,6 +216,18 @@ describe("ResearchSection", () => {
     expect(writableHtml).toContain("No provider run");
     expect(writableHtml).toContain("no verification claim");
     expect(writableHtml).toContain("no legal advice");
+    expect(writableHtml).toContain("Citation packet decision");
+    expect(writableHtml).toContain("No citation packet decision recorded");
+    expect(writableHtml).toContain("no provider evidence");
+    expect(writableHtml).toContain("no downstream mutation");
+    expect(writableHtml).toContain(
+      'data-action-key="legal_research_citation_packet_decision.ready_for_staff_review"',
+    );
+    expect(writableHtml).toContain(
+      'data-action-key="legal_research_citation_packet_decision.needs_source_review"',
+    );
+    expect(writableHtml).toContain("Ready</button>");
+    expect(writableHtml).toContain("Needs work</button>");
     expect(writableHtml).toContain("1 provider jobs recorded");
     expect(writableHtml).toContain("Citation review");
     expect(writableHtml).toContain("citation review");
@@ -240,8 +254,11 @@ describe("ResearchSection", () => {
     expect(writableHtml).toContain("Reject</button>");
     expect(readOnlyHtml).not.toContain("legal_research_artifact.review");
     expect(readOnlyHtml).not.toContain("legal_research_artifact.reject");
+    expect(readOnlyHtml).not.toContain("legal_research_citation_packet_decision");
     expect(readOnlyHtml).not.toContain("Review</button>");
     expect(readOnlyHtml).not.toContain("Reject</button>");
+    expect(readOnlyHtml).not.toContain("Ready</button>");
+    expect(readOnlyHtml).not.toContain("Needs work</button>");
   });
 
   it("renders descriptor-backed busy review button status", () => {
@@ -249,6 +266,7 @@ describe("ResearchSection", () => {
       createElement(ResearchSection, {
         canReview: true,
         compactDate: (value?: string) => value ?? "none",
+        onRecordCitationPacketDecision: () => {},
         onReviewArtifact: () => {},
         reviewBusyId: legalResearchArtifactReviewBusyKey(
           "reviewed",
@@ -267,5 +285,70 @@ describe("ResearchSection", () => {
     expect(busyHtml).toContain('aria-label="Reject: review action in progress"');
     expect(busyHtml).toContain('title="Reject: review action in progress"');
     expect(busyHtml.match(/disabled=""/g) ?? []).toHaveLength(2);
+  });
+
+  it("renders latest citation packet decisions without enabling blocked packets", () => {
+    const decidedWorkspace: LegalResearchWorkspaceResponse = {
+      ...workspace,
+      citationPacketReadiness: {
+        ...workspace.citationPacketReadiness,
+        latestDecision: {
+          artifactId: "legal-research-citation-packet-decision-001",
+          decision: "needs_source_review",
+          decidedByUserId: "user-licensee",
+          decidedAt: "2026-06-30T17:00:00.000Z",
+          sourceReferenceCount: 1,
+          readyForReviewArtifactCount: 1,
+          openCheckpointCount: 0,
+          contextLinkCount: 2,
+          metadataOnly: true,
+          providerExecuted: false,
+          sourceTextStored: false,
+          promptStored: false,
+          providerEvidenceStored: false,
+          citationVerificationClaimed: false,
+          legalAdviceGenerated: false,
+          downstreamMutation: false,
+          reviewOnly: true,
+        },
+      },
+    };
+    const blockedWorkspace: LegalResearchWorkspaceResponse = {
+      ...decidedWorkspace,
+      citationPacketReadiness: {
+        ...decidedWorkspace.citationPacketReadiness,
+        staffReviewReady: false,
+        blockedReasons: ["open_checkpoints"],
+        openCheckpointCount: 1,
+      },
+    };
+
+    const decidedHtml = renderToStaticMarkup(
+      createElement(ResearchSection, {
+        canReview: true,
+        compactDate: (value?: string) => value ?? "none",
+        onRecordCitationPacketDecision: () => {},
+        onReviewArtifact: () => {},
+        reviewStatus: "Research workspace artifacts loaded.",
+        workspace: decidedWorkspace,
+      }),
+    );
+    const blockedHtml = renderToStaticMarkup(
+      createElement(ResearchSection, {
+        canReview: true,
+        compactDate: (value?: string) => value ?? "none",
+        onRecordCitationPacketDecision: () => {},
+        onReviewArtifact: () => {},
+        reviewStatus: "Research workspace artifacts loaded.",
+        workspace: blockedWorkspace,
+      }),
+    );
+
+    expect(decidedHtml).toContain("needs source review · 2026-06-30T17:00:00.000Z");
+    expect(decidedHtml).toContain("no verification claim");
+    expect(decidedHtml).toContain("no legal advice");
+    expect(blockedHtml).toContain("open checkpoints");
+    expect(blockedHtml).not.toContain("legal_research_citation_packet_decision");
+    expect(blockedHtml).not.toContain("Needs work</button>");
   });
 });

@@ -1776,9 +1776,8 @@ export function buildStaffReportProjection(
     return buildAgedReceivablesProjection(input, generatedAt, generatedAtMs, groupingKey);
   }
   if (input.definitionKey === "billing_period_lock_impact") {
-    const { definitionKey: _definitionKey, ...projectionInput } = input;
     return buildBillingPeriodLockImpactProjection({
-      ...projectionInput,
+      ...input,
       definitionKey: "billing_period_lock_impact",
       generatedAt,
       groupingKey,

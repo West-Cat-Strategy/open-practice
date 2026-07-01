@@ -287,11 +287,6 @@ export async function listMemoryContactPortalGrantsForUser(
         );
   if (!dossier) return [];
   const visibleMatterIds = new Set(dossier.matters.map((matter) => matter.matterId));
-  const visibleDuplicateRelatedContactIds = new Set(
-    dossier.qualityReview.signals
-      .filter((signal) => signal.kind === "duplicate_candidate")
-      .flatMap((signal) => signal.relatedContactIds ?? []),
-  );
   return clone(
     (context.portalGrants ?? store.portalGrants)
       .filter(

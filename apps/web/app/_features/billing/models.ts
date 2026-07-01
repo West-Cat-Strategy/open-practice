@@ -27,6 +27,7 @@ import type {
   LedgerStatementMatchRuleProfileRecord,
   LedgerTransactionApprovalRecord,
   PaymentImportRefundChargebackResolutionPacketPreview,
+  PaymentImportRefundChargebackResolutionRecord,
   PaymentImportReviewBoundary,
   PaymentPlanPlaceholder,
   StaffReportProjection,
@@ -245,6 +246,19 @@ export interface BillingPaymentImportReviewSummary {
   boundaries: PaymentImportReviewBoundary;
   refundChargebackReviewCue?: BillingPaymentImportRefundChargebackReviewCue;
   refundChargebackResolutionPacketPreview?: PaymentImportRefundChargebackResolutionPacketPreview;
+  refundChargebackResolutionRecordCount?: number;
+  latestRefundChargebackResolutionRecord?: Pick<
+    PaymentImportRefundChargebackResolutionRecord,
+    | "id"
+    | "category"
+    | "resolutionPosture"
+    | "reasonCategories"
+    | "latestReviewId"
+    | "latestReviewerMetadata"
+    | "recordedByUserId"
+    | "recordedAt"
+    | "noSideEffectFlags"
+  >;
   refundChargebackReviewDecisionCount?: number;
   latestRefundChargebackReview?: BillingPaymentImportRefundChargebackReviewSummary;
   depositMatchReviewCount?: number;

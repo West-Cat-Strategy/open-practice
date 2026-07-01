@@ -16,6 +16,7 @@ import {
   defaultHostedPaymentProcessorState,
   defaultPaymentImportDepositMatchReviewBoundary,
   defaultPaymentImportRefundChargebackReviewBoundary,
+  defaultPaymentImportRefundChargebackResolutionRecordNoSideEffectFlags,
   defaultPaymentImportReviewBoundary,
   defaultPaymentPlanPlaceholder,
   buildPaymentSettlementReview,
@@ -32,6 +33,7 @@ import {
   paymentImportRefundChargebackReviewDecisionMatchesCue,
   paymentImportRefundChargebackReviewCue,
   paymentImportRefundChargebackResolutionPacketPreview,
+  paymentImportRefundChargebackResolutionRecordFromPreview,
   resolveBillingRateRule,
   summarizeTrustTransferLedgerLink,
   timerDraftMinutesFromWindow,
@@ -581,6 +583,19 @@ describe("billing period locks and rate rules", () => {
         fundsMovement: "none",
       },
     });
+    expect(
+      awaitingPreview
+        ? paymentImportRefundChargebackResolutionRecordFromPreview({
+            id: "resolution-record-awaiting-domain",
+            firmId: "firm-west-legal",
+            idempotencyKey: "synthetic-resolution-awaiting",
+            resolutionFingerprint: "synthetic-resolution-awaiting-fingerprint",
+            recordedByUserId: "user-licensee",
+            recordedAt: "2026-06-30T12:06:00.000Z",
+            packetPreview: awaitingPreview,
+          })
+        : undefined,
+    ).toBeUndefined();
 
     const refundReview = {
       id: "refund-chargeback-review-domain",
@@ -598,6 +613,63 @@ describe("billing period locks and rate rules", () => {
       reviewedAt: "2026-06-30T12:05:00.000Z",
       createdAt: "2026-06-30T12:05:00.000Z",
     } satisfies PaymentImportRefundChargebackReviewRecord;
+    const confirmedPreview = paymentImportRefundChargebackResolutionPacketPreview({
+      importRecord: refundImportRecord,
+      reviews: [refundReview],
+    });
+    expect(confirmedPreview).toMatchObject({
+      latestReviewId: "refund-chargeback-review-domain",
+      resolutionPosture: "confirmed_exception",
+      reasonCategories: ["refund_observed"],
+      latestReviewerMetadata: {
+        decision: "exception_confirmed",
+        reason: "refund_observed",
+        reviewedByUserId: "user-licensee",
+        reviewedAt: "2026-06-30T12:05:00.000Z",
+        reviewerEvidencePresent: true,
+      },
+      noSideEffectFlags: {
+        providerCommand: "none",
+        freeFormNotes: false,
+        fundsMovement: "none",
+      },
+    });
+    expect(
+      confirmedPreview
+        ? paymentImportRefundChargebackResolutionRecordFromPreview({
+            id: "resolution-record-confirmed-domain",
+            firmId: "firm-west-legal",
+            idempotencyKey: "synthetic-resolution-confirmed",
+            resolutionFingerprint: "synthetic-resolution-confirmed-fingerprint",
+            recordedByUserId: "user-licensee",
+            recordedAt: "2026-06-30T12:06:00.000Z",
+            packetPreview: confirmedPreview,
+          })
+        : undefined,
+    ).toEqual({
+      id: "resolution-record-confirmed-domain",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      paymentImportReviewRecordId: "payment-import-review-refund-domain",
+      candidateInvoiceId: "invoice-001",
+      latestReviewId: "refund-chargeback-review-domain",
+      category: "refund",
+      resolutionPosture: "confirmed_exception",
+      reasonCategories: ["refund_observed"],
+      latestReviewerMetadata: {
+        decision: "exception_confirmed",
+        reason: "refund_observed",
+        reviewedByUserId: "user-licensee",
+        reviewedAt: "2026-06-30T12:05:00.000Z",
+        reviewerEvidencePresent: true,
+      },
+      noSideEffectFlags: defaultPaymentImportRefundChargebackResolutionRecordNoSideEffectFlags(),
+      idempotencyKey: "synthetic-resolution-confirmed",
+      resolutionFingerprint: "synthetic-resolution-confirmed-fingerprint",
+      recordedByUserId: "user-licensee",
+      recordedAt: "2026-06-30T12:06:00.000Z",
+      createdAt: "2026-06-30T12:06:00.000Z",
+    });
     expect(
       paymentImportRefundChargebackResolutionPacketPreview({
         importRecord: refundImportRecord,

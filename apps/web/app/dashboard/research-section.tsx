@@ -1,5 +1,8 @@
 import { Check, X } from "lucide-react";
-import type { LegalResearchArtifactRecord } from "@open-practice/domain";
+import type {
+  LegalResearchArtifactRecord,
+  LegalResearchCitationPacketDecision,
+} from "@open-practice/domain";
 import {
   compactLegalResearchArtifactReviewActionReason,
   describeLegalResearchArtifactReviewAction,
@@ -15,7 +18,12 @@ import {
 
 export interface ResearchSectionProps {
   canReview: boolean;
+  citationPacketDecisionBusyId?: string;
   compactDate: (value?: string) => string;
+  onRecordCitationPacketDecision: (
+    matterId: string,
+    decision: LegalResearchCitationPacketDecision,
+  ) => void;
   onReviewArtifact: (
     artifact: LegalResearchArtifactRecord,
     decision: LegalResearchArtifactReviewAction,
@@ -53,7 +61,9 @@ function legalResearchArtifactReviewActionStatus(
 
 export function ResearchSection({
   canReview,
+  citationPacketDecisionBusyId = "",
   compactDate,
+  onRecordCitationPacketDecision,
   onReviewArtifact,
   reviewBusyId = "",
   reviewStatus,
@@ -64,6 +74,9 @@ export function ResearchSection({
   );
   const providerJobs = workspace.providerJobs.slice(0, 3);
   const citationReadiness = workspace.citationPacketReadiness;
+  const canRecordCitationPacketDecision =
+    canReview && workspace.status === "available" && citationReadiness.staffReviewReady;
+  const latestCitationPacketDecision = citationReadiness.latestDecision;
 
   return (
     <>
@@ -132,6 +145,74 @@ export function ResearchSection({
           <span className="field-label">Packet flags</span>
           <strong>{formatLegalResearchValue(citationReadiness.reservedProviderJobPosture)}</strong>
           <small>No provider run · no verification claim · no legal advice</small>
+        </div>
+      </div>
+      <div className="party-list">
+        <div className="party-row">
+          <span>
+            <strong>Citation packet decision</strong>
+            <small>
+              {latestCitationPacketDecision
+                ? `${formatLegalResearchValue(
+                    latestCitationPacketDecision.decision,
+                  )} · ${compactDate(latestCitationPacketDecision.decidedAt)}`
+                : "No citation packet decision recorded"}
+            </small>
+            <small>
+              metadata only · no provider evidence · no verification claim · no legal advice · no
+              downstream mutation
+            </small>
+          </span>
+          {canRecordCitationPacketDecision ? (
+            <div className="draft-assist-actions">
+              <button
+                aria-label={
+                  citationPacketDecisionBusyId
+                    ? "Saving citation packet decision"
+                    : "Record citation packet ready for staff review"
+                }
+                className="secondary-button compact-button"
+                data-action-key="legal_research_citation_packet_decision.ready_for_staff_review"
+                disabled={Boolean(citationPacketDecisionBusyId)}
+                onClick={() =>
+                  onRecordCitationPacketDecision(workspace.matterId, "ready_for_staff_review")
+                }
+                title={
+                  citationPacketDecisionBusyId
+                    ? "Saving citation packet decision"
+                    : "Record citation packet ready for staff review"
+                }
+                type="button"
+              >
+                <Check aria-hidden="true" size={16} />
+                Ready
+              </button>
+              <button
+                aria-label={
+                  citationPacketDecisionBusyId
+                    ? "Saving citation packet decision"
+                    : "Record citation packet needs source review"
+                }
+                className="secondary-button compact-button"
+                data-action-key="legal_research_citation_packet_decision.needs_source_review"
+                disabled={Boolean(citationPacketDecisionBusyId)}
+                onClick={() =>
+                  onRecordCitationPacketDecision(workspace.matterId, "needs_source_review")
+                }
+                title={
+                  citationPacketDecisionBusyId
+                    ? "Saving citation packet decision"
+                    : "Record citation packet needs source review"
+                }
+                type="button"
+              >
+                <X aria-hidden="true" size={16} />
+                Needs work
+              </button>
+            </div>
+          ) : (
+            <em>{citationReadiness.staffReviewReady ? "review only" : "blocked"}</em>
+          )}
         </div>
       </div>
       <p className="inline-empty" role="status" aria-live="polite" aria-atomic="true">

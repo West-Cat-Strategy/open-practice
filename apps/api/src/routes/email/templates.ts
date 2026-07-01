@@ -195,10 +195,13 @@ function reviewedOutboundPreviewAuditMetadata(
     queued: false,
     providerNeutral: true,
     deliveryQueued: false,
+    emailOutboxRecordCreated: false,
+    jobQueued: false,
     providerDeliverySideEffect: false,
     campaignAutomation: false,
     bulkSend: false,
     subscriptionManagement: false,
+    outboxDraftReview: preview.outboxDraftReview,
   };
 }
 

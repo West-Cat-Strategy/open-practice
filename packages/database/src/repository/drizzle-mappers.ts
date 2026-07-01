@@ -51,6 +51,7 @@ import {
   type EmailOutboxRecord,
   type EmailReceiptTokenRecord,
   type EmailTemplateDraftRecord,
+  type EmailTemplateOutboxDraftReviewRecord,
   type EmailTemplatePublishedVersionRecord,
   type EmailTemplatePreviewSnapshotRecord,
   type EmailTemplateReviewedOutboundPreviewRecord,
@@ -91,6 +92,7 @@ import {
   type MatterParty,
   type PaymentAllocationRecord,
   type PaymentImportDepositMatchReviewRecord,
+  type PaymentImportRefundChargebackResolutionRecord,
   type PaymentImportRefundChargebackReviewRecord,
   type PaymentImportReviewRecord,
   type PortalGrant,
@@ -979,6 +981,14 @@ export function emailTemplatePublishedVersionInsert(
   };
 }
 
+function emailTemplateOutboxDraftReviewFromMetadata(
+  metadata: Record<string, unknown>,
+): EmailTemplateOutboxDraftReviewRecord | undefined {
+  const candidate = metadata.outboxDraftReview;
+  if (!candidate || typeof candidate !== "object") return undefined;
+  return candidate as EmailTemplateOutboxDraftReviewRecord;
+}
+
 export function mapEmailTemplateReviewedOutboundPreviewRow(
   row: typeof schema.emailTemplateReviewedOutboundPreviews.$inferSelect,
 ): EmailTemplateReviewedOutboundPreviewRecord {
@@ -1013,6 +1023,7 @@ export function mapEmailTemplateReviewedOutboundPreviewRow(
         : undefined,
     warnings: row.warnings,
     delivery: row.delivery,
+    outboxDraftReview: emailTemplateOutboxDraftReviewFromMetadata(row.metadata),
     createdAt: row.createdAt.toISOString(),
     metadata: row.metadata,
   };
@@ -3496,6 +3507,41 @@ export function paymentImportRefundChargebackReviewInsert(
   return {
     ...record,
     reviewedAt: new Date(record.reviewedAt),
+    createdAt: new Date(record.createdAt),
+  };
+}
+
+export function mapPaymentImportRefundChargebackResolutionRecordRow(
+  row: typeof schema.paymentImportRefundChargebackResolutionRecords.$inferSelect,
+): PaymentImportRefundChargebackResolutionRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    matterId: row.matterId,
+    paymentImportReviewRecordId: row.paymentImportReviewRecordId,
+    candidateInvoiceId: row.candidateInvoiceId ?? undefined,
+    candidateHostedPaymentRequestId: row.candidateHostedPaymentRequestId ?? undefined,
+    candidateManualPaymentId: row.candidateManualPaymentId ?? undefined,
+    latestReviewId: row.latestReviewId,
+    category: row.category,
+    resolutionPosture: row.resolutionPosture,
+    reasonCategories: row.reasonCategories,
+    latestReviewerMetadata: row.latestReviewerMetadata,
+    noSideEffectFlags: row.noSideEffectFlags,
+    idempotencyKey: row.idempotencyKey,
+    resolutionFingerprint: row.resolutionFingerprint,
+    recordedByUserId: row.recordedByUserId,
+    recordedAt: row.recordedAt.toISOString(),
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+export function paymentImportRefundChargebackResolutionRecordInsert(
+  record: PaymentImportRefundChargebackResolutionRecord,
+): typeof schema.paymentImportRefundChargebackResolutionRecords.$inferInsert {
+  return {
+    ...record,
+    recordedAt: new Date(record.recordedAt),
     createdAt: new Date(record.createdAt),
   };
 }

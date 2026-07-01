@@ -156,10 +156,37 @@ describe("audit event taxonomy", () => {
           queued: false,
           providerNeutral: true,
           deliveryQueued: false,
+          emailOutboxRecordCreated: false,
+          jobQueued: false,
           providerDeliverySideEffect: false,
           campaignAutomation: false,
           bulkSend: false,
           subscriptionManagement: false,
+          outboxDraftReview: {
+            status: "draft_review",
+            mode: "outbox_draft_review",
+            reviewedOutboundPreviewId: "reviewed-preview-001",
+            templateDraftId: "template-draft-001",
+            publishedVersionId: "published-version-001",
+            publishedVersion: 1,
+            matterId: "matter-001",
+            contactId: "contact-ada",
+            contactMethodId: "contact-method-ada-email",
+            recipientCount: 1,
+            warningCount: 0,
+            createdByUserId: "user-admin",
+            createdAt: "2026-06-30T10:05:00.000Z",
+            delivery: {
+              persisted: true,
+              queued: false,
+              emailOutboxRecordCreated: false,
+              jobQueued: false,
+              providerDeliverySideEffect: false,
+              campaignAutomation: false,
+              bulkSend: false,
+              subscriptionManagement: false,
+            },
+          },
         },
       }),
     );
@@ -186,10 +213,13 @@ describe("audit event taxonomy", () => {
         "queued",
         "providerNeutral",
         "deliveryQueued",
+        "emailOutboxRecordCreated",
+        "jobQueued",
         "providerDeliverySideEffect",
         "campaignAutomation",
         "bulkSend",
         "subscriptionManagement",
+        "outboxDraftReview",
       ]),
     );
     expect(classification.metadataHints.resource).not.toEqual(
@@ -810,6 +840,54 @@ describe("audit event taxonomy", () => {
     expect(classification.metadataHints.resource).not.toContain("sourceLabel");
   });
 
+  it("classifies legal research citation packet decisions as redacted matter-scoped events", () => {
+    const classification = classifyAuditEvent(
+      auditEvent({
+        action: "legal_research.citation_packet_decision.recorded",
+        resourceType: "legal_research",
+        resourceId: "research-citation-packet-decision-001",
+        metadata: {
+          matterId: "matter-001",
+          artifactId: "research-citation-packet-decision-001",
+          artifactKind: "review_checkpoint",
+          citationPacketDecision: "ready_for_staff_review",
+          sourceReferenceCount: 2,
+          readyForReviewArtifactCount: 1,
+          openCheckpointCount: 0,
+          contextLinkCount: 2,
+          metadataOnly: true,
+          providerExecuted: false,
+          sourceTextStored: false,
+          promptStored: false,
+          providerEvidenceStored: false,
+          citationVerificationClaimed: false,
+          legalAdviceGenerated: false,
+          downstreamMutation: false,
+          reviewOnly: true,
+        },
+      }),
+    );
+
+    expect(classification).toMatchObject({
+      category: "legal_research",
+      known: true,
+      matterScope: "matter",
+      resourceTypeMatches: true,
+    });
+    expect(classification.metadataHints.resource).toEqual(
+      expect.arrayContaining([
+        "citationPacketDecision",
+        "sourceReferenceCount",
+        "providerEvidenceStored",
+        "citationVerificationClaimed",
+        "legalAdviceGenerated",
+      ]),
+    );
+    expect(classification.metadataHints.resource).not.toContain("sourceText");
+    expect(classification.metadataHints.resource).not.toContain("prompt");
+    expect(classification.metadataHints.resource).not.toContain("providerEvidence");
+  });
+
   it("classifies integration developer boundary events as firm-scoped and redacted", () => {
     expect(
       classifyAuditEvent(
@@ -928,27 +1006,33 @@ describe("audit event taxonomy", () => {
           contactId: "contact-ada",
           matterId: "matter-001",
           matterScoped: true,
-          jobId: "contact-history-export-job",
           purpose: "staff_review",
           reviewReasonPresent: true,
           generatedCategoryCount: 11,
           timelineEntryCount: 4,
           matterAssociationCount: 1,
+          relationshipCount: 1,
           portalGrantCount: 1,
           conflictSummaryCount: 2,
           documentHoldCueCount: 1,
           retentionHoldCueCount: 1,
-          downloadExpiresAt: "2026-06-17T12:00:00.000Z",
-          enqueueStatus: "queued_for_local_report_worker",
-          idempotencyKeyPresent: true,
-          retentionPosture: "queued_regenerated_download_no_retained_export_body",
+          dataQualityResolutionCount: 1,
+          retentionPosture: "matter_scoped_preview_no_retained_export_body",
           legalHoldPosture: "respects_existing_matter_visibility_no_hold_override",
           privacyPosture: "redacted_authorized_projection_only",
           storedBody: false,
           retainedExportArtifact: false,
-          deletionAutomation: false,
+          objectStorageArtifact: false,
+          provider: false,
+          broadQueue: false,
+          deletionWorkflow: false,
           retentionDeadline: false,
           legalHoldOverride: false,
+          hiddenMatterDisclosure: false,
+          rawPrivateNotes: false,
+          taskText: false,
+          storageKeys: false,
+          complianceClaim: false,
         },
       }),
     );
@@ -956,7 +1040,7 @@ describe("audit event taxonomy", () => {
     expect(classification).toMatchObject({
       category: "contacts",
       known: true,
-      matterScope: "optional_matter",
+      matterScope: "matter",
       resourceTypeMatches: true,
     });
     expect(classification.metadataHints.resource).toEqual(
@@ -964,27 +1048,33 @@ describe("audit event taxonomy", () => {
         "contactId",
         "matterId",
         "matterScoped",
-        "jobId",
         "purpose",
         "reviewReasonPresent",
         "generatedCategoryCount",
         "timelineEntryCount",
         "matterAssociationCount",
+        "relationshipCount",
         "portalGrantCount",
         "conflictSummaryCount",
         "documentHoldCueCount",
         "retentionHoldCueCount",
-        "downloadExpiresAt",
-        "enqueueStatus",
-        "idempotencyKeyPresent",
+        "dataQualityResolutionCount",
         "retentionPosture",
         "legalHoldPosture",
         "privacyPosture",
         "storedBody",
         "retainedExportArtifact",
-        "deletionAutomation",
+        "objectStorageArtifact",
+        "provider",
+        "broadQueue",
+        "deletionWorkflow",
         "retentionDeadline",
         "legalHoldOverride",
+        "hiddenMatterDisclosure",
+        "rawPrivateNotes",
+        "taskText",
+        "storageKeys",
+        "complianceClaim",
       ]),
     );
     expect(classification.metadataHints.resource).not.toEqual(
@@ -995,61 +1085,10 @@ describe("audit event taxonomy", () => {
         "address",
         "export",
         "reviewReason",
-      ]),
-    );
-  });
-
-  it("classifies contact-history export downloads with link-only metadata", () => {
-    const classification = classifyAuditEvent(
-      auditEvent({
-        action: "contact_history_export.downloaded",
-        resourceType: "contact_history_export",
-        resourceId: "contact-ada",
-        metadata: {
-          contactId: "contact-ada",
-          matterId: "matter-001",
-          matterScoped: true,
-          jobId: "contact-history-export-job",
-          purpose: "staff_review",
-          downloadExpiresAt: "2026-06-17T12:00:00.000Z",
-          retentionPosture: "queued_regenerated_download_no_retained_export_body",
-          legalHoldPosture: "respects_existing_matter_visibility_no_hold_override",
-          privacyPosture: "redacted_authorized_projection_only",
-          storedBody: false,
-          retainedExportArtifact: false,
-          deletionAutomation: false,
-          retentionDeadline: false,
-          legalHoldOverride: false,
-        },
-      }),
-    );
-
-    expect(classification).toMatchObject({
-      category: "contacts",
-      known: true,
-      matterScope: "optional_matter",
-      resourceTypeMatches: true,
-    });
-    expect(classification.metadataHints.resource).toEqual(
-      expect.arrayContaining([
-        "contactId",
-        "matterId",
-        "matterScoped",
         "jobId",
-        "purpose",
         "downloadExpiresAt",
-        "retentionPosture",
-        "legalHoldPosture",
-        "privacyPosture",
-        "storedBody",
-        "retainedExportArtifact",
-        "deletionAutomation",
-        "retentionDeadline",
-        "legalHoldOverride",
+        "enqueueStatus",
       ]),
-    );
-    expect(classification.metadataHints.resource).not.toEqual(
-      expect.arrayContaining(["displayName", "email", "phone", "address", "exportBody"]),
     );
   });
 
@@ -1563,6 +1602,75 @@ describe("audit event taxonomy", () => {
         "externalEventId",
         "disputePacket",
         "refundArtifact",
+      ]),
+    );
+
+    const refundChargebackResolutionClassification = classifyAuditEvent(
+      auditEvent({
+        action: "payment_import_refund_chargeback_resolution.recorded",
+        resourceType: "payment_import_refund_chargeback_resolution",
+        resourceId: "refund-chargeback-resolution-001",
+        metadata: {
+          matterId: "matter-001",
+          paymentImportRefundChargebackResolutionRecordId: "refund-chargeback-resolution-001",
+          paymentImportReviewRecordId: "payment-import-review-001",
+          latestReviewId: "refund-chargeback-review-001",
+          category: "refund",
+          resolutionPosture: "confirmed_exception",
+          reasonCategories: ["refund_observed"],
+          latestReviewDecision: "exception_confirmed",
+          latestReviewReason: "refund_observed",
+          reviewerEvidencePresent: true,
+          idempotencyKeyPresent: true,
+          idempotencyKey: "synthetic-private-key",
+          freeFormNote: "synthetic private note",
+          disputePacket: { private: "synthetic private dispute packet" },
+          refundArtifact: { private: "synthetic private refund artifact" },
+          rawProviderPayloadRetained: false,
+          invoiceBalanceMutation: "none",
+          ledgerReversal: "none",
+          providerCommand: "none",
+          refundArtifactStorage: false,
+          disputeArtifactStorage: false,
+          freeFormNotes: false,
+          clientNotification: "none",
+          trustPosting: "none",
+          fundsMovement: "none",
+        },
+      }),
+    );
+    expect(refundChargebackResolutionClassification).toMatchObject({
+      category: "billing",
+      known: true,
+      matterScope: "matter",
+      resourceTypeMatches: true,
+    });
+    expect(refundChargebackResolutionClassification.metadataHints.resource).toEqual(
+      expect.arrayContaining([
+        "paymentImportRefundChargebackResolutionRecordId",
+        "paymentImportReviewRecordId",
+        "latestReviewId",
+        "category",
+        "resolutionPosture",
+        "reasonCategories",
+        "latestReviewDecision",
+        "latestReviewReason",
+        "reviewerEvidencePresent",
+        "idempotencyKeyPresent",
+        "providerCommand",
+        "refundArtifactStorage",
+        "disputeArtifactStorage",
+        "freeFormNotes",
+        "fundsMovement",
+      ]),
+    );
+    expect(refundChargebackResolutionClassification.metadataHints.resource).not.toEqual(
+      expect.arrayContaining([
+        "idempotencyKey",
+        "externalEventId",
+        "disputePacket",
+        "refundArtifact",
+        "freeFormNote",
       ]),
     );
   });

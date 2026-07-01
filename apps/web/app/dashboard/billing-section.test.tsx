@@ -589,6 +589,35 @@ function buildSyntheticBillingDashboard(): BillingDashboardResponse {
                 fundsMovement: "none",
               },
             },
+            refundChargebackResolutionRecordCount: 1,
+            latestRefundChargebackResolutionRecord: {
+              id: "refund_chargeback_resolution_synthetic",
+              category: "refund",
+              resolutionPosture: "confirmed_exception",
+              reasonCategories: ["refund_observed"],
+              latestReviewId: "refund_chargeback_review_synthetic",
+              latestReviewerMetadata: {
+                decision: "exception_confirmed",
+                reason: "refund_observed",
+                reviewedByUserId: "user_synthetic",
+                reviewedAt: "2026-06-07T01:10:00.000Z",
+                reviewerEvidencePresent: true,
+              },
+              recordedByUserId: "user_synthetic",
+              recordedAt: "2026-06-07T01:12:00.000Z",
+              noSideEffectFlags: {
+                rawProviderPayloadRetained: false,
+                invoiceBalanceMutation: "none",
+                ledgerReversal: "none",
+                providerCommand: "none",
+                refundArtifactStorage: false,
+                disputeArtifactStorage: false,
+                freeFormNotes: false,
+                clientNotification: "none",
+                trustPosting: "none",
+                fundsMovement: "none",
+              },
+            },
           },
           {
             id: "payment_import_chargeback_review_synthetic",
@@ -830,6 +859,8 @@ describe("BillingSection", () => {
     expect(html).toContain("exception confirmed");
     expect(html).toContain("needs more evidence");
     expect(html).toContain("Resolution packet preview:");
+    expect(html).toContain("Latest resolution record:");
+    expect(html).toContain("recorded by user_synthetic");
     expect(html).toContain("confirmed exception");
     expect(html).toContain("status unclear");
     expect(html).toContain("reviewed by user_synthetic");

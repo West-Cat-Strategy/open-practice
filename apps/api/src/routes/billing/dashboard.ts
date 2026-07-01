@@ -34,6 +34,7 @@ export function registerBillingDashboardRoutes(
       paymentImportReviewRecords,
       paymentImportDepositMatchReviews,
       paymentImportRefundChargebackReviews,
+      paymentImportRefundChargebackResolutionRecords,
       periodLocks,
       rateRules,
       expenseCategories,
@@ -46,6 +47,7 @@ export function registerBillingDashboardRoutes(
       repository.listPaymentImportReviewRecords(request.auth.firmId),
       repository.listPaymentImportDepositMatchReviews(request.auth.firmId),
       repository.listPaymentImportRefundChargebackReviews(request.auth.firmId),
+      repository.listPaymentImportRefundChargebackResolutionRecords(request.auth.firmId),
       repository.listBillingPeriodLocks(request.auth.firmId),
       repository.listBillingRateRules(request.auth.firmId),
       repository.listBillingExpenseCategories(request.auth.firmId),
@@ -185,6 +187,14 @@ export function registerBillingDashboardRoutes(
               .filter((review) => review.paymentImportReviewRecordId === record.id)
               .sort((left, right) => Date.parse(right.reviewedAt) - Date.parse(left.reviewedAt));
             const latestRefundChargebackReview = recordRefundChargebackReviews[0];
+            const recordRefundChargebackResolutionRecords =
+              paymentImportRefundChargebackResolutionRecords
+                .filter(
+                  (resolutionRecord) => resolutionRecord.paymentImportReviewRecordId === record.id,
+                )
+                .sort((left, right) => Date.parse(right.recordedAt) - Date.parse(left.recordedAt));
+            const latestRefundChargebackResolutionRecord =
+              recordRefundChargebackResolutionRecords[0];
             const currentManualPayment = latestReview
               ? payments.find((payment) => payment.id === latestReview.candidateManualPaymentId)
               : undefined;
@@ -231,6 +241,21 @@ export function registerBillingDashboardRoutes(
                     reviewerEvidencePresent: latestRefundChargebackReview.reviewerEvidencePresent,
                     reviewedAt: latestRefundChargebackReview.reviewedAt,
                     boundaries: latestRefundChargebackReview.boundaries,
+                  }
+                : undefined,
+              refundChargebackResolutionRecordCount: recordRefundChargebackResolutionRecords.length,
+              latestRefundChargebackResolutionRecord: latestRefundChargebackResolutionRecord
+                ? {
+                    id: latestRefundChargebackResolutionRecord.id,
+                    category: latestRefundChargebackResolutionRecord.category,
+                    resolutionPosture: latestRefundChargebackResolutionRecord.resolutionPosture,
+                    reasonCategories: latestRefundChargebackResolutionRecord.reasonCategories,
+                    latestReviewId: latestRefundChargebackResolutionRecord.latestReviewId,
+                    latestReviewerMetadata:
+                      latestRefundChargebackResolutionRecord.latestReviewerMetadata,
+                    recordedByUserId: latestRefundChargebackResolutionRecord.recordedByUserId,
+                    recordedAt: latestRefundChargebackResolutionRecord.recordedAt,
+                    noSideEffectFlags: latestRefundChargebackResolutionRecord.noSideEffectFlags,
                   }
                 : undefined,
               depositMatchReviewCount: recordDepositMatchReviews.length,

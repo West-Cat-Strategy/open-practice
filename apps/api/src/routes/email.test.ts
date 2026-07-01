@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { InMemoryOpenPracticeRepository } from "@open-practice/database";
 import { serializeSmtpProviderConfig } from "@open-practice/domain";
 import type { Contact, ProfessionalRole, User } from "@open-practice/domain";
+import { authorizationFixtureCases } from "@open-practice/domain/authorization-fixtures";
 import { registerEmailRoutes } from "./email.js";
 import type { ApiJobQueue, ConnectorDnsResolver } from "./types.js";
 
@@ -15,6 +16,12 @@ const emailJobQueue = {
 
 function deliveryConfirmation(recipientCount = 1) {
   return { confirmed: true, channel: "email", recipientCount };
+}
+
+function authorizationFixtureCase(id: string) {
+  const match = authorizationFixtureCases.find((candidate) => candidate.id === id);
+  if (!match) throw new Error(`Missing authorization fixture case ${id}`);
+  return match;
 }
 
 function user(role: ProfessionalRole, assignedMatterIds: string[] = ["matter-001"]): User {
@@ -659,6 +666,29 @@ describe("email routes", () => {
         reviewStatus: "reviewed_preview",
         warnings: expect.arrayContaining(["html_body_sanitized"]),
         delivery: { persisted: true, queued: false },
+        outboxDraftReview: {
+          status: "draft_review",
+          mode: "outbox_draft_review",
+          templateDraftId,
+          publishedVersionId,
+          publishedVersion: 1,
+          matterId: "matter-001",
+          contactId: "contact-ada",
+          contactMethodId: "contact-method-ada-email",
+          recipientCount: 1,
+          warningCount: 1,
+          createdByUserId: "user-owner_admin",
+          delivery: {
+            persisted: true,
+            queued: false,
+            emailOutboxRecordCreated: false,
+            jobQueued: false,
+            providerDeliverySideEffect: false,
+            campaignAutomation: false,
+            bulkSend: false,
+            subscriptionManagement: false,
+          },
+        },
       },
     });
     expect(response.body).not.toContain("Synthetic mutable v2 subject");
@@ -677,6 +707,17 @@ describe("email routes", () => {
       publishedVersionId,
       recipientSummary: { recipientCount: 1 },
       delivery: { persisted: true, queued: false },
+      outboxDraftReview: {
+        status: "draft_review",
+        mode: "outbox_draft_review",
+        publishedVersionId,
+        recipientCount: 1,
+        delivery: {
+          queued: false,
+          emailOutboxRecordCreated: false,
+          jobQueued: false,
+        },
+      },
     });
 
     await expect(repository.listEmailOutbox("firm-west-legal")).resolves.toEqual([]);
@@ -703,10 +744,31 @@ describe("email routes", () => {
         queued: false,
         providerNeutral: true,
         deliveryQueued: false,
+        emailOutboxRecordCreated: false,
+        jobQueued: false,
         providerDeliverySideEffect: false,
         campaignAutomation: false,
         bulkSend: false,
         subscriptionManagement: false,
+        outboxDraftReview: expect.objectContaining({
+          status: "draft_review",
+          mode: "outbox_draft_review",
+          reviewedOutboundPreviewId: expect.any(String),
+          templateDraftId,
+          publishedVersionId,
+          publishedVersion: 1,
+          matterId: "matter-001",
+          contactId: "contact-ada",
+          contactMethodId: "contact-method-ada-email",
+          recipientCount: 1,
+          warningCount: 1,
+          createdByUserId: "user-owner_admin",
+          delivery: expect.objectContaining({
+            queued: false,
+            emailOutboxRecordCreated: false,
+            jobQueued: false,
+          }),
+        }),
       }),
     });
     const serializedAudit = JSON.stringify(audit.events);
@@ -770,6 +832,136 @@ describe("email routes", () => {
         matterId: "matter-001",
       }),
     ).resolves.toEqual([]);
+  });
+
+  it("matches reviewed outbound preview authorization fixtures without delivery side effects", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await setSyntheticContactMethods(repository, "contact-ada", [
+      {
+        id: "contact-method-ada-email",
+        type: "email",
+        label: "work",
+        value: "ada@example.test",
+      },
+    ]);
+    const fixtureIds = authorizationFixtureCases
+      .filter((item) => item.family === "email_reviewed_outbound_preview")
+      .map((item) => item.id);
+    expect(fixtureIds).toEqual([
+      "email-reviewed-preview:assigned:create",
+      "email-reviewed-preview:assigned:list-visible",
+      "email-reviewed-preview:unassigned:create-denied",
+      "email-reviewed-preview:unassigned:list-hidden",
+      "email-reviewed-preview:portal-client:create-denied",
+      "email-reviewed-preview:portal-client:list-denied",
+    ]);
+    const assignedCreateCase = authorizationFixtureCase("email-reviewed-preview:assigned:create");
+    const assignedReadCase = authorizationFixtureCase(
+      "email-reviewed-preview:assigned:list-visible",
+    );
+    const unassignedCreateCase = authorizationFixtureCase(
+      "email-reviewed-preview:unassigned:create-denied",
+    );
+    const unassignedReadCase = authorizationFixtureCase(
+      "email-reviewed-preview:unassigned:list-hidden",
+    );
+    const portalCreateCase = authorizationFixtureCase(
+      "email-reviewed-preview:portal-client:create-denied",
+    );
+    const portalReadCase = authorizationFixtureCase(
+      "email-reviewed-preview:portal-client:list-denied",
+    );
+    const ownerServer = testServer({
+      repository,
+      authUser: user("owner_admin", ["matter-001", "matter-002"]),
+    });
+    const { templateDraftId, publishedVersionId } = await createPublishedTemplate(ownerServer);
+
+    const assignedServer = testServer({
+      repository,
+      authUser: user("licensee", [assignedCreateCase.matterId!]),
+    });
+    const created = await assignedServer.inject({
+      method: "POST",
+      url: `/api/email/template-drafts/${templateDraftId}/versions/${publishedVersionId}/reviewed-outbound-previews`,
+      payload: {
+        matterId: assignedCreateCase.matterId,
+        contactId: "contact-ada",
+        contactMethodId: "contact-method-ada-email",
+      },
+    });
+    expect(created.statusCode).toBe(201);
+    expect(assignedCreateCase.expectedDecision).toBe("allow");
+    expect(assignedCreateCase.listVisible).toBe(true);
+
+    const listed = await assignedServer.inject({
+      method: "GET",
+      url: `/api/email/template-drafts/${templateDraftId}/reviewed-outbound-previews?matterId=${assignedReadCase.matterId}`,
+    });
+    expect(listed.statusCode).toBe(200);
+    expect(listed.json().reviewedOutboundPreviews).toEqual([
+      expect.objectContaining({
+        matterId: assignedReadCase.matterId,
+        reviewStatus: "reviewed_preview",
+        delivery: { persisted: true, queued: false },
+      }),
+    ]);
+    expect(assignedReadCase.expectedDecision).toBe("allow");
+    expect(assignedReadCase.listVisible).toBe(true);
+    expect(JSON.stringify(listed.json())).not.toContain("ada@example.test");
+
+    const unassignedServer = testServer({
+      repository,
+      authUser: user("licensee", ["matter-001"]),
+    });
+    const unassignedCreate = await unassignedServer.inject({
+      method: "POST",
+      url: `/api/email/template-drafts/${templateDraftId}/versions/${publishedVersionId}/reviewed-outbound-previews`,
+      payload: {
+        matterId: unassignedCreateCase.matterId,
+        contactId: "contact-ada",
+        contactMethodId: "contact-method-ada-email",
+      },
+    });
+    expect(unassignedCreate.statusCode).toBe(403);
+    expect(unassignedCreateCase.expectedDecision).toBe("deny");
+    expect(unassignedCreateCase.listVisible).toBe(false);
+
+    const unassignedList = await unassignedServer.inject({
+      method: "GET",
+      url: `/api/email/template-drafts/${templateDraftId}/reviewed-outbound-previews?matterId=${unassignedReadCase.matterId}`,
+    });
+    expect(unassignedList.statusCode).toBe(403);
+    expect(unassignedReadCase.expectedDecision).toBe("deny");
+    expect(unassignedReadCase.listVisible).toBe(false);
+
+    const portalServer = testServer({
+      repository,
+      authUser: user("client_external", [portalCreateCase.matterId!]),
+    });
+    const portalCreate = await portalServer.inject({
+      method: "POST",
+      url: `/api/email/template-drafts/${templateDraftId}/versions/${publishedVersionId}/reviewed-outbound-previews`,
+      payload: {
+        matterId: portalCreateCase.matterId,
+        contactId: portalCreateCase.contactId,
+        contactMethodId: "contact-method-ada-email",
+      },
+    });
+    expect(portalCreate.statusCode).toBe(403);
+    expect(portalCreateCase.expectedDecision).toBe("deny");
+    expect(portalCreateCase.listVisible).toBe(false);
+
+    const portalList = await portalServer.inject({
+      method: "GET",
+      url: `/api/email/template-drafts/${templateDraftId}/reviewed-outbound-previews?matterId=${portalReadCase.matterId}`,
+    });
+    expect(portalList.statusCode).toBe(403);
+    expect(portalReadCase.expectedDecision).toBe("deny");
+    expect(portalReadCase.listVisible).toBe(false);
+
+    await expect(repository.listEmailOutbox("firm-west-legal")).resolves.toEqual([]);
+    await expect(repository.listJobLifecycleRecords("firm-west-legal")).resolves.toEqual([]);
   });
 
   it("rejects do-not-contact and non-email methods for reviewed outbound previews", async () => {

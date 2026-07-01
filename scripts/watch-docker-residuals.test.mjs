@@ -41,7 +41,7 @@ services:
     tmpfs:
       - /tmp
   mailpit:
-    image: open-practice-mailpit:v1.30.2-go1.26.4
+    image: open-practice-mailpit:v1.30.3-go1.26.4
     build:
       context: ./docker/mailpit
 `;
@@ -64,8 +64,8 @@ FROM alpine:3.23.4@sha256:runtime
 
 const mailpitDockerfileFixture = `
 FROM golang:1.26.4-alpine3.23@sha256:builder AS builder
-ARG MAILPIT_VERSION=v1.30.2
-ARG MAILPIT_SHA256=239f044997dcb6ec27ed1b85b5ca3bba9d5996d66dad67014c3f4aa75549269b
+ARG MAILPIT_VERSION=v1.30.3
+ARG MAILPIT_SHA256=1e6a94e92b5e6ebbdaed7ec2dd280b7d200185697d723044c5a9fc239fcdb6d8
 FROM alpine:3.23.4@sha256:runtime
 `;
 
@@ -91,7 +91,7 @@ function fakeSuccessfulSpawn(command, args) {
         status: 0,
         stdout: isMinio
           ? "9e49 refs/tags/RELEASE.2025-10-15T17-29-55Z\n"
-          : "239f04 refs/tags/v1.30.2\n",
+          : "8b4af refs/tags/v1.30.3\n",
         stderr: "",
       };
     }
@@ -152,7 +152,7 @@ describe("watch-docker-residuals contract", () => {
     assert.deepEqual(parseComposeServiceImages(composeFixture), {
       postgres: "open-practice-postgres:18-alpine-su-exec",
       minio: "open-practice-minio:RELEASE.2025-10-15T17-29-55Z-go1.26.4",
-      mailpit: "open-practice-mailpit:v1.30.2-go1.26.4",
+      mailpit: "open-practice-mailpit:v1.30.3-go1.26.4",
     });
     assert.deepEqual(parseDockerfilePosture("postgres", postgresDockerfileFixture), {
       upstreamImage: `postgres:18-alpine@${postgresDigest}`,
@@ -165,7 +165,7 @@ describe("watch-docker-residuals contract", () => {
       parseDockerfilePosture("minio", minioDockerfileFixture).version,
       "RELEASE.2025-10-15T17-29-55Z",
     );
-    assert.equal(parseDockerfilePosture("mailpit", mailpitDockerfileFixture).version, "v1.30.2");
+    assert.equal(parseDockerfilePosture("mailpit", mailpitDockerfileFixture).version, "v1.30.3");
   });
 
   it("records bundled MinIO Compose hardening across local and self-host profiles", () => {
@@ -217,10 +217,42 @@ describe("watch-docker-residuals contract", () => {
       "docker-scout-version",
       "compose-images",
     ]);
+    assert.equal(commandIds[3], "wrapped-service-images-build");
     assert(commandIds.includes("postgres-scout-recommendations"));
     assert(commandIds.includes("minio-dockerhub-current-source-manifest"));
     assert(commandIds.includes("minio-source-repository-metadata"));
     assert(commandIds.includes("mailpit-source-tags"));
+
+    const commands = dockerResidualCommands(posture);
+    assert.deepEqual(
+      commands.find((command) => command.id === "wrapped-service-images-build"),
+      {
+        id: "wrapped-service-images-build",
+        command: "docker",
+        args: ["compose", "build", "postgres", "minio", "mailpit"],
+        required: true,
+        timeoutMs: 1_200_000,
+      },
+    );
+    assert.deepEqual(commands.find((command) => command.id === "mailpit-scout-quickview").args, [
+      "scout",
+      "quickview",
+      "local://open-practice-mailpit:v1.30.3-go1.26.4",
+    ]);
+    assert.deepEqual(
+      commands.find((command) => command.id === "minio-source-repository-metadata").args,
+      [
+        "-fsSL",
+        "--retry",
+        "3",
+        "--retry-all-errors",
+        "--retry-delay",
+        "1",
+        "-H",
+        "User-Agent: open-practice-local-validation",
+        "https://api.github.com/repos/minio/minio",
+      ],
+    );
   });
 
   it("extracts registry digests and newest source tags", () => {

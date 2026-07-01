@@ -144,12 +144,12 @@ the 2026-05-12 / 2026-05-16 / 2026-06-04 infra-image follow-ups:
   `/data` volume contract. The 2026-06-05 local Scout scan reports `11C`/`16H`, with the Alpine base
   current and the remaining findings in MinIO/application Go modules; no same-contract base-image
   recommendation clears those residuals.
-- The local Mailpit service now builds `open-practice-mailpit:v1.30.2-go1.26.4` from the checked
-  v1.30.2 source archive on a fixed Go toolchain while preserving SMTP port `1025` and web port
+- The local Mailpit service now builds `open-practice-mailpit:v1.30.3-go1.26.4` from the checked
+  v1.30.3 source archive on a fixed Go toolchain while preserving SMTP port `1025` and web port
   `8025`. The runtime starts as a non-root user. The builder is pinned to
-  `golang:1.26.4-alpine3.23` by digest, and the source archive SHA-256 is recorded in
-  `docker/mailpit/Dockerfile`. The 2026-06-18 residual-watch closeout verified this newer source tag
-  before Docker app smoke and Docker E2E validation.
+  `golang:1.26.4-alpine3.23` by digest, and the source archive SHA-256 plus upstream tag revision
+  are recorded in `docker/mailpit/Dockerfile`. The 2026-06-30 residual-watch repair verified this
+  newer source tag before Docker app smoke and Docker scan validation.
 - The 2026-06-05 all-image follow-up artifact is local-only at
   `/tmp/codex-security-scans/open-practice/0484630_20260605T221819Z_docker_followup/summary.md`.
   It records the Compose image inventory, the all-image Scout matrix, and the rationale for closing
@@ -165,20 +165,21 @@ pnpm docker:residual-watch
 ```
 
 The helper reads `docker-compose.yml`, `docker-compose.selfhost.yml`, and the wrapped service
-Dockerfiles, then writes ignored local evidence under
+Dockerfiles, builds the wrapped Postgres, MinIO, and Mailpit images before Docker Scout checks, and
+writes ignored local evidence under
 `/tmp/codex-security-scans/open-practice/docker-residual-watch/<timestamp>/`. It reruns the current
-Docker Scout quickview, critical/high CVE, and recommendation checks for the three wrapped service
-images, probes same-product registry manifests, checks upstream MinIO/Mailpit source tags, records
-MinIO upstream repository archive posture, and records bundled-MinIO hardening metadata. Exit `0`
-means the documented residuals still have no same-contract review candidate; MinIO Critical/High or
-archived-source residuals are accepted only when the artifact records hardened local and self-host
-MinIO Compose services, the current source tag, source-only container posture, no same-contract
-candidate, and completed Docker/Scout/source probes. Exit `2` means a newer upstream tag, registry
-manifest, Scout recommendation, or unaccepted readiness blocker needs another hardening review, and
-exit `1` records Docker, Scout, registry, source, or network blockers in the artifact. The artifact
-includes `minioHardening`, `acceptedResiduals`, and `readinessBlockers`; do not treat accepted
-residuals as removed findings. Keep any future image pin, base, source-tag, provenance, license, or
-Docker E2E change in its own follow-up proof.
+Docker Scout quickview, critical/high CVE, and recommendation checks against local wrapped-service
+image references, probes same-product registry manifests, checks upstream MinIO/Mailpit source tags,
+records MinIO upstream repository archive posture, and records bundled-MinIO hardening metadata.
+Exit `0` means the documented residuals still have no same-contract review candidate; MinIO
+Critical/High or archived-source residuals are accepted only when the artifact records hardened
+local and self-host MinIO Compose services, the current source tag, source-only container posture,
+no same-contract candidate, and completed Docker/Scout/source probes. Exit `2` means a newer
+upstream tag, registry manifest, Scout recommendation, or unaccepted readiness blocker needs
+another hardening review, and exit `1` records Docker, Scout, registry, source, or network blockers
+in the artifact. The artifact includes `minioHardening`, `acceptedResiduals`, and
+`readinessBlockers`; do not treat accepted residuals as removed findings. Keep any future image
+pin, base, source-tag, provenance, license, or Docker E2E change in its own follow-up proof.
 
 When `pnpm docker:scan` is run with Trivy installed, a bundled-MinIO-only Critical/High scan result
 may be accepted only when the wrapper reruns residual-watch and records the same eligible

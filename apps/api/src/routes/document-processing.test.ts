@@ -3,11 +3,18 @@ import type { S3Client } from "@aws-sdk/client-s3";
 import { afterEach, describe, expect, it } from "vitest";
 import { InMemoryOpenPracticeRepository } from "@open-practice/database";
 import type { LegalResearchArtifactStatus, ProfessionalRole, User } from "@open-practice/domain";
+import { authorizationFixtureCases } from "@open-practice/domain/authorization-fixtures";
 import { registerDocumentProcessingRoutes } from "./document-processing.js";
 import type { ApiJobQueue } from "./types.js";
 
 const firmId = "firm-west-legal";
 const servers: FastifyInstance[] = [];
+
+function authorizationFixtureCase(id: string) {
+  const match = authorizationFixtureCases.find((candidate) => candidate.id === id);
+  if (!match) throw new Error(`Missing authorization fixture case ${id}`);
+  return match;
+}
 
 function user(role: ProfessionalRole, assignedMatterIds: string[] = ["matter-001"]): User {
   return {
@@ -2918,28 +2925,87 @@ describe("document processing routes", () => {
 
   it("applies matter access to the document processing workbench", async () => {
     const repository = new InMemoryOpenPracticeRepository();
-    const denied = await testServer({
-      repository,
-      authUser: user("licensee", ["matter-002"]),
-    }).inject({
-      method: "GET",
-      url: "/api/document-processing/workbench?matterId=matter-001",
+    const fixtureIds = authorizationFixtureCases
+      .filter((item) => item.family === "document_disposition_review")
+      .map((item) => item.id);
+    expect(fixtureIds).toEqual([
+      "document-disposition-review:assigned:list-visible",
+      "document-disposition-review:unassigned:list-hidden",
+      "document-disposition-review:portal-client:staff-list-denied",
+    ]);
+    const assignedCase = authorizationFixtureCase(
+      "document-disposition-review:assigned:list-visible",
+    );
+    const unassignedCase = authorizationFixtureCase(
+      "document-disposition-review:unassigned:list-hidden",
+    );
+    const portalCase = authorizationFixtureCase(
+      "document-disposition-review:portal-client:staff-list-denied",
+    );
+    await repository.updateDispositionReviewScheduleProfile({
+      firmId,
+      profile: {
+        profileKey: "default",
+        label: "Synthetic default disposition review",
+        reviewCadence: "quarterly",
+        reviewAfterDays: 180,
+        minimumRetainDays: 365,
+      },
     });
-    expect(denied.statusCode).toBe(403);
 
-    const allowed = await testServer({
+    const denied = await testServer({
       repository,
       authUser: user("licensee", ["matter-001"]),
     }).inject({
       method: "GET",
-      url: "/api/document-processing/workbench?matterId=matter-001",
+      url: `/api/document-processing/workbench?matterId=${unassignedCase.matterId}`,
+    });
+    expect(denied.statusCode).toBe(403);
+    expect(unassignedCase.expectedDecision).toBe("deny");
+    expect(unassignedCase.listVisible).toBe(false);
+
+    const allowed = await testServer({
+      repository,
+      authUser: user("licensee", [assignedCase.matterId!]),
+    }).inject({
+      method: "GET",
+      url: `/api/document-processing/workbench?matterId=${assignedCase.matterId}`,
     });
     expect(allowed.statusCode).toBe(200);
     expect(allowed.json().documents).toEqual([
       expect.objectContaining({
-        document: expect.objectContaining({ id: "doc-001", matterId: "matter-001" }),
+        document: expect.objectContaining({
+          id: assignedCase.resourceId,
+          matterId: assignedCase.matterId,
+        }),
+        retentionHoldReview: expect.objectContaining({
+          reviewerOnly: true,
+          dispositionMetadata: expect.objectContaining({
+            destructiveAction: false,
+            objectDeletion: false,
+            rawPayloadRetention: false,
+            complianceClaim: false,
+          }),
+        }),
       }),
     ]);
+    expect(assignedCase.expectedDecision).toBe("allow");
+    expect(assignedCase.listVisible).toBe(true);
+    const serializedAllowed = JSON.stringify(allowed.json());
+    expect(serializedAllowed).not.toContain(unassignedCase.resourceId);
+    expect(allowed.json().documents[0].document).not.toHaveProperty("storageKey");
+    expect(allowed.json().documents[0].document).not.toHaveProperty("reviewMetadata");
+
+    const portalDenied = await testServer({
+      repository,
+      authUser: user("client_external", [portalCase.matterId!]),
+    }).inject({
+      method: "GET",
+      url: `/api/document-processing/workbench?matterId=${portalCase.matterId}`,
+    });
+    expect(portalDenied.statusCode).toBe(403);
+    expect(portalCase.expectedDecision).toBe("deny");
+    expect(portalCase.listVisible).toBe(false);
   });
 
   it("returns 503 when the OCR queue is not configured", async () => {

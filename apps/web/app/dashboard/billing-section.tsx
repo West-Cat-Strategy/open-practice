@@ -8,6 +8,8 @@ import {
   describePaymentSettlementReview,
   describeRefundChargebackResolutionPacketNoSideEffects,
   describeRefundChargebackResolutionPacketPreview,
+  describeRefundChargebackResolutionRecord,
+  describeRefundChargebackResolutionRecordNoSideEffects,
   type PaymentImportReviewSummary,
   type PaymentSettlementReviewSummary,
 } from "../billing-dashboard";
@@ -928,6 +930,12 @@ export function BillingSection({
               ) : null}
               {describeRefundChargebackResolutionPacketNoSideEffects(record) ? (
                 <small>{describeRefundChargebackResolutionPacketNoSideEffects(record)}</small>
+              ) : null}
+              {describeRefundChargebackResolutionRecord(record) ? (
+                <small>{describeRefundChargebackResolutionRecord(record)}</small>
+              ) : null}
+              {describeRefundChargebackResolutionRecordNoSideEffects(record) ? (
+                <small>{describeRefundChargebackResolutionRecordNoSideEffects(record)}</small>
               ) : null}
             </span>
             <em>{cents(record.amountCents)}</em>

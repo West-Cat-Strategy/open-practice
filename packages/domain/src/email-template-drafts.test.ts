@@ -172,6 +172,31 @@ describe("email template drafts", () => {
       recipientSummary: { toCount: 1, ccCount: 0, bccCount: 0, recipientCount: 1 },
       reviewStatus: "reviewed_preview",
       delivery: { persisted: true, queued: false },
+      outboxDraftReview: {
+        status: "draft_review",
+        mode: "outbox_draft_review",
+        reviewedOutboundPreviewId: "reviewed-outbound-preview-001",
+        templateDraftId: "template-draft-001",
+        publishedVersionId: "template-published-version-reviewed-001",
+        publishedVersion: 4,
+        matterId: "matter-001",
+        contactId: "contact-client-001",
+        contactMethodId: "contact-method-email-001",
+        recipientCount: 1,
+        warningCount: 1,
+        createdByUserId: "user-admin",
+        createdAt: "2026-06-30T10:05:00.000Z",
+        delivery: {
+          persisted: true,
+          queued: false,
+          emailOutboxRecordCreated: false,
+          jobQueued: false,
+          providerDeliverySideEffect: false,
+          campaignAutomation: false,
+          bulkSend: false,
+          subscriptionManagement: false,
+        },
+      },
       relatedResource: { type: "draft", id: "draft-001" },
       warnings: expect.arrayContaining(["html_body_sanitized"]),
     });
@@ -182,6 +207,9 @@ describe("email template drafts", () => {
     expect(metadata).toContain("reviewedOutboundPreviewId");
     expect(metadata).toContain("providerNeutral");
     expect(metadata).toContain("subscriptionManagement");
+    expect(metadata).toContain("outboxDraftReview");
+    expect(metadata).toContain("emailOutboxRecordCreated");
+    expect(metadata).toContain("jobQueued");
     expect(metadata).not.toContain("client@example.test");
     expect(metadata).not.toContain("Synthetic private reviewed subject");
     expect(metadata).not.toContain("This reviewed body");

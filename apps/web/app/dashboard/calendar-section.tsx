@@ -11,6 +11,11 @@ import {
 import type { ReactNode } from "react";
 import type { CalendarMeetingLinkMode } from "@open-practice/domain/calendar-models";
 import {
+  calendarSchedulingAgingReviewBusyAction,
+  describeCalendarSchedulingAgingReviewAction,
+  type CalendarSchedulingAgingReviewAction,
+} from "@open-practice/domain/operational-actions";
+import {
   calendarMeetingReadinessItems,
   describeCalendarGuestActionDisabledReason,
   describeCalendarEventHandoff,
@@ -471,6 +476,10 @@ export function CalendarSection({
             (request.reviewAging?.status === "aging" || request.reviewAging?.status === "stale");
           const busyPrefix = `${request.id}:`;
           const reviewBusy = reviewingCalendarSchedulingRequestKey.startsWith(busyPrefix);
+          const agingReviewBusyAction = calendarSchedulingAgingReviewBusyAction(
+            reviewingCalendarSchedulingRequestKey,
+            request.id,
+          );
           return (
             <div className="party-row" key={request.id}>
               <span>
@@ -513,45 +522,36 @@ export function CalendarSection({
                   <div className="calendar-meeting-link-form">
                     {agingDecisionAvailable ? (
                       <>
-                        <button
-                          aria-label="Acknowledge scheduling request aging review"
-                          className="secondary-button compact-button row-button"
-                          disabled={reviewBusy}
-                          onClick={() =>
-                            onReviewCalendarSchedulingRequestAgingDecision(request, "acknowledged")
-                          }
-                          type="button"
-                        >
-                          <CheckCircle2 size={15} />
-                          Acknowledge
-                        </button>
-                        <button
-                          aria-label="Mark scheduling request follow-up required"
-                          className="secondary-button compact-button row-button"
-                          disabled={reviewBusy}
-                          onClick={() =>
-                            onReviewCalendarSchedulingRequestAgingDecision(
-                              request,
-                              "follow_up_required",
-                            )
-                          }
-                          type="button"
-                        >
-                          <Bell size={15} />
-                          Follow up
-                        </button>
-                        <button
-                          aria-label="Defer scheduling request aging review"
-                          className="secondary-button compact-button row-button"
-                          disabled={reviewBusy}
-                          onClick={() =>
-                            onReviewCalendarSchedulingRequestAgingDecision(request, "defer_review")
-                          }
-                          type="button"
-                        >
-                          <Clock3 size={15} />
-                          Defer
-                        </button>
+                        {(
+                          [
+                            { action: "acknowledged", icon: <CheckCircle2 size={15} /> },
+                            { action: "follow_up_required", icon: <Bell size={15} /> },
+                            { action: "defer_review", icon: <Clock3 size={15} /> },
+                          ] satisfies Array<{
+                            action: CalendarSchedulingAgingReviewAction;
+                            icon: ReactNode;
+                          }>
+                        ).map(({ action, icon }) => {
+                          const actionState = describeCalendarSchedulingAgingReviewAction({
+                            action,
+                            busyAction: agingReviewBusyAction,
+                          });
+                          return (
+                            <button
+                              aria-label={actionState.ariaLabel}
+                              className="secondary-button compact-button row-button"
+                              disabled={!actionState.available}
+                              key={actionState.actionKey}
+                              onClick={() =>
+                                onReviewCalendarSchedulingRequestAgingDecision(request, action)
+                              }
+                              type="button"
+                            >
+                              {icon}
+                              {actionState.label}
+                            </button>
+                          );
+                        })}
                       </>
                     ) : null}
                     <label>

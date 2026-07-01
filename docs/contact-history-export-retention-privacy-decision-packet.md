@@ -1,63 +1,39 @@
 # Contact-History Export, Retention, And Privacy Decision Packet
 
-This packet records the policy surface for contact-history exports. The first approved runtime
-slice is selected and shipped: a transient `staff_review` JSON export for one visible CRM contact,
-generated from existing authorized dossier/detail/timeline projections with a required review
-reason and no retained export body. A follow-up now adds the smallest queued request/poll/
-short-lived authenticated download-link path for the same purpose and permission while still
-storing no export body.
+This packet records the policy surface for contact-history exports. The approved runtime slice is a
+matter-scoped `staff_review` preview for one visible CRM contact, generated from existing
+authorized/redacted dossier/detail/timeline projections with a required matter context and review
+reason. The preview returns counts, category presence, safe IDs, and fixed boundary flags only. It
+does not return or retain an export body.
 
 Open Practice currently has the Full CRM Contacts foundation: contact and organization records,
 relationship links, matter-contact associations, portal-access posture, conflict-check integration,
-authorization-filtered CRM panels, the first single-contact staff-review export runtime, and the
-metadata-only queued/download-link follow-up. Broader contact-history export work must stay behind
-explicit product, privacy, and legal review before implementation.
+authorization-filtered CRM panels, and the matter-scoped contact-history staff-review preview.
+Broader contact-history export work must stay behind explicit product, privacy, and legal review
+before implementation.
 
-## Selected Synchronous Runtime Slice
+## Selected Preview Runtime Slice
 
-The selected first synchronous runtime is intentionally narrow:
+The selected runtime is intentionally narrow:
 
 - request path: `POST /api/contacts/:contactId/history-export`;
 - purpose: `staff_review` only;
 - requester path: authenticated owner-admin/licensee staff with existing `contact:export`;
-- context: one firm-scoped contact visible through the existing dossier/detail visibility rules;
-- body: strict `{ purpose: "staff_review", reviewReason: string }`, with a short review reason
-  required before generation;
-- output: synchronous JSON built from authorized contact detail, visible dossier, visible timeline,
-  portal posture, conflict summaries, and duplicate-review posture;
-- storage posture: transient regeneration only, no server-side retained export body, no object
-  storage artifact, no queue payload, no job metadata body, no provider, no persistent download
-  link, no schema, and no migration;
+- context: one visible contact linked to one visible matter;
+- body: strict `{ purpose: "staff_review", matterId: string, reviewReason: string }`, with matter
+  scope and a short review reason required before preview generation;
+- output: preview metadata built from authorized/redacted contact detail, visible dossier, visible
+  matter-scoped timeline, portal posture, conflict summaries, retention/hold posture, and
+  data-quality/duplicate-review posture;
+- storage posture: no retained export body, no object storage artifact, no queue payload, no job
+  metadata body, no provider, no persistent download link, no schema, and no migration;
 - audit posture: `contact_history_export.requested` stores only bounded IDs, purpose, reason
-  presence, generated counts, and retention/hold/privacy posture strings.
+  presence, generated counts, and fixed retention/hold/privacy/boundary posture strings and
+  booleans.
 
-This slice does not create retention deadlines, deletion automation, legal-hold override behavior,
-approval workflows, matter-scoped export packets, jurisdiction-certified records-disposition
-claims, or privacy-law compliance claims.
-
-## Queued Download-Link Follow-Up
-
-The queued/download-link follow-up keeps the same `staff_review` purpose and existing
-`contact:export` authorization, but moves staff review into a request/poll/download flow:
-
-- request path: `POST /api/contacts/:contactId/history-export-requests`;
-- poll path: `GET /api/contacts/:contactId/history-export-requests/:exportJobId`;
-- download path:
-  `GET /api/contacts/:contactId/history-export-requests/:exportJobId/download`;
-- queue posture: existing `reports` queue and existing `job_lifecycle_records`, with `jobName`
-  and `targetResourceType` set to `contact_history_export`;
-- download posture: authenticated route only, 24-hour `downloadExpiresAt` link expiry, regenerated
-  from current requester visibility at download time;
-- metadata posture: job id, contact id, purpose, status/timestamps, safe counts, review-reason
-  presence, poll/download URLs in responses, `downloadExpiresAt`, and posture strings/booleans
-  only;
-- storage posture: no retained export body, no retained export artifact, no object storage
-  artifact, no provider, no schema, no migration, no deletion automation, no retention deadline,
-  and no legal-hold override.
-
-The queued follow-up treats `downloadExpiresAt` as link expiry only. It does not create a contact
-records-retention deadline, policy eligibility decision, legal-hold override, revocation workflow,
-object-storage artifact, provider boundary, or jurisdiction-certified compliance claim.
+This slice does not create export bodies, queued requests, download links, object artifacts,
+retention deadlines, deletion automation, legal-hold override behavior, approval workflows,
+jurisdiction-certified records-disposition claims, or privacy-law compliance claims.
 
 ## Purpose And Audience
 
@@ -74,10 +50,10 @@ Before any broader implementation, the product owner and reviewer should decide:
   actors receive different projections;
 - whether a request needs a matter context, contact context, review reason, legal-hold state, or
   approval step;
-- whether download links are regenerated from authorized projections at request time, as the
-  single-contact queued follow-up now does, instead of storing export bodies in job metadata;
-- how export request, poll, download, expiry, and revocation events will be reflected in audit
-  evidence without recording private field values.
+- whether future download links should regenerate from authorized projections at request time
+  instead of storing export bodies in job metadata;
+- how any future export request, poll, download, expiry, and revocation events would be reflected
+  in audit evidence without recording private field values.
 
 All examples in future implementation proof must use synthetic data only.
 
@@ -122,12 +98,12 @@ dossiers, matter-contact associations, conflict checks, portal grants, and docum
   binding.
 - Conflict-check detail should keep the existing owner-admin/auditor detailed visibility and
   aggregate or redacted output for other authorized readers.
-- Export jobs and audit events should store bounded request metadata, status, purpose, actor,
-  timestamps, and taxonomy summaries, not raw export rows or arbitrary metadata values.
-- The synchronous first runtime has no download link or object-storage artifact. The queued
-  follow-up uses a short-lived authenticated download route that regenerates the export from current
-  visibility and still has no object-storage artifact. Future download-link or object-storage work
-  needs a separate reviewed revocation/storage decision.
+- Export previews and audit events should store bounded request metadata, purpose, actor,
+  timestamps, counts, safe IDs, and taxonomy summaries, not raw export rows or arbitrary metadata
+  values.
+- The selected runtime has no download link, queue, provider, or object-storage artifact. Future
+  download-link, queue, or object-storage work needs a separate reviewed revocation/storage
+  decision.
 
 The export design must treat privacy and matter-scoped access as required behavior, not UI-only
 ergonomics.
@@ -155,12 +131,12 @@ Before broader contact-history export implementation, reviewers must answer:
 - which decisions need jurisdiction-specific legal review before the product can claim retention or
   records-disposition support.
 
-The current single-contact staff-review surfaces answer the narrow storage question as transient
-generation/regeneration with no retained export body, no retained artifact, no retention deadline,
-no deletion workflow, and no compliance claim. Until broader answers are reviewed, future work may
-add only review-ready decision surfaces or non-mutating hints. It must not add deletion automation,
-retention deadlines, retention-policy eligibility, or jurisdiction-specific records-disposition
-claims.
+The current matter-scoped staff-review preview answers the narrow storage question as no retained
+export body, no retained artifact, no object storage artifact, no queue, no provider, no retention
+deadline, no deletion workflow, and no compliance claim. Until broader answers are reviewed, future
+work may add only review-ready decision surfaces or non-mutating hints. It must not add deletion
+automation, retention deadlines, retention-policy eligibility, or jurisdiction-specific
+records-disposition claims.
 
 ## Privacy-Policy Choices Before Runtime Work
 
@@ -173,7 +149,8 @@ owner should decide:
   posture, adverse/protected-party markers, and conflict-review summaries;
 - how requester role, matter access, portal account binding, and client visibility change the
   export projection;
-- how export request, download, expiry, revocation, and denial events are audited and explained;
+- how any future export request, download, expiry, revocation, and denial events are audited and
+  explained;
 - what minimum review reason or approval evidence is required for administrative or audit-response
   exports;
 - how the product describes contact-history exports without claiming legal advice, privacy-law

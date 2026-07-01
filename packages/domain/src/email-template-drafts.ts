@@ -71,6 +71,32 @@ export interface EmailTemplatePreviewSnapshotRecord {
 
 export type EmailTemplateReviewedOutboundPreviewStatus = "reviewed_preview";
 
+export interface EmailTemplateOutboxDraftReviewRecord {
+  status: "draft_review";
+  mode: "outbox_draft_review";
+  reviewedOutboundPreviewId: string;
+  templateDraftId: string;
+  publishedVersionId: string;
+  publishedVersion: number;
+  matterId: string;
+  contactId: string;
+  contactMethodId: string;
+  recipientCount: number;
+  warningCount: number;
+  createdByUserId: string;
+  createdAt: string;
+  delivery: {
+    persisted: true;
+    queued: false;
+    emailOutboxRecordCreated: false;
+    jobQueued: false;
+    providerDeliverySideEffect: false;
+    campaignAutomation: false;
+    bulkSend: false;
+    subscriptionManagement: false;
+  };
+}
+
 export interface EmailTemplateReviewedOutboundPreviewRecord {
   id: string;
   firmId: string;
@@ -102,6 +128,7 @@ export interface EmailTemplateReviewedOutboundPreviewRecord {
     persisted: true;
     queued: false;
   };
+  outboxDraftReview?: EmailTemplateOutboxDraftReviewRecord;
   createdAt: string;
   metadata: Record<string, unknown>;
 }
@@ -274,6 +301,31 @@ export function buildEmailTemplateReviewedOutboundPreview(input: {
     htmlSanitized: Boolean(htmlPreview?.sanitized),
     htmlTruncated: Boolean(htmlPreview?.truncated),
   });
+  const outboxDraftReview: EmailTemplateOutboxDraftReviewRecord = {
+    status: "draft_review",
+    mode: "outbox_draft_review",
+    reviewedOutboundPreviewId: input.id,
+    templateDraftId: input.publishedVersion.templateDraftId,
+    publishedVersionId: input.publishedVersion.id,
+    publishedVersion: input.publishedVersion.version,
+    matterId: input.matterId,
+    contactId: input.contactId,
+    contactMethodId: input.contactMethodId,
+    recipientCount: recipientSummary.recipientCount,
+    warningCount: warnings.length,
+    createdByUserId: input.createdByUserId,
+    createdAt: input.createdAt,
+    delivery: {
+      persisted: true,
+      queued: false,
+      emailOutboxRecordCreated: false,
+      jobQueued: false,
+      providerDeliverySideEffect: false,
+      campaignAutomation: false,
+      bulkSend: false,
+      subscriptionManagement: false,
+    },
+  };
 
   return {
     id: input.id,
@@ -303,6 +355,7 @@ export function buildEmailTemplateReviewedOutboundPreview(input: {
       persisted: true,
       queued: false,
     },
+    outboxDraftReview,
     createdAt: input.createdAt,
     metadata: {
       reviewedOutboundPreviewId: input.id,
@@ -323,10 +376,13 @@ export function buildEmailTemplateReviewedOutboundPreview(input: {
       persisted: true,
       queued: false,
       deliveryQueued: false,
+      emailOutboxRecordCreated: false,
+      jobQueued: false,
       providerDeliverySideEffect: false,
       campaignAutomation: false,
       bulkSend: false,
       subscriptionManagement: false,
+      outboxDraftReview,
       ...(input.metadata ?? {}),
     },
   };

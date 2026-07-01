@@ -2875,10 +2875,11 @@ describe("dashboard client behavior", () => {
       contactDuplicateResolutionDecisions: duplicateDecisions,
       contactDuplicateResolutionStatus: "1 duplicate decision loaded.",
       contactDossiers: [dossier],
+      contactHistoryExportMatterId: "matter-001",
       contactHistoryExportReason: "Synthetic staff review",
-      contactHistoryExportStatus: "Export generated 2026-05-01T20:00:00.000Z.",
+      contactHistoryExportStatus: "Preview generated 2026-05-01T20:00:00.000Z.",
       contactHistoryExportSummary:
-        "11 categories, 1 timeline cues, 1 matter links, 0 portal grants. Transient export; no server-side export body stored.",
+        "11 categories, 1 timeline cues, 1 matter links, 0 portal grants. Matter-scoped preview only; no export body, job, download link, or server-side artifact stored.",
       contactTimeline: [
         {
           id: "task-cue:contact-river:task-private-review",
@@ -2952,8 +2953,6 @@ describe("dashboard client behavior", () => {
       onContactCreateKindChange: () => {},
       onContactCreatePhoneChange: () => {},
       onContactHistoryExportReasonChange: () => {},
-      onPollContactHistoryExport: () => {},
-      onDownloadContactHistoryExport: () => {},
       onContactTimelineActivityFilterChange: () => {},
       onExportContactHistory: () => {},
       onCreateContact: () => {},
@@ -3008,9 +3007,23 @@ describe("dashboard client behavior", () => {
     expect(readOnlyHtml).not.toContain("relatedContact&quot;:{&quot;id");
     expect(writableHtml).toContain("contact-resolution-actions");
     expect(writableHtml).toContain("Contact-history export");
-    expect(writableHtml).toContain("Queue export");
-    expect(writableHtml).toContain("Transient export; no server-side export body stored.");
+    expect(writableHtml).toContain("Preview export");
+    expect(writableHtml).toContain("Matter-scoped preview only");
+    expect(writableHtml).not.toContain("Queue export");
+    expect(writableHtml).not.toContain("Refresh");
+    expect(writableHtml).not.toContain("Download");
     expect(writableHtml).toContain("Needs review");
+
+    const unscopedPreviewHtml = renderToStaticMarkup(
+      createElement(ContactsSection, {
+        ...commonProps,
+        canExportContactHistory: true,
+        canRecordContactDataQualityResolution: true,
+        contactHistoryExportMatterId: "",
+      }),
+    );
+    expect(unscopedPreviewHtml).toContain("Preview export");
+    expect(unscopedPreviewHtml).toContain("disabled");
 
     const crmActivityHtml = renderToStaticMarkup(
       createElement(ContactsSection, {
