@@ -30,6 +30,7 @@ import {
   type PendingConnectorRecovery,
 } from "../connector-outbox-dashboard";
 import { workflowReviewPacketSummary } from "../worker-runs-dashboard";
+import { DashboardStatusNote, DashboardSummaryGrid } from "./shared-panels";
 
 export interface ProviderPostureRow {
   key: string;
@@ -193,32 +194,36 @@ export function QueuesSection({
         onRefresh={onRefreshQueues}
         refreshing={queueRefreshing}
       />
-      <div className="detail-grid queue-summary-grid">
-        <div>
-          <span className="field-label">Queue sections</span>
-          <strong>{displayedQueues.sections.length}</strong>
-        </div>
-        <div>
-          <span className="field-label">Open items</span>
-          <strong>{displayedQueueItems.length}</strong>
-        </div>
-        <div>
-          <span className="field-label">High priority</span>
-          <strong>{displayedQueueItems.filter((item) => item.priority === "high").length}</strong>
-        </div>
-        <div>
-          <span className="field-label">My deadlines</span>
-          <strong>{taskWorkbench.counters.my.overdue + taskWorkbench.counters.my.today}</strong>
-        </div>
-        <div>
-          <span className="field-label">Hydration</span>
-          <strong>Route-backed</strong>
-        </div>
-      </div>
-      <p className="inline-empty" role="status" aria-live="polite" aria-atomic="true">
-        {queueSummary}
-      </p>
-      <p className="inline-empty">{taskDeadlineSummary}</p>
+      <DashboardSummaryGrid
+        className="queue-summary-grid"
+        items={[
+          {
+            label: "Queue sections",
+            value: displayedQueues.sections.length,
+          },
+          {
+            label: "Open items",
+            value: displayedQueueItems.length,
+          },
+          {
+            label: "High priority",
+            value: displayedQueueItems.filter((item) => item.priority === "high").length,
+            tone: displayedQueueItems.some((item) => item.priority === "high") ? "risk" : "neutral",
+          },
+          {
+            label: "My deadlines",
+            value: taskWorkbench.counters.my.overdue + taskWorkbench.counters.my.today,
+            detail: `${taskWorkbench.counters.my.overdue} overdue`,
+            tone: taskWorkbench.counters.my.overdue > 0 ? "risk" : "neutral",
+          },
+          {
+            label: "Hydration",
+            value: "Route-backed",
+          },
+        ]}
+      />
+      <DashboardStatusNote live>{queueSummary}</DashboardStatusNote>
+      <DashboardStatusNote>{taskDeadlineSummary}</DashboardStatusNote>
 
       <TaskDeadlineReviewBlock
         compactDate={compactDate}

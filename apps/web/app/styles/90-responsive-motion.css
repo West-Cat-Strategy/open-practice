@@ -124,21 +124,6 @@
     position: relative;
   }
 
-  .sidebar::after {
-    content: "";
-    position: absolute;
-    right: 0;
-    top: 86px;
-    width: 36px;
-    height: 52px;
-    pointer-events: none;
-    background: linear-gradient(90deg, rgba(23, 26, 24, 0), var(--bg-rail) 80%);
-  }
-
-  .zero-matter-sidebar::after {
-    display: none;
-  }
-
   .brand {
     align-items: center;
   }
@@ -148,15 +133,17 @@
   }
 
   .nav-list {
-    display: flex;
-    gap: 8px;
+    display: grid;
+    gap: 14px;
+    grid-auto-columns: initial;
+    grid-auto-flow: row;
+    grid-template-columns: 1fr;
     max-width: 100%;
     min-width: 0;
-    overflow-x: auto;
-    padding: 0 24px 6px 0;
-    scroll-padding-inline: 18px;
-    scroll-snap-type: x proximity;
-    scrollbar-width: thin;
+    overflow-x: visible;
+    padding: 0;
+    scroll-snap-type: none;
+    scrollbar-width: auto;
   }
 
   .zero-matter-sidebar .nav-list {
@@ -169,18 +156,19 @@
   }
 
   .nav-group {
-    flex: 0 0 auto;
+    min-width: 0;
   }
 
-  .zero-matter-sidebar .nav-group {
-    flex: initial;
+  .nav-group-items {
+    grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
   }
 
   .nav-item {
-    flex: 0 0 auto;
-    min-width: 132px;
-    max-width: 170px;
-    scroll-snap-align: start;
+    flex: initial;
+    min-width: 0;
+    max-width: none;
+    scroll-snap-align: unset;
+    width: 100%;
   }
 
   .zero-matter-sidebar .nav-item {
@@ -419,6 +407,7 @@
   }
 
   .section-title,
+  .dashboard-section-header,
   .active-matter-card,
   .lane-refresh-panel,
   .audit-projection-header,
@@ -432,6 +421,16 @@
 
   .section-title span {
     text-align: left;
+  }
+
+  .dashboard-section-header {
+    align-items: stretch;
+  }
+
+  .dashboard-section-header > .search-field,
+  .dashboard-section-header > .text-button,
+  .dashboard-section-header > .dashboard-section-meta {
+    width: 100%;
   }
 
   .lane-refresh-button {

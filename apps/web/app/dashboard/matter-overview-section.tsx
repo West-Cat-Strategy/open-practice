@@ -51,6 +51,7 @@ import type {
   MatterSummary,
   PracticeOverview,
 } from "../types";
+import { DashboardSectionHeader, DashboardSummaryGrid } from "./shared-panels";
 
 type LocalDashboardSectionKey = OpenPracticeSidebarNavigationSection["key"];
 
@@ -207,33 +208,33 @@ export function MatterOverviewSection({
 
   return (
     <>
-      <div className="detail-grid">
-        <div>
-          <span className="field-label">Responsible licensee</span>
-          <strong>
-            {overview.users.find((user) => user.id === activeMatter.responsibleUserId)?.displayName}
-          </strong>
-        </div>
-        <div>
-          <span className="field-label">Matter status</span>
-          <strong>{activeMatter.status}</strong>
-        </div>
-        <div>
-          <span className="field-label">Trust balance view</span>
-          <strong>{formatCurrency(activeMatter.trustBalanceCents)}</strong>
-        </div>
-        <div>
-          <span className="field-label">Data source</span>
-          <strong>API</strong>
-        </div>
-      </div>
+      <DashboardSummaryGrid
+        items={[
+          {
+            label: "Responsible licensee",
+            value:
+              overview.users.find((user) => user.id === activeMatter.responsibleUserId)
+                ?.displayName ?? "Unassigned",
+          },
+          {
+            label: "Matter status",
+            value: activeMatter.status,
+          },
+          {
+            label: "Trust balance view",
+            value: formatCurrency(activeMatter.trustBalanceCents),
+          },
+          {
+            label: "Data source",
+            value: "API",
+            detail: "Matter-scoped dashboard payload.",
+          },
+        ]}
+      />
 
       {emailTemplateDraftsPanel}
 
-      <div className="section-title">
-        <h3>Matter setup</h3>
-        <span>{readableSetupText(setupSummaryLabel)}</span>
-      </div>
+      <DashboardSectionHeader meta={readableSetupText(setupSummaryLabel)} title="Matter setup" />
       <div className="detail-grid compact-detail-grid matter-setup-summary">
         <div>
           <span className="field-label">Stage</span>

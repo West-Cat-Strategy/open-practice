@@ -6,6 +6,7 @@ import type {
   TaskStructuredDetailResponse,
   TaskTemplatesResponse,
 } from "../types";
+import { DashboardSectionHeader, DashboardStatusNote, DashboardSummaryGrid } from "./shared-panels";
 
 type TaskRow = TaskDeadlineWorkbenchResponse["tasks"][number];
 type TaskSuggestion = TaskDeadlineWorkbenchResponse["suggestedFollowUps"][number];
@@ -405,40 +406,40 @@ export function TasksSection({
 
   return (
     <>
-      <div className="detail-grid queue-summary-grid">
-        <div>
-          <span className="field-label">My open tasks</span>
-          <strong>
-            {taskWorkbench.counters.my.overdue +
+      <DashboardSummaryGrid
+        className="queue-summary-grid"
+        items={[
+          {
+            label: "My open tasks",
+            value:
+              taskWorkbench.counters.my.overdue +
               taskWorkbench.counters.my.today +
-              taskWorkbench.counters.my.upcoming}
-          </strong>
-          <small>{taskWorkbench.counters.my.overdue} overdue</small>
-        </div>
-        <div>
-          <span className="field-label">Team open tasks</span>
-          <strong>
-            {taskWorkbench.counters.team.overdue +
+              taskWorkbench.counters.my.upcoming,
+            detail: `${taskWorkbench.counters.my.overdue} overdue`,
+            tone: taskWorkbench.counters.my.overdue > 0 ? "risk" : "neutral",
+          },
+          {
+            label: "Team open tasks",
+            value:
+              taskWorkbench.counters.team.overdue +
               taskWorkbench.counters.team.today +
-              taskWorkbench.counters.team.upcoming}
-          </strong>
-          <small>{taskWorkbench.counters.team.today} due today</small>
-        </div>
-        <div>
-          <span className="field-label">Review queue</span>
-          <strong>{taskWorkbench.taskReview.summary.open}</strong>
-          <small>{taskWorkbench.taskReview.summary.schedulingReviewCount} scheduling cues</small>
-        </div>
-        <div>
-          <span className="field-label">Suggested follow-ups</span>
-          <strong>{taskWorkbench.suggestedFollowUps.length}</strong>
-          <small>Review-first safe signals</small>
-        </div>
-      </div>
+              taskWorkbench.counters.team.upcoming,
+            detail: `${taskWorkbench.counters.team.today} due today`,
+          },
+          {
+            label: "Review queue",
+            value: taskWorkbench.taskReview.summary.open,
+            detail: `${taskWorkbench.taskReview.summary.schedulingReviewCount} scheduling cues`,
+          },
+          {
+            label: "Suggested follow-ups",
+            value: taskWorkbench.suggestedFollowUps.length,
+            detail: "Review-first safe signals",
+          },
+        ]}
+      />
 
-      <p className="inline-empty" role="status" aria-live="polite" aria-atomic="true">
-        {status}
-      </p>
+      <DashboardStatusNote live>{status}</DashboardStatusNote>
 
       <div className="first-matter-form-grid task-filter-grid">
         <label>
@@ -520,10 +521,10 @@ export function TasksSection({
         </label>
       </div>
 
-      <div className="section-title">
-        <h3>{formTitle}</h3>
-        {editingTask ? <span>v{editingTask.version}</span> : <span>Staff only</span>}
-      </div>
+      <DashboardSectionHeader
+        meta={editingTask ? `v${editingTask.version}` : "Staff only"}
+        title={formTitle}
+      />
       <div className="first-matter-form-grid task-editor-grid">
         <label>
           <span className="field-label">Matter</span>
@@ -622,10 +623,7 @@ export function TasksSection({
         </button>
       </div>
 
-      <div className="section-title">
-        <h3>Tasks</h3>
-        <span>{visibleTasks.length}</span>
-      </div>
+      <DashboardSectionHeader meta={visibleTasks.length} title="Tasks" />
       <div className="party-list queue-section-list task-list">
         {visibleTasks.map((task) => {
           const archived = task.status === "archived";

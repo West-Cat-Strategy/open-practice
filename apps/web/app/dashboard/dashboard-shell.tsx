@@ -35,6 +35,7 @@ import type {
   SavedOperationalViewDefinition,
   SessionResponse,
 } from "../types";
+import { DashboardSectionHeader, DashboardStatusNote } from "./shared-panels";
 
 type LocalDashboardSectionKey = OpenPracticeSidebarNavigationSection["key"];
 
@@ -220,7 +221,7 @@ export function DashboardSidebar({
         })}
       </nav>
 
-      <section className="security-card dashboard-security-card">
+      <section className="security-card dashboard-security-card" aria-label="Security posture">
         <ShieldCheck size={20} />
         <strong>Server-enforced controls</strong>
         <p>Data is loaded through authenticated API requests and matter-scoped permissions.</p>
@@ -350,16 +351,18 @@ export function OperationalFocusPanel({
 
   return (
     <section className="panel operational-focus-panel" aria-labelledby="operational-focus-title">
-      <div className="panel-header operational-focus-header">
-        <div>
-          <p className="eyebrow">Operations focus</p>
-          <h2 id="operational-focus-title">What needs attention</h2>
-        </div>
-        <button className="text-button" onClick={onOpenQueues} type="button">
-          <Clock3 size={16} aria-hidden="true" />
-          Open queues
-        </button>
-      </div>
+      <DashboardSectionHeader
+        actions={
+          <button className="text-button" onClick={onOpenQueues} type="button">
+            <Clock3 size={16} aria-hidden="true" />
+            Open queues
+          </button>
+        }
+        className="panel-header operational-focus-header"
+        eyebrow="Operations focus"
+        id="operational-focus-title"
+        title="What needs attention"
+      />
       <div className="operational-focus-summary" aria-label="Operations focus summary">
         <span>
           <strong>{operationalFocus.attentionCount}</strong>
@@ -472,21 +475,23 @@ export function MatterContextPanel({
       className="panel matter-context-panel dashboard-matter-context"
       aria-labelledby="matter-context-title"
     >
-      <div className="panel-header matter-context-header">
-        <div>
-          <p className="eyebrow">Matter command centre</p>
-          <h2 id="matter-context-title">Active files</h2>
-        </div>
-        <label className="search-field matter-search-field">
-          <Search size={16} aria-hidden="true" />
-          <input
-            aria-label="Search matters"
-            onChange={(event) => onMatterSearchChange(event.target.value)}
-            placeholder="Search matters"
-            value={matterSearch}
-          />
-        </label>
-      </div>
+      <DashboardSectionHeader
+        actions={
+          <label className="search-field matter-search-field">
+            <Search size={16} aria-hidden="true" />
+            <input
+              aria-label="Search matters"
+              onChange={(event) => onMatterSearchChange(event.target.value)}
+              placeholder="Search matters"
+              value={matterSearch}
+            />
+          </label>
+        }
+        className="panel-header matter-context-header"
+        eyebrow="Matter command centre"
+        id="matter-context-title"
+        title="Active files"
+      />
       <div className="active-matter-card" aria-label="Selected matter">
         <span>
           <small>Selected matter</small>
@@ -535,10 +540,10 @@ export function MatterContextPanel({
         {filteredMatters.length === 0 ? <p className="inline-empty">No matters match.</p> : null}
       </div>
       {hiddenMatterCount > 0 ? (
-        <p className="matter-result-note">
+        <DashboardStatusNote className="matter-result-note">
           Showing {visibleMatters.length} of {filteredMatters.length} accessible matters. Refine
           search to narrow the list.
-        </p>
+        </DashboardStatusNote>
       ) : null}
       <details className="saved-matter-views">
         <summary>
@@ -577,9 +582,7 @@ export function MatterContextPanel({
             </button>
           </div>
         </div>
-        <p className="inline-empty" role="status" aria-live="polite" aria-atomic="true">
-          {savedMatterViewStatus}
-        </p>
+        <DashboardStatusNote live>{savedMatterViewStatus}</DashboardStatusNote>
         <div className="party-list matter-saved-view-list">
           {savedMatterViewDefinitions.map((definition) => (
             <div className="party-row" key={definition.id}>
@@ -735,13 +738,12 @@ export function ContextRail({
       aria-label="Matter review tools"
     >
       <article className="panel conflict-panel context-rail-panel">
-        <div className="panel-header context-rail-header">
-          <div>
-            <p className="eyebrow">Conflict review</p>
-            <h2>Prospective client check</h2>
-          </div>
-          <AlertTriangle size={20} />
-        </div>
+        <DashboardSectionHeader
+          actions={<AlertTriangle size={20} aria-hidden="true" />}
+          className="panel-header context-rail-header"
+          eyebrow="Conflict review"
+          title="Prospective client check"
+        />
         <label className="search-field">
           <span>Prospective name</span>
           <input
@@ -800,7 +802,7 @@ export function ContextRail({
           Run conflict check
         </button>
         <div className="conflict-results">
-          <p role="status" aria-live="polite" aria-atomic="true">
+          <p className="dashboard-status-note" role="status" aria-live="polite" aria-atomic="true">
             {conflictStatus}
           </p>
           {conflictResults.length > 0
@@ -823,15 +825,14 @@ export function ContextRail({
       </article>
 
       <article className="panel queue-panel context-rail-panel">
-        <div className="panel-header context-rail-header">
-          <div>
-            <p className="eyebrow">Operational queues</p>
-            <h2>Review work</h2>
-          </div>
-          <Clock3 size={20} />
-        </div>
-        <p className="inline-empty">{queueSummary}</p>
-        <p className="inline-empty">{taskDeadlineSummary}</p>
+        <DashboardSectionHeader
+          actions={<Clock3 size={20} aria-hidden="true" />}
+          className="panel-header context-rail-header"
+          eyebrow="Operational queues"
+          title="Review work"
+        />
+        <DashboardStatusNote>{queueSummary}</DashboardStatusNote>
+        <DashboardStatusNote>{taskDeadlineSummary}</DashboardStatusNote>
         <div className="party-list">
           {queues.sections.flatMap((section) =>
             section.items.slice(0, 3).map((item) => (
@@ -847,7 +848,7 @@ export function ContextRail({
             )),
           )}
           {queues.sections.every((section) => section.items.length === 0) ? (
-            <p className="inline-empty">No queue items need attention.</p>
+            <DashboardStatusNote>No queue items need attention.</DashboardStatusNote>
           ) : null}
         </div>
       </article>

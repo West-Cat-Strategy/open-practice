@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 export type PendingDeliveryConfirmation =
   | {
       kind: "calendar-invitations";
@@ -55,6 +57,90 @@ export function OneTimeSecretPanel({
         </span>
       ))}
     </div>
+  );
+}
+
+export type DashboardSummaryItem = {
+  label: string;
+  value: ReactNode;
+  detail?: ReactNode;
+  tone?: "neutral" | "ready" | "risk";
+};
+
+export function DashboardSectionHeader({
+  actions,
+  className = "",
+  eyebrow,
+  id,
+  meta,
+  title,
+}: {
+  actions?: ReactNode;
+  className?: string;
+  eyebrow?: ReactNode;
+  id?: string;
+  meta?: ReactNode;
+  title: ReactNode;
+}) {
+  return (
+    <div
+      className={["section-title dashboard-section-header", className].filter(Boolean).join(" ")}
+    >
+      <span className="dashboard-section-heading">
+        {eyebrow ? <small className="dashboard-section-eyebrow">{eyebrow}</small> : null}
+        <h3 id={id}>{title}</h3>
+      </span>
+      {actions ?? (meta ? <span className="dashboard-section-meta">{meta}</span> : null)}
+    </div>
+  );
+}
+
+export function DashboardSummaryGrid({
+  ariaLabel,
+  className = "",
+  items,
+}: {
+  ariaLabel?: string;
+  className?: string;
+  items: DashboardSummaryItem[];
+}) {
+  return (
+    <div
+      aria-label={ariaLabel}
+      className={["detail-grid dashboard-summary-grid", className].filter(Boolean).join(" ")}
+    >
+      {items.map((item) => (
+        <div
+          className={["dashboard-summary-item", item.tone ?? ""].filter(Boolean).join(" ")}
+          key={item.label}
+        >
+          <span className="field-label">{item.label}</span>
+          <strong>{item.value}</strong>
+          {item.detail ? <small>{item.detail}</small> : null}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function DashboardStatusNote({
+  children,
+  className = "",
+  live = false,
+}: {
+  children: ReactNode;
+  className?: string;
+  live?: boolean;
+}) {
+  return (
+    <p
+      aria-atomic={live ? "true" : undefined}
+      aria-live={live ? "polite" : undefined}
+      className={["inline-empty dashboard-status-note", className].filter(Boolean).join(" ")}
+      role={live ? "status" : undefined}
+    >
+      {children}
+    </p>
   );
 }
 

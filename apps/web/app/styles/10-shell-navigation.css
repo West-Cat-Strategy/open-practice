@@ -1,29 +1,28 @@
 .app-shell {
-  --bg: #f4f6f2;
-  --bg-rail: #16211d;
-  --surface: #fffefa;
-  --surface-muted: #f0f4ee;
+  --bg: #f6f8fb;
+  --bg-rail: #121b24;
+  --surface: #ffffff;
+  --surface-muted: #eef3f7;
   --surface-raised: #ffffff;
-  --ink: #16221d;
+  --ink: #15202b;
   --text: var(--ink);
-  --muted: #58645d;
-  --line: rgba(28, 45, 37, 0.14);
-  --accent: #167d73;
-  --accent-strong: #075f58;
-  --accent-soft: rgba(22, 125, 115, 0.11);
-  --warning: #894b0f;
-  --danger: #a84936;
-  --gold: #9c7114;
-  --blue: #3d6799;
-  --shadow: 0 18px 42px rgba(32, 42, 37, 0.1);
-  --shadow-soft: 0 8px 22px rgba(32, 42, 37, 0.08);
+  --muted: #5e6b78;
+  --line: rgba(21, 32, 43, 0.13);
+  --accent: #0f766e;
+  --accent-strong: #075e59;
+  --accent-soft: rgba(15, 118, 110, 0.1);
+  --warning: #9a5a13;
+  --danger: #b42318;
+  --gold: #b7791f;
+  --blue: #2563eb;
+  --shadow: 0 18px 42px rgba(21, 32, 43, 0.08);
+  --shadow-soft: 0 8px 22px rgba(21, 32, 43, 0.06);
   color-scheme: light;
   display: grid;
   grid-template-columns: minmax(250px, 280px) minmax(0, 1fr);
   min-height: 100vh;
   overflow-x: hidden;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(244, 246, 242, 0) 240px), var(--bg);
+  background: linear-gradient(180deg, #ffffff 0, var(--bg) 260px);
   color: var(--ink);
 }
 
@@ -32,8 +31,8 @@
   top: 0;
   height: 100vh;
   overflow-y: auto;
-  background: linear-gradient(180deg, #1c2924 0%, var(--bg-rail) 58%, #111a17 100%);
-  color: #f7f2e8;
+  background: linear-gradient(180deg, #172431 0%, var(--bg-rail) 100%);
+  color: #f8fafc;
   padding: 22px 18px;
   display: flex;
   flex-direction: column;
@@ -62,10 +61,10 @@
   height: 40px;
   display: grid;
   place-items: center;
-  border: 1px solid rgba(143, 213, 204, 0.42);
+  border: 1px solid rgba(125, 211, 252, 0.28);
   border-radius: 8px;
-  background: rgba(63, 185, 173, 0.14);
-  color: var(--accent-strong);
+  background: rgba(14, 165, 233, 0.12);
+  color: #e0f2fe;
   font-weight: 800;
 }
 
@@ -100,7 +99,7 @@ small,
 
 .nav-group-label {
   margin: 0;
-  color: rgba(247, 242, 232, 0.48);
+  color: rgba(248, 250, 252, 0.58);
   font-size: 11px;
   font-weight: 800;
   text-transform: uppercase;
@@ -123,7 +122,7 @@ small,
   border-radius: 8px;
   padding: 8px 11px;
   background: transparent;
-  color: rgba(247, 242, 232, 0.76);
+  color: rgba(248, 250, 252, 0.78);
   cursor: pointer;
   font: inherit;
   text-align: left;
@@ -146,9 +145,9 @@ small,
 .nav-item.active,
 .nav-item[aria-current="page"],
 .nav-item:hover:not(:disabled, .disabled) {
-  border-color: rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.075);
-  color: #fffdfa;
+  border-color: rgba(125, 211, 252, 0.24);
+  background: rgba(255, 255, 255, 0.09);
+  color: #ffffff;
 }
 
 .nav-item:focus-visible {
@@ -163,7 +162,7 @@ small,
   width: 3px;
   height: 18px;
   border-radius: 999px;
-  background: var(--accent);
+  background: #2dd4bf;
   content: "";
 }
 
@@ -246,7 +245,7 @@ small,
 }
 
 .workspace {
-  width: min(1360px, calc(100vw - 304px));
+  width: min(1420px, calc(100vw - 304px));
   min-width: 0;
   padding: 28px;
   display: grid;
@@ -262,7 +261,7 @@ small,
   min-width: 0;
   border-bottom: 1px solid var(--line);
   padding-bottom: 16px;
-  animation: contentReveal 180ms ease both;
+  animation: contentReveal 140ms ease both;
 }
 
 .topbar > div {
@@ -359,10 +358,9 @@ h3 {
 }
 
 .metric-card:hover {
-  transform: translateY(-2px);
   border-color: rgba(22, 125, 115, 0.28);
   background: var(--surface-raised);
-  box-shadow: 0 14px 32px rgba(32, 42, 37, 0.12);
+  box-shadow: 0 12px 26px rgba(21, 32, 43, 0.09);
 }
 
 .metric-card svg {
@@ -450,7 +448,6 @@ button.operational-focus-item:focus-visible {
   border-color: var(--accent);
   background: rgba(63, 185, 173, 0.12);
   color: var(--accent-strong);
-  box-shadow: 0 0 12px rgba(63, 185, 173, 0.15);
 }
 
 .context-rail-toggle-btn.collapsed {
@@ -493,7 +490,7 @@ button.operational-focus-item:focus-visible {
   border: 1px solid rgba(63, 185, 173, 0.35);
   border-right: 0;
   border-radius: 8px 0 0 8px;
-  background: rgba(25, 28, 26, 0.92);
+  background: rgba(18, 27, 36, 0.92);
   backdrop-filter: var(--glass);
   color: var(--accent);
   box-shadow: -4px 0 20px rgba(0, 0, 0, 0.42);
@@ -519,10 +516,9 @@ button.operational-focus-item:focus-visible {
 }
 
 .context-rail-toggle-handle:hover {
-  width: 32px;
   color: var(--accent-strong);
-  background: rgba(31, 35, 33, 0.98);
-  box-shadow: -4px 0 24px rgba(63, 185, 173, 0.28);
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: -4px 0 22px rgba(21, 32, 43, 0.16);
 }
 
 .context-rail-placeholder {

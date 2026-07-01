@@ -163,9 +163,10 @@ describe("dashboard shell review rail controls", () => {
     expect(html).not.toContain('data-review-rail-state="collapsed"');
     expect(html).toContain("Prospective client check");
     expect(html).toContain("Review work");
-    expect(html).toContain(
-      '<p role="status" aria-live="polite" aria-atomic="true">Conflict check has not run.</p>',
-    );
+    expect(html).toContain('class="dashboard-status-note"');
+    expect(html).toContain('role="status"');
+    expect(html).toContain('aria-live="polite"');
+    expect(html).toContain("Conflict check has not run.");
   });
 
   it("labels collapsible primary navigation groups without changing section order", () => {

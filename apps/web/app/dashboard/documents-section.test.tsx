@@ -443,7 +443,7 @@ describe("DocumentsSection", () => {
       ),
     );
 
-    expect(html).toContain('class="detail-grid"');
+    expect(html).toContain("dashboard-summary-grid");
     expect(html).toContain("Workbench");
     expect(html).toContain("Provider state");
     expect(html).toContain("Worker queues");

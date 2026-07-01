@@ -23,6 +23,7 @@ import type {
   BillingTimeItem,
 } from "../_features/billing/models";
 import type { MatterSummary } from "../types";
+import { DashboardSectionHeader, DashboardStatusNote, DashboardSummaryGrid } from "./shared-panels";
 
 function compactBillingText(value: string): string {
   return value.replaceAll("_", " ");
@@ -226,51 +227,46 @@ export function BillingSection({
 
   return (
     <>
-      <div className="detail-grid billing-summary-grid">
-        <div>
-          <span className="field-label">Approved time</span>
-          <strong>{cents(activeUnbilledTimeCents)}</strong>
-        </div>
-        <div>
-          <span className="field-label">Approved expenses</span>
-          <strong>{cents(activeUnbilledExpenseCents)}</strong>
-        </div>
-        <div>
-          <span className="field-label">Draft / issued invoices</span>
-          <strong>
-            {
-              activeInvoices.filter((invoice) => ["draft", "issued"].includes(invoice.status))
-                .length
-            }
-          </strong>
-        </div>
-        <div>
-          <span className="field-label">Balance due</span>
-          <strong>{cents(activeBalanceDueCents)}</strong>
-        </div>
-        <div>
-          <span className="field-label">Payment requests</span>
-          <strong>{cents(billingDashboard.summary.hostedPaymentRequestCents)}</strong>
-        </div>
-        <div>
-          <span className="field-label">Locked periods</span>
-          <strong>
-            {billingDashboard.summary.activeLockedPeriodCount}/
-            {billingDashboard.summary.lockedPeriodCount}
-          </strong>
-        </div>
-        <div>
-          <span className="field-label">Active rate rules</span>
-          <strong>{billingDashboard.summary.activeRateRuleCount}</strong>
-        </div>
-      </div>
+      <DashboardSummaryGrid
+        className="billing-summary-grid"
+        items={[
+          {
+            label: "Approved time",
+            value: cents(activeUnbilledTimeCents),
+          },
+          {
+            label: "Approved expenses",
+            value: cents(activeUnbilledExpenseCents),
+          },
+          {
+            label: "Draft / issued invoices",
+            value: activeInvoices.filter((invoice) => ["draft", "issued"].includes(invoice.status))
+              .length,
+          },
+          {
+            label: "Balance due",
+            value: cents(activeBalanceDueCents),
+            tone: activeBalanceDueCents > 0 ? "risk" : "neutral",
+          },
+          {
+            label: "Payment requests",
+            value: cents(billingDashboard.summary.hostedPaymentRequestCents),
+          },
+          {
+            label: "Locked periods",
+            value: `${billingDashboard.summary.activeLockedPeriodCount}/${billingDashboard.summary.lockedPeriodCount}`,
+          },
+          {
+            label: "Active rate rules",
+            value: billingDashboard.summary.activeRateRuleCount,
+          },
+        ]}
+      />
 
-      <div className="section-title">
-        <h3>Billing controls</h3>
-        <span>
-          {billingDashboard.periodLocks.length + billingDashboard.rateRules.length} records
-        </span>
-      </div>
+      <DashboardSectionHeader
+        meta={`${billingDashboard.periodLocks.length + billingDashboard.rateRules.length} records`}
+        title="Billing controls"
+      />
       <div className="party-list">
         {billingDashboard.periodLocks.map((lock) => (
           <div className="party-row" key={lock.id}>
@@ -298,16 +294,16 @@ export function BillingSection({
           </div>
         ))}
         {billingDashboard.periodLocks.length === 0 && billingDashboard.rateRules.length === 0 ? (
-          <p className="inline-empty">No billing locks or rate rules are active.</p>
+          <DashboardStatusNote>No billing locks or rate rules are active.</DashboardStatusNote>
         ) : null}
       </div>
 
-      <div className="section-title">
-        <h3>Lock impact projection</h3>
-        <span>
-          {billingDashboard.billingPeriodLockImpact.summary.metrics.totalSafeIdCount ?? 0} safe IDs
-        </span>
-      </div>
+      <DashboardSectionHeader
+        meta={`${
+          billingDashboard.billingPeriodLockImpact.summary.metrics.totalSafeIdCount ?? 0
+        } safe IDs`}
+        title="Lock impact projection"
+      />
       <div className="party-list">
         {billingDashboard.billingPeriodLockImpact.rows.slice(0, 6).map((row) => {
           const sourceType = billingImpactMetadataText(row.metadata, "sourceType");
@@ -329,14 +325,16 @@ export function BillingSection({
           );
         })}
         {billingDashboard.billingPeriodLockImpact.rows.length === 0 ? (
-          <p className="inline-empty">No visible billing records overlap locked periods.</p>
+          <DashboardStatusNote>
+            No visible billing records overlap locked periods.
+          </DashboardStatusNote>
         ) : null}
       </div>
 
-      <div className="section-title">
-        <h3>Capture review drafts</h3>
-        <span>{activeCaptureReviewCount} pending</span>
-      </div>
+      <DashboardSectionHeader
+        meta={`${activeCaptureReviewCount} pending`}
+        title="Capture review drafts"
+      />
       <div className="billing-capture-grid">
         <section className="billing-capture-panel" aria-label="Local timer draft">
           <div className="section-title compact">

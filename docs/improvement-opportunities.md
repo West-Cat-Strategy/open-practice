@@ -48,6 +48,10 @@ The email outbox child-row bulk-read slice is implemented in
 batched for `/api/mail/outbox` and the outbound portion of `/api/communications/inbox` using
 optional repository `emailIds` filters while preserving route shape, authorization, redaction,
 provider, receipt, queue/retry, trust, and payment boundaries.
+The inbound communications aggregation slice is also implemented: `/api/communications/inbox`
+loads inbound attachments by visible `inboundMessageIds` and conversation messages/notifications by
+visible `threadIds`, preserving the same route shape, authorization, redaction, provider, queue,
+schema, migration, and synthetic-data boundaries.
 The filtered audit repository read slice is implemented in
 `refactor/filtered-audit-repository-reads-20260619`: matter-scoped `/api/audit` reads and the Trust
 Controls `financialCommandJournal` use bounded audit repository reads while preserving response
@@ -204,9 +208,12 @@ surface.
   - **Preserved boundary:** No route shape, authorization, redaction, provider behavior, receipt
     recording, queue/retry behavior, live settlement, trust posting, schema, migration, or
     dependency change.
-  - **Remaining database-efficiency follow-ups:** Inbound attachment/conversation aggregation,
-    client portal batch projections, and operational-view read-model inputs remain separate
-    candidates and should keep their own privacy and chain-validity proof.
+  - **Shipped related slice:** Inbound attachment/conversation aggregation for
+    `/api/communications/inbox` is implemented and covered by the inbound communications
+    aggregation efficiency proof.
+  - **Remaining database-efficiency follow-ups:** Client portal batch projections and
+    operational-view read-model inputs remain separate candidates and should keep their own privacy
+    and chain-validity proof.
 
 - **Inbound provider webhook intake boundary**
   - **Shipped slice:** The first Mailgun raw-MIME provider webhook validates the provider

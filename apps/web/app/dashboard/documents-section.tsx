@@ -39,6 +39,7 @@ import {
   summarizeDocumentDispositionRollup,
 } from "../document-processing-dashboard";
 import { DocumentAssemblyDashboardBlock } from "./document-assembly-dashboard-block";
+import { DashboardSectionHeader, DashboardStatusNote, DashboardSummaryGrid } from "./shared-panels";
 import type { PortalDocumentAccessSummary } from "../types";
 
 interface DocumentsSectionProps {
@@ -216,55 +217,50 @@ export function DocumentsSection({
   const dispositionRollup = summarizeDocumentDispositionRollup(activeDocumentProcessingRows);
   return (
     <>
-      <div className="detail-grid">
-        <div>
-          <span className="field-label">Workbench</span>
-          <strong>{compactDocumentProcessingReason(activeDocumentProcessing.status)}</strong>
-        </div>
-        <div>
-          <span className="field-label">Provider state</span>
-          <strong>
-            {
+      <DashboardSummaryGrid
+        items={[
+          {
+            label: "Workbench",
+            value: compactDocumentProcessingReason(activeDocumentProcessing.status),
+          },
+          {
+            label: "Provider state",
+            value: `${
               activeDocumentProcessing.providerStatus.filter(
                 (provider) => provider.status === "configured",
               ).length
-            }
-            /{activeDocumentProcessing.providerStatus.length}
-          </strong>
-        </div>
-        <div>
-          <span className="field-label">Worker queues</span>
-          <strong>
-            {
+            }/${activeDocumentProcessing.providerStatus.length}`,
+          },
+          {
+            label: "Worker queues",
+            value: `${
               activeDocumentProcessing.workerQueues.filter((queue) => queue.status === "configured")
                 .length
-            }
-            /
-            {
+            }/${
               activeDocumentProcessing.workerQueues.filter((queue) => queue.status !== "reserved")
                 .length
-            }
-          </strong>
-        </div>
-        <div>
-          <span className="field-label">Jobs</span>
-          <strong>
-            {activeDocumentProcessing.summary.queued + activeDocumentProcessing.summary.active}{" "}
-            active · {activeDocumentProcessing.summary.failed} failed
-          </strong>
-        </div>
-      </div>
-      <p className="inline-empty" role="status" aria-live="polite" aria-atomic="true">
+            }`,
+          },
+          {
+            label: "Jobs",
+            value: `${
+              activeDocumentProcessing.summary.queued + activeDocumentProcessing.summary.active
+            } active · ${activeDocumentProcessing.summary.failed} failed`,
+            tone: activeDocumentProcessing.summary.failed > 0 ? "risk" : "neutral",
+          },
+        ]}
+      />
+      <DashboardStatusNote live>
         {documentProcessingStatus} {documentProcessingSummary} {documentReviewSuggestionsSummary}
-      </p>
-      <div className="detail-grid" aria-label="Document disposition rollup">
-        {documentDispositionRollupOrder.map((state) => (
-          <div key={state}>
-            <span className="field-label">{documentDispositionRollupLabel(state)}</span>
-            <strong>{dispositionRollup[state]}</strong>
-          </div>
-        ))}
-      </div>
+      </DashboardStatusNote>
+      <DashboardSummaryGrid
+        ariaLabel="Document disposition rollup"
+        items={documentDispositionRollupOrder.map((state) => ({
+          label: documentDispositionRollupLabel(state),
+          value: dispositionRollup[state],
+          tone: state === "blocked_by_hold" && dispositionRollup[state] > 0 ? "risk" : "neutral",
+        }))}
+      />
       <DocumentAssemblyDashboardBlock workbench={activeDocumentAssembly} />
       <div className="document-metadata-search-panel">
         <label className="search-field compact">
@@ -366,7 +362,7 @@ export function DocumentsSection({
           </button>
         </div>
       </div>
-      <p className="inline-empty">{documentMetadataSearchSummary}</p>
+      <DashboardStatusNote>{documentMetadataSearchSummary}</DashboardStatusNote>
       {activeDocumentMetadataTags.length > 0 ? (
         <div className="document-metadata-tags" aria-label="Document metadata tags">
           {activeDocumentMetadataTags.map((tag) => (
@@ -404,17 +400,14 @@ export function DocumentsSection({
             </div>
           ))}
           {activeDocumentProcessing.metadataSearch?.results.length === 0 ? (
-            <p className="inline-empty">No document metadata matches.</p>
+            <DashboardStatusNote>No document metadata matches.</DashboardStatusNote>
           ) : null}
         </div>
       ) : null}
 
       {activeDocumentProcessing.providerStatus.length > 0 ? (
         <>
-          <div className="section-title">
-            <h3>Providers and workers</h3>
-            <span>{activeMatterNumber}</span>
-          </div>
+          <DashboardSectionHeader meta={activeMatterNumber} title="Providers and workers" />
           <div className="party-list">
             {activeDocumentProcessing.providerStatus.map((provider) => (
               <div className="party-row" key={`provider:${provider.kind}`}>
@@ -451,17 +444,14 @@ export function DocumentsSection({
         </>
       ) : null}
 
-      <div className="section-title">
-        <h3>Document processing workbench</h3>
-        <span>
-          {activeDocumentProcessingRows.length} documents · {activePortalDocumentAccess.length}{" "}
-          portal-visible
-        </span>
-      </div>
-      <p className="inline-empty" role="status" aria-live="polite" aria-atomic="true">
+      <DashboardSectionHeader
+        meta={`${activeDocumentProcessingRows.length} documents · ${activePortalDocumentAccess.length} portal-visible`}
+        title="Document processing workbench"
+      />
+      <DashboardStatusNote live>
         Portal visibility for {selectedClientPortalContactLabel || "no selected client contact"}:{" "}
         {portalDocumentAccessStatus}
-      </p>
+      </DashboardStatusNote>
       <div className="party-list queue-section-list">
         {documentProcessingGroupOrder.map((group) => {
           const groupRows = activeDocumentProcessingRows.filter((item) => item.group === group);

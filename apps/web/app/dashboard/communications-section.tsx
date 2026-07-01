@@ -8,6 +8,7 @@ import { describeEmailDeliveryState } from "../email-delivery-dashboard";
 import type { EmailDeliveryDashboardResponse } from "../_features/email-delivery/models";
 import type { CommunicationsInboxDashboardResponse, MatterSummary } from "../types";
 import { InboundParserReplayInventoryPanel } from "./inbound-parser-replay-inventory-panel";
+import { DashboardSectionHeader, DashboardStatusNote, DashboardSummaryGrid } from "./shared-panels";
 
 export function CommunicationsSection({
   activeCommunicationsInbox,
@@ -33,61 +34,65 @@ export function CommunicationsSection({
         inventory={inboundParserReplayInventory}
       />
 
-      <div className="detail-grid compact-detail-grid">
-        <div>
-          <span className="field-label">Matter</span>
-          <strong>{activeMatter.number}</strong>
-          <small>{activeMatter.title}</small>
-        </div>
-        <div>
-          <span className="field-label">Inbox status</span>
-          <strong>{activeCommunicationsInbox?.status.replaceAll("_", " ") ?? "unavailable"}</strong>
-          <small>Loaded through existing matter-scoped communications routes.</small>
-        </div>
-        <div>
-          <span className="field-label">Inbound</span>
-          <strong>{activeCommunicationsInbox?.inboundEmail.length ?? 0}</strong>
-          <small>Body and provider metadata stay redacted.</small>
-        </div>
-        <div>
-          <span className="field-label">Outbound</span>
-          <strong>{activeCommunicationsInbox?.outboundDeliveryHistory.length ?? 0}</strong>
-          <small>Delivery state only; no provider-side mutation.</small>
-        </div>
-      </div>
+      <DashboardSummaryGrid
+        className="compact-detail-grid"
+        items={[
+          {
+            label: "Matter",
+            value: activeMatter.number,
+            detail: activeMatter.title,
+          },
+          {
+            label: "Inbox status",
+            value: activeCommunicationsInbox?.status.replaceAll("_", " ") ?? "unavailable",
+            detail: "Loaded through existing matter-scoped communications routes.",
+          },
+          {
+            label: "Inbound",
+            value: activeCommunicationsInbox?.inboundEmail.length ?? 0,
+            detail: "Body and provider metadata stay redacted.",
+          },
+          {
+            label: "Outbound",
+            value: activeCommunicationsInbox?.outboundDeliveryHistory.length ?? 0,
+            detail: "Delivery state only; no provider-side mutation.",
+          },
+        ]}
+      />
 
       {emailTemplateDraftsPanel}
 
-      <div className="section-title">
-        <h3>Client communications</h3>
-        <span>
-          {activeCommunicationsInbox
+      <DashboardSectionHeader
+        meta={
+          activeCommunicationsInbox
             ? `${activeCommunicationsInbox.channelHistory.length} history entries`
-            : "unavailable"}
-        </span>
-      </div>
-      <div className="detail-grid compact-detail-grid">
-        <div>
-          <span className="field-label">Conversation topics</span>
-          <strong>{activeCommunicationsInbox?.conversations.length ?? 0}</strong>
-        </div>
-        <div>
-          <span className="field-label">History entries</span>
-          <strong>{activeCommunicationsInbox?.channelHistory.length ?? 0}</strong>
-        </div>
-        <div>
-          <span className="field-label">Update drafts</span>
-          <strong>{activeCommunicationsInbox?.clientUpdateDraftRequests.length ?? 0}</strong>
-        </div>
-        <div>
-          <span className="field-label">Channel status</span>
-          <strong>
-            {activeCommunicationsInbox
+            : "unavailable"
+        }
+        title="Client communications"
+      />
+      <DashboardSummaryGrid
+        className="compact-detail-grid"
+        items={[
+          {
+            label: "Conversation topics",
+            value: activeCommunicationsInbox?.conversations.length ?? 0,
+          },
+          {
+            label: "History entries",
+            value: activeCommunicationsInbox?.channelHistory.length ?? 0,
+          },
+          {
+            label: "Update drafts",
+            value: activeCommunicationsInbox?.clientUpdateDraftRequests.length ?? 0,
+          },
+          {
+            label: "Channel status",
+            value: activeCommunicationsInbox
               ? `${compactStatus(activeCommunicationsInbox.channelState.inboundEmailStatus)} / ${compactStatus(activeCommunicationsInbox.channelState.outboundEmailStatus)}`
-              : "unavailable"}
-          </strong>
-        </div>
-      </div>
+              : "unavailable",
+          },
+        ]}
+      />
 
       <div className="party-list">
         {activeCommunicationsInbox?.channelHistory.slice(0, 4).map((item) => {
@@ -183,14 +188,16 @@ export function CommunicationsSection({
         activeCommunicationsInbox.channelHistory.length === 0 &&
         activeCommunicationsInbox.clientUpdateDraftRequests.length === 0 &&
         activeCommunicationsInbox.contactCues.length === 0 ? (
-          <p className="inline-empty">No client communications are linked to this matter.</p>
+          <DashboardStatusNote>
+            No client communications are linked to this matter.
+          </DashboardStatusNote>
         ) : null}
       </div>
 
-      <div className="section-title">
-        <h3>Email delivery history</h3>
-        <span>{activeEmailDeliveries.length} recent records</span>
-      </div>
+      <DashboardSectionHeader
+        meta={`${activeEmailDeliveries.length} recent records`}
+        title="Email delivery history"
+      />
       <div className="party-list">
         {activeEmailDeliveries.map((email) => {
           const state = describeEmailDeliveryState(email);
@@ -212,7 +219,9 @@ export function CommunicationsSection({
           );
         })}
         {activeEmailDeliveries.length === 0 ? (
-          <p className="inline-empty">No outbound email history is linked to this matter.</p>
+          <DashboardStatusNote>
+            No outbound email history is linked to this matter.
+          </DashboardStatusNote>
         ) : null}
       </div>
     </>

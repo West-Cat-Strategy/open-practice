@@ -101,7 +101,7 @@
   border-radius: 8px;
   background: var(--surface);
   box-shadow: var(--shadow-soft);
-  padding: 17px;
+  padding: 18px;
 }
 
 .panel-header {
@@ -450,8 +450,33 @@
 }
 
 .detail-grid > div {
+  display: grid;
+  align-content: start;
+  gap: 3px;
   min-height: 76px;
   min-width: 0;
+}
+
+.dashboard-summary-grid {
+  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
+}
+
+.dashboard-summary-item {
+  box-shadow: inset 3px 0 0 rgba(94, 107, 120, 0.18);
+}
+
+.dashboard-summary-item.ready {
+  border-color: rgba(15, 118, 110, 0.28);
+  box-shadow: inset 3px 0 0 rgba(15, 118, 110, 0.45);
+}
+
+.dashboard-summary-item.risk {
+  border-color: rgba(154, 90, 19, 0.34);
+  box-shadow: inset 3px 0 0 rgba(154, 90, 19, 0.42);
+}
+
+.dashboard-summary-item strong {
+  overflow-wrap: anywhere;
 }
 
 .detail-grid small,
@@ -473,10 +498,46 @@
   align-items: center;
   gap: 12px;
   margin: 18px 0 10px;
+  min-width: 0;
 }
 
 .section-title span {
   text-align: right;
+}
+
+.dashboard-section-header {
+  align-items: end;
+}
+
+.dashboard-section-heading {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  text-align: left;
+}
+
+.dashboard-section-heading h3 {
+  overflow-wrap: anywhere;
+}
+
+.dashboard-section-eyebrow {
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.dashboard-section-meta {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.panel-header.dashboard-section-header {
+  margin: 0 0 14px;
 }
 
 .matter-view-preset-actions {
@@ -536,6 +597,10 @@
   gap: 7px;
   min-width: 122px;
   white-space: nowrap;
+}
+
+.dashboard-status-note {
+  border-left: 3px solid rgba(15, 118, 110, 0.22);
 }
 
 .party-list {
@@ -673,10 +738,13 @@
   border-radius: 8px;
   padding: 10px;
   min-width: 0;
+  transition:
+    background var(--transition),
+    border-color var(--transition);
 }
 
 .party-row:hover {
-  background: var(--surface-muted);
+  background: rgba(238, 243, 247, 0.72);
 }
 
 .party-row small,
