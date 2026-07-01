@@ -1,6 +1,9 @@
 import {
   billingDateFallsInsideLock,
+  buildExpenseCategoryAccountingExportProfileSummary,
+  type BillingExpenseCategoryRecord,
   type BillingPeriodLockRecord,
+  type ExpenseCategoryAccountingExportProfileSummary,
   type InvoiceLineRecord,
   type InvoiceRecord,
 } from "./billing.js";
@@ -281,6 +284,7 @@ export interface StaffReportingWorkspace {
   definitions: StaffSavedReportDefinition[];
   exportProfiles: StaffReportExportProfile[];
   exportProfileAlignment: StaffReportExportProfileAlignment;
+  expenseCategoryAccountingExportProfileSummary: ExpenseCategoryAccountingExportProfileSummary;
   reports: StaffReportProjection[];
   history: StaffReportHistoryItem[];
   scheduleReadinessSummary: StaffReportScheduleReadinessSummary;
@@ -353,6 +357,7 @@ export interface BuildStaffReportingWorkspaceInput extends Omit<
   BuildStaffReportProjectionInput,
   "definitionKey" | "groupingKey"
 > {
+  expenseCategories?: readonly BillingExpenseCategoryRecord[];
   history?: StaffReportHistoryItem[];
 }
 
@@ -1943,6 +1948,8 @@ export function buildStaffReportingWorkspace(
     definitions,
     exportProfiles: STAFF_REPORT_EXPORT_PROFILES,
     exportProfileAlignment: buildStaffReportExportProfileAlignment(),
+    expenseCategoryAccountingExportProfileSummary:
+      buildExpenseCategoryAccountingExportProfileSummary(input.expenseCategories ?? []),
     reports: definitions.map((definition) =>
       buildStaffReportProjection({
         ...input,

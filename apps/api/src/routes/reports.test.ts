@@ -209,6 +209,41 @@ describe("staff reporting routes", () => {
           certificationClaims: false,
         }),
       }),
+      expenseCategoryAccountingExportProfileSummary: expect.objectContaining({
+        status: "read_only_metadata_preview",
+        profileId: "op_expense_category_accounting_summary",
+        source: "open_practice_authored_metadata",
+        financialProfileReference: "billing_operational_records_json",
+        categoryCounts: expect.objectContaining({
+          total: 4,
+          active: 4,
+          inactive: 0,
+          mapped: 4,
+          omitted: 0,
+          mappingLimit: 8,
+        }),
+        mappings: expect.arrayContaining([
+          expect.objectContaining({
+            code: "filing_service",
+            label: "Filing and service",
+            reviewBucket: "filing_service_disbursement",
+            profileFieldKey: "expenseEntries.category",
+            localPreviewOnly: true,
+          }),
+          expect.objectContaining({
+            code: "research_database",
+            reviewBucket: "research_cost_review",
+          }),
+        ]),
+        safeguards: {
+          externalAccountingProvider: false,
+          exportSerializationChange: false,
+          invoiceRecalculation: false,
+          paymentMutation: false,
+          trustPosting: false,
+          certifiedAccountingClaim: false,
+        },
+      }),
       reports: expect.arrayContaining([
         expect.objectContaining({
           definitionKey: "invoice_aging",
@@ -297,6 +332,9 @@ describe("staff reporting routes", () => {
     expect(JSON.stringify(payload)).not.toContain("Synthetic private productivity");
     expect(JSON.stringify(payload)).not.toContain("ada@example.test");
     expect(JSON.stringify(payload)).not.toContain("rawExportBody");
+    expect(JSON.stringify(payload)).not.toContain("externalProviderAccount");
+    expect(JSON.stringify(payload)).not.toContain('paymentMutation":true');
+    expect(JSON.stringify(payload)).not.toContain('trustPosting":true');
   }, 10_000);
 
   it("queues report exports, gates downloads, and keeps job metadata bounded", async () => {

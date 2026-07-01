@@ -9,6 +9,7 @@ import {
   billingTimerWindowOverlapsLock,
   billingExpenseCategoryAppliesToMatter,
   billingExpenseCategoryProfileFromRecord,
+  buildExpenseCategoryAccountingExportProfileSummary,
   defaultBillDeliveryState,
   defaultBillReminderState,
   defaultCreditWriteOffPosture,
@@ -333,6 +334,94 @@ describe("billing period locks and rate rules", () => {
       category: "Filing and service",
       reviewOnly: true,
     });
+  });
+
+  it("builds a read-only accounting export profile preview from expense category codes", () => {
+    const categories = defaultBillingExpenseCategoriesForFirm({
+      firmId: "firm-synthetic",
+      createdByUserId: "user-synthetic",
+      now: "2026-06-17T00:00:00.000Z",
+    });
+    const summary = buildExpenseCategoryAccountingExportProfileSummary([
+      ...categories,
+      {
+        id: "expense-category-private-scoped",
+        firmId: "firm-synthetic",
+        code: "zz_private_scoped",
+        label: "Interpreter support",
+        active: false,
+        defaultReimbursable: false,
+        reimbursableAllowed: false,
+        matterId: "matter-private",
+        practiceAreas: ["Residential tenancy"],
+        jurisdictions: ["BC"],
+        reviewCue: "Private reviewer note that must not be projected.",
+        createdByUserId: "user-synthetic",
+        updatedByUserId: "user-synthetic",
+        createdAt: "2026-06-17T00:00:00.000Z",
+        updatedAt: "2026-06-17T00:00:00.000Z",
+      },
+    ]);
+
+    expect(summary).toMatchObject({
+      status: "read_only_metadata_preview",
+      profileId: "op_expense_category_accounting_summary",
+      source: "open_practice_authored_metadata",
+      financialProfileReference: "billing_operational_records_json",
+      categoryCounts: {
+        total: 5,
+        active: 4,
+        inactive: 1,
+        firmDefault: 4,
+        scoped: 1,
+        mapped: 5,
+        omitted: 0,
+        mappingLimit: 8,
+      },
+      safeguards: {
+        externalAccountingProvider: false,
+        exportSerializationChange: false,
+        invoiceRecalculation: false,
+        paymentMutation: false,
+        trustPosting: false,
+        certifiedAccountingClaim: false,
+      },
+    });
+    expect(summary.mappings.map((mapping) => mapping.code)).toEqual([
+      "courier_postage",
+      "filing_service",
+      "research_database",
+      "travel_meal",
+      "zz_private_scoped",
+    ]);
+    expect(summary.mappings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "filing_service",
+          reviewBucket: "filing_service_disbursement",
+          exportedValueSource: "expense_category_label_snapshot",
+          profileFieldKey: "expenseEntries.category",
+          localPreviewOnly: true,
+        }),
+        expect.objectContaining({
+          code: "zz_private_scoped",
+          active: false,
+          scope: {
+            firmDefault: false,
+            matterScoped: true,
+            practiceAreaCount: 1,
+            jurisdictionCount: 1,
+          },
+          reviewBucket: "non_reimbursable_expense_review",
+        }),
+      ]),
+    );
+    const serializedSummary = JSON.stringify(summary);
+    expect(serializedSummary).not.toContain("matter-private");
+    expect(serializedSummary).not.toContain("Private reviewer note");
+    expect(serializedSummary).not.toContain("chartOfAccounts");
+    expect(serializedSummary).not.toContain("provider");
+    expect(serializedSummary).not.toContain("rawExportBody");
   });
 
   it("defaults hosted payment request shells to non-settlement posture", () => {

@@ -276,6 +276,88 @@ export function ReportsSection({
       </div>
 
       <div className="section-title">
+        <h3>Expense category accounting profile</h3>
+        <span>read-only preview · local metadata only</span>
+      </div>
+      <div className="activity-grid two-column">
+        <div className="activity-card">
+          <SlidersHorizontal size={18} />
+          <strong>{reportingWorkspace.expenseCategoryAccountingExportProfileSummary.label}</strong>
+          <span>
+            {reportingWorkspace.expenseCategoryAccountingExportProfileSummary.categoryCounts.total}{" "}
+            categories ·{" "}
+            {reportingWorkspace.expenseCategoryAccountingExportProfileSummary.categoryCounts.active}{" "}
+            active ·{" "}
+            {
+              reportingWorkspace.expenseCategoryAccountingExportProfileSummary.categoryCounts
+                .inactive
+            }{" "}
+            inactive
+          </span>
+          <span>
+            {
+              reportingWorkspace.expenseCategoryAccountingExportProfileSummary.categoryCounts
+                .firmDefault
+            }{" "}
+            firm default ·{" "}
+            {reportingWorkspace.expenseCategoryAccountingExportProfileSummary.categoryCounts.scoped}{" "}
+            scoped · profile{" "}
+            {compactReportText(
+              reportingWorkspace.expenseCategoryAccountingExportProfileSummary
+                .financialProfileReference,
+            )}
+          </span>
+        </div>
+        <div className="activity-card">
+          <Download size={18} />
+          <strong>Accounting export posture</strong>
+          <span>
+            {reportingWorkspace.expenseCategoryAccountingExportProfileSummary.categoryCounts.mapped}{" "}
+            mapped ·{" "}
+            {
+              reportingWorkspace.expenseCategoryAccountingExportProfileSummary.categoryCounts
+                .omitted
+            }{" "}
+            omitted after limit
+          </span>
+          <span>No provider · No serialization change · No certified accounting claim</span>
+        </div>
+      </div>
+      <p className="inline-empty">
+        No external accounting provider · No export serialization change · No invoice recalculation
+        · No payment mutation · No trust posting · No certified-accounting claim
+      </p>
+      <div className="party-list">
+        {reportingWorkspace.expenseCategoryAccountingExportProfileSummary.mappings.map(
+          (mapping) => (
+            <div className="party-row" key={mapping.code}>
+              <span>
+                <strong>
+                  {mapping.code} · {mapping.label}
+                </strong>
+                <small>
+                  {mapping.active ? "active" : "inactive"} ·{" "}
+                  {mapping.defaultReimbursable
+                    ? "default reimbursable"
+                    : "not default reimbursable"}{" "}
+                  · {mapping.reimbursableAllowed ? "reimbursable allowed" : "non-reimbursable only"}
+                </small>
+                <small>
+                  {compactReportText(mapping.reviewBucket)} · {mapping.reviewCue}
+                </small>
+              </span>
+              <em>{mapping.localPreviewOnly ? "preview" : "review"}</em>
+            </div>
+          ),
+        )}
+        {reportingWorkspace.expenseCategoryAccountingExportProfileSummary.mappings.length === 0 ? (
+          <p className="inline-empty">
+            No expense category accounting preview metadata is available.
+          </p>
+        ) : null}
+      </div>
+
+      <div className="section-title">
         <h3>Filter and grouping metadata</h3>
         <span>{reportingWorkspace.workspacePolicy.customSql ? "custom SQL" : "no custom SQL"}</span>
       </div>

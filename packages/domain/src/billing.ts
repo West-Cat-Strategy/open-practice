@@ -1,3 +1,4 @@
+import type { FinancialExportFieldProfileId } from "./financial-export-profiles.js";
 import type { LedgerAccount, LedgerEntry } from "./ledger.js";
 import type { ExpenseEntry, Matter, Province, TimeEntry } from "./models.js";
 
@@ -66,6 +67,65 @@ export const expenseCategoryProfileCues = [
 ] as const satisfies readonly ExpenseCategoryProfileCue[];
 
 export type ExpenseCategoryProfileKey = ExpenseCategoryProfileCue["key"];
+
+export type ExpenseCategoryAccountingExportProfileReviewBucket =
+  | "filing_service_disbursement"
+  | "delivery_disbursement"
+  | "research_cost_review"
+  | "travel_policy_review"
+  | "reimbursable_expense_review"
+  | "non_reimbursable_expense_review";
+
+export interface ExpenseCategoryAccountingExportProfileMapping {
+  code: string;
+  label: string;
+  active: boolean;
+  defaultReimbursable: boolean;
+  reimbursableAllowed: boolean;
+  scope: {
+    firmDefault: boolean;
+    matterScoped: boolean;
+    practiceAreaCount: number;
+    jurisdictionCount: number;
+  };
+  reviewBucket: ExpenseCategoryAccountingExportProfileReviewBucket;
+  reviewCue: string;
+  exportedValueSource: "expense_category_label_snapshot";
+  profileFieldKey: "expenseEntries.category";
+  localPreviewOnly: true;
+}
+
+export interface ExpenseCategoryAccountingExportProfileSummary {
+  status: "read_only_metadata_preview";
+  profileId: "op_expense_category_accounting_summary";
+  label: "OP expense category accounting summary";
+  source: "open_practice_authored_metadata";
+  financialProfileReference: Extract<
+    FinancialExportFieldProfileId,
+    "billing_operational_records_json"
+  >;
+  categoryCounts: {
+    total: number;
+    active: number;
+    inactive: number;
+    defaultReimbursable: number;
+    reimbursableAllowed: number;
+    firmDefault: number;
+    scoped: number;
+    mapped: number;
+    omitted: number;
+    mappingLimit: number;
+  };
+  mappings: readonly ExpenseCategoryAccountingExportProfileMapping[];
+  safeguards: {
+    externalAccountingProvider: false;
+    exportSerializationChange: false;
+    invoiceRecalculation: false;
+    paymentMutation: false;
+    trustPosting: false;
+    certifiedAccountingClaim: false;
+  };
+}
 
 export interface BillingExpenseCategoryRecord {
   id: string;
@@ -1428,6 +1488,125 @@ export function billingExpenseCategoryProfileFromRecord(
     defaultReimbursable: category.defaultReimbursable,
     reviewCue: category.reviewCue ?? "Review expense support before billing approval.",
     reviewOnly: true,
+  };
+}
+
+const expenseCategoryAccountingExportProfileMappingLimit = 8;
+
+function expenseCategoryAccountingReviewBucket(
+  category: Pick<
+    BillingExpenseCategoryRecord,
+    "code" | "label" | "defaultReimbursable" | "reimbursableAllowed"
+  >,
+): ExpenseCategoryAccountingExportProfileReviewBucket {
+  const value = `${category.code} ${category.label}`.toLowerCase();
+  if (value.includes("filing") || value.includes("registry") || value.includes("service")) {
+    return "filing_service_disbursement";
+  }
+  if (value.includes("courier") || value.includes("postage") || value.includes("delivery")) {
+    return "delivery_disbursement";
+  }
+  if (value.includes("research") || value.includes("database")) {
+    return "research_cost_review";
+  }
+  if (value.includes("travel") || value.includes("meal")) {
+    return "travel_policy_review";
+  }
+  return category.defaultReimbursable && category.reimbursableAllowed
+    ? "reimbursable_expense_review"
+    : "non_reimbursable_expense_review";
+}
+
+function expenseCategoryAccountingReviewCue(
+  bucket: ExpenseCategoryAccountingExportProfileReviewBucket,
+): string {
+  switch (bucket) {
+    case "filing_service_disbursement":
+      return "Confirm registry, filing, or service support before export review.";
+    case "delivery_disbursement":
+      return "Confirm delivery purpose and support before export review.";
+    case "research_cost_review":
+      return "Confirm billing agreement and research-cost posture before export review.";
+    case "travel_policy_review":
+      return "Confirm policy, purpose, and support before export review.";
+    case "reimbursable_expense_review":
+      return "Review reimbursable expense support before export review.";
+    case "non_reimbursable_expense_review":
+      return "Review non-reimbursable expense posture before export review.";
+  }
+}
+
+function expenseCategoryAccountingMapping(
+  category: BillingExpenseCategoryRecord,
+): ExpenseCategoryAccountingExportProfileMapping {
+  const reviewBucket = expenseCategoryAccountingReviewBucket(category);
+  return {
+    code: category.code,
+    label: category.label,
+    active: category.active,
+    defaultReimbursable: category.defaultReimbursable,
+    reimbursableAllowed: category.reimbursableAllowed,
+    scope: {
+      firmDefault:
+        !category.matterId &&
+        category.practiceAreas.length === 0 &&
+        category.jurisdictions.length === 0,
+      matterScoped: Boolean(category.matterId),
+      practiceAreaCount: category.practiceAreas.length,
+      jurisdictionCount: category.jurisdictions.length,
+    },
+    reviewBucket,
+    reviewCue: expenseCategoryAccountingReviewCue(reviewBucket),
+    exportedValueSource: "expense_category_label_snapshot",
+    profileFieldKey: "expenseEntries.category",
+    localPreviewOnly: true,
+  };
+}
+
+export function buildExpenseCategoryAccountingExportProfileSummary(
+  categories: readonly BillingExpenseCategoryRecord[],
+): ExpenseCategoryAccountingExportProfileSummary {
+  const sortedCategories = [...categories].sort((left, right) =>
+    left.code.localeCompare(right.code),
+  );
+  const mappings = sortedCategories
+    .slice(0, expenseCategoryAccountingExportProfileMappingLimit)
+    .map(expenseCategoryAccountingMapping);
+  const scopedCategoryCount = sortedCategories.filter(
+    (category) =>
+      Boolean(category.matterId) ||
+      category.practiceAreas.length > 0 ||
+      category.jurisdictions.length > 0,
+  ).length;
+  return {
+    status: "read_only_metadata_preview",
+    profileId: "op_expense_category_accounting_summary",
+    label: "OP expense category accounting summary",
+    source: "open_practice_authored_metadata",
+    financialProfileReference: "billing_operational_records_json",
+    categoryCounts: {
+      total: sortedCategories.length,
+      active: sortedCategories.filter((category) => category.active).length,
+      inactive: sortedCategories.filter((category) => !category.active).length,
+      defaultReimbursable: sortedCategories.filter((category) => category.defaultReimbursable)
+        .length,
+      reimbursableAllowed: sortedCategories.filter((category) => category.reimbursableAllowed)
+        .length,
+      firmDefault: sortedCategories.length - scopedCategoryCount,
+      scoped: scopedCategoryCount,
+      mapped: mappings.length,
+      omitted: Math.max(0, sortedCategories.length - mappings.length),
+      mappingLimit: expenseCategoryAccountingExportProfileMappingLimit,
+    },
+    mappings,
+    safeguards: {
+      externalAccountingProvider: false,
+      exportSerializationChange: false,
+      invoiceRecalculation: false,
+      paymentMutation: false,
+      trustPosting: false,
+      certifiedAccountingClaim: false,
+    },
   };
 }
 

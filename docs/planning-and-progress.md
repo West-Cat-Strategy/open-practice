@@ -697,6 +697,13 @@ SQL, BI embeds, scheduled execution/email, raw report-body storage, payment proc
 payment creation/allocation, invoice mutation, trust posting, or certification claims. Proof is
 recorded in
 [report export profile alignment proof](validation/OP_REPORT_EXPORT_PROFILE_ALIGNMENT_PROOF_2026-06-29.md).
+The 2026-07-01 follow-up adds a read-only staff preview to the same Reports workspace that maps
+existing firm expense category codes to an OP-authored accounting export profile summary. The
+preview uses category codes, labels, active/reimbursable posture, scope counts/booleans, OP-authored
+review buckets/cues, bounded mappings, and disabled-safeguard flags only. It adds no external
+accounting provider, export serialization change, invoice recalculation, payment mutation, trust
+posting, or certified-accounting claim. Proof is recorded in
+[expense category accounting export profile preview proof](validation/OP_EXPENSE_CATEGORY_ACCOUNTING_EXPORT_PROFILE_PREVIEW_PROOF_2026-07-01.md).
 The 2026-06-29 report export download audit follow-up adds safe `*.downloaded` audit events for
 completed audit, billing, staff report, and jurisdictional trust export jobs. Audit metadata is
 limited to job/profile/scope/count fields plus explicit regenerated-download and no-storage flags;

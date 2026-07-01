@@ -240,13 +240,15 @@ export function registerReportRoutes(
   server.get("/api/reports/workspace", async (request) => {
     assertStaffReportAccess(request.auth, "read");
     const generatedAt = new Date().toISOString();
-    const [projectionInput, jobs] = await Promise.all([
+    const [projectionInput, jobs, expenseCategories] = await Promise.all([
       loadStaffReportProjectionInput({ repository, auth: request.auth }),
       listStaffReportJobs(repository, request.auth.firmId),
+      repository.listBillingExpenseCategories(request.auth.firmId),
     ]);
 
     return buildStaffReportingWorkspace({
       ...projectionInput,
+      expenseCategories,
       generatedAt,
       history: jobs.map(serializeReportExportRequest),
     });

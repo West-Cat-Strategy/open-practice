@@ -191,6 +191,89 @@ const reportingWorkspace: StaffReportingWorkspaceResponse = {
       certificationClaims: false,
     },
   },
+  expenseCategoryAccountingExportProfileSummary: {
+    status: "read_only_metadata_preview",
+    profileId: "op_expense_category_accounting_summary",
+    label: "OP expense category accounting summary",
+    source: "open_practice_authored_metadata",
+    financialProfileReference: "billing_operational_records_json",
+    categoryCounts: {
+      total: 3,
+      active: 2,
+      inactive: 1,
+      defaultReimbursable: 2,
+      reimbursableAllowed: 2,
+      firmDefault: 2,
+      scoped: 1,
+      mapped: 3,
+      omitted: 0,
+      mappingLimit: 8,
+    },
+    mappings: [
+      {
+        code: "courier_postage",
+        label: "Courier and postage",
+        active: true,
+        defaultReimbursable: true,
+        reimbursableAllowed: true,
+        scope: {
+          firmDefault: true,
+          matterScoped: false,
+          practiceAreaCount: 0,
+          jurisdictionCount: 0,
+        },
+        reviewBucket: "delivery_disbursement",
+        reviewCue: "Confirm delivery purpose and support before export review.",
+        exportedValueSource: "expense_category_label_snapshot",
+        profileFieldKey: "expenseEntries.category",
+        localPreviewOnly: true,
+      },
+      {
+        code: "filing_service",
+        label: "Filing and service",
+        active: true,
+        defaultReimbursable: true,
+        reimbursableAllowed: true,
+        scope: {
+          firmDefault: true,
+          matterScoped: false,
+          practiceAreaCount: 0,
+          jurisdictionCount: 0,
+        },
+        reviewBucket: "filing_service_disbursement",
+        reviewCue: "Confirm registry, filing, or service support before export review.",
+        exportedValueSource: "expense_category_label_snapshot",
+        profileFieldKey: "expenseEntries.category",
+        localPreviewOnly: true,
+      },
+      {
+        code: "research_database",
+        label: "Research database",
+        active: false,
+        defaultReimbursable: false,
+        reimbursableAllowed: false,
+        scope: {
+          firmDefault: false,
+          matterScoped: false,
+          practiceAreaCount: 1,
+          jurisdictionCount: 1,
+        },
+        reviewBucket: "research_cost_review",
+        reviewCue: "Confirm billing agreement and research-cost posture before export review.",
+        exportedValueSource: "expense_category_label_snapshot",
+        profileFieldKey: "expenseEntries.category",
+        localPreviewOnly: true,
+      },
+    ],
+    safeguards: {
+      externalAccountingProvider: false,
+      exportSerializationChange: false,
+      invoiceRecalculation: false,
+      paymentMutation: false,
+      trustPosting: false,
+      certifiedAccountingClaim: false,
+    },
+  },
   reports: [
     {
       definitionKey: "invoice_aging",
@@ -403,6 +486,25 @@ describe("ReportsSection", () => {
     expect(html).toContain("No certification claims");
     expect(html).toContain("Field-key behavior");
     expect(html).toContain("Downloads regenerate authorized report projections");
+    expect(html).toContain("Expense category accounting profile");
+    expect(html).toContain("OP expense category accounting summary");
+    expect(html).toContain("3 categories");
+    expect(html).toContain("2 active");
+    expect(html).toContain("1 inactive");
+    expect(html).toContain("2 firm default");
+    expect(html).toContain("1 scoped");
+    expect(html).toContain("billing operational records json");
+    expect(html).toContain("courier_postage");
+    expect(html).toContain("filing_service");
+    expect(html).toContain("research_database");
+    expect(html).toContain("delivery disbursement");
+    expect(html).toContain("filing service disbursement");
+    expect(html).toContain("research cost review");
+    expect(html).toContain("No external accounting provider");
+    expect(html).toContain("No export serialization change");
+    expect(html).toContain("No invoice recalculation");
+    expect(html).toContain("No payment mutation");
+    expect(html).toContain("No certified-accounting claim");
     expect(html).toContain("Aged receivables");
     expect(html).toContain("Ada Morgan");
     expect(html).toContain("invoice INV-AR-001");
@@ -418,6 +520,8 @@ describe("ReportsSection", () => {
     expect(html).not.toContain("schedule export email");
     expect(html).not.toContain("payment processor setup");
     expect(html).not.toContain("post trust entry");
+    expect(html).not.toContain("external chart");
+    expect(html).not.toContain("raw export body");
     expect(html).not.toContain("unlock");
     expect(html).not.toContain("override");
     expect(html).not.toContain("bypass");

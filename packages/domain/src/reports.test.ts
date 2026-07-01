@@ -5,6 +5,7 @@ import {
   STAFF_REPORT_EXPORT_PROFILES,
   STAFF_SAVED_REPORT_DEFINITIONS,
 } from "./reports.js";
+import { defaultBillingExpenseCategoriesForFirm, type InvoiceRecord } from "./billing.js";
 import {
   sampleContacts,
   sampleExpenseEntries,
@@ -17,7 +18,6 @@ import {
   sampleTimeEntries,
   sampleUsers,
 } from "./sample-data.js";
-import type { InvoiceRecord } from "./billing.js";
 import type { LedgerReconciliationRecord } from "./ledger.js";
 
 const generatedAt = "2026-06-20T12:00:00.000Z";
@@ -64,6 +64,10 @@ describe("staff reporting workspace", () => {
       reconciliations,
       legalClinicMatterProfiles: sampleLegalClinicMatterProfiles,
       timeEntries: sampleTimeEntries,
+      expenseCategories: defaultBillingExpenseCategoriesForFirm({
+        firmId: "firm-west-legal",
+        now: "2026-06-17T00:00:00.000Z",
+      }),
       taskDeadlines: sampleTaskDeadlines,
     });
 
@@ -191,6 +195,39 @@ describe("staff reporting workspace", () => {
       expect(profile.sampleFieldKeys.length).toBeLessThanOrEqual(6);
       expect(profile.sampleFieldKeys.length).toBeLessThanOrEqual(profile.fieldKeyCount);
     }
+    expect(workspace.expenseCategoryAccountingExportProfileSummary).toMatchObject({
+      status: "read_only_metadata_preview",
+      profileId: "op_expense_category_accounting_summary",
+      source: "open_practice_authored_metadata",
+      financialProfileReference: "billing_operational_records_json",
+      categoryCounts: {
+        total: 4,
+        active: 4,
+        inactive: 0,
+        firmDefault: 4,
+        scoped: 0,
+        mapped: 4,
+        omitted: 0,
+        mappingLimit: 8,
+      },
+      mappings: expect.arrayContaining([
+        expect.objectContaining({
+          code: "filing_service",
+          label: "Filing and service",
+          reviewBucket: "filing_service_disbursement",
+          profileFieldKey: "expenseEntries.category",
+          localPreviewOnly: true,
+        }),
+      ]),
+      safeguards: {
+        externalAccountingProvider: false,
+        exportSerializationChange: false,
+        invoiceRecalculation: false,
+        paymentMutation: false,
+        trustPosting: false,
+        certifiedAccountingClaim: false,
+      },
+    });
     expect(workspace.workspacePolicy).toMatchObject({
       customSql: false,
       biEmbeds: false,
