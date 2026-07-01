@@ -27,99 +27,110 @@ profile metadata:
 
 ## Final Changed Paths
 
-- apps/api/src/routes/reports.test.ts
-- apps/api/src/routes/reports.ts
-- apps/web/app/dashboard/reports-section.test.tsx
-- apps/web/app/dashboard/reports-section.tsx
-- apps/web/app/reporting-dashboard.ts
-- docs/api-and-state-machines.md
-- docs/planning-and-progress.md
-- docs/validation/README.md
-- packages/domain/src/billing.test.ts
-- packages/domain/src/billing.ts
-- packages/domain/src/reports.test.ts
-- packages/domain/src/reports.ts
-- docs/validation/OP_EXPENSE_CATEGORY_ACCOUNTING_EXPORT_PROFILE_PREVIEW_PROOF_2026-07-01.md
+- `apps/api/src/routes/document-processing.test.ts`
+- `apps/api/src/routes/document-processing.ts`
+- `apps/api/src/routes/document-processing/disposition-reviewer-packet.ts`
+- `apps/api/src/routes/document-processing/shared.ts`
+- `apps/api/src/routes/inbound-email.test.ts`
+- `apps/api/src/routes/inbound-email/parser-jobs.ts`
+- `apps/api/src/routes/reports.test.ts`
+- `apps/api/src/routes/reports.ts`
+- `apps/api/src/routes/tasks.test.ts`
+- `apps/api/src/routes/tasks.ts`
+- `apps/web/app/_features/communications/models.ts`
+- `apps/web/app/_features/communications/server-resources.ts`
+- `apps/web/app/_features/document-processing/models.ts`
+- `apps/web/app/communications-inbox-dashboard.ts`
+- `apps/web/app/dashboard-client.test.ts`
+- `apps/web/app/dashboard-client.tsx`
+- `apps/web/app/dashboard/communications-section.test.tsx`
+- `apps/web/app/dashboard/communications-section.tsx`
+- `apps/web/app/dashboard/documents-section.test.tsx`
+- `apps/web/app/dashboard/inbound-parser-replay-inventory-panel.test.tsx`
+- `apps/web/app/dashboard/inbound-parser-replay-inventory-panel.tsx`
+- `apps/web/app/dashboard/reports-section.test.tsx`
+- `apps/web/app/dashboard/reports-section.tsx`
+- `apps/web/app/dashboard/tasks-section.test.tsx`
+- `apps/web/app/dashboard/tasks-section.tsx`
+- `apps/web/app/document-processing-dashboard.ts`
+- `apps/web/app/reporting-dashboard.ts`
+- `apps/web/app/types.ts`
+- `docs/api-and-state-machines.md`
+- `docs/development/github-maintenance.md`
+- `docs/document-retention-hold-workflow-design.md`
+- `docs/improvement-opportunities.md`
+- `docs/planning-and-progress.md`
+- `docs/testing/TESTING.md`
+- `docs/validation/OP_DOCKER_DAEMON_PREFLIGHT_PROOF_2026-07-01.md`
+- `docs/validation/OP_DOCUMENT_DISPOSITION_REVIEWER_PACKET_PROOF_2026-06-30.md`
+- `docs/validation/OP_EXPENSE_CATEGORY_ACCOUNTING_EXPORT_PROFILE_PREVIEW_PROOF_2026-07-01.md`
+- `docs/validation/OP_INBOUND_PARSER_REPLAY_INVENTORY_PROOF_2026-07-01.md`
+- `docs/validation/OP_LEGAL_CLINIC_CADENCE_TASK_PROOF_2026-07-01.md`
+- `docs/validation/OP_PROVIDER_DOCUMENT_CONVERSION_SEMANTIC_REVIEW_PREFLIGHT_PACKET_PROOF_2026-07-01.md`
+- `docs/validation/OP_REPORTS_AUTHORIZATION_EXPLAIN_PLAN_FIXTURE_PROOF_2026-07-01.md`
+- `docs/validation/README.md`
+- `packages/domain/src/audit-taxonomy.test.ts`
+- `packages/domain/src/audit-taxonomy.ts`
+- `packages/domain/src/authorization-fixtures.ts`
+- `packages/domain/src/billing.test.ts`
+- `packages/domain/src/billing.ts`
+- `packages/domain/src/document-suggestions.test.ts`
+- `packages/domain/src/document-suggestions.ts`
+- `packages/domain/src/legal-research.test.ts`
+- `packages/domain/src/legal-research.ts`
+- `packages/domain/src/permissions.test.ts`
+- `packages/domain/src/reports.test.ts`
+- `packages/domain/src/reports.ts`
+- `packages/domain/src/tasks.test.ts`
+- `packages/domain/src/tasks.ts`
+- `scripts/docker-storage-preflight.mjs`
+- `scripts/docker-storage-preflight.test.mjs`
+- `scripts/route-authorization-manifest.mjs`
+- `scripts/scan-docker-images.mjs`
+- `scripts/scan-docker-images.test.mjs`
+- `scripts/validate-open-practice-boundaries.test.mjs`
+- `scripts/watch-docker-residuals.mjs`
+- `scripts/watch-docker-residuals.test.mjs`
 
-## Selector Evidence
+## Mainline Closeout Validation
 
-```bash
-pnpm verify:select -- --files apps/api/src/routes/reports.test.ts apps/api/src/routes/reports.ts apps/web/app/dashboard/reports-section.test.tsx apps/web/app/dashboard/reports-section.tsx apps/web/app/reporting-dashboard.ts docs/api-and-state-machines.md docs/planning-and-progress.md docs/validation/README.md packages/domain/src/billing.test.ts packages/domain/src/billing.ts packages/domain/src/reports.test.ts packages/domain/src/reports.ts docs/validation/OP_EXPENSE_CATEGORY_ACCOUNTING_EXPORT_PROFILE_PREVIEW_PROOF_2026-07-01.md
-```
+Selector:
 
-Recommended validation commands:
+- PASS `pnpm verify:select -- --files apps/api/src/routes/document-processing.test.ts apps/api/src/routes/document-processing.ts apps/api/src/routes/document-processing/disposition-reviewer-packet.ts apps/api/src/routes/document-processing/shared.ts apps/api/src/routes/inbound-email.test.ts apps/api/src/routes/inbound-email/parser-jobs.ts apps/api/src/routes/reports.test.ts apps/api/src/routes/reports.ts apps/api/src/routes/tasks.test.ts apps/api/src/routes/tasks.ts apps/web/app/_features/communications/models.ts apps/web/app/_features/communications/server-resources.ts apps/web/app/_features/document-processing/models.ts apps/web/app/communications-inbox-dashboard.ts apps/web/app/dashboard-client.test.ts apps/web/app/dashboard-client.tsx apps/web/app/dashboard/communications-section.test.tsx apps/web/app/dashboard/communications-section.tsx apps/web/app/dashboard/documents-section.test.tsx apps/web/app/dashboard/inbound-parser-replay-inventory-panel.test.tsx apps/web/app/dashboard/inbound-parser-replay-inventory-panel.tsx apps/web/app/dashboard/reports-section.test.tsx apps/web/app/dashboard/reports-section.tsx apps/web/app/dashboard/tasks-section.test.tsx apps/web/app/dashboard/tasks-section.tsx apps/web/app/document-processing-dashboard.ts apps/web/app/reporting-dashboard.ts apps/web/app/types.ts docs/api-and-state-machines.md docs/development/github-maintenance.md docs/document-retention-hold-workflow-design.md docs/improvement-opportunities.md docs/planning-and-progress.md docs/testing/TESTING.md docs/validation/OP_DOCKER_DAEMON_PREFLIGHT_PROOF_2026-07-01.md docs/validation/OP_DOCUMENT_DISPOSITION_REVIEWER_PACKET_PROOF_2026-06-30.md docs/validation/OP_EXPENSE_CATEGORY_ACCOUNTING_EXPORT_PROFILE_PREVIEW_PROOF_2026-07-01.md docs/validation/OP_INBOUND_PARSER_REPLAY_INVENTORY_PROOF_2026-07-01.md docs/validation/OP_LEGAL_CLINIC_CADENCE_TASK_PROOF_2026-07-01.md docs/validation/OP_PROVIDER_DOCUMENT_CONVERSION_SEMANTIC_REVIEW_PREFLIGHT_PACKET_PROOF_2026-07-01.md docs/validation/OP_REPORTS_AUTHORIZATION_EXPLAIN_PLAN_FIXTURE_PROOF_2026-07-01.md docs/validation/README.md packages/domain/src/audit-taxonomy.test.ts packages/domain/src/audit-taxonomy.ts packages/domain/src/authorization-fixtures.ts packages/domain/src/billing.test.ts packages/domain/src/billing.ts packages/domain/src/document-suggestions.test.ts packages/domain/src/document-suggestions.ts packages/domain/src/legal-research.test.ts packages/domain/src/legal-research.ts packages/domain/src/permissions.test.ts packages/domain/src/reports.test.ts packages/domain/src/reports.ts packages/domain/src/tasks.test.ts packages/domain/src/tasks.ts scripts/docker-storage-preflight.mjs scripts/docker-storage-preflight.test.mjs scripts/route-authorization-manifest.mjs scripts/scan-docker-images.mjs scripts/scan-docker-images.test.mjs scripts/validate-open-practice-boundaries.test.mjs scripts/watch-docker-residuals.mjs scripts/watch-docker-residuals.test.mjs`
+  - Recommended validation commands:
+    - `pnpm security:review`
+    - `pnpm security:secrets-history`
+    - `pnpm architecture:check`
+    - `pnpm api:contract`
+    - `pnpm docker:residual-watch`
+    - `pnpm docker:app-smoke`
+    - `pnpm selfhost:restore-drill -- --env-file docker/selfhost.example.env --allow-synthetic-example`
+    - `pnpm e2e:docker`
+    - `pnpm format:check`
+    - `pnpm docs:check`
+    - `pnpm policy:check`
+    - `pnpm test`
+    - `pnpm --filter @open-practice/domain test`
+    - `pnpm --filter @open-practice/domain typecheck`
+    - `pnpm --filter @open-practice/domain build`
+    - `pnpm --filter @open-practice/api test`
+    - `pnpm --filter @open-practice/api typecheck`
+    - `pnpm --filter @open-practice/providers test`
+    - `pnpm --filter @open-practice/worker test`
+    - `pnpm --filter @open-practice/web test`
+    - `pnpm --filter @open-practice/web typecheck`
+    - `pnpm build`
 
-- `pnpm architecture:check`
-- `pnpm api:contract`
-- `pnpm format:check`
-- `pnpm docs:check`
-- `pnpm policy:check`
-- `pnpm --filter @open-practice/domain test`
-- `pnpm --filter @open-practice/domain typecheck`
-- `pnpm --filter @open-practice/domain build`
-- `pnpm --filter @open-practice/api test`
-- `pnpm --filter @open-practice/api typecheck`
-- `pnpm --filter @open-practice/providers test`
-- `pnpm --filter @open-practice/worker test`
-- `pnpm --filter @open-practice/web test`
-- `pnpm --filter @open-practice/web typecheck`
-- `pnpm build`
+Selected checks:
 
-## Validation Results
+- PASS `pnpm verify:run -- --files apps/api/src/routes/document-processing.test.ts apps/api/src/routes/document-processing.ts apps/api/src/routes/document-processing/disposition-reviewer-packet.ts apps/api/src/routes/document-processing/shared.ts apps/api/src/routes/inbound-email.test.ts apps/api/src/routes/inbound-email/parser-jobs.ts apps/api/src/routes/reports.test.ts apps/api/src/routes/reports.ts apps/api/src/routes/tasks.test.ts apps/api/src/routes/tasks.ts apps/web/app/_features/communications/models.ts apps/web/app/_features/communications/server-resources.ts apps/web/app/_features/document-processing/models.ts apps/web/app/communications-inbox-dashboard.ts apps/web/app/dashboard-client.test.ts apps/web/app/dashboard-client.tsx apps/web/app/dashboard/communications-section.test.tsx apps/web/app/dashboard/communications-section.tsx apps/web/app/dashboard/documents-section.test.tsx apps/web/app/dashboard/inbound-parser-replay-inventory-panel.test.tsx apps/web/app/dashboard/inbound-parser-replay-inventory-panel.tsx apps/web/app/dashboard/reports-section.test.tsx apps/web/app/dashboard/reports-section.tsx apps/web/app/dashboard/tasks-section.test.tsx apps/web/app/dashboard/tasks-section.tsx apps/web/app/document-processing-dashboard.ts apps/web/app/reporting-dashboard.ts apps/web/app/types.ts docs/api-and-state-machines.md docs/development/github-maintenance.md docs/document-retention-hold-workflow-design.md docs/improvement-opportunities.md docs/planning-and-progress.md docs/testing/TESTING.md docs/validation/OP_DOCKER_DAEMON_PREFLIGHT_PROOF_2026-07-01.md docs/validation/OP_DOCUMENT_DISPOSITION_REVIEWER_PACKET_PROOF_2026-06-30.md docs/validation/OP_EXPENSE_CATEGORY_ACCOUNTING_EXPORT_PROFILE_PREVIEW_PROOF_2026-07-01.md docs/validation/OP_INBOUND_PARSER_REPLAY_INVENTORY_PROOF_2026-07-01.md docs/validation/OP_LEGAL_CLINIC_CADENCE_TASK_PROOF_2026-07-01.md docs/validation/OP_PROVIDER_DOCUMENT_CONVERSION_SEMANTIC_REVIEW_PREFLIGHT_PACKET_PROOF_2026-07-01.md docs/validation/OP_REPORTS_AUTHORIZATION_EXPLAIN_PLAN_FIXTURE_PROOF_2026-07-01.md docs/validation/README.md packages/domain/src/audit-taxonomy.test.ts packages/domain/src/audit-taxonomy.ts packages/domain/src/authorization-fixtures.ts packages/domain/src/billing.test.ts packages/domain/src/billing.ts packages/domain/src/document-suggestions.test.ts packages/domain/src/document-suggestions.ts packages/domain/src/legal-research.test.ts packages/domain/src/legal-research.ts packages/domain/src/permissions.test.ts packages/domain/src/reports.test.ts packages/domain/src/reports.ts packages/domain/src/tasks.test.ts packages/domain/src/tasks.ts scripts/docker-storage-preflight.mjs scripts/docker-storage-preflight.test.mjs scripts/route-authorization-manifest.mjs scripts/scan-docker-images.mjs scripts/scan-docker-images.test.mjs scripts/validate-open-practice-boundaries.test.mjs scripts/watch-docker-residuals.mjs scripts/watch-docker-residuals.test.mjs`
+  - Artifact: `.tmp/validation-runs/2026-07-01T03-17-04Z`.
+  - All 22 selected commands passed, including security review, Docker residual watch, Docker app smoke, self-host restore drill, Docker e2e, format, docs, policy, package tests, package typechecks, and build.
+- PASS `pnpm ci:local`
+  - Broad local CI passed after selected validation on the same integrated tree.
+- PASS `pnpm security:review`
+  - Current rerun artifact `.tmp/open-practice-security-review/2026-07-01T03-11-18Z` passed after rebuilding local package outputs for the hot-path rescan lane.
 
-- Pass: `pnpm verify:select -- --files apps/api/src/routes/reports.test.ts apps/api/src/routes/reports.ts apps/web/app/dashboard/reports-section.test.tsx apps/web/app/dashboard/reports-section.tsx apps/web/app/reporting-dashboard.ts docs/api-and-state-machines.md docs/planning-and-progress.md docs/validation/README.md packages/domain/src/billing.test.ts packages/domain/src/billing.ts packages/domain/src/reports.test.ts packages/domain/src/reports.ts docs/validation/OP_EXPENSE_CATEGORY_ACCOUNTING_EXPORT_PROFILE_PREVIEW_PROOF_2026-07-01.md`
-  selected the commands listed above for the exact final path set.
-- Pass: `pnpm architecture:check`
-  - `Architecture import policy passed: 468 workspace import edges reviewed.`
-- Pass: `pnpm api:contract`
-  - Wrote `.tmp/api-contract/openapi.json` with 353 paths.
-- Pass after targeted Prettier write on touched files: `pnpm format:check`
-  - Initial run flagged `apps/api/src/routes/reports.test.ts`,
-    `apps/web/app/dashboard/reports-section.tsx`, `docs/api-and-state-machines.md`,
-    `docs/validation/README.md`, `packages/domain/src/billing.ts`, and
-    `packages/domain/src/reports.test.ts`.
-  - Ran `pnpm exec prettier --write apps/api/src/routes/reports.test.ts apps/web/app/dashboard/reports-section.tsx docs/api-and-state-machines.md docs/validation/README.md packages/domain/src/billing.ts packages/domain/src/reports.test.ts`.
-  - Rerun passed with `All matched files use Prettier code style!`.
-- Pass: `pnpm docs:check`
-  - `Documentation link validation passed.`
-- Blocked by unrelated reference-index drift: `pnpm policy:check`
-  - Passed tracked-secret scan, package manifest policy, lockfile supply-chain policy, toolchain
-    policy, environment surface, architecture graph, dead-code check, migration parity, and
-    migration lint.
-  - Failed at `node scripts/validate-oss-reuse.mjs` because existing reference locks do not match
-    the central reference index for multiple reference repos, including `activepieces__activepieces`,
-    `apache__fineract`, `calcom__cal.diy`, `docusealco__docuseal`,
-    `ledgersmb__ledgersmb`, `openfga__openfga`, `paperless-ngx__paperless-ngx`,
-    `temporalio__temporal`, and `zulip__zulip`.
-  - The blocker is outside this final changed path set; this branch added no dependency, vendored
-    asset, copied source, or reference-derived code.
-- Pass: `pnpm --filter @open-practice/domain test`
-  - 33 files and 295 tests passed.
-- Pass: `pnpm --filter @open-practice/domain typecheck`
-- Pass: `pnpm --filter @open-practice/domain build`
-- Pass after fresh-worktree hydration: `pnpm --filter @open-practice/api test`
-  - Initial run failed because `@open-practice/database` package entrypoints were not built in the
-    fresh sibling worktree.
-  - Ran hydration builds: `pnpm --filter @open-practice/database build` and
-    `pnpm --filter @open-practice/providers build`.
-  - Rerun passed with 43 files and 656 tests.
-- Pass after fresh-worktree hydration: `pnpm --filter @open-practice/api typecheck`
-  - Initial run failed on unresolved `@open-practice/database` and provider package entrypoints.
-  - Rerun after database/provider builds passed.
-- Pass: `pnpm --filter @open-practice/providers test`
-  - 7 files and 21 tests passed.
-- Pass after fresh-worktree hydration: `pnpm --filter @open-practice/worker test`
-  - Initial run failed on unresolved `@open-practice/database` and provider package entrypoints.
-  - Rerun after database/provider builds passed with 6 files and 54 tests.
-- Pass: `pnpm --filter @open-practice/web test`
-  - 46 files and 249 tests passed.
-- Pass: `pnpm --filter @open-practice/web typecheck`
-- Pass: `pnpm build`
-  - Turbo reported 6 successful build tasks.
+Skipped checks: none because final selected validation and `pnpm ci:local` ran without skipped checks.
 
-## Closeout Checks
-
-- Pass: `pnpm proof:reconcile -- --proof docs/validation/OP_EXPENSE_CATEGORY_ACCOUNTING_EXPORT_PROFILE_PREVIEW_PROOF_2026-07-01.md --files apps/api/src/routes/reports.test.ts apps/api/src/routes/reports.ts apps/web/app/dashboard/reports-section.test.tsx apps/web/app/dashboard/reports-section.tsx apps/web/app/reporting-dashboard.ts docs/api-and-state-machines.md docs/planning-and-progress.md docs/validation/README.md packages/domain/src/billing.test.ts packages/domain/src/billing.ts packages/domain/src/reports.test.ts packages/domain/src/reports.ts docs/validation/OP_EXPENSE_CATEGORY_ACCOUNTING_EXPORT_PROFILE_PREVIEW_PROOF_2026-07-01.md`
-  - Reconciled 13 final paths with the selected validation commands and returned
-    `Result: passed`.
-- Pass: `git diff --check`
+Privacy and data boundary: final validation and proof reconciliation used synthetic metadata only; no client, matter, credential, payment, privileged document, private deployment, or private audit details were added.

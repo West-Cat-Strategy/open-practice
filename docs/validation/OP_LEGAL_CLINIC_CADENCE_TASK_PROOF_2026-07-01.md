@@ -35,81 +35,110 @@ The command preserves the review-first cadence surface:
 
 ## Final Changed Paths
 
+- `apps/api/src/routes/document-processing.test.ts`
+- `apps/api/src/routes/document-processing.ts`
+- `apps/api/src/routes/document-processing/disposition-reviewer-packet.ts`
+- `apps/api/src/routes/document-processing/shared.ts`
+- `apps/api/src/routes/inbound-email.test.ts`
+- `apps/api/src/routes/inbound-email/parser-jobs.ts`
+- `apps/api/src/routes/reports.test.ts`
+- `apps/api/src/routes/reports.ts`
 - `apps/api/src/routes/tasks.test.ts`
 - `apps/api/src/routes/tasks.ts`
+- `apps/web/app/_features/communications/models.ts`
+- `apps/web/app/_features/communications/server-resources.ts`
+- `apps/web/app/_features/document-processing/models.ts`
+- `apps/web/app/communications-inbox-dashboard.ts`
 - `apps/web/app/dashboard-client.test.ts`
 - `apps/web/app/dashboard-client.tsx`
+- `apps/web/app/dashboard/communications-section.test.tsx`
+- `apps/web/app/dashboard/communications-section.tsx`
+- `apps/web/app/dashboard/documents-section.test.tsx`
+- `apps/web/app/dashboard/inbound-parser-replay-inventory-panel.test.tsx`
+- `apps/web/app/dashboard/inbound-parser-replay-inventory-panel.tsx`
+- `apps/web/app/dashboard/reports-section.test.tsx`
+- `apps/web/app/dashboard/reports-section.tsx`
 - `apps/web/app/dashboard/tasks-section.test.tsx`
 - `apps/web/app/dashboard/tasks-section.tsx`
+- `apps/web/app/document-processing-dashboard.ts`
+- `apps/web/app/reporting-dashboard.ts`
+- `apps/web/app/types.ts`
 - `docs/api-and-state-machines.md`
+- `docs/development/github-maintenance.md`
+- `docs/document-retention-hold-workflow-design.md`
+- `docs/improvement-opportunities.md`
 - `docs/planning-and-progress.md`
+- `docs/testing/TESTING.md`
+- `docs/validation/OP_DOCKER_DAEMON_PREFLIGHT_PROOF_2026-07-01.md`
+- `docs/validation/OP_DOCUMENT_DISPOSITION_REVIEWER_PACKET_PROOF_2026-06-30.md`
+- `docs/validation/OP_EXPENSE_CATEGORY_ACCOUNTING_EXPORT_PROFILE_PREVIEW_PROOF_2026-07-01.md`
+- `docs/validation/OP_INBOUND_PARSER_REPLAY_INVENTORY_PROOF_2026-07-01.md`
 - `docs/validation/OP_LEGAL_CLINIC_CADENCE_TASK_PROOF_2026-07-01.md`
+- `docs/validation/OP_PROVIDER_DOCUMENT_CONVERSION_SEMANTIC_REVIEW_PREFLIGHT_PACKET_PROOF_2026-07-01.md`
+- `docs/validation/OP_REPORTS_AUTHORIZATION_EXPLAIN_PLAN_FIXTURE_PROOF_2026-07-01.md`
 - `docs/validation/README.md`
 - `packages/domain/src/audit-taxonomy.test.ts`
 - `packages/domain/src/audit-taxonomy.ts`
 - `packages/domain/src/authorization-fixtures.ts`
+- `packages/domain/src/billing.test.ts`
+- `packages/domain/src/billing.ts`
+- `packages/domain/src/document-suggestions.test.ts`
+- `packages/domain/src/document-suggestions.ts`
+- `packages/domain/src/legal-research.test.ts`
+- `packages/domain/src/legal-research.ts`
 - `packages/domain/src/permissions.test.ts`
+- `packages/domain/src/reports.test.ts`
+- `packages/domain/src/reports.ts`
 - `packages/domain/src/tasks.test.ts`
 - `packages/domain/src/tasks.ts`
+- `scripts/docker-storage-preflight.mjs`
+- `scripts/docker-storage-preflight.test.mjs`
 - `scripts/route-authorization-manifest.mjs`
+- `scripts/scan-docker-images.mjs`
+- `scripts/scan-docker-images.test.mjs`
+- `scripts/validate-open-practice-boundaries.test.mjs`
+- `scripts/watch-docker-residuals.mjs`
+- `scripts/watch-docker-residuals.test.mjs`
 
-## Selector Output
+## Mainline Closeout Validation
 
-Final selector command:
+Selector:
 
-```sh
-pnpm verify:select -- --files apps/api/src/routes/tasks.test.ts apps/api/src/routes/tasks.ts apps/web/app/dashboard-client.test.ts apps/web/app/dashboard-client.tsx apps/web/app/dashboard/tasks-section.test.tsx apps/web/app/dashboard/tasks-section.tsx docs/api-and-state-machines.md docs/planning-and-progress.md docs/validation/OP_LEGAL_CLINIC_CADENCE_TASK_PROOF_2026-07-01.md docs/validation/README.md packages/domain/src/audit-taxonomy.test.ts packages/domain/src/audit-taxonomy.ts packages/domain/src/authorization-fixtures.ts packages/domain/src/permissions.test.ts packages/domain/src/tasks.test.ts packages/domain/src/tasks.ts scripts/route-authorization-manifest.mjs
-```
+- PASS `pnpm verify:select -- --files apps/api/src/routes/document-processing.test.ts apps/api/src/routes/document-processing.ts apps/api/src/routes/document-processing/disposition-reviewer-packet.ts apps/api/src/routes/document-processing/shared.ts apps/api/src/routes/inbound-email.test.ts apps/api/src/routes/inbound-email/parser-jobs.ts apps/api/src/routes/reports.test.ts apps/api/src/routes/reports.ts apps/api/src/routes/tasks.test.ts apps/api/src/routes/tasks.ts apps/web/app/_features/communications/models.ts apps/web/app/_features/communications/server-resources.ts apps/web/app/_features/document-processing/models.ts apps/web/app/communications-inbox-dashboard.ts apps/web/app/dashboard-client.test.ts apps/web/app/dashboard-client.tsx apps/web/app/dashboard/communications-section.test.tsx apps/web/app/dashboard/communications-section.tsx apps/web/app/dashboard/documents-section.test.tsx apps/web/app/dashboard/inbound-parser-replay-inventory-panel.test.tsx apps/web/app/dashboard/inbound-parser-replay-inventory-panel.tsx apps/web/app/dashboard/reports-section.test.tsx apps/web/app/dashboard/reports-section.tsx apps/web/app/dashboard/tasks-section.test.tsx apps/web/app/dashboard/tasks-section.tsx apps/web/app/document-processing-dashboard.ts apps/web/app/reporting-dashboard.ts apps/web/app/types.ts docs/api-and-state-machines.md docs/development/github-maintenance.md docs/document-retention-hold-workflow-design.md docs/improvement-opportunities.md docs/planning-and-progress.md docs/testing/TESTING.md docs/validation/OP_DOCKER_DAEMON_PREFLIGHT_PROOF_2026-07-01.md docs/validation/OP_DOCUMENT_DISPOSITION_REVIEWER_PACKET_PROOF_2026-06-30.md docs/validation/OP_EXPENSE_CATEGORY_ACCOUNTING_EXPORT_PROFILE_PREVIEW_PROOF_2026-07-01.md docs/validation/OP_INBOUND_PARSER_REPLAY_INVENTORY_PROOF_2026-07-01.md docs/validation/OP_LEGAL_CLINIC_CADENCE_TASK_PROOF_2026-07-01.md docs/validation/OP_PROVIDER_DOCUMENT_CONVERSION_SEMANTIC_REVIEW_PREFLIGHT_PACKET_PROOF_2026-07-01.md docs/validation/OP_REPORTS_AUTHORIZATION_EXPLAIN_PLAN_FIXTURE_PROOF_2026-07-01.md docs/validation/README.md packages/domain/src/audit-taxonomy.test.ts packages/domain/src/audit-taxonomy.ts packages/domain/src/authorization-fixtures.ts packages/domain/src/billing.test.ts packages/domain/src/billing.ts packages/domain/src/document-suggestions.test.ts packages/domain/src/document-suggestions.ts packages/domain/src/legal-research.test.ts packages/domain/src/legal-research.ts packages/domain/src/permissions.test.ts packages/domain/src/reports.test.ts packages/domain/src/reports.ts packages/domain/src/tasks.test.ts packages/domain/src/tasks.ts scripts/docker-storage-preflight.mjs scripts/docker-storage-preflight.test.mjs scripts/route-authorization-manifest.mjs scripts/scan-docker-images.mjs scripts/scan-docker-images.test.mjs scripts/validate-open-practice-boundaries.test.mjs scripts/watch-docker-residuals.mjs scripts/watch-docker-residuals.test.mjs`
+  - Recommended validation commands:
+    - `pnpm security:review`
+    - `pnpm security:secrets-history`
+    - `pnpm architecture:check`
+    - `pnpm api:contract`
+    - `pnpm docker:residual-watch`
+    - `pnpm docker:app-smoke`
+    - `pnpm selfhost:restore-drill -- --env-file docker/selfhost.example.env --allow-synthetic-example`
+    - `pnpm e2e:docker`
+    - `pnpm format:check`
+    - `pnpm docs:check`
+    - `pnpm policy:check`
+    - `pnpm test`
+    - `pnpm --filter @open-practice/domain test`
+    - `pnpm --filter @open-practice/domain typecheck`
+    - `pnpm --filter @open-practice/domain build`
+    - `pnpm --filter @open-practice/api test`
+    - `pnpm --filter @open-practice/api typecheck`
+    - `pnpm --filter @open-practice/providers test`
+    - `pnpm --filter @open-practice/worker test`
+    - `pnpm --filter @open-practice/web test`
+    - `pnpm --filter @open-practice/web typecheck`
+    - `pnpm build`
 
-Result: passed. Recommended validation commands:
+Selected checks:
 
-```text
-pnpm architecture:check
-pnpm api:contract
-pnpm format:check
-pnpm docs:check
-pnpm policy:check
-pnpm test
-pnpm --filter @open-practice/domain test
-pnpm --filter @open-practice/domain typecheck
-pnpm --filter @open-practice/domain build
-pnpm --filter @open-practice/api test
-pnpm --filter @open-practice/api typecheck
-pnpm --filter @open-practice/providers test
-pnpm --filter @open-practice/worker test
-pnpm --filter @open-practice/web test
-pnpm --filter @open-practice/web typecheck
-pnpm build
-```
+- PASS `pnpm verify:run -- --files apps/api/src/routes/document-processing.test.ts apps/api/src/routes/document-processing.ts apps/api/src/routes/document-processing/disposition-reviewer-packet.ts apps/api/src/routes/document-processing/shared.ts apps/api/src/routes/inbound-email.test.ts apps/api/src/routes/inbound-email/parser-jobs.ts apps/api/src/routes/reports.test.ts apps/api/src/routes/reports.ts apps/api/src/routes/tasks.test.ts apps/api/src/routes/tasks.ts apps/web/app/_features/communications/models.ts apps/web/app/_features/communications/server-resources.ts apps/web/app/_features/document-processing/models.ts apps/web/app/communications-inbox-dashboard.ts apps/web/app/dashboard-client.test.ts apps/web/app/dashboard-client.tsx apps/web/app/dashboard/communications-section.test.tsx apps/web/app/dashboard/communications-section.tsx apps/web/app/dashboard/documents-section.test.tsx apps/web/app/dashboard/inbound-parser-replay-inventory-panel.test.tsx apps/web/app/dashboard/inbound-parser-replay-inventory-panel.tsx apps/web/app/dashboard/reports-section.test.tsx apps/web/app/dashboard/reports-section.tsx apps/web/app/dashboard/tasks-section.test.tsx apps/web/app/dashboard/tasks-section.tsx apps/web/app/document-processing-dashboard.ts apps/web/app/reporting-dashboard.ts apps/web/app/types.ts docs/api-and-state-machines.md docs/development/github-maintenance.md docs/document-retention-hold-workflow-design.md docs/improvement-opportunities.md docs/planning-and-progress.md docs/testing/TESTING.md docs/validation/OP_DOCKER_DAEMON_PREFLIGHT_PROOF_2026-07-01.md docs/validation/OP_DOCUMENT_DISPOSITION_REVIEWER_PACKET_PROOF_2026-06-30.md docs/validation/OP_EXPENSE_CATEGORY_ACCOUNTING_EXPORT_PROFILE_PREVIEW_PROOF_2026-07-01.md docs/validation/OP_INBOUND_PARSER_REPLAY_INVENTORY_PROOF_2026-07-01.md docs/validation/OP_LEGAL_CLINIC_CADENCE_TASK_PROOF_2026-07-01.md docs/validation/OP_PROVIDER_DOCUMENT_CONVERSION_SEMANTIC_REVIEW_PREFLIGHT_PACKET_PROOF_2026-07-01.md docs/validation/OP_REPORTS_AUTHORIZATION_EXPLAIN_PLAN_FIXTURE_PROOF_2026-07-01.md docs/validation/README.md packages/domain/src/audit-taxonomy.test.ts packages/domain/src/audit-taxonomy.ts packages/domain/src/authorization-fixtures.ts packages/domain/src/billing.test.ts packages/domain/src/billing.ts packages/domain/src/document-suggestions.test.ts packages/domain/src/document-suggestions.ts packages/domain/src/legal-research.test.ts packages/domain/src/legal-research.ts packages/domain/src/permissions.test.ts packages/domain/src/reports.test.ts packages/domain/src/reports.ts packages/domain/src/tasks.test.ts packages/domain/src/tasks.ts scripts/docker-storage-preflight.mjs scripts/docker-storage-preflight.test.mjs scripts/route-authorization-manifest.mjs scripts/scan-docker-images.mjs scripts/scan-docker-images.test.mjs scripts/validate-open-practice-boundaries.test.mjs scripts/watch-docker-residuals.mjs scripts/watch-docker-residuals.test.mjs`
+  - Artifact: `.tmp/validation-runs/2026-07-01T03-17-04Z`.
+  - All 22 selected commands passed, including security review, Docker residual watch, Docker app smoke, self-host restore drill, Docker e2e, format, docs, policy, package tests, package typechecks, and build.
+- PASS `pnpm ci:local`
+  - Broad local CI passed after selected validation on the same integrated tree.
+- PASS `pnpm security:review`
+  - Current rerun artifact `.tmp/open-practice-security-review/2026-07-01T03-11-18Z` passed after rebuilding local package outputs for the hot-path rescan lane.
 
-## Validation
+Skipped checks: none because final selected validation and `pnpm ci:local` ran without skipped checks.
 
-The fresh sibling worktree needed upstream workspace builds before API/web package entrypoints
-resolved:
-
-```sh
-pnpm --filter @open-practice/domain build
-pnpm --filter @open-practice/database build
-pnpm --filter @open-practice/providers build
-```
-
-Result: passed.
-
-| Command                                                                                                                     | Result  | Notes                                                                                                                                                                                                                                                                                                                                                                                                    |
-| --------------------------------------------------------------------------------------------------------------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm --filter @open-practice/domain exec vitest run src/tasks.test.ts src/audit-taxonomy.test.ts src/permissions.test.ts`  | Pass    | 3 files and 74 tests passed. Covers cadence task draft selection, duplicate suppression, fixed copy/audit metadata, taxonomy, and fixtures.                                                                                                                                                                                                                                                              |
-| `pnpm --filter @open-practice/api exec vitest run src/routes/tasks.test.ts`                                                 | Pass    | Rerun after upstream builds passed with 1 file and 19 tests. Initial fresh-worktree run failed before builds on unresolved database entrypoint.                                                                                                                                                                                                                                                          |
-| `pnpm --filter @open-practice/web exec vitest run app/dashboard/tasks-section.test.tsx app/dashboard-client.test.ts`        | Pass    | Rerun after upstream builds and web typing fix passed with 2 files and 79 tests. Initial fresh-worktree run failed before builds.                                                                                                                                                                                                                                                                        |
-| `pnpm --filter @open-practice/domain typecheck`                                                                             | Pass    | `tsc -p tsconfig.json --noEmit`.                                                                                                                                                                                                                                                                                                                                                                         |
-| `pnpm --filter @open-practice/api typecheck`                                                                                | Pass    | `tsc -p tsconfig.json --noEmit`.                                                                                                                                                                                                                                                                                                                                                                         |
-| `pnpm --filter @open-practice/web typecheck`                                                                                | Pass    | `tsc -p tsconfig.json --noEmit`.                                                                                                                                                                                                                                                                                                                                                                         |
-| `pnpm api:contract`                                                                                                         | Pass    | API contract inventory wrote `.tmp/api-contract/openapi.json` with 347 paths.                                                                                                                                                                                                                                                                                                                            |
-| `pnpm architecture:check`                                                                                                   | Pass    | Architecture import policy passed with 466 workspace import edges reviewed.                                                                                                                                                                                                                                                                                                                              |
-| `pnpm docs:check`                                                                                                           | Pass    | Documentation link validation passed.                                                                                                                                                                                                                                                                                                                                                                    |
-| `pnpm format:check`                                                                                                         | Pass    | All matched files use Prettier code style.                                                                                                                                                                                                                                                                                                                                                               |
-| `node scripts/validate-validation-proof-index.mjs`                                                                          | Pass    | Validation proof index check passed.                                                                                                                                                                                                                                                                                                                                                                     |
-| `node scripts/validate-open-practice-boundaries.mjs`                                                                        | Pass    | Open Practice boundary policy passed.                                                                                                                                                                                                                                                                                                                                                                    |
-| `git diff --check`                                                                                                          | Pass    | No whitespace errors.                                                                                                                                                                                                                                                                                                                                                                                    |
-| `pnpm proof:reconcile -- --proof docs/validation/OP_LEGAL_CLINIC_CADENCE_TASK_PROOF_2026-07-01.md --files <final path set>` | Pass    | Proof reconciliation reported 17 paths and the selector-recommended validation commands.                                                                                                                                                                                                                                                                                                                 |
-| `pnpm build`                                                                                                                | Pass    | Turbo built all 6 workspace packages in 33.492s.                                                                                                                                                                                                                                                                                                                                                         |
-| `pnpm policy:check`                                                                                                         | Blocked | Reason: unrelated central reference-index lock drift for 21 reference repositories. The gate reached `validate-oss-reuse.mjs`; earlier policy subchecks passed: tracked secrets, package manifests, lockfile supply chain, toolchain, env surface, architecture, deadcode, migrations, and migration lint. This lane added no dependencies, copied excerpts, vendored assets, or reference-derived code. |
+Privacy and data boundary: final validation and proof reconciliation used synthetic metadata only; no client, matter, credential, payment, privileged document, private deployment, or private audit details were added.
