@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { JobLifecycleRecord } from "@open-practice/domain";
+import { requireAccess } from "../../http/auth-guards.js";
 import { ApiHttpError } from "../../http/response.js";
 import { parseRequestPart } from "../../http/validation.js";
 import { appendRouteAuditEvent } from "../audit-events.js";
@@ -23,8 +24,28 @@ import type { InboundEmailRouteDependencies } from "./shared.js";
 const STALLED_QUEUED_JOB_MS = 60 * 60 * 1000;
 const STALLED_ACTIVE_JOB_MS = 30 * 60 * 1000;
 const IMAP_PROVIDER_KEY = "imap";
+const INBOUND_PARSER_REPLAY_INVENTORY_SAFETY_FLAGS = {
+  noRawMime: true,
+  noObjectKey: true,
+  noProviderPayload: true,
+  noMailboxSecret: true,
+  noDocumentPromotion: true,
+  noMatterCreation: true,
+} as const;
+const parserReplayInventoryFailureStages = new Set([
+  "imap_parser_enqueue",
+  "imap_poll_enqueue",
+  "parser_enqueue",
+  "parser_retry_enqueue",
+  "raw_mime_storage",
+]);
 
 const parserJobParamsSchema = z.object({ jobId: z.string().min(1) });
+const parserReplayInventoryQuerySchema = z
+  .object({
+    limit: z.coerce.number().int().min(1).max(100).default(50),
+  })
+  .strict();
 const parserJobRetryConfirmationSchema = z
   .object({
     confirmed: z.literal(true),
@@ -100,6 +121,18 @@ function rawMetadataInteger(job: JobLifecycleRecord, key: string): number | unde
   if (typeof value === "number" && Number.isInteger(value) && value >= 0) return value;
   if (typeof value === "string" && /^\d+$/.test(value)) return Number(value);
   return undefined;
+}
+
+function assertParserReplayInventoryAccess(context: Parameters<typeof requireAccess>[0]): void {
+  const access = requireAccess(context, { resource: "job", action: "read" });
+  if (!access.ok) throw access.error;
+  if (context.user.role !== "owner_admin") {
+    throw new ApiHttpError(
+      403,
+      "INBOUND_EMAIL_PARSER_REPLAY_INVENTORY_OWNER_REQUIRED",
+      "Inbound email parser replay inventory is restricted to owner administrators.",
+    );
+  }
 }
 
 function missingRawObjectProvenance(): ApiHttpError {
@@ -232,6 +265,99 @@ function isInboundParserJob(job: JobLifecycleRecord): boolean {
     job.jobName === MAILGUN_RAW_MIME_JOB_NAME &&
     job.targetResourceType === "inbound_email_raw"
   );
+}
+
+function inboundParserProviderFamily(job: JobLifecycleRecord): "mailgun" | "imap" | "unknown" {
+  const provider = rawMetadataString(job, "provider");
+  const source = rawMetadataString(job, "source");
+  if (provider === MAILGUN_PROVIDER_KEY || source === "mailgun.raw_mime_webhook") {
+    return "mailgun";
+  }
+  if (provider === IMAP_PROVIDER_KEY || source === "imap.mailbox_poll") return "imap";
+  return "unknown";
+}
+
+function inboundParserFailureStage(job: JobLifecycleRecord): string {
+  const stage = rawMetadataString(job, "providerFailureStage");
+  if (!stage || !parserReplayInventoryFailureStages.has(stage)) return "unknown";
+  return stage.slice(0, 80);
+}
+
+function observedJobTimestamp(job: JobLifecycleRecord): string {
+  return job.failedAt ?? job.finishedAt ?? job.startedAt ?? job.queuedAt;
+}
+
+function ageSeconds(job: JobLifecycleRecord, nowMs: number): number {
+  const observedMs = Date.parse(observedJobTimestamp(job));
+  if (!Number.isFinite(observedMs)) return 0;
+  return Math.max(0, Math.floor((nowMs - observedMs) / 1000));
+}
+
+function incrementCount(counts: Record<string, number>, key: string): void {
+  counts[key] = (counts[key] ?? 0) + 1;
+}
+
+async function listInboundParserReplayInventoryJobs(input: {
+  repository: InboundEmailRouteDependencies["repository"];
+  firmId: string;
+  limit: number;
+}): Promise<JobLifecycleRecord[]> {
+  const repositoryLimit = Math.min(input.limit * 4, 400);
+  const [failed, deadLetter] = await Promise.all([
+    input.repository.listJobLifecycleRecords(input.firmId, {
+      queueName: "inbound_email",
+      status: "failed",
+      limit: repositoryLimit,
+    }),
+    input.repository.listJobLifecycleRecords(input.firmId, {
+      queueName: "inbound_email",
+      status: "dead_letter",
+      limit: repositoryLimit,
+    }),
+  ]);
+  return [...failed, ...deadLetter]
+    .filter(isInboundParserJob)
+    .sort(
+      (left, right) =>
+        Date.parse(observedJobTimestamp(right)) - Date.parse(observedJobTimestamp(left)),
+    )
+    .slice(0, input.limit);
+}
+
+function serializeInboundParserReplayInventory(jobs: JobLifecycleRecord[], generatedAt: string) {
+  const nowMs = Date.parse(generatedAt);
+  const summary = {
+    total: jobs.length,
+    failed: jobs.filter((job) => job.status === "failed").length,
+    deadLetter: jobs.filter((job) => job.status === "dead_letter").length,
+    byProviderFamily: {} as Record<string, number>,
+    byFailureStage: {} as Record<string, number>,
+  };
+  const rows = jobs.map((job) => {
+    const providerFamily = inboundParserProviderFamily(job);
+    const failureStage = inboundParserFailureStage(job);
+    incrementCount(summary.byProviderFamily, providerFamily);
+    incrementCount(summary.byFailureStage, failureStage);
+    return {
+      jobId: job.id,
+      status: job.status,
+      providerFamily,
+      failureStage,
+      queuedAt: job.queuedAt,
+      failedAt: job.failedAt,
+      ageSeconds: ageSeconds(job, nowMs),
+      attemptsMade: job.attemptsMade,
+      maxAttempts: job.maxAttempts,
+      safetyFlags: INBOUND_PARSER_REPLAY_INVENTORY_SAFETY_FLAGS,
+    };
+  });
+
+  return {
+    status: rows.length > 0 ? "available" : "empty",
+    generatedAt,
+    summary,
+    jobs: rows,
+  };
 }
 
 async function getInboundParserJob(input: {
@@ -390,6 +516,19 @@ export function registerInboundEmailParserJobRoutes(
   server: FastifyInstance,
   { repository, inboundEmailJobQueue }: InboundEmailRouteDependencies,
 ): void {
+  server.get("/api/inbound-email/parser-jobs/replay-inventory", async (request) => {
+    assertParserReplayInventoryAccess(request.auth);
+    const query = parseRequestPart(parserReplayInventoryQuerySchema, request.query, "query");
+    const generatedAt = new Date().toISOString();
+    const jobs = await listInboundParserReplayInventoryJobs({
+      repository,
+      firmId: request.auth.firmId,
+      limit: query.limit,
+    });
+
+    return serializeInboundParserReplayInventory(jobs, generatedAt);
+  });
+
   server.post("/api/inbound-email/parser-jobs/:jobId/retry", async (request, reply) => {
     assertJobRecoveryAccess(request.auth);
     const params = parseRequestPart(parserJobParamsSchema, request.params, "params");

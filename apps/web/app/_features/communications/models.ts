@@ -102,6 +102,41 @@ export interface UnscopedInboundEmailReviewResponse {
   messages: UnscopedInboundEmailReviewMessage[];
 }
 
+export interface InboundParserReplayInventorySafetyFlags {
+  noRawMime: true;
+  noObjectKey: true;
+  noProviderPayload: true;
+  noMailboxSecret: true;
+  noDocumentPromotion: true;
+  noMatterCreation: true;
+}
+
+export interface InboundParserReplayInventoryJob {
+  jobId: string;
+  status: "failed" | "dead_letter";
+  providerFamily: "mailgun" | "imap" | "unknown";
+  failureStage: string;
+  queuedAt: string;
+  failedAt?: string;
+  ageSeconds: number;
+  attemptsMade: number;
+  maxAttempts: number;
+  safetyFlags: InboundParserReplayInventorySafetyFlags;
+}
+
+export interface InboundParserReplayInventoryResponse {
+  status: "available" | "empty" | "access_denied" | "unavailable";
+  generatedAt?: string;
+  summary: {
+    total: number;
+    failed: number;
+    deadLetter: number;
+    byProviderFamily: Record<string, number>;
+    byFailureStage: Record<string, number>;
+  };
+  jobs: InboundParserReplayInventoryJob[];
+}
+
 export interface CommunicationsInboxOutboundDelivery {
   id: string;
   matterId: string;
@@ -239,4 +274,5 @@ export interface CommunicationsInboxMatterResponse {
 export interface CommunicationsInboxDashboardResponse {
   inboxByMatterId: Record<string, CommunicationsInboxMatterResponse>;
   unscopedInboundEmail: UnscopedInboundEmailReviewResponse;
+  inboundParserReplayInventory: InboundParserReplayInventoryResponse;
 }

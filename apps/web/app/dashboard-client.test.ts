@@ -1648,9 +1648,20 @@ describe("dashboard client behavior", () => {
       inboundEmail: [expect.objectContaining({ id: "inbound-message-001" })],
     });
     expect(dashboard.unscopedInboundEmail).toEqual({ status: "unavailable", messages: [] });
+    expect(dashboard.inboundParserReplayInventory).toEqual({
+      status: "unavailable",
+      summary: {
+        total: 0,
+        failed: 0,
+        deadLetter: 0,
+        byProviderFamily: {},
+        byFailureStage: {},
+      },
+      jobs: [],
+    });
   });
 
-  it("loads unscoped inbound email review rows without raw message fields", async () => {
+  it("loads unscoped inbound email review rows and parser replay inventory safely", async () => {
     const originalFetch = globalThis.fetch;
     const fetchMock = vi.fn(async (url: URL | RequestInfo) => {
       const path = new URL(String(url)).pathname + new URL(String(url)).search;
@@ -1767,6 +1778,43 @@ describe("dashboard client behavior", () => {
           { status: 200 },
         );
       }
+      if (path === "/api/inbound-email/parser-jobs/replay-inventory") {
+        return new Response(
+          JSON.stringify({
+            status: "available",
+            generatedAt: "2026-07-01T12:00:00.000Z",
+            summary: {
+              total: 1,
+              failed: 1,
+              deadLetter: 0,
+              byProviderFamily: { mailgun: 1 },
+              byFailureStage: { parser_enqueue: 1 },
+            },
+            jobs: [
+              {
+                jobId: "job-inbound-parser-safe",
+                status: "failed",
+                providerFamily: "mailgun",
+                failureStage: "parser_enqueue",
+                queuedAt: "2026-07-01T10:00:00.000Z",
+                failedAt: "2026-07-01T10:01:00.000Z",
+                ageSeconds: 7200,
+                attemptsMade: 1,
+                maxAttempts: 4,
+                safetyFlags: {
+                  noRawMime: true,
+                  noObjectKey: true,
+                  noProviderPayload: true,
+                  noMailboxSecret: true,
+                  noDocumentPromotion: true,
+                  noMatterCreation: true,
+                },
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
       return new Response("not found", { status: 404 });
     });
     globalThis.fetch = fetchMock as unknown as typeof fetch;
@@ -1830,6 +1878,90 @@ describe("dashboard client behavior", () => {
       expect(serialized).not.toContain("Private body");
       expect(serialized).not.toContain("rawStorageKey");
       expect(serialized).not.toContain("provider-private-id");
+      expect(dashboard.inboundParserReplayInventory).toMatchObject({
+        status: "available",
+        summary: {
+          total: 1,
+          failed: 1,
+          deadLetter: 0,
+          byProviderFamily: { mailgun: 1 },
+          byFailureStage: { parser_enqueue: 1 },
+        },
+        jobs: [
+          {
+            jobId: "job-inbound-parser-safe",
+            providerFamily: "mailgun",
+            failureStage: "parser_enqueue",
+            safetyFlags: {
+              noRawMime: true,
+              noObjectKey: true,
+              noProviderPayload: true,
+              noMailboxSecret: true,
+              noDocumentPromotion: true,
+              noMatterCreation: true,
+            },
+          },
+        ],
+      });
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining("/api/inbound-email/parser-jobs/replay-inventory"),
+        expect.any(Object),
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("downgrades inbound parser replay inventory denial without failing communications loading", async () => {
+    const originalFetch = globalThis.fetch;
+    const fetchMock = vi.fn(async (url: URL | RequestInfo) => {
+      const path = new URL(String(url)).pathname + new URL(String(url)).search;
+      if (path === "/api/communications/inbox?matterId=matter-001") {
+        return new Response(
+          JSON.stringify({
+            status: "available",
+            matterId: "matter-001",
+            channelState: {
+              inboundEmailStatus: "configured",
+              outboundEmailStatus: "disabled",
+              inboundEmailAddressCount: 1,
+              enabledInboundEmailAddressCount: 1,
+            },
+            inboundEmail: [],
+            outboundDeliveryHistory: [],
+            conversations: [],
+            channelHistory: [],
+            clientUpdateDraftRequests: [],
+            contactCues: [],
+          }),
+          { status: 200 },
+        );
+      }
+      if (path === "/api/inbound-email/parser-jobs/replay-inventory") {
+        return new Response("forbidden", { status: 403 });
+      }
+      return new Response("not found", { status: 404 });
+    });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    try {
+      const dashboard = await loadCommunicationsInboxResources({
+        headers: {},
+        matters: [matter({ id: "matter-001" })],
+      });
+
+      expect(dashboard.inboundParserReplayInventory).toEqual({
+        status: "access_denied",
+        summary: {
+          total: 0,
+          failed: 0,
+          deadLetter: 0,
+          byProviderFamily: {},
+          byFailureStage: {},
+        },
+        jobs: [],
+      });
+      expect(dashboard.unscopedInboundEmail).toEqual({ status: "unavailable", messages: [] });
     } finally {
       globalThis.fetch = originalFetch;
     }

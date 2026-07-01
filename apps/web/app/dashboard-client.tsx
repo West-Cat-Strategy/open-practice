@@ -7626,6 +7626,9 @@ export default function DashboardClient({
                   activeMatter={activeMatter}
                   compactDate={compactDate}
                   compactStatus={compactStatus}
+                  inboundParserReplayInventory={
+                    communicationsInboxState.inboundParserReplayInventory
+                  }
                   emailTemplateDraftsPanel={
                     <EmailTemplateDraftsPanel
                       activeMatterId={activeMatter?.id}

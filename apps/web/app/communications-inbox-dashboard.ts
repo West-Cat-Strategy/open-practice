@@ -4,6 +4,7 @@ import type {
   CommunicationsInboxMatterResponse,
   CommunicationsInboxOutboundDelivery,
   InboundEmailMatterDraft,
+  InboundParserReplayInventoryResponse,
 } from "./_features/communications/models";
 import { describeEmailDeliveryHandoff } from "./email-delivery-dashboard";
 import type { MatterSummary } from "./types";
@@ -74,6 +75,22 @@ export function summarizeInboundEmailMatterDraftReviewCues(
   };
 }
 
+export function emptyInboundParserReplayInventory(
+  status: InboundParserReplayInventoryResponse["status"],
+): InboundParserReplayInventoryResponse {
+  return {
+    status,
+    summary: {
+      total: 0,
+      failed: 0,
+      deadLetter: 0,
+      byProviderFamily: {},
+      byFailureStage: {},
+    },
+    jobs: [],
+  };
+}
+
 export async function loadCommunicationsInboxDashboardData(input: {
   matters: MatterSummary[];
   getInboxForMatter: (matterId: string) => Promise<CommunicationsInboxMatterResponse>;
@@ -84,5 +101,9 @@ export async function loadCommunicationsInboxDashboardData(input: {
       inboxByMatterId[matter.id] = await input.getInboxForMatter(matter.id);
     }),
   );
-  return { inboxByMatterId, unscopedInboundEmail: { status: "unavailable", messages: [] } };
+  return {
+    inboxByMatterId,
+    unscopedInboundEmail: { status: "unavailable", messages: [] },
+    inboundParserReplayInventory: emptyInboundParserReplayInventory("unavailable"),
+  };
 }

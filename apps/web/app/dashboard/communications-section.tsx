@@ -7,6 +7,7 @@ import {
 import { describeEmailDeliveryState } from "../email-delivery-dashboard";
 import type { EmailDeliveryDashboardResponse } from "../_features/email-delivery/models";
 import type { CommunicationsInboxDashboardResponse, MatterSummary } from "../types";
+import { InboundParserReplayInventoryPanel } from "./inbound-parser-replay-inventory-panel";
 
 export function CommunicationsSection({
   activeCommunicationsInbox,
@@ -15,6 +16,7 @@ export function CommunicationsSection({
   compactDate,
   compactStatus,
   emailTemplateDraftsPanel,
+  inboundParserReplayInventory,
 }: {
   activeCommunicationsInbox?: CommunicationsInboxDashboardResponse["inboxByMatterId"][string];
   activeEmailDeliveries: EmailDeliveryDashboardResponse["emailsByMatterId"][string];
@@ -22,9 +24,15 @@ export function CommunicationsSection({
   compactDate: (value?: string) => string;
   compactStatus: (value?: string) => string;
   emailTemplateDraftsPanel?: ReactNode;
+  inboundParserReplayInventory: CommunicationsInboxDashboardResponse["inboundParserReplayInventory"];
 }) {
   return (
     <>
+      <InboundParserReplayInventoryPanel
+        compactDate={compactDate}
+        inventory={inboundParserReplayInventory}
+      />
+
       <div className="detail-grid compact-detail-grid">
         <div>
           <span className="field-label">Matter</span>

@@ -2147,6 +2147,15 @@ export const ROUTE_AUTHORIZATION_MANIFEST = [
   authRoute(
     "registerInboundEmailRoutes",
     "apps/api/src/routes/inbound-email.test.ts",
+    "GET",
+    "/api/inbound-email/parser-jobs/replay-inventory",
+    "job",
+    "read",
+    "none",
+  ),
+  authRoute(
+    "registerInboundEmailRoutes",
+    "apps/api/src/routes/inbound-email.test.ts",
     "POST",
     "/api/inbound-email/parser-jobs/:jobId/retry",
     "job",

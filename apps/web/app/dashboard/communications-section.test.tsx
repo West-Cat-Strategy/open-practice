@@ -3,7 +3,11 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import type { EmailDeliveryHistoryItem } from "../_features/email-delivery/models";
-import type { CommunicationsInboxMatterResponse, MatterSummary } from "../types";
+import type {
+  CommunicationsInboxMatterResponse,
+  InboundParserReplayInventoryResponse,
+  MatterSummary,
+} from "../types";
 import { CommunicationsSection } from "./communications-section";
 
 const failedDelivery: EmailDeliveryHistoryItem = {
@@ -134,6 +138,17 @@ const activeMatter = {
   number: "OP-SYN-001",
   title: "Synthetic tenant file",
 } as unknown as MatterSummary;
+const inboundParserReplayInventory: InboundParserReplayInventoryResponse = {
+  status: "unavailable",
+  summary: {
+    total: 0,
+    failed: 0,
+    deadLetter: 0,
+    byProviderFamily: {},
+    byFailureStage: {},
+  },
+  jobs: [],
+};
 
 describe("CommunicationsSection", () => {
   it("surfaces retry handoff detail in visible communications rows", () => {
@@ -144,6 +159,7 @@ describe("CommunicationsSection", () => {
         activeMatter,
         compactDate: (value?: string) => value ?? "No date",
         compactStatus: (value?: string) => value?.replaceAll("_", " ") ?? "unknown",
+        inboundParserReplayInventory,
       }),
     );
 

@@ -593,6 +593,9 @@ export type {
   CommunicationsInboxMatterResponse,
   CommunicationsInboxOutboundDelivery,
   InboundEmailMatterDraft,
+  InboundParserReplayInventoryJob,
+  InboundParserReplayInventoryResponse,
+  InboundParserReplayInventorySafetyFlags,
   UnscopedInboundEmailReviewMessage,
   UnscopedInboundEmailReviewResponse,
 } from "./_features/communications/models";

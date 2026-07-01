@@ -1,12 +1,14 @@
 import { apiGetOptional } from "../../_shared/server-api";
 import {
   buildCommunicationsInboxPath,
+  emptyInboundParserReplayInventory,
   loadCommunicationsInboxDashboardData,
 } from "../../communications-inbox-dashboard";
 import type { MatterSummary } from "../../types";
 import type {
   CommunicationsInboxDashboardResponse,
   InboundEmailMatterDraft,
+  InboundParserReplayInventoryResponse,
   CommunicationsInboxMatterResponse,
   UnscopedInboundEmailReviewMessage,
   UnscopedInboundEmailReviewResponse,
@@ -85,7 +87,7 @@ export async function loadCommunicationsInboxResources(input: {
   headers: Record<string, string>;
   matters: MatterSummary[];
 }): Promise<CommunicationsInboxDashboardResponse> {
-  const [matterScopedInbox, unscopedInbox] = await Promise.all([
+  const [matterScopedInbox, unscopedInbox, inboundParserReplayInventory] = await Promise.all([
     loadCommunicationsInboxDashboardData({
       matters: input.matters,
       getInboxForMatter: (matterId) =>
@@ -102,6 +104,12 @@ export async function loadCommunicationsInboxResources(input: {
       input.headers,
       { status: "access_denied", messages: [] },
     ),
+    apiGetOptional<InboundParserReplayInventoryResponse>(
+      "/api/inbound-email/parser-jobs/replay-inventory",
+      emptyInboundParserReplayInventory("unavailable"),
+      input.headers,
+      emptyInboundParserReplayInventory("access_denied"),
+    ),
   ]);
   return {
     ...matterScopedInbox,
@@ -114,5 +122,6 @@ export async function loadCommunicationsInboxResources(input: {
               .map(unscopedInboundMessage),
           }
         : emptyUnscopedInboundEmail(unscopedInbox.status),
+    inboundParserReplayInventory,
   };
 }
