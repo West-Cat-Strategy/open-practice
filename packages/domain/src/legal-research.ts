@@ -277,6 +277,74 @@ export interface DocumentConversionSemanticReviewCheckpointMetadataInput {
   conversionReviewReviewedByUserId?: string;
 }
 
+export interface DocumentConversionSemanticReviewPreflightCounts {
+  sourceTextLength?: number;
+  wordCount?: number;
+  lineCount?: number;
+  nonEmptyLineCount?: number;
+  pageBreakCount?: number;
+  estimatedPageCount?: number;
+}
+
+export interface DocumentConversionSemanticReviewPreflightCheckpointCue {
+  checkpointId: string;
+  status: string;
+  createdAt: string;
+  createdByUserId: string;
+  assignedUserId?: string;
+}
+
+export interface DocumentConversionSemanticReviewPreflightPacketInput {
+  documentId: string;
+  artifactId?: string;
+  jobId?: string;
+  counts?: DocumentConversionSemanticReviewPreflightCounts;
+  checkpointCount: number;
+  latestCheckpoint?: DocumentConversionSemanticReviewPreflightCheckpointCue;
+  posture: "ready" | "blocked";
+  conversionReviewStatus: string;
+  artifactStatus: string;
+  reviewedAt?: string;
+  reviewedByUserId?: string;
+}
+
+export interface DocumentConversionSemanticReviewPreflightPacket {
+  packet: "document_conversion_semantic_review_preflight";
+  documentId: string;
+  artifactId?: string;
+  jobId?: string;
+  counts?: DocumentConversionSemanticReviewPreflightCounts;
+  checkpointCount: number;
+  latestCheckpoint?: DocumentConversionSemanticReviewPreflightCheckpointCue;
+  posture: "ready" | "blocked";
+  conversionReviewStatus: string;
+  artifactStatus: string;
+  reviewedAt?: string;
+  reviewedByUserId?: string;
+  sameMatterOnly: true;
+  staffReviewRequired: true;
+  metadataOnly: true;
+  reviewOnly: true;
+  providerActivated: false;
+  downstreamMutation: false;
+  providerEvidenceStored: false;
+  rawTextStored: false;
+  rawTextReturned: false;
+  rawOcrTextReturned: false;
+  rawOcrTextStoredInMetadata: false;
+  rawMarkdownStored: false;
+  convertedMarkdownStored: false;
+  annotationBodiesStored: false;
+  annotationSpansStored: false;
+  chunksStored: false;
+  embeddingsStored: false;
+  promptsStored: false;
+  providerPayloadsStored: false;
+  storageKeysStored: false;
+  objectBodiesStored: false;
+  generatedSummariesStored: false;
+}
+
 const artifactKindSet = new Set<string>(legalResearchArtifactKinds);
 const artifactStatusSet = new Set<string>(legalResearchArtifactStatuses);
 const reviewDecisionSet = new Set<string>(legalResearchReviewDecisions);
@@ -599,6 +667,62 @@ export function buildDocumentConversionSemanticReviewCheckpointMetadata(
     objectBodiesStored: false,
     generatedSummariesStored: false,
   });
+}
+
+export function buildDocumentConversionSemanticReviewPreflightPacket(
+  input: DocumentConversionSemanticReviewPreflightPacketInput,
+): DocumentConversionSemanticReviewPreflightPacket {
+  const checkpointCount =
+    typeof input.checkpointCount === "number" &&
+    Number.isFinite(input.checkpointCount) &&
+    input.checkpointCount > 0
+      ? Math.trunc(input.checkpointCount)
+      : 0;
+  const counts = compactRecord({
+    sourceTextLength: safeNonNegativeInteger(input.counts?.sourceTextLength),
+    wordCount: safeNonNegativeInteger(input.counts?.wordCount),
+    lineCount: safeNonNegativeInteger(input.counts?.lineCount),
+    nonEmptyLineCount: safeNonNegativeInteger(input.counts?.nonEmptyLineCount),
+    pageBreakCount: safeNonNegativeInteger(input.counts?.pageBreakCount),
+    estimatedPageCount: safeNonNegativeInteger(input.counts?.estimatedPageCount),
+  }) as DocumentConversionSemanticReviewPreflightCounts;
+
+  return compactRecord({
+    packet: "document_conversion_semantic_review_preflight",
+    documentId: input.documentId,
+    artifactId: input.artifactId,
+    jobId: input.jobId,
+    counts: Object.keys(counts).length > 0 ? counts : undefined,
+    checkpointCount,
+    latestCheckpoint: input.latestCheckpoint,
+    posture: input.posture,
+    conversionReviewStatus: input.conversionReviewStatus,
+    artifactStatus: input.artifactStatus,
+    reviewedAt: input.reviewedAt,
+    reviewedByUserId: input.reviewedByUserId,
+    sameMatterOnly: true,
+    staffReviewRequired: true,
+    metadataOnly: true,
+    reviewOnly: true,
+    providerActivated: false,
+    downstreamMutation: false,
+    providerEvidenceStored: false,
+    rawTextStored: false,
+    rawTextReturned: false,
+    rawOcrTextReturned: false,
+    rawOcrTextStoredInMetadata: false,
+    rawMarkdownStored: false,
+    convertedMarkdownStored: false,
+    annotationBodiesStored: false,
+    annotationSpansStored: false,
+    chunksStored: false,
+    embeddingsStored: false,
+    promptsStored: false,
+    providerPayloadsStored: false,
+    storageKeysStored: false,
+    objectBodiesStored: false,
+    generatedSummariesStored: false,
+  }) as unknown as DocumentConversionSemanticReviewPreflightPacket;
 }
 
 export function summarizeLegalResearchArtifacts(

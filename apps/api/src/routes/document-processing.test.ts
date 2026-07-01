@@ -84,6 +84,7 @@ const semanticReviewReadinessAllowedKeys = new Set([
   "counts",
   "checkpointCount",
   "latestCheckpoint",
+  "preflightPacket",
   "posture",
   "conversionReviewStatus",
   "artifactStatus",
@@ -108,10 +109,83 @@ const semanticReviewReadinessAllowedKeys = new Set([
   "generatedSummariesStored",
 ]);
 
+const semanticReviewPreflightPacketAllowedKeys = new Set([
+  "packet",
+  "documentId",
+  "artifactId",
+  "jobId",
+  "counts",
+  "checkpointCount",
+  "latestCheckpoint",
+  "posture",
+  "conversionReviewStatus",
+  "artifactStatus",
+  "reviewedAt",
+  "reviewedByUserId",
+  "sameMatterOnly",
+  "staffReviewRequired",
+  "reviewOnly",
+  "metadataOnly",
+  "providerActivated",
+  "downstreamMutation",
+  "providerEvidenceStored",
+  "rawTextStored",
+  "rawTextReturned",
+  "rawOcrTextReturned",
+  "rawOcrTextStoredInMetadata",
+  "rawMarkdownStored",
+  "convertedMarkdownStored",
+  "annotationBodiesStored",
+  "annotationSpansStored",
+  "chunksStored",
+  "embeddingsStored",
+  "promptsStored",
+  "providerPayloadsStored",
+  "storageKeysStored",
+  "objectBodiesStored",
+  "generatedSummariesStored",
+]);
+
+function expectSemanticReviewPreflightPacketSafe(packet: Record<string, unknown>): void {
+  expect(
+    Object.keys(packet).every((key) => semanticReviewPreflightPacketAllowedKeys.has(key)),
+  ).toBe(true);
+  for (const key of [
+    "provider",
+    "providerStatus",
+    "schema",
+    "schemas",
+    "queue",
+    "queueName",
+    "metadata",
+    "rawMetadata",
+    "note",
+    "rawText",
+    "rawOcrText",
+    "rawMarkdown",
+    "convertedMarkdown",
+    "annotationSpans",
+    "annotations",
+    "chunks",
+    "embeddings",
+    "prompt",
+    "prompts",
+    "providerPayload",
+    "providerPayloads",
+    "storageKey",
+    "objectKey",
+    "objectBody",
+    "generatedSummary",
+  ]) {
+    expect(packet).not.toHaveProperty(key);
+  }
+}
+
 function expectSemanticReviewReadinessSafe(packet: Record<string, unknown>): void {
   expect(Object.keys(packet).every((key) => semanticReviewReadinessAllowedKeys.has(key))).toBe(
     true,
   );
+  expectSemanticReviewPreflightPacketSafe(packet.preflightPacket as Record<string, unknown>);
   for (const key of [
     "provider",
     "providerStatus",
@@ -1906,6 +1980,25 @@ describe("document processing routes", () => {
         providerActivated: false,
         providerPayloadsStored: false,
         generatedSummariesStored: false,
+        preflightPacket: {
+          packet: "document_conversion_semantic_review_preflight",
+          documentId: "doc-001",
+          artifactId: "artifact-conversion-review-history-new",
+          jobId: "job-conversion-review-decision",
+          checkpointCount: 0,
+          posture: "blocked",
+          conversionReviewStatus: "rejected",
+          artifactStatus: "metadata_only",
+          reviewedAt: "2026-06-27T14:00:00.000Z",
+          reviewedByUserId: "user-owner_admin",
+          sameMatterOnly: true,
+          reviewOnly: true,
+          metadataOnly: true,
+          providerActivated: false,
+          downstreamMutation: false,
+          rawTextStored: false,
+          rawTextReturned: false,
+        },
       },
       latestDecision: {
         artifactId: "artifact-conversion-review-history-new",
@@ -2005,6 +2098,20 @@ describe("document processing routes", () => {
         rawOcrTextReturned: false,
         providerPayloadsStored: false,
         generatedSummariesStored: false,
+        preflightPacket: {
+          packet: "document_conversion_semantic_review_preflight",
+          documentId: "doc-semantic-not-requested",
+          counts: { sourceTextLength: 52 },
+          checkpointCount: 0,
+          posture: "blocked",
+          conversionReviewStatus: "not_requested",
+          artifactStatus: "not_created",
+          sameMatterOnly: true,
+          providerActivated: false,
+          downstreamMutation: false,
+          rawTextStored: false,
+          rawTextReturned: false,
+        },
       },
     });
     expect(entries.get("doc-semantic-draft")).toMatchObject({
@@ -2020,6 +2127,17 @@ describe("document processing routes", () => {
         downstreamMutation: false,
         providerPayloadsStored: false,
         generatedSummariesStored: false,
+        preflightPacket: {
+          packet: "document_conversion_semantic_review_preflight",
+          documentId: "doc-semantic-draft",
+          artifactId: "artifact-conversion-review-semantic-draft",
+          jobId: "job-conversion-review-decision",
+          checkpointCount: 0,
+          posture: "blocked",
+          conversionReviewStatus: "blocked",
+          artifactStatus: "metadata_only",
+          sameMatterOnly: true,
+        },
       },
     });
     expect(entries.get("doc-semantic-failed")).toMatchObject({
@@ -2035,6 +2153,17 @@ describe("document processing routes", () => {
         downstreamMutation: false,
         providerPayloadsStored: false,
         generatedSummariesStored: false,
+        preflightPacket: {
+          packet: "document_conversion_semantic_review_preflight",
+          documentId: "doc-semantic-failed",
+          jobId: "job-conversion-review-semantic-failed",
+          counts: { sourceTextLength: 52 },
+          checkpointCount: 0,
+          posture: "blocked",
+          conversionReviewStatus: "failed",
+          artifactStatus: "not_created",
+          sameMatterOnly: true,
+        },
       },
     });
     for (const documentId of [
@@ -2147,6 +2276,50 @@ describe("document processing routes", () => {
               providerActivated: false,
               downstreamMutation: false,
               providerEvidenceStored: false,
+              rawOcrTextReturned: false,
+              rawOcrTextStoredInMetadata: false,
+              rawMarkdownStored: false,
+              convertedMarkdownStored: false,
+              annotationBodiesStored: false,
+              annotationSpansStored: false,
+              chunksStored: false,
+              embeddingsStored: false,
+              promptsStored: false,
+              providerPayloadsStored: false,
+              storageKeysStored: false,
+              objectBodiesStored: false,
+              generatedSummariesStored: false,
+            },
+            preflightPacket: {
+              packet: "document_conversion_semantic_review_preflight",
+              documentId: "doc-001",
+              artifactId: `artifact-conversion-review-checkpoint-${status}`,
+              jobId: "job-conversion-review-decision",
+              counts: {
+                sourceTextLength: 47,
+                wordCount: 6,
+                lineCount: 2,
+                nonEmptyLineCount: 2,
+              },
+              checkpointCount: 1,
+              latestCheckpoint: {
+                checkpointId: expect.any(String),
+                status: "ready_for_review",
+                createdByUserId: "user-owner_admin",
+                assignedUserId: "user-owner_admin",
+              },
+              posture: "ready",
+              conversionReviewStatus: status,
+              artifactStatus: "metadata_only",
+              sameMatterOnly: true,
+              staffReviewRequired: true,
+              reviewOnly: true,
+              metadataOnly: true,
+              providerActivated: false,
+              downstreamMutation: false,
+              providerEvidenceStored: false,
+              rawTextStored: false,
+              rawTextReturned: false,
               rawOcrTextReturned: false,
               rawOcrTextStoredInMetadata: false,
               rawMarkdownStored: false,
@@ -2277,9 +2450,24 @@ describe("document processing routes", () => {
             checkpointId: created.json().checkpoint.id,
             conversionReviewArtifactId: "artifact-conversion-review-checkpoint-existing",
           },
+          preflightPacket: {
+            packet: "document_conversion_semantic_review_preflight",
+            artifactId: "artifact-conversion-review-checkpoint-existing",
+            checkpointCount: 1,
+            latestCheckpoint: {
+              checkpointId: created.json().checkpoint.id,
+            },
+            posture: "ready",
+            sameMatterOnly: true,
+            providerActivated: false,
+            downstreamMutation: false,
+            rawTextStored: false,
+            rawTextReturned: false,
+          },
         },
       },
     });
+    expectSemanticReviewReadinessSafe(replay.json().conversionReview.semanticReviewReadiness);
     await expect(
       listSemanticReviewCheckpoints(repository, "artifact-conversion-review-checkpoint-existing"),
     ).resolves.toHaveLength(1);
@@ -2291,6 +2479,12 @@ describe("document processing routes", () => {
       repository,
       "doc-semantic-checkpoint-missing",
     );
+    await createConversionReviewArtifact(repository, {
+      id: "artifact-conversion-review-checkpoint-cross-matter",
+      documentId: "doc-semantic-checkpoint-missing",
+      matterId: "matter-002",
+      status: "reviewed",
+    });
     await createConversionReviewArtifact(repository, {
       id: "artifact-conversion-review-checkpoint-rejected",
       status: "rejected",

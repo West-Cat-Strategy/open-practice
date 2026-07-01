@@ -485,6 +485,7 @@ export function describeDocumentConversionReview(
     readiness && readiness.staffReviewRequired ? "staff review required" : undefined;
   const semanticReadiness = conversionReview.semanticReviewReadiness;
   const checkpoint = semanticReadiness?.latestCheckpoint;
+  const preflight = semanticReadiness?.preflightPacket;
   const checkpointParts = semanticReadiness
     ? [
         `semantic ${compactDocumentProcessingReason(semanticReadiness.posture)}`,
@@ -504,6 +505,18 @@ export function describeDocumentConversionReview(
         checkpoint?.providerActivated === false ? "checkpoint no provider" : undefined,
         checkpoint?.downstreamMutation === false ? "checkpoint no downstream mutation" : undefined,
         checkpoint?.rawOcrTextReturned === false ? "checkpoint no raw OCR returned" : undefined,
+      ]
+    : [];
+  const preflightParts = preflight
+    ? [
+        `semantic preflight ${compactDocumentProcessingReason(preflight.posture)}`,
+        preflight.sameMatterOnly ? "preflight same matter only" : undefined,
+        preflight.metadataOnly ? "preflight metadata only" : undefined,
+        preflight.rawTextStored === false && preflight.rawTextReturned === false
+          ? "preflight body free"
+          : undefined,
+        preflight.providerActivated === false ? "preflight no provider" : undefined,
+        preflight.downstreamMutation === false ? "preflight no downstream mutation" : undefined,
       ]
     : [];
   const readinessParts = readiness
@@ -526,6 +539,7 @@ export function describeDocumentConversionReview(
     conversionReview.policy.metadataOnly ? "metadata only" : undefined,
     ...latestDecisionParts,
     ...checkpointParts,
+    ...preflightParts,
     ...readinessParts,
   ]
     .filter(Boolean)

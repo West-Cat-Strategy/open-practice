@@ -10,8 +10,8 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 | Snapshot              | Value                                                                 |
 | --------------------- | --------------------------------------------------------------------- |
-| Current focus         | 2026-06-30 all-worktree mainline integration validated before push.   |
-| Next recommended pick | Reconcile proof, commit, then publish/prune only if remote is stable. |
+| Current focus         | 2026-07-01 eight-lane mainline closeout before push/prune.            |
+| Next recommended pick | Reconcile proof, validate, then publish/prune only if remote is stable. |
 | Ready rows            | 0                                                                     |
 | Candidate rows        | 0                                                                     |
 | In progress rows      | 0                                                                     |
@@ -141,6 +141,16 @@ text-extraction reads, raw text, Markdown, annotations, chunks, embeddings, prom
 storage keys, generated summaries, downstream source mutation, schema, migration, dependency, or
 automatic checkpoint creation. Proof is recorded in
 [provider document conversion semantic-review checkpoints proof](validation/OP_PROVIDER_DOCUMENT_CONVERSION_SEMANTIC_REVIEW_CHECKPOINTS_PROOF_2026-06-29.md).
+The 2026-07-01 preflight follow-up adds a nested
+`conversionReview.semanticReviewReadiness.preflightPacket` over the same existing same-matter
+ready/reviewed conversion-review artifacts and semantic checkpoint cues. It carries only safe IDs,
+counts/lengths, statuses, checkpoint count/latest checkpoint metadata, terminal reviewer metadata
+when present, and fixed metadata-only/review-only/no-provider/no-text-body/no-downstream flags for
+Documents dashboard review copy. It adds no route, schema, migration, dependency, worker, queue,
+provider call, object-body read, text-extraction read, raw OCR text, Markdown, annotations, chunks,
+embeddings, prompts, storage keys, provider payloads, generated summaries, artifact notes, storage
+write, or downstream mutation. Proof is recorded in
+[provider document conversion semantic-review preflight packet proof](validation/OP_PROVIDER_DOCUMENT_CONVERSION_SEMANTIC_REVIEW_PREFLIGHT_PACKET_PROOF_2026-07-01.md).
 
 The 2026-06-29 legal-research artifact review action-descriptor follow-up keeps those review
 commands and provider/document-processing boundaries unchanged while moving the existing Research

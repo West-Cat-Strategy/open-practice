@@ -6,6 +6,7 @@ import {
   buildLegalResearchCitationPacketDecisionMetadata,
   buildLegalResearchCitationPacketReadiness,
   buildDocumentConversionSemanticReviewCheckpointMetadata,
+  buildDocumentConversionSemanticReviewPreflightPacket,
   buildLegalResearchProviderJobMetadata,
   buildLegalResearchArtifactAuditMetadata,
   buildLegalResearchWorkspace,
@@ -190,6 +191,125 @@ describe("legal research artifacts", () => {
     ]) {
       expect(metadata).not.toHaveProperty(key);
     }
+  });
+
+  it("builds metadata-only document semantic review preflight packets", () => {
+    const packet = buildDocumentConversionSemanticReviewPreflightPacket({
+      documentId: "doc-001",
+      artifactId: "artifact-conversion-review-001",
+      jobId: "job-conversion-review-001",
+      counts: {
+        sourceTextLength: 1800,
+        wordCount: 260,
+        lineCount: -1,
+        nonEmptyLineCount: 28,
+        pageBreakCount: 1.5,
+        estimatedPageCount: 2,
+      },
+      checkpointCount: 1,
+      latestCheckpoint: {
+        checkpointId: "checkpoint-001",
+        status: "ready_for_review",
+        createdAt: "2026-07-01T16:00:00.000Z",
+        createdByUserId: "user-admin",
+        assignedUserId: "user-admin",
+      },
+      posture: "ready",
+      conversionReviewStatus: "reviewed",
+      artifactStatus: "metadata_only",
+      reviewedAt: "2026-07-01T15:30:00.000Z",
+      reviewedByUserId: "user-reviewer",
+    });
+
+    expect(packet).toEqual({
+      packet: "document_conversion_semantic_review_preflight",
+      documentId: "doc-001",
+      artifactId: "artifact-conversion-review-001",
+      jobId: "job-conversion-review-001",
+      counts: {
+        sourceTextLength: 1800,
+        wordCount: 260,
+        nonEmptyLineCount: 28,
+        estimatedPageCount: 2,
+      },
+      checkpointCount: 1,
+      latestCheckpoint: {
+        checkpointId: "checkpoint-001",
+        status: "ready_for_review",
+        createdAt: "2026-07-01T16:00:00.000Z",
+        createdByUserId: "user-admin",
+        assignedUserId: "user-admin",
+      },
+      posture: "ready",
+      conversionReviewStatus: "reviewed",
+      artifactStatus: "metadata_only",
+      reviewedAt: "2026-07-01T15:30:00.000Z",
+      reviewedByUserId: "user-reviewer",
+      sameMatterOnly: true,
+      staffReviewRequired: true,
+      metadataOnly: true,
+      reviewOnly: true,
+      providerActivated: false,
+      downstreamMutation: false,
+      providerEvidenceStored: false,
+      rawTextStored: false,
+      rawTextReturned: false,
+      rawOcrTextReturned: false,
+      rawOcrTextStoredInMetadata: false,
+      rawMarkdownStored: false,
+      convertedMarkdownStored: false,
+      annotationBodiesStored: false,
+      annotationSpansStored: false,
+      chunksStored: false,
+      embeddingsStored: false,
+      promptsStored: false,
+      providerPayloadsStored: false,
+      storageKeysStored: false,
+      objectBodiesStored: false,
+      generatedSummariesStored: false,
+    });
+    for (const key of [
+      "rawOcrText",
+      "rawMarkdown",
+      "convertedMarkdown",
+      "annotationBodies",
+      "annotationSpans",
+      "chunks",
+      "embeddings",
+      "prompt",
+      "prompts",
+      "providerPayload",
+      "providerPayloads",
+      "storageKey",
+      "objectBody",
+      "generatedSummary",
+    ]) {
+      expect(packet).not.toHaveProperty(key);
+    }
+
+    expect(
+      buildDocumentConversionSemanticReviewPreflightPacket({
+        documentId: "doc-blocked",
+        counts: { sourceTextLength: -10 },
+        checkpointCount: -2,
+        posture: "blocked",
+        conversionReviewStatus: "failed",
+        artifactStatus: "not_created",
+      }),
+    ).toMatchObject({
+      packet: "document_conversion_semantic_review_preflight",
+      documentId: "doc-blocked",
+      checkpointCount: 0,
+      posture: "blocked",
+      conversionReviewStatus: "failed",
+      artifactStatus: "not_created",
+      sameMatterOnly: true,
+      metadataOnly: true,
+      providerActivated: false,
+      downstreamMutation: false,
+      rawTextStored: false,
+      rawTextReturned: false,
+    });
   });
 
   it("summarizes workspace posture across artifact kinds", () => {

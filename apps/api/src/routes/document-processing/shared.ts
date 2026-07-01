@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type {
   AccessRequest,
+  DocumentConversionSemanticReviewPreflightPacket,
   DocumentRecord,
   DocumentTextExtractionRecord,
   JobLifecycleRecord,
@@ -11,6 +12,7 @@ import type {
 } from "@open-practice/domain";
 import {
   allowedOcrLanguages,
+  buildDocumentConversionSemanticReviewPreflightPacket,
   normalizeOcrLanguage,
   redactJobMetadata,
 } from "@open-practice/domain";
@@ -229,6 +231,7 @@ export interface DocumentConversionReviewSemanticReviewReadiness {
   counts?: DocumentConversionReviewCounts;
   checkpointCount: number;
   latestCheckpoint?: DocumentConversionReviewSemanticReviewCheckpointCue;
+  preflightPacket: DocumentConversionSemanticReviewPreflightPacket;
   posture: "ready" | "blocked";
   conversionReviewStatus: DocumentConversionReviewPosture;
   artifactStatus: DocumentConversionReviewArtifactStatus;
@@ -805,6 +808,34 @@ function buildDocumentConversionReviewSemanticReviewReadiness(input: {
         conversionReviewArtifactId: input.artifact?.id,
       })
     : undefined;
+  const artifactStatus = input.artifact ? artifactStatusFromRecord(input.artifact) : "not_created";
+  const preflightPacket = buildDocumentConversionSemanticReviewPreflightPacket({
+    documentId: input.document.id,
+    ...(input.artifact ? { artifactId: input.artifact.id } : {}),
+    ...(input.jobId ? { jobId: input.jobId } : {}),
+    ...(input.counts ? { counts: input.counts } : {}),
+    checkpointCount: checkpoints.length,
+    ...(latestCheckpoint
+      ? {
+          latestCheckpoint: {
+            checkpointId: latestCheckpoint.checkpointId,
+            status: latestCheckpoint.status,
+            createdAt: latestCheckpoint.createdAt,
+            createdByUserId: latestCheckpoint.createdByUserId,
+            ...(latestCheckpoint.assignedUserId
+              ? { assignedUserId: latestCheckpoint.assignedUserId }
+              : {}),
+          },
+        }
+      : {}),
+    posture: ready ? "ready" : "blocked",
+    conversionReviewStatus,
+    artifactStatus,
+    ...(input.artifact?.reviewedAt ? { reviewedAt: input.artifact.reviewedAt } : {}),
+    ...(input.artifact?.reviewedByUserId
+      ? { reviewedByUserId: input.artifact.reviewedByUserId }
+      : {}),
+  });
   return {
     documentId: input.document.id,
     ...(input.artifact ? { artifactId: input.artifact.id } : {}),
@@ -812,9 +843,10 @@ function buildDocumentConversionReviewSemanticReviewReadiness(input: {
     ...(input.counts ? { counts: input.counts } : {}),
     checkpointCount: checkpoints.length,
     ...(latestCheckpoint ? { latestCheckpoint } : {}),
+    preflightPacket,
     posture: ready ? "ready" : "blocked",
     conversionReviewStatus,
-    artifactStatus: input.artifact ? artifactStatusFromRecord(input.artifact) : "not_created",
+    artifactStatus,
     staffReviewRequired: true,
     reviewOnly: true,
     metadataOnly: true,

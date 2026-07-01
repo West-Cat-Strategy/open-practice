@@ -301,6 +301,49 @@ export interface DocumentConversionReviewSemanticReviewCheckpointCue {
   generatedSummariesStored: false;
 }
 
+export interface DocumentConversionSemanticReviewPreflightPacket {
+  packet: "document_conversion_semantic_review_preflight" | string;
+  documentId: string;
+  artifactId?: string;
+  jobId?: string;
+  counts?: DocumentConversionReviewCounts;
+  checkpointCount: number;
+  latestCheckpoint?: {
+    checkpointId: string;
+    status: string;
+    createdAt: string;
+    createdByUserId: string;
+    assignedUserId?: string;
+  };
+  posture: "ready" | "blocked";
+  conversionReviewStatus: string;
+  artifactStatus: string;
+  reviewedAt?: string;
+  reviewedByUserId?: string;
+  sameMatterOnly: true;
+  staffReviewRequired: true;
+  reviewOnly: true;
+  metadataOnly: true;
+  providerActivated: false;
+  downstreamMutation: false;
+  providerEvidenceStored: false;
+  rawTextStored: false;
+  rawTextReturned: false;
+  rawOcrTextReturned: false;
+  rawOcrTextStoredInMetadata: false;
+  rawMarkdownStored: false;
+  convertedMarkdownStored: false;
+  annotationBodiesStored: false;
+  annotationSpansStored: false;
+  chunksStored: false;
+  embeddingsStored: false;
+  promptsStored: false;
+  providerPayloadsStored: false;
+  storageKeysStored: false;
+  objectBodiesStored: false;
+  generatedSummariesStored: false;
+}
+
 export interface DocumentConversionReviewSemanticReviewReadiness {
   documentId: string;
   artifactId?: string;
@@ -308,6 +351,7 @@ export interface DocumentConversionReviewSemanticReviewReadiness {
   counts?: DocumentConversionReviewCounts;
   checkpointCount: number;
   latestCheckpoint?: DocumentConversionReviewSemanticReviewCheckpointCue;
+  preflightPacket?: DocumentConversionSemanticReviewPreflightPacket;
   posture: "ready" | "blocked";
   conversionReviewStatus:
     | "blocked"
