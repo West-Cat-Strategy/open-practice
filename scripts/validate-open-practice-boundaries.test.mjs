@@ -439,6 +439,69 @@ import { createMemoryContactRepository } from "./contacts/memory.js";
     );
   });
 
+  it("detects registered billing submodule routes missing from the authorization manifest", () => {
+    const routeRegistrars = [
+      {
+        family: "billing",
+        file: "apps/api/src/routes/billing.ts",
+        importPath: "./routes/billing.js",
+        registrar: "registerBillingRoutes",
+      },
+    ];
+    const failures = collectRouteAuthorizationManifestFailures({
+      routeRegistrars,
+      sourceFiles: [
+        "apps/api/src/routes/billing.ts",
+        "apps/api/src/routes/billing/payment-import-review-records.ts",
+      ],
+      readText: (path) => {
+        if (path === "apps/api/src/server.ts") return "";
+        if (path === "apps/api/src/routes/billing.ts") {
+          return `
+import { registerBillingPaymentImportReviewRoutes } from "./billing/payment-import-review-records.js";
+
+export function registerBillingRoutes(server, dependencies) {
+  registerBillingPaymentImportReviewRoutes(server, dependencies);
+}
+`;
+        }
+        if (path === "apps/api/src/routes/billing/payment-import-review-records.ts") {
+          return `
+export function registerBillingPaymentImportReviewRoutes(server) {
+  server.get("/api/billing/payment-import-review-records", async () => ({ records: [] }));
+  server.post(
+    "/api/billing/payment-import-review-records/:recordId/synthetic-split-reviews",
+    async () => ({ reviewOnly: true }),
+  );
+}
+`;
+        }
+        throw new Error(`unexpected read: ${path}`);
+      },
+      manifest: [
+        {
+          method: "GET",
+          path: "/api/billing/payment-import-review-records",
+          registrar: "registerBillingRoutes",
+          testFile: "apps/api/src/routes/billing.test.ts",
+          auth: {
+            kind: "authenticated",
+            resource: "expense_entry",
+            action: "read",
+            matterScope: "optional",
+          },
+        },
+      ],
+      pathExists: (path) => path === "apps/api/src/routes/billing.test.ts",
+      isPublicRoute: () => false,
+      publicRouteSamples: [],
+    });
+
+    assert.deepEqual(failures, [
+      "POST /api/billing/payment-import-review-records/:recordId/synthetic-split-reviews from registerBillingRoutes is missing from route authorization manifest.",
+    ]);
+  });
+
   it("flattens billing helper entries into the root route authorization manifest", () => {
     const exportedBillingEntries = ROUTE_AUTHORIZATION_MANIFEST.filter(
       (entry) => entry.registrar === "registerBillingRoutes",
