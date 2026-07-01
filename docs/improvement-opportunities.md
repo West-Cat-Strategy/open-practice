@@ -319,6 +319,12 @@ surface.
     fields, and fixed no-delete/no-deadline/no-hold-release/no-raw-payload/no-compliance-claim
     flags. It adds no command, schema, migration, audit write, provider payload retention, or
     object-deletion path.
+  - **Shipped reviewer packet command slice:** The 2026-06-30 follow-up adds a staff-only,
+    matter-scoped document-processing command for enum-only disposition reviewer packet decisions
+    over the same `retentionHoldReview.dispositionMetadata` posture. It records only bounded
+    review metadata and safe audit counts, rejects blocked documents, and adds no deletion,
+    deadline enforcement, hold release/override, raw OCR/provider/export bodies, or compliance
+    claim.
   - **Docs-first design:** The
     [document retention and hold workflow design](document-retention-hold-workflow-design.md) now
     records practice-configured review schedules, hold-blocking rules, deletion-review gates, and

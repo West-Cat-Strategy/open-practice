@@ -333,6 +333,62 @@ describe("audit event taxonomy", () => {
     );
   });
 
+  it("classifies document disposition reviewer packet audit metadata as enum-only and bounded", () => {
+    const classification = classifyAuditEvent(
+      auditEvent({
+        action: "document.disposition_reviewer_packet.recorded",
+        resourceType: "document",
+        resourceId: "doc-001",
+        metadata: {
+          matterId: "matter-001",
+          documentId: "doc-001",
+          decision: "reviewed_keep",
+          reason: "practice_review",
+          dispositionCandidateState: "reviewed_keep",
+          readyForReviewerPacket: false,
+          blockerCount: 0,
+          legalHoldBlockerCount: 0,
+          uploadIntegrityBlockerCount: 0,
+          reviewStateBlockerCount: 0,
+          retentionHoldCueCount: 0,
+          sourceCueTotal: 0,
+          scheduleProfilePresent: true,
+          objectDeletion: false,
+          destructiveAction: false,
+          retentionDeadlineEnforced: false,
+          legalHoldOverride: false,
+          legalHoldReleaseCommand: false,
+          retainedExportBody: false,
+          rawPayloadRetention: false,
+          complianceClaim: false,
+          exportBody: "Synthetic export body should not be classified.",
+          providerPayload: { body: "Synthetic provider payload should not be classified." },
+        },
+      }),
+    );
+
+    expect(classification).toMatchObject({
+      category: "documents",
+      known: true,
+      matterScope: "matter",
+    });
+    expect(classification.metadataHints.resource).toEqual(
+      expect.arrayContaining([
+        "documentId",
+        "decision",
+        "reason",
+        "scheduleProfilePresent",
+        "objectDeletion",
+        "legalHoldReleaseCommand",
+        "rawPayloadRetention",
+        "complianceClaim",
+      ]),
+    );
+    expect(classification.metadataHints.resource).not.toEqual(
+      expect.arrayContaining(["exportBody", "providerPayload", "storageKey", "rawOcrText"]),
+    );
+  });
+
   it("classifies disposition schedule profile settings metadata as firm-scoped and bounded", () => {
     const classification = classifyAuditEvent(
       auditEvent({

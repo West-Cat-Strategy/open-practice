@@ -4,6 +4,7 @@ import {
   buildDocumentMetadataSearchPosture,
   buildDocumentMetadataTags,
   buildDocumentReviewSuggestions,
+  documentDispositionReviewerPacketDecisions,
   normalizeDocumentDispositionReviewScheduleProfile,
 } from "./document-suggestions.js";
 import type { DocumentRecord, Matter } from "./models.js";
@@ -322,6 +323,11 @@ describe("document review suggestions", () => {
   });
 
   it("derives non-destructive disposition candidate states from reviewer metadata", () => {
+    expect(documentDispositionReviewerPacketDecisions).toEqual([
+      "ready_for_reviewer_packet",
+      "reviewed_keep",
+      "reviewed_superseded",
+    ]);
     const decisionMetadata = {
       reason: "practice_review" as const,
       recordedByUserId: "user-licensee",

@@ -635,6 +635,237 @@ describe("document processing routes", () => {
     expect(JSON.stringify(audit.events)).not.toContain("Synthetic retained export body");
   });
 
+  it("records enum-only disposition reviewer packets with safe audit metadata", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createDocumentUploadIntent({
+      id: "doc-disposition-ready",
+      firmId,
+      matterId: "matter-001",
+      title: "Synthetic disposition-ready record.pdf",
+      storageKey: "matters/matter-001/private-disposition-ready.pdf",
+      checksumSha256: "9".repeat(64),
+      classification: "general",
+      legalHold: false,
+    });
+    await repository.completeDocumentUpload({
+      firmId,
+      documentId: "doc-disposition-ready",
+      checksumSha256: "9".repeat(64),
+      scanStatus: "passed",
+    });
+    await repository.createDocumentTextExtraction({
+      id: "extraction-disposition-ready",
+      firmId,
+      documentId: "doc-disposition-ready",
+      engine: "tesseract",
+      status: "completed",
+      language: "eng",
+      textStorageKey: "matters/matter-001/private-disposition-ready.txt",
+      extractedText: "Synthetic OCR text must not appear in disposition packet responses.",
+      metadata: {
+        storageKey: "matters/matter-001/private-disposition-ready.txt",
+        providerPayload: { body: "Synthetic provider payload must stay private." },
+        exportBody: "Synthetic export body must stay private.",
+      },
+      createdAt: "2026-06-30T09:00:00.000Z",
+      completedAt: "2026-06-30T09:01:00.000Z",
+    });
+    await repository.updateDispositionReviewScheduleProfile({
+      firmId,
+      profile: {
+        profileKey: "default",
+        label: "Synthetic default disposition review",
+        reviewCadence: "quarterly",
+      },
+    });
+
+    const response = await testServer({
+      repository,
+      authUser: user("firm_member", ["matter-001"]),
+    }).inject({
+      method: "POST",
+      url: "/api/document-processing/documents/doc-disposition-ready/disposition-reviewer-packet",
+      payload: {
+        decision: "reviewed_keep",
+        reason: "practice_review",
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      document: {
+        id: "doc-disposition-ready",
+        matterId: "matter-001",
+        legalHold: false,
+        uploadStatus: "verified",
+        checksumStatus: "verified",
+        scanStatus: "passed",
+        reviewStatus: "not_required",
+      },
+      retentionHoldReview: {
+        reviewerOnly: true,
+        mutating: false,
+        destructiveAction: false,
+        retentionDeadlineEnforced: false,
+        legalHoldOverride: false,
+        retainedExportBody: false,
+        status: "reviewed_keep",
+        blockers: [],
+        latestDecision: {
+          decision: "reviewed_keep",
+          reason: "practice_review",
+          recordedByUserId: "user-firm_member",
+        },
+        dispositionMetadata: {
+          candidateState: "reviewed_keep",
+          readyForReviewerPacket: false,
+          blockerCounts: { total: 0, legalHold: 0, uploadIntegrity: 0, reviewState: 0 },
+          scheduleProfile: expect.objectContaining({
+            source: "firm_settings",
+            profileKey: "default",
+            destructiveAction: false,
+            retentionDeadlineEnforced: false,
+            complianceClaim: false,
+          }),
+          destructiveAction: false,
+          objectDeletion: false,
+          retentionDeadlineEnforced: false,
+          legalHoldReleaseCommand: false,
+          retainedExportBody: false,
+          rawPayloadRetention: false,
+          complianceClaim: false,
+        },
+      },
+    });
+    expect(response.json().document).not.toHaveProperty("reviewMetadata");
+    expect(response.json().retentionHoldReview.latestDecision).not.toHaveProperty("reviewAfter");
+    expect(response.json().retentionHoldReview.latestDecision).not.toHaveProperty(
+      "minimumRetainThrough",
+    );
+
+    const document = await repository.getDocument(firmId, "doc-disposition-ready");
+    expect(document?.reviewMetadata).toMatchObject({
+      retentionHoldReview: {
+        decision: "reviewed_keep",
+        reason: "practice_review",
+        recordedByUserId: "user-firm_member",
+      },
+    });
+    expect(document?.reviewMetadata.retentionHoldReview).not.toHaveProperty("reviewAfter");
+    expect(document?.reviewMetadata.retentionHoldReview).not.toHaveProperty("minimumRetainThrough");
+
+    const audit = await repository.listAuditEvents(firmId);
+    expect(audit.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          action: "document.disposition_reviewer_packet.recorded",
+          resourceType: "document",
+          resourceId: "doc-disposition-ready",
+          metadata: expect.objectContaining({
+            matterId: "matter-001",
+            documentId: "doc-disposition-ready",
+            decision: "reviewed_keep",
+            reason: "practice_review",
+            dispositionCandidateState: "reviewed_keep",
+            readyForReviewerPacket: false,
+            blockerCount: 0,
+            scheduleProfilePresent: true,
+            objectDeletion: false,
+            destructiveAction: false,
+            retentionDeadlineEnforced: false,
+            legalHoldOverride: false,
+            legalHoldReleaseCommand: false,
+            retainedExportBody: false,
+            rawPayloadRetention: false,
+            complianceClaim: false,
+          }),
+        }),
+      ]),
+    );
+    const serialized = JSON.stringify({ response: response.json(), audit: audit.events });
+    expect(serialized).not.toContain("private-disposition-ready");
+    expect(serialized).not.toContain("Synthetic OCR text");
+    expect(serialized).not.toContain("Synthetic provider payload");
+    expect(serialized).not.toContain("Synthetic export body");
+    expect(serialized).not.toContain("storageKey");
+    expect(serialized).not.toContain("providerPayload");
+    expect(serialized).not.toContain("exportBody");
+  });
+
+  it("blocks disposition reviewer packets while hold or integrity blockers remain", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const response = await testServer({ repository }).inject({
+      method: "POST",
+      url: "/api/document-processing/documents/doc-001/disposition-reviewer-packet",
+      payload: {
+        decision: "ready_for_reviewer_packet",
+        reason: "legal_hold",
+      },
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({
+      code: "DOCUMENT_DISPOSITION_REVIEWER_PACKET_BLOCKED",
+    });
+    await expect(repository.getDocument(firmId, "doc-001")).resolves.toMatchObject({
+      reviewMetadata: expect.not.objectContaining({
+        retentionHoldReview: expect.objectContaining({
+          decision: "ready_for_reviewer_packet",
+        }),
+      }),
+    });
+  });
+
+  it("requires staff, matter-scoped document-processing read, and document update access for disposition reviewer packets", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const crossMatter = await testServer({
+      repository,
+      authUser: user("firm_member", ["matter-002"]),
+    }).inject({
+      method: "POST",
+      url: "/api/document-processing/documents/doc-001/disposition-reviewer-packet",
+      payload: { decision: "reviewed_keep", reason: "practice_review" },
+    });
+    const external = await testServer({
+      repository,
+      authUser: user("client_external", ["matter-001"]),
+    }).inject({
+      method: "POST",
+      url: "/api/document-processing/documents/doc-001/disposition-reviewer-packet",
+      payload: { decision: "reviewed_keep", reason: "practice_review" },
+    });
+    const auditor = await testServer({
+      repository,
+      authUser: user("auditor", ["matter-001"]),
+    }).inject({
+      method: "POST",
+      url: "/api/document-processing/documents/doc-001/disposition-reviewer-packet",
+      payload: { decision: "reviewed_keep", reason: "practice_review" },
+    });
+
+    expect(crossMatter.statusCode).toBe(403);
+    expect(external.statusCode).toBe(403);
+    expect(external.json()).toMatchObject({ code: "STAFF_ACCESS_REQUIRED" });
+    expect(auditor.statusCode).toBe(403);
+    await expect(repository.getDocument(firmId, "doc-001")).resolves.toMatchObject({
+      reviewMetadata: { source: "seed" },
+    });
+  });
+
+  it("rejects non-enum disposition reviewer packet bodies", async () => {
+    const response = await testServer().inject({
+      method: "POST",
+      url: "/api/document-processing/documents/doc-001/disposition-reviewer-packet",
+      payload: {
+        decision: "delete_record",
+        reason: "practice_review",
+        exportBody: "Synthetic export body must not be accepted.",
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+  });
+
   it("reports disabled providers, worker queue availability, and redacted job summaries", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     await repository.upsertProviderSetting({

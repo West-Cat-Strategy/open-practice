@@ -27,6 +27,11 @@ Open Practice has these relevant foundations:
   The workbench projects that profile inside `retentionHoldReview.dispositionMetadata` as reviewer
   context only. It does not compute retention deadlines, decide disposition eligibility, release
   holds, delete objects, store raw policy/export bodies, or claim compliance.
+- The 2026-06-30 staff disposition reviewer packet command records only enum decisions and reasons
+  on the existing `documents.reviewMetadata.retentionHoldReview` seam after matter-scoped staff
+  authorization and blocker checks. It adds no free-form notes, review-deadline enforcement,
+  legal-hold release, deletion, export body retention, raw OCR/provider payload retention, or
+  compliance claim.
 - Contact-history export work uses transient or regenerated export bodies and stores only bounded
   request/link metadata. Its retention language explicitly avoids retained export bodies,
   retention deadlines, deletion automation, legal-hold overrides, and compliance claims.
@@ -147,11 +152,11 @@ role/province rules.
 
 Future runtime slices should remain non-destructive unless reviewers explicitly approve more. The
 current metadata implementation exposes only read-only disposition posture, blocked-by-hold counts,
-ready-for-review packet metadata, and one bounded default firm-settings schedule profile derived
-from existing authorized projections. Later work should not add retention-deadline enforcement,
-background purge jobs, object deletion, legal-hold release commands, public/client disposition
-controls, broad export packages, provider payload storage, new compliance claims, or
-reference-derived source without separate review.
+ready-for-review packet metadata, one bounded default firm-settings schedule profile, and an
+enum-only staff reviewer packet command derived from existing authorized projections. Later work
+should not add retention-deadline enforcement, background purge jobs, object deletion, legal-hold
+release commands, public/client disposition controls, broad export packages, provider payload
+storage, new compliance claims, or reference-derived source without separate review.
 
 Reference systems such as ArkCase, Nextcloud, and paperless-ngx may inform vocabulary and workflow
 shape only under the existing clean-room policy. Do not copy implementation code, schemas,

@@ -53,6 +53,15 @@ export const documentRetentionHoldReviewDecisions = [
 export type DocumentRetentionHoldReviewDecision =
   (typeof documentRetentionHoldReviewDecisions)[number];
 
+export const documentDispositionReviewerPacketDecisions = [
+  "ready_for_reviewer_packet",
+  "reviewed_keep",
+  "reviewed_superseded",
+] as const;
+
+export type DocumentDispositionReviewerPacketDecision =
+  (typeof documentDispositionReviewerPacketDecisions)[number];
+
 export const documentRetentionHoldReviewReasons = [
   "legal_hold",
   "supersession",

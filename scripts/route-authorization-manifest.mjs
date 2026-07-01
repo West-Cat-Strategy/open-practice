@@ -1571,6 +1571,16 @@ export const ROUTE_AUTHORIZATION_MANIFEST = [
     "registerDocumentProcessingRoutes",
     "apps/api/src/routes/document-processing.test.ts",
     "POST",
+    "/api/document-processing/documents/:documentId/disposition-reviewer-packet",
+    [
+      { resource: "document_processing", action: "read", matterScope: "derived" },
+      { resource: "document", action: "update", matterScope: "derived" },
+    ],
+  ),
+  multiGuardAuthRoute(
+    "registerDocumentProcessingRoutes",
+    "apps/api/src/routes/document-processing.test.ts",
+    "POST",
     "/api/document-processing/documents/:documentId/conversion-review/semantic-review/checkpoints",
     [
       { resource: "document_processing", action: "read", matterScope: "derived" },

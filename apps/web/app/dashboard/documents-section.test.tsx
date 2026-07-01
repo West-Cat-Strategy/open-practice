@@ -622,6 +622,8 @@ describe("DocumentsSection", () => {
     expect(html).toContain("profile retain 365 days");
     expect(html).toContain("no deletion");
     expect(html).toContain("no deadline enforcement");
+    expect(html).not.toContain("release hold");
+    expect(html).not.toContain("compliance certified");
     expect(html.match(/data-action-key="document_retention_hold_review\.record"/g)).toHaveLength(1);
   });
 

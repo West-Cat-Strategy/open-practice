@@ -443,6 +443,18 @@ override legal holds, retain raw/export bodies, add public/client controls, or m
 claims. Proof is recorded in
 [document disposition schedule profile proof](validation/OP_DOCUMENT_DISPOSITION_SCHEDULE_PROFILE_PROOF_2026-06-29.md).
 
+The 2026-06-30 `feat/document-disposition-reviewer-packet-20260630` branch in
+`/Users/bryan/projects/open-practice-document-disposition-reviewer-packet-20260630` adds a
+staff-only, matter-scoped disposition reviewer packet command under document processing. The route
+records only enum decisions and reasons on the existing
+`documents.reviewMetadata.retentionHoldReview` seam, reprojects the result through
+`retentionHoldReview.dispositionMetadata`, rejects documents with hold or integrity blockers, and
+writes safe audit metadata with IDs, enum labels, counts, schedule-profile presence, and fixed
+non-destructive flags. It does not delete objects, enforce retention deadlines, release or override
+legal holds, retain raw OCR/provider/export bodies, create public/client controls, or make
+compliance claims. Proof is recorded in
+[document disposition reviewer packet proof](validation/OP_DOCUMENT_DISPOSITION_REVIEWER_PACKET_PROOF_2026-06-30.md).
+
 The 2026-06-20 `recovery/inbound-email-operator-replay-20260620` branch adds the smallest
 operator-reviewed inbound-email recovery action: owner-only
 `POST /api/inbound-email/parser-jobs/:jobId/replay-request` marks failed/dead-letter parser jobs
