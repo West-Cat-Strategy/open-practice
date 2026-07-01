@@ -3,9 +3,9 @@
 Date: 2026-06-29 PDT
 
 Refresh: 2026-07-01 PDT; started on
-`chore/inbound-comms-aggregation-closeout-20260701` from clean `main`. Final validation observed an
-external checkout switch to `feat/quiet-modern-dashboard-ux-20260701` with unrelated dashboard
-edits preserved; the owned path set stays the three docs below.
+`chore/inbound-comms-aggregation-closeout-20260701` from clean `main`. The final mainline closeout
+fast-forwarded the stacked dashboard branches into `main`, so this proof note now records the
+combined 25-path closeout set while preserving the inbound proof-only boundary.
 
 ## Scope
 
@@ -65,11 +65,35 @@ shape change, and uses only synthetic proof data.
 
 ## Changed Paths
 
-Owned final changed paths are:
+Mainline closeout final changed paths are:
 
-- `docs/improvement-opportunities.md`
-- `docs/validation/OP_INBOUND_COMMUNICATIONS_AGGREGATION_EFFICIENCY_PROOF_2026-06-29.md`
-- `docs/validation/README.md`
+```text
+apps/api/src/routes/billing.test.ts
+apps/web/app/dashboard-client.tsx
+apps/web/app/dashboard/billing-section.test.tsx
+apps/web/app/dashboard/billing-section.tsx
+apps/web/app/dashboard/communications-section.tsx
+apps/web/app/dashboard/dashboard-shell.test.tsx
+apps/web/app/dashboard/dashboard-shell.tsx
+apps/web/app/dashboard/documents-section.test.tsx
+apps/web/app/dashboard/documents-section.tsx
+apps/web/app/dashboard/matter-overview-section.tsx
+apps/web/app/dashboard/queues-section.tsx
+apps/web/app/dashboard/shared-panels.test.tsx
+apps/web/app/dashboard/shared-panels.tsx
+apps/web/app/dashboard/tasks-section.tsx
+apps/web/app/styles/00-tokens-base.css
+apps/web/app/styles/10-shell-navigation.css
+apps/web/app/styles/20-dashboard-panels.css
+apps/web/app/styles/90-responsive-motion.css
+docs/api-and-state-machines.md
+docs/improvement-opportunities.md
+docs/payment-import-deposit-matching-boundary-packet.md
+docs/planning-and-progress.md
+docs/validation/OP_DEPOSIT_MATCH_MANUAL_PAYMENT_RECONCILE_COMMAND_PROOF_2026-06-30.md
+docs/validation/OP_INBOUND_COMMUNICATIONS_AGGREGATION_EFFICIENCY_PROOF_2026-06-29.md
+docs/validation/README.md
+```
 
 ## Validation
 
@@ -92,6 +116,23 @@ Result: Pass. Recommended validation commands:
 - `pnpm format:check`
 - `pnpm docs:check`
 - `pnpm policy:check`
+
+2026-07-01 mainline closeout selector:
+
+`pnpm verify:select -- --base-plus-dirty origin/main`
+
+Result: Pass. Recommended validation commands:
+
+- `pnpm architecture:check`
+- `pnpm api:contract`
+- `pnpm format:check`
+- `pnpm docs:check`
+- `pnpm policy:check`
+- `pnpm --filter @open-practice/api test`
+- `pnpm --filter @open-practice/api typecheck`
+- `pnpm --filter @open-practice/web test`
+- `pnpm --filter @open-practice/web typecheck`
+- `pnpm build`
 
 ### Focused Behavior Proof
 
@@ -124,6 +165,9 @@ Result: Pass. Recommended validation commands:
 | Command                                                                                                                                                                                                                                                                         | Result  | Notes                                                                                                                                                                                                                                 |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `pnpm verify:select -- --files docs/improvement-opportunities.md docs/validation/OP_INBOUND_COMMUNICATIONS_AGGREGATION_EFFICIENCY_PROOF_2026-06-29.md docs/validation/README.md`                                                                                                | Pass    | Recommended `pnpm format:check`, `pnpm docs:check`, and `pnpm policy:check` for the actual three-path refresh set.                                                                                                                    |
+| `pnpm verify:select -- --base-plus-dirty origin/main`                                                                                                                                                                                                                           | Pass    | Mainline closeout selector returned the 25-path combined dashboard/proof diff and selected architecture, API contract, format, docs, policy, API/web test, API/web typecheck, and build.                                              |
+| `pnpm verify:run -- --plan --base-plus-dirty origin/main`                                                                                                                                                                                                                       | Pass    | Print-only runner plan matched the selector lane and wrote no artifact.                                                                                                                                                               |
+| `pnpm verify:run -- --base-plus-dirty origin/main`                                                                                                                                                                                                                              | Blocked | Artifact `.tmp/validation-runs/2026-07-01T18-34-09Z` ran all selected commands. Only `pnpm policy:check` failed at `node scripts/validate-oss-reuse.mjs` because `/Users/bryan/projects/reference-repos/docs/index.json` is absent.   |
 | `pnpm format:check`                                                                                                                                                                                                                                                             | Failed  | Initial refreshed-doc run flagged Prettier drift in the proof note and validation README; the touched docs were formatted immediately afterward.                                                                                      |
 | `pnpm exec prettier --write docs/improvement-opportunities.md docs/validation/OP_INBOUND_COMMUNICATIONS_AGGREGATION_EFFICIENCY_PROOF_2026-06-29.md docs/validation/README.md`                                                                                                   | Pass    | Formatted only the touched docs; `docs/improvement-opportunities.md` was unchanged by Prettier.                                                                                                                                       |
 | `pnpm verify:select -- --files docs/improvement-opportunities.md docs/validation/OP_INBOUND_COMMUNICATIONS_AGGREGATION_EFFICIENCY_PROOF_2026-06-29.md docs/validation/README.md`                                                                                                | Pass    | Post-format selector output stayed on the same three docs and recommended the same checks.                                                                                                                                            |
