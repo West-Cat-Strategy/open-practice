@@ -12,6 +12,7 @@ import type {
 import type { AppointmentBookingRequestRecord } from "./appointment-booking.js";
 import {
   buildCalendarAgingFollowUpTaskDraft,
+  buildLegalClinicCadenceFollowUpTaskDraft,
   buildContactTimelineTaskCues,
   buildTaskStructuredDetail,
   buildTaskDeadlineWorkbench,
@@ -235,6 +236,122 @@ describe("calendar aging follow-up task drafts", () => {
           }),
         ],
         existingTasks: [],
+      }),
+    ).toBeUndefined();
+  });
+});
+
+describe("legal clinic cadence follow-up task drafts", () => {
+  it("selects the most urgent eligible cadence signal and keeps fixed redacted task copy", () => {
+    const cadenceSignals = buildLegalClinicCadenceSignals({
+      programs: sampleLegalClinicPrograms,
+      profiles: [
+        {
+          ...sampleLegalClinicMatterProfiles[0]!,
+          id: "legal-clinic-profile-later",
+          eligibilityStatus: "likely_eligible",
+          referralStatus: "not_referred",
+          nextReviewDate: "2026-05-08T17:00:00.000Z",
+          notes: "Private later clinic note",
+          referralSource: "Private later referral source",
+          metadata: { privateClinicMetadata: "Private later metadata" },
+        },
+        {
+          ...sampleLegalClinicMatterProfiles[0]!,
+          id: "legal-clinic-profile-urgent",
+          eligibilityStatus: "likely_eligible",
+          referralStatus: "not_referred",
+          nextReviewDate: "2026-05-01T17:00:00.000Z",
+          notes: "Private urgent clinic note",
+          referralSource: "Private urgent referral source",
+          metadata: { privateClinicMetadata: "Private urgent metadata" },
+        },
+      ],
+      now: now.toISOString(),
+    });
+
+    const draft = buildLegalClinicCadenceFollowUpTaskDraft({
+      matterId: "matter-001",
+      legalClinicCadenceSignals: cadenceSignals,
+      existingTasks: [],
+    });
+
+    expect(draft).toMatchObject({
+      title: "Review legal clinic cadence",
+      priority: "high",
+      dueAt: "2026-05-01T17:00:00.000Z",
+      sourceType: "operational_view",
+      sourceId: "legal_clinic_cadence:legal-clinic-profile-urgent:next_review_due",
+      source: {
+        profileId: "legal-clinic-profile-urgent",
+        matterId: "matter-001",
+        programId: "clinic-program-tenancy-stability",
+        signal: "next_review_due",
+      },
+      auditMetadata: {
+        legalClinicCadenceSignal: "next_review_due",
+        legalClinicProfileId: "legal-clinic-profile-urgent",
+        legalClinicProgramId: "clinic-program-tenancy-stability",
+        legalClinicCadenceSourceId:
+          "legal_clinic_cadence:legal-clinic-profile-urgent:next_review_due",
+        legalClinicCadenceDueAt: "2026-05-01T17:00:00.000Z",
+        explicitStaffCommand: true,
+        automaticTaskCreation: false,
+        providerSync: false,
+        clientVisibleWorkflow: false,
+        cadenceMutated: false,
+      },
+    });
+    expect(draft?.description).toContain("Review the legal clinic cadence signal");
+    expect(draft?.description).toContain("do not add client names");
+    const serialized = JSON.stringify(draft);
+    expect(serialized).not.toContain("Private urgent clinic note");
+    expect(serialized).not.toContain("Private urgent referral source");
+    expect(serialized).not.toContain("Private urgent metadata");
+    expect(serialized).not.toContain("Synthetic screening");
+  });
+
+  it("excludes duplicate task sources, closed clinic posture signals, and other matters", () => {
+    const cadenceSignals = buildLegalClinicCadenceSignals({
+      programs: sampleLegalClinicPrograms,
+      profiles: [
+        {
+          ...sampleLegalClinicMatterProfiles[0]!,
+          id: "legal-clinic-profile-duplicate",
+          eligibilityStatus: "likely_eligible",
+          referralStatus: "not_referred",
+          nextReviewDate: "2026-05-01T17:00:00.000Z",
+        },
+        {
+          ...sampleLegalClinicMatterProfiles[0]!,
+          id: "legal-clinic-profile-closed",
+          eligibilityStatus: "ineligible",
+          referralStatus: "not_referred",
+          nextReviewDate: "2026-04-01T17:00:00.000Z",
+        },
+        {
+          ...sampleLegalClinicMatterProfiles[1]!,
+          id: "legal-clinic-profile-other-matter",
+          matterId: "matter-002",
+          eligibilityStatus: "needs_review",
+          nextReviewDate: "2026-04-01T17:00:00.000Z",
+        },
+      ],
+      now: now.toISOString(),
+    });
+
+    expect(
+      buildLegalClinicCadenceFollowUpTaskDraft({
+        matterId: "matter-001",
+        legalClinicCadenceSignals: cadenceSignals,
+        existingTasks: [
+          task({
+            id: "task-existing-legal-clinic-cadence",
+            status: "archived",
+            sourceType: "operational_view",
+            sourceId: "legal_clinic_cadence:legal-clinic-profile-duplicate:next_review_due",
+          }),
+        ],
       }),
     ).toBeUndefined();
   });

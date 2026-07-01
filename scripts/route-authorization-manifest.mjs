@@ -2907,6 +2907,15 @@ export const ROUTE_AUTHORIZATION_MANIFEST = [
   authRoute(
     "registerTaskRoutes",
     "apps/api/src/routes/tasks.test.ts",
+    "POST",
+    "/api/tasks/legal-clinic-cadence-follow-up",
+    "task",
+    "create",
+    "required",
+  ),
+  authRoute(
+    "registerTaskRoutes",
+    "apps/api/src/routes/tasks.test.ts",
     "GET",
     "/api/tasks/workbench",
     "task",

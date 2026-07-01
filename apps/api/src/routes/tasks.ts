@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import {
   buildCalendarAgingFollowUpTaskDraft,
+  buildLegalClinicCadenceFollowUpTaskDraft,
   buildLegalClinicCadenceSignals,
   buildTaskStructuredDetail,
   buildTaskDeadlineWorkbench,
@@ -89,6 +90,9 @@ const taskCreateBodySchema = taskSourceSchema.extend({
   dueAt: z.string().datetime().optional(),
 });
 const calendarAgingFollowUpTaskBodySchema = z.object({
+  matterId: z.string().min(1),
+});
+const legalClinicCadenceFollowUpTaskBodySchema = z.object({
   matterId: z.string().min(1),
 });
 
@@ -561,6 +565,76 @@ export function registerTaskRoutes(
     return reply
       .code(201)
       .send({ task: projectTaskDeadline(task), calendarAgingFollowUp: draft.source });
+  });
+
+  server.post("/api/tasks/legal-clinic-cadence-follow-up", async (request, reply) => {
+    const staffAccess = requireStaffAccess(request.auth);
+    if (!staffAccess.ok) throw staffAccess.error;
+    const body = parseRequestPart(legalClinicCadenceFollowUpTaskBodySchema, request.body, "body");
+    assertTaskAccess(request.auth, body.matterId, "create");
+    const visibleMatterIds = await visibleMatterIdsForRequest(request, repository);
+    assertMatterVisible(visibleMatterIds, body.matterId);
+
+    const [profile, programs, existingTasks] = await Promise.all([
+      repository.getLegalClinicMatterProfile(request.auth.firmId, body.matterId),
+      repository.listLegalClinicPrograms(request.auth.firmId),
+      repository.listTaskDeadlines(request.auth.firmId, {
+        matterId: body.matterId,
+        sourceType: "operational_view",
+        includeCompleted: true,
+        includeArchived: true,
+      }),
+    ]);
+    const draft = buildLegalClinicCadenceFollowUpTaskDraft({
+      matterId: body.matterId,
+      legalClinicCadenceSignals: buildLegalClinicCadenceSignals({
+        profiles: profile ? [profile] : [],
+        programs,
+      }),
+      existingTasks,
+    });
+    if (!draft) {
+      throw new ApiHttpError(
+        409,
+        "LEGAL_CLINIC_CADENCE_TASK_UNAVAILABLE",
+        "No eligible legal clinic cadence signal is available",
+        { matterId: body.matterId },
+      );
+    }
+
+    const now = new Date().toISOString();
+    const task = await repository.createTaskDeadline({
+      id: `task-${createSessionToken().slice(0, 16)}`,
+      firmId: request.auth.firmId,
+      matterId: body.matterId,
+      title: draft.title,
+      description: draft.description,
+      priority: draft.priority,
+      sourceType: draft.sourceType,
+      sourceId: draft.sourceId,
+      dueAt: draft.dueAt,
+      createdAt: now,
+      createdByUserId: request.auth.user.id,
+      updatedAt: now,
+      updatedByUserId: request.auth.user.id,
+    });
+    await appendTaskAuditEvent(repository, request.auth, {
+      action: "task.created",
+      taskId: task.id,
+      matterId: task.matterId,
+      occurredAt: now,
+      metadata: {
+        assignedToUserId: task.assignedToUserId,
+        priority: task.priority,
+        dueAt: task.dueAt,
+        sourceType: task.sourceType,
+        sourceId: task.sourceId,
+        ...draft.auditMetadata,
+      },
+    });
+    return reply
+      .code(201)
+      .send({ task: projectTaskDeadline(task), legalClinicCadenceFollowUp: draft.source });
   });
 
   server.get("/api/tasks/:taskId/structure", async (request) => {

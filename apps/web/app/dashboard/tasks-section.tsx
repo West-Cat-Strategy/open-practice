@@ -84,6 +84,7 @@ export interface TasksSectionProps {
   onCreateTaskComment: (taskId: string, payload: TaskCommentCreatePayload) => void;
   onCreateTaskDependency: (taskId: string, payload: TaskDependencyCreatePayload) => void;
   onCompleteTask: (taskId: string) => void;
+  onCreateLegalClinicCadenceTask: (matterId: string) => void;
   onCreateTask: (payload: TaskCreatePayload) => void;
   onIncludeArchivedChange: (includeArchived: boolean) => void;
   onReopenTask: (taskId: string) => void;
@@ -127,6 +128,17 @@ function dateInputValue(value?: string): string {
 function dateInputToIso(value: string): string | undefined {
   if (!value) return undefined;
   return new Date(`${value}T17:00:00.000Z`).toISOString();
+}
+
+function isLegalClinicCadenceSuggestion(suggestion: TaskSuggestion): boolean {
+  return (
+    suggestion.source.type === "operational_view" &&
+    suggestion.source.id.startsWith("legal_clinic_cadence:")
+  );
+}
+
+function legalClinicCadenceBusyKey(suggestion: TaskSuggestion): string {
+  return `legal-clinic-cadence:${suggestion.matterId}`;
 }
 
 function emptyForm(matterId: string): TaskFormState {
@@ -229,6 +241,7 @@ export function TasksSection({
   onCreateTaskChecklistItem,
   onCreateTaskComment,
   onCreateTaskDependency,
+  onCreateLegalClinicCadenceTask,
   onCreateTask,
   onIncludeArchivedChange,
   onReopenTask,
@@ -351,6 +364,10 @@ export function TasksSection({
   }
 
   function createFromSuggestion(suggestion: TaskSuggestion): void {
+    if (isLegalClinicCadenceSuggestion(suggestion)) {
+      onCreateLegalClinicCadenceTask(suggestion.matterId);
+      return;
+    }
     onCreateTask(createPayloadFromForm(formFromSuggestion(suggestion)));
   }
 
@@ -990,40 +1007,47 @@ export function TasksSection({
         <span>{suggestedFollowUps.length}</span>
       </div>
       <div className="party-list queue-section-list">
-        {suggestedFollowUps.map((suggestion) => (
-          <div className="party-row queue-item-row" key={suggestion.id}>
-            <span>
-              <strong>{suggestion.title}</strong>
-              <small>{matterLabel(suggestion.matterId, mattersById)}</small>
-              <small>
-                {suggestion.source.label} · {toTitleCase(suggestion.priority)} ·{" "}
-                {compactDate(suggestion.dueAt)}
-              </small>
-              <small>{suggestion.reason}</small>
-            </span>
-            <span className="queue-row-actions row-actions">
-              <button
-                className="secondary-button compact-button row-button"
-                disabled={busyKey === "create"}
-                onClick={() => {
-                  setEditingTaskId("");
-                  setForm(formFromSuggestion(suggestion));
-                }}
-                type="button"
-              >
-                Use
-              </button>
-              <button
-                className="secondary-button compact-button row-button"
-                disabled={busyKey === "create"}
-                onClick={() => createFromSuggestion(suggestion)}
-                type="button"
-              >
-                {busyKey === "create" ? "Creating" : "Create task"}
-              </button>
-            </span>
-          </div>
-        ))}
+        {suggestedFollowUps.map((suggestion) => {
+          const legalClinicCadence = isLegalClinicCadenceSuggestion(suggestion);
+          const commandBusy =
+            legalClinicCadence && busyKey === legalClinicCadenceBusyKey(suggestion);
+          const createBusy = busyKey === "create" || commandBusy;
+          return (
+            <div className="party-row queue-item-row" key={suggestion.id}>
+              <span>
+                <strong>{suggestion.title}</strong>
+                <small>{matterLabel(suggestion.matterId, mattersById)}</small>
+                <small>
+                  {suggestion.source.label} · {toTitleCase(suggestion.priority)} ·{" "}
+                  {compactDate(suggestion.dueAt)}
+                </small>
+                <small>{suggestion.reason}</small>
+              </span>
+              <span className="queue-row-actions row-actions">
+                <button
+                  className="secondary-button compact-button row-button"
+                  disabled={createBusy}
+                  onClick={() => {
+                    setEditingTaskId("");
+                    setForm(formFromSuggestion(suggestion));
+                  }}
+                  type="button"
+                >
+                  Use
+                </button>
+                <button
+                  aria-label={legalClinicCadence ? "Create legal clinic cadence task" : undefined}
+                  className="secondary-button compact-button row-button"
+                  disabled={createBusy}
+                  onClick={() => createFromSuggestion(suggestion)}
+                  type="button"
+                >
+                  {createBusy ? "Creating" : "Create task"}
+                </button>
+              </span>
+            </div>
+          );
+        })}
         {suggestedFollowUps.length === 0 ? (
           <p className="inline-empty">No review-first follow-ups are suggested.</p>
         ) : null}

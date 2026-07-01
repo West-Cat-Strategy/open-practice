@@ -231,6 +231,37 @@ export interface CalendarAgingFollowUpTaskDraft {
   };
 }
 
+export interface LegalClinicCadenceFollowUpTaskSource {
+  profileId: string;
+  matterId: string;
+  programId: string;
+  signal: LegalClinicCadenceSignal["signal"];
+  sourceId: LegalClinicCadenceSignal["sourceId"];
+  dueAt?: string;
+}
+
+export interface LegalClinicCadenceFollowUpTaskDraft {
+  title: "Review legal clinic cadence";
+  description: string;
+  priority: LegalClinicCadenceSignal["priority"];
+  dueAt?: string;
+  sourceType: "operational_view";
+  sourceId: LegalClinicCadenceSignal["sourceId"];
+  source: LegalClinicCadenceFollowUpTaskSource;
+  auditMetadata: {
+    legalClinicCadenceSignal: LegalClinicCadenceSignal["signal"];
+    legalClinicProfileId: string;
+    legalClinicProgramId: string;
+    legalClinicCadenceSourceId: LegalClinicCadenceSignal["sourceId"];
+    legalClinicCadenceDueAt?: string;
+    explicitStaffCommand: true;
+    automaticTaskCreation: false;
+    providerSync: false;
+    clientVisibleWorkflow: false;
+    cadenceMutated: false;
+  };
+}
+
 export type ContactTimelineTaskCueType = "open_task" | "follow_up_review";
 
 export interface ContactTimelineTaskCueMetadata {
@@ -736,6 +767,69 @@ export function buildCalendarAgingFollowUpTaskDraft(input: {
       chatCreated: false,
       recordingCreated: false,
       matterCreated: false,
+    },
+  };
+}
+
+const LEGAL_CLINIC_CADENCE_FOLLOW_UP_TASK_TITLE = "Review legal clinic cadence" as const;
+const LEGAL_CLINIC_CADENCE_FOLLOW_UP_TASK_DESCRIPTION =
+  "Review the legal clinic cadence signal in the staff clinic workflow and record the follow-up outcome. Keep this task operational: do not add client names, eligibility details, referral notes, program summaries, provider payloads, or private clinic metadata.";
+
+function legalClinicCadenceTaskSourceKey(sourceId: string): string {
+  return `operational_view:${sourceId}`;
+}
+
+export function buildLegalClinicCadenceFollowUpTaskDraft(input: {
+  matterId: string;
+  legalClinicCadenceSignals?: LegalClinicCadenceSignal[];
+  existingTasks?: Pick<TaskDeadlineRecord, "sourceType" | "sourceId">[];
+}): LegalClinicCadenceFollowUpTaskDraft | undefined {
+  const existingTaskSources = new Set(
+    (input.existingTasks ?? [])
+      .filter((task) => task.sourceType === "operational_view" && task.sourceId)
+      .map((task) => legalClinicCadenceTaskSourceKey(task.sourceId as string)),
+  );
+  const source = (input.legalClinicCadenceSignals ?? [])
+    .filter(
+      (signal) =>
+        signal.matterId === input.matterId &&
+        !existingTaskSources.has(legalClinicCadenceTaskSourceKey(signal.sourceId)),
+    )
+    .sort((left, right) => {
+      const leftDue = left.dueAt ? Date.parse(left.dueAt) : Number.POSITIVE_INFINITY;
+      const rightDue = right.dueAt ? Date.parse(right.dueAt) : Number.POSITIVE_INFINITY;
+      if (leftDue !== rightDue) return leftDue - rightDue;
+      return left.sourceId.localeCompare(right.sourceId);
+    })[0];
+
+  if (!source) return undefined;
+
+  return {
+    title: LEGAL_CLINIC_CADENCE_FOLLOW_UP_TASK_TITLE,
+    description: LEGAL_CLINIC_CADENCE_FOLLOW_UP_TASK_DESCRIPTION,
+    priority: source.priority,
+    dueAt: source.dueAt,
+    sourceType: "operational_view",
+    sourceId: source.sourceId,
+    source: {
+      profileId: source.profileId,
+      matterId: source.matterId,
+      programId: source.programId,
+      signal: source.signal,
+      sourceId: source.sourceId,
+      dueAt: source.dueAt,
+    },
+    auditMetadata: {
+      legalClinicCadenceSignal: source.signal,
+      legalClinicProfileId: source.profileId,
+      legalClinicProgramId: source.programId,
+      legalClinicCadenceSourceId: source.sourceId,
+      legalClinicCadenceDueAt: source.dueAt,
+      explicitStaffCommand: true,
+      automaticTaskCreation: false,
+      providerSync: false,
+      clientVisibleWorkflow: false,
+      cadenceMutated: false,
     },
   };
 }

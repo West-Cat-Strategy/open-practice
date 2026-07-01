@@ -2307,6 +2307,48 @@ describe("audit event taxonomy", () => {
         "notes",
       ]),
     );
+
+    const legalClinicCadence = classifyAuditEvent(
+      auditEvent({
+        action: "task.created",
+        resourceType: "task",
+        resourceId: "task-legal-clinic-cadence",
+        metadata: {
+          matterId: "matter-001",
+          taskId: "task-legal-clinic-cadence",
+          priority: "high",
+          sourceType: "operational_view",
+          sourceId: "legal_clinic_cadence:clinic-profile-matter-001:next_review_due",
+          legalClinicCadenceSignal: "next_review_due",
+          legalClinicProfileId: "clinic-profile-matter-001",
+          legalClinicProgramId: "clinic-program-tenancy-stability",
+          legalClinicCadenceSourceId:
+            "legal_clinic_cadence:clinic-profile-matter-001:next_review_due",
+          legalClinicCadenceDueAt: "2026-04-08T17:00:00.000Z",
+          explicitStaffCommand: true,
+          automaticTaskCreation: false,
+          providerSync: false,
+          clientVisibleWorkflow: false,
+          cadenceMutated: false,
+          privateClinicNote: "must not classify",
+        },
+      }),
+    );
+    expect(legalClinicCadence.metadataHints.resource).toEqual(
+      expect.arrayContaining([
+        "legalClinicCadenceSignal",
+        "legalClinicProfileId",
+        "legalClinicProgramId",
+        "legalClinicCadenceSourceId",
+        "legalClinicCadenceDueAt",
+        "explicitStaffCommand",
+        "automaticTaskCreation",
+        "providerSync",
+        "clientVisibleWorkflow",
+        "cadenceMutated",
+      ]),
+    );
+    expect(legalClinicCadence.metadataHints.resource).not.toContain("privateClinicNote");
   });
 
   it("classifies calendar event updates with safe meeting-link metadata only", () => {

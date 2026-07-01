@@ -455,6 +455,11 @@ describe("task routes", () => {
         url: "/api/tasks/calendar-aging-follow-up",
         payload: { matterId: "matter-001" },
       },
+      {
+        method: "POST",
+        url: "/api/tasks/legal-clinic-cadence-follow-up",
+        payload: { matterId: "matter-001" },
+      },
       { method: "PATCH", url: "/api/tasks/task-deadline-001", payload: { title: "Denied" } },
       { method: "PATCH", url: "/api/tasks/task-deadline-001/complete", payload: {} },
       { method: "PATCH", url: "/api/tasks/task-deadline-001/reopen", payload: {} },
@@ -746,6 +751,250 @@ describe("task routes", () => {
       code: "CALENDAR_AGING_FOLLOW_UP_TASK_UNAVAILABLE",
       message: "No eligible calendar aging follow-up decision is available",
     });
+  });
+
+  it("creates a redacted internal task from the latest eligible legal-clinic cadence signal", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const profileBefore = await repository.getLegalClinicMatterProfile(
+      "firm-west-legal",
+      "matter-001",
+    );
+    const server = testServer({
+      repository,
+      user: user("licensee", ["matter-001"]),
+    });
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/tasks/legal-clinic-cadence-follow-up",
+      payload: { matterId: "matter-001" },
+    });
+    const payload = response.json<{
+      task: {
+        id: string;
+        matterId: string;
+        title: string;
+        description?: string;
+        priority: string;
+        dueAt?: string;
+        sourceType?: string;
+        sourceId?: string;
+        assignedToUserId?: string;
+      };
+      legalClinicCadenceFollowUp: {
+        profileId: string;
+        matterId: string;
+        programId: string;
+        signal: string;
+        sourceId: string;
+      };
+    }>();
+
+    expect(response.statusCode).toBe(201);
+    expect(payload.task).toMatchObject({
+      matterId: "matter-001",
+      title: "Review legal clinic cadence",
+      priority: "high",
+      dueAt: "2026-04-08T17:00:00.000Z",
+      sourceType: "operational_view",
+      sourceId: "legal_clinic_cadence:clinic-profile-matter-001:next_review_due",
+    });
+    expect(payload.task).not.toHaveProperty("assignedToUserId");
+    expect(payload.task.description).toContain("Review the legal clinic cadence signal");
+    expect(payload.task.description).toContain("do not add client names");
+    expect(payload.legalClinicCadenceFollowUp).toMatchObject({
+      profileId: "clinic-profile-matter-001",
+      matterId: "matter-001",
+      programId: "clinic-program-tenancy-stability",
+      signal: "next_review_due",
+      sourceId: "legal_clinic_cadence:clinic-profile-matter-001:next_review_due",
+    });
+
+    await expect(
+      repository.getLegalClinicMatterProfile("firm-west-legal", "matter-001"),
+    ).resolves.toEqual(profileBefore);
+    await expect(
+      repository.listTaskDeadlines("firm-west-legal", {
+        matterId: "matter-001",
+        sourceType: "operational_view",
+        sourceId: "legal_clinic_cadence:clinic-profile-matter-001:next_review_due",
+        includeCompleted: true,
+        includeArchived: true,
+      }),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        id: payload.task.id,
+        title: "Review legal clinic cadence",
+        sourceType: "operational_view",
+        sourceId: "legal_clinic_cadence:clinic-profile-matter-001:next_review_due",
+      }),
+    ]);
+
+    const audit = await repository.listAuditEvents("firm-west-legal");
+    expect(audit.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          action: "task.created",
+          resourceType: "task",
+          resourceId: payload.task.id,
+          metadata: expect.objectContaining({
+            matterId: "matter-001",
+            taskId: payload.task.id,
+            priority: "high",
+            dueAt: "2026-04-08T17:00:00.000Z",
+            sourceType: "operational_view",
+            sourceId: "legal_clinic_cadence:clinic-profile-matter-001:next_review_due",
+            legalClinicCadenceSignal: "next_review_due",
+            legalClinicProfileId: "clinic-profile-matter-001",
+            legalClinicProgramId: "clinic-program-tenancy-stability",
+            legalClinicCadenceSourceId:
+              "legal_clinic_cadence:clinic-profile-matter-001:next_review_due",
+            explicitStaffCommand: true,
+            automaticTaskCreation: false,
+            providerSync: false,
+            clientVisibleWorkflow: false,
+            cadenceMutated: false,
+          }),
+        }),
+      ]),
+    );
+    const serialized = JSON.stringify({ payload, audit: audit.events });
+    expect(serialized).not.toContain("Synthetic operational note for clinic screening");
+    expect(serialized).not.toContain("community_partner");
+    expect(serialized).not.toContain("Synthetic screening");
+    expect(serialized).not.toContain("open-practice-sample");
+  });
+
+  it("skips existing legal-clinic cadence task sources and returns a conflict when no signal remains", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const completed = await repository.createTaskDeadline({
+      id: "task-existing-legal-clinic-next-review",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      title: "Existing synthetic cadence task",
+      sourceType: "operational_view",
+      sourceId: "legal_clinic_cadence:clinic-profile-matter-001:next_review_due",
+      createdAt: "2026-05-01T12:00:00.000Z",
+      updatedAt: "2026-05-01T12:00:00.000Z",
+    });
+    await repository.completeTaskDeadline({
+      firmId: "firm-west-legal",
+      taskId: completed.id,
+      completedAt: "2026-05-01T13:00:00.000Z",
+      completedByUserId: "user-licensee",
+    });
+    const archived = await repository.createTaskDeadline({
+      id: "task-existing-legal-clinic-referral",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      title: "Existing synthetic referral task",
+      sourceType: "operational_view",
+      sourceId: "legal_clinic_cadence:clinic-profile-matter-001:referral_follow_up",
+      createdAt: "2026-05-01T14:00:00.000Z",
+      updatedAt: "2026-05-01T14:00:00.000Z",
+    });
+    await repository.archiveTaskDeadline({
+      firmId: "firm-west-legal",
+      taskId: archived.id,
+      archivedAt: "2026-05-01T15:00:00.000Z",
+      archivedByUserId: "user-licensee",
+    });
+
+    const response = await testServer({
+      repository,
+      user: user("licensee", ["matter-001"]),
+    }).inject({
+      method: "POST",
+      url: "/api/tasks/legal-clinic-cadence-follow-up",
+      payload: { matterId: "matter-001" },
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({
+      code: "LEGAL_CLINIC_CADENCE_TASK_UNAVAILABLE",
+    });
+    await expect(
+      repository.listTaskDeadlines("firm-west-legal", {
+        matterId: "matter-001",
+        sourceType: "operational_view",
+        includeCompleted: true,
+        includeArchived: true,
+      }),
+    ).resolves.toHaveLength(2);
+  });
+
+  it("requires matter-scoped task create access for legal-clinic cadence task commands", async () => {
+    const response = await testServer({
+      user: user("licensee", ["matter-002"]),
+    }).inject({
+      method: "POST",
+      url: "/api/tasks/legal-clinic-cadence-follow-up",
+      payload: { matterId: "matter-001" },
+    });
+
+    expect(response.statusCode).toBe(403);
+  });
+
+  it("matches legal-clinic cadence task authorization fixtures", async () => {
+    const fixtureIds = authorizationFixtureCases
+      .filter((item) => item.family === "legal_clinic_cadence_task")
+      .map((item) => item.id);
+    expect(fixtureIds).toEqual([
+      "legal-clinic-cadence-task:assigned:create",
+      "legal-clinic-cadence-task:unassigned:create-denied",
+      "legal-clinic-cadence-task:portal-client:create-denied",
+    ]);
+    const assignedCase = authorizationFixtureCase("legal-clinic-cadence-task:assigned:create");
+    const unassignedCase = authorizationFixtureCase(
+      "legal-clinic-cadence-task:unassigned:create-denied",
+    );
+    const portalCase = authorizationFixtureCase(
+      "legal-clinic-cadence-task:portal-client:create-denied",
+    );
+    const repository = new InMemoryOpenPracticeRepository();
+
+    const created = await testServer({
+      repository,
+      user: user("licensee", [assignedCase.matterId!]),
+    }).inject({
+      method: "POST",
+      url: "/api/tasks/legal-clinic-cadence-follow-up",
+      payload: { matterId: assignedCase.matterId },
+    });
+    expect(created.statusCode).toBe(201);
+    expect(created.json()).toMatchObject({
+      task: {
+        matterId: assignedCase.matterId,
+        sourceType: "operational_view",
+        sourceId: assignedCase.resourceId,
+      },
+    });
+    expect(assignedCase.expectedDecision).toBe("allow");
+    expect(assignedCase.listVisible).toBe(true);
+
+    const unassigned = await testServer({
+      repository,
+      user: user("licensee", ["matter-001"]),
+    }).inject({
+      method: "POST",
+      url: "/api/tasks/legal-clinic-cadence-follow-up",
+      payload: { matterId: unassignedCase.matterId },
+    });
+    expect(unassigned.statusCode).toBe(403);
+    expect(unassignedCase.expectedDecision).toBe("deny");
+    expect(unassignedCase.listVisible).toBe(false);
+
+    const portal = await testServer({
+      repository,
+      user: user("client_external", [portalCase.matterId!]),
+    }).inject({
+      method: "POST",
+      url: "/api/tasks/legal-clinic-cadence-follow-up",
+      payload: { matterId: portalCase.matterId },
+    });
+    expect(portal.statusCode).toBe(403);
+    expect(portalCase.expectedDecision).toBe("deny");
+    expect(portalCase.listVisible).toBe(false);
   });
 
   it("creates and updates staff task records with audit-safe metadata", async () => {

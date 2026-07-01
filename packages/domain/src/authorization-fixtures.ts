@@ -19,6 +19,7 @@ export type AuthorizationFixtureFamily =
   | "audit_export"
   | "billing_export"
   | "jurisdictional_trust_export"
+  | "legal_clinic_cadence_task"
   | "portal_link";
 
 export type AuthorizationFixtureRelation =
@@ -1364,6 +1365,48 @@ export const authorizationFixtureCases: AuthorizationFixtureCase[] = [
     contactId: "contact-ada",
     resourceId: "calendar-aging-follow-up-auth-portal-create",
     rationale: "Client-external portal users cannot create staff calendar aging follow-up tasks.",
+  },
+  {
+    id: "legal-clinic-cadence-task:assigned:create",
+    family: "legal_clinic_cadence_task",
+    resource: "task",
+    action: "create",
+    relation: "assigned_matter_staff",
+    expectedDecision: "allow",
+    listVisible: true,
+    subjectId: "user-licensee",
+    matterId: "matter-001",
+    resourceId: "legal_clinic_cadence:clinic-profile-matter-001:next_review_due",
+    rationale:
+      "Assigned staff can create one redacted internal task from an eligible legal-clinic cadence signal.",
+  },
+  {
+    id: "legal-clinic-cadence-task:unassigned:create-denied",
+    family: "legal_clinic_cadence_task",
+    resource: "task",
+    action: "create",
+    relation: "unassigned_matter_staff",
+    expectedDecision: "deny",
+    listVisible: false,
+    subjectId: "user-licensee",
+    matterId: "matter-002",
+    resourceId: "legal_clinic_cadence:clinic-profile-matter-002:eligibility_review",
+    rationale:
+      "Matter-scoped staff cannot create legal-clinic cadence tasks for unassigned matters.",
+  },
+  {
+    id: "legal-clinic-cadence-task:portal-client:create-denied",
+    family: "legal_clinic_cadence_task",
+    resource: "task",
+    action: "create",
+    relation: "external_portal_contact",
+    expectedDecision: "deny",
+    listVisible: false,
+    subjectId: "client-ada",
+    matterId: "matter-001",
+    contactId: "contact-ada",
+    resourceId: "legal_clinic_cadence:clinic-profile-matter-001:next_review_due",
+    rationale: "Client-external portal users cannot create staff legal-clinic cadence tasks.",
   },
   {
     id: "portal-link:public-share:metadata-visible",

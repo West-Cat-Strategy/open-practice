@@ -307,6 +307,7 @@ describe("TasksSection", () => {
         onCreateTaskChecklistItem: () => {},
         onCreateTaskComment: () => {},
         onCreateTaskDependency: () => {},
+        onCreateLegalClinicCadenceTask: () => {},
         onCreateTask: () => {},
         onIncludeArchivedChange: () => {},
         onReopenTask: () => {},
@@ -341,6 +342,7 @@ describe("TasksSection", () => {
     expect(html).toContain("Follow up on synthetic scheduling request");
     expect(html).toContain("Review legal clinic cadence");
     expect(html).toContain("Legal clinic cadence");
+    expect(html).toContain('aria-label="Create legal clinic cadence task"');
     expect(html).toContain("Create task");
     expect(html).not.toContain("Archived synthetic task");
     expect(html).not.toContain("Synthetic Client");
@@ -410,6 +412,7 @@ describe("TasksSection", () => {
         onCreateTaskChecklistItem: () => {},
         onCreateTaskComment: () => {},
         onCreateTaskDependency: () => {},
+        onCreateLegalClinicCadenceTask: () => {},
         onCreateTask: () => {},
         onIncludeArchivedChange: () => {},
         onReopenTask: () => {},

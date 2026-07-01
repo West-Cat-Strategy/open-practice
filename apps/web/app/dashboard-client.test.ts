@@ -21,9 +21,14 @@ import { sampleResidentialTenancyIntakeDefinition } from "@open-practice/domain/
 import { buildSidebarNavigationSections, getRouteCatalogEntry } from "../routes/routeCatalog";
 import { DashboardApiError } from "./api-client";
 import {
+  buildLegalClinicCadenceFollowUpTaskPayload,
   dashboardUnavailableSectionCopy,
+  formatLegalClinicCadenceTaskFailureStatus,
   formatPortalDocumentAccessFailure,
   InboundEmailMatterDraftReviewCueSummary,
+  legalClinicCadenceFollowUpTaskPath,
+  legalClinicCadenceTaskBusyKey,
+  legalClinicCadenceTaskStatusCopy,
 } from "./dashboard-client";
 import {
   applyMatterAvailabilityToNavigation,
@@ -1460,6 +1465,22 @@ describe("dashboard client behavior", () => {
     expect(disabledCopy.detail).toBe(
       "External uploads require S3 storage, token signing, and upload access.",
     );
+  });
+
+  it("uses the dedicated legal-clinic cadence task command contract", () => {
+    expect(legalClinicCadenceFollowUpTaskPath).toBe("/api/tasks/legal-clinic-cadence-follow-up");
+    expect(buildLegalClinicCadenceFollowUpTaskPayload("matter-001")).toEqual({
+      matterId: "matter-001",
+    });
+    expect(legalClinicCadenceTaskBusyKey("matter-001")).toBe("legal-clinic-cadence:matter-001");
+    expect(legalClinicCadenceTaskStatusCopy).toEqual({
+      missingMatter: "Choose a matter before creating a legal clinic cadence task.",
+      creating: "Creating legal clinic cadence task...",
+      created: "Legal clinic cadence task created.",
+    });
+    expect(
+      formatLegalClinicCadenceTaskFailureStatus("409 LEGAL_CLINIC_CADENCE_TASK_UNAVAILABLE"),
+    ).toBe("Legal clinic cadence task failed: 409 LEGAL_CLINIC_CADENCE_TASK_UNAVAILABLE");
   });
 
   it("formats staff portal document visibility failures as actionable copy", () => {

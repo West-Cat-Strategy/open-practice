@@ -659,6 +659,34 @@ type CalendarAgingFollowUpTaskResponse = {
     matterId: string;
   };
 };
+type LegalClinicCadenceFollowUpTaskResponse = {
+  task: DashboardTask;
+  legalClinicCadenceFollowUp: {
+    profileId: string;
+    matterId: string;
+    programId: string;
+    signal: string;
+    sourceId: string;
+    dueAt?: string;
+  };
+};
+export const legalClinicCadenceFollowUpTaskPath = "/api/tasks/legal-clinic-cadence-follow-up";
+export const legalClinicCadenceTaskStatusCopy = {
+  missingMatter: "Choose a matter before creating a legal clinic cadence task.",
+  creating: "Creating legal clinic cadence task...",
+  created: "Legal clinic cadence task created.",
+} as const;
+export function legalClinicCadenceTaskBusyKey(matterId: string): string {
+  return `legal-clinic-cadence:${matterId}`;
+}
+export function buildLegalClinicCadenceFollowUpTaskPayload(matterId: string): {
+  matterId: string;
+} {
+  return { matterId };
+}
+export function formatLegalClinicCadenceTaskFailureStatus(status: string | number): string {
+  return `Legal clinic cadence task failed: ${status}`;
+}
 type InboundMatterDraftResponse = {
   status: "drafted";
   message: {
@@ -2798,6 +2826,33 @@ export default function DashboardClient({
       setTaskActionStatus("Task created.");
     } catch (error) {
       setTaskActionStatus(`Task create failed: ${dashboardApiStatus(error)}`);
+    } finally {
+      setTaskActionBusyKey("");
+    }
+  }
+
+  async function createLegalClinicCadenceTask(matterId: string): Promise<void> {
+    if (!matterId) {
+      setTaskActionStatus(legalClinicCadenceTaskStatusCopy.missingMatter);
+      return;
+    }
+
+    setTaskActionBusyKey(legalClinicCadenceTaskBusyKey(matterId));
+    setTaskActionStatus(legalClinicCadenceTaskStatusCopy.creating);
+    try {
+      await requestDashboardJson<LegalClinicCadenceFollowUpTaskResponse>(
+        apiBaseUrl,
+        legalClinicCadenceFollowUpTaskPath,
+        {
+          method: "POST",
+          headers: devHeaders,
+          payload: buildLegalClinicCadenceFollowUpTaskPayload(matterId),
+        },
+      );
+      await refreshTaskWorkspace();
+      setTaskActionStatus(legalClinicCadenceTaskStatusCopy.created);
+    } catch (error) {
+      setTaskActionStatus(formatLegalClinicCadenceTaskFailureStatus(dashboardApiStatus(error)));
     } finally {
       setTaskActionBusyKey("");
     }
@@ -7276,6 +7331,9 @@ export default function DashboardClient({
                   onCreateTaskDependency={(taskId, payload) =>
                     void createTaskDependency(taskId, payload)
                   }
+                  onCreateLegalClinicCadenceTask={(matterId) =>
+                    void createLegalClinicCadenceTask(matterId)
+                  }
                   onCreateTask={(payload) => void createTask(payload)}
                   onIncludeArchivedChange={(includeArchived) =>
                     void updateTaskArchivedVisibility(includeArchived)
@@ -8397,6 +8455,9 @@ export default function DashboardClient({
                   onCreateTaskComment={(taskId, payload) => void createTaskComment(taskId, payload)}
                   onCreateTaskDependency={(taskId, payload) =>
                     void createTaskDependency(taskId, payload)
+                  }
+                  onCreateLegalClinicCadenceTask={(matterId) =>
+                    void createLegalClinicCadenceTask(matterId)
                   }
                   onCreateTask={(payload) => void createTask(payload)}
                   onIncludeArchivedChange={(includeArchived) =>

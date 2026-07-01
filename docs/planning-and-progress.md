@@ -69,6 +69,17 @@ auto-confirm holds, auto-expire requests, sync providers, queue reminders, creat
 native media/chat/recording, or create matters. Proof is recorded in
 [calendar aging follow-up task proof](validation/OP_CALENDAR_AGING_FOLLOW_UP_TASK_PROOF_2026-06-30.md).
 
+The 2026-07-01 `feat/legal-clinic-cadence-task-20260701` branch adds one explicit staff-only task
+command for legal-clinic cadence follow-up suggestions. `POST
+/api/tasks/legal-clinic-cadence-follow-up` accepts `{ matterId }`, requires matter-scoped
+`task:create`, chooses the earliest due eligible clinic cadence signal with stable source-ID
+tiebreaks, dedupes matching `operational_view` task sources including completed/archived tasks, and
+creates one unassigned normal internal task with fixed redacted copy and safe audit provenance. The
+dashboard keeps cadence suggestions explicit staff actions through the dedicated command. The slice
+adds no migration, dependency, automatic task creation, provider sync, client-visible workflow, or
+clinic cadence/profile/program mutation. Proof is recorded in
+[legal clinic cadence task command proof](validation/OP_LEGAL_CLINIC_CADENCE_TASK_PROOF_2026-07-01.md).
+
 The 2026-06-28 `feat/trust-controls-maker-checker-readiness-20260628` branch adds read-only
 Trust Controls maker-checker readiness indicators to the existing controls payload and dashboard.
 The indicators reuse ledger controls, reconciliation packet, posting-request, trust-transfer,
